@@ -8,10 +8,10 @@ from threading import Thread
 from typing import Any
 
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
-from parallax.app.runtime.llm_gateway import LLMGateway
 from parallax.app.runtime.provider_wiring import wire_providers
 from parallax.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
 from parallax.app.runtime.provider_wiring.types import WiredProviders
+from parallax.app.runtime.runtime_snapshot import RuntimeSnapshot, capture_runtime_snapshot
 from parallax.app.runtime.telemetry import TelemetryRegistry
 from parallax.app.runtime.worker_factories import construct_workers
 from parallax.app.runtime.worker_scheduler import WorkerScheduler
@@ -21,7 +21,6 @@ from parallax.domains.asset_market.services.event_market_capture import (
 )
 from parallax.domains.evidence.services.ingest_service import (
     IngestService,
-    PreparedIngest,
     require_event_anchor_active_window_ms,
 )
 from parallax.domains.ingestion.providers import EventPublisherProtocol
@@ -46,14 +45,16 @@ class Runtime:
     hub: EventPublisherProtocol
     collector: CollectorService
     scheduler: WorkerScheduler
-    startup_db_status: dict[str, object]
-    news_provider_contract: dict[str, Any]
+    snapshot: RuntimeSnapshot
     ingest: _PooledIngestStore
-    llm_gateway: Any | None = None
     agent_execution_gateway: Any | None = None
 
     def repositories(self):
         return self.db.api_session()
+
+    def current_snapshot(self) -> RuntimeSnapshot:
+        self.snapshot = capture_runtime_snapshot(self)
+        return self.snapshot
 
     async def aclose(self) -> None:
         scheduler_error: Exception | None = None
@@ -83,7 +84,6 @@ def bootstrap(
         raise ValueError("ws_token is required in config.yaml")
     telemetry = TelemetryRegistry()
     db: DBPoolBundle | None = None
-    llm_gateway: LLMGateway | None = None
     agent_execution_gateway: Any | None = None
     providers: WiredProviders | None = None
     try:
@@ -95,10 +95,8 @@ def bootstrap(
         news_provider_contract = _load_news_provider_contract(settings, db)
 
         if settings.news_agent_execution_enabled:
-            llm_gateway = LLMGateway.create(settings)
             agent_execution_gateway = build_agent_execution_gateway(
                 settings,
-                llm_gateway=llm_gateway,
                 telemetry=telemetry,
             )
         providers = wire_providers(
@@ -112,14 +110,13 @@ def bootstrap(
             telemetry=telemetry,
             providers=providers,
             start_collector=start_collector,
-            llm_gateway=llm_gateway,
             agent_execution_gateway=agent_execution_gateway,
             startup_db_status=startup_db,
             news_provider_contract=news_provider_contract,
             publisher_factory=publisher_factory,
         )
     except Exception as exc:
-        for error in _cleanup_provider_roots_sync(providers, agent_execution_gateway, llm_gateway):
+        for error in _cleanup_provider_roots_sync(providers):
             exc.add_note(f"provider cleanup failed: {type(error).__name__}: {error}")
         if db is not None:
             try:
@@ -137,7 +134,6 @@ def _assemble_runtime(
     telemetry: TelemetryRegistry,
     providers: WiredProviders,
     start_collector: bool,
-    llm_gateway: Any | None,
     agent_execution_gateway: Any | None = None,
     startup_db_status: dict[str, object],
     news_provider_contract: dict[str, Any],
@@ -163,7 +159,6 @@ def _assemble_runtime(
         publisher=hub,
         upstream_client=None,
     )
-    wake_bus = db.wake_emitter()
     runtime_workers = construct_workers(
         settings=settings,
         db=db,
@@ -172,10 +167,14 @@ def _assemble_runtime(
         hub=hub,
         collector=collector,
         collector_enabled=worker_collector_enabled,
-        wake_bus=wake_bus,
         collector_start_requested=start_collector,
     )
     scheduler = WorkerScheduler(workers=runtime_workers, db=db)
+    snapshot = RuntimeSnapshot.startup(
+        startup_db_status=startup_db_status,
+        composition={"ok": True},
+        news_provider_contract=news_provider_contract,
+    )
     runtime = Runtime(
         settings=settings,
         db=db,
@@ -184,15 +183,14 @@ def _assemble_runtime(
         hub=hub,
         collector=collector,
         scheduler=scheduler,
-        startup_db_status=dict(startup_db_status),
-        news_provider_contract=dict(news_provider_contract),
-        llm_gateway=llm_gateway,
+        snapshot=snapshot,
         agent_execution_gateway=agent_execution_gateway,
         ingest=ingest,
     )
     if worker_collector_enabled:
         factory = providers.ingestion.upstream_client_factory
         collector.upstream_client = factory(collector.handle_frame) if factory is not None else None
+    runtime.current_snapshot()
     return runtime
 
 
@@ -267,7 +265,7 @@ class _PooledIngestStore:
                     repos.market_ticks.latest_at_or_before(
                         target_type=market_resolution["target_type"],
                         target_id=market_resolution["target_id"],
-                        at_ms=_prepared_value(prepared, "event_ms"),
+                        at_ms=prepared.event_ms,
                         max_lag_ms=60_000,
                     )
                 )
@@ -282,7 +280,7 @@ class _PooledIngestStore:
                     intent_id=market_resolution["intent_id"],
                     resolution_id=market_resolution["resolution_id"],
                     resolution=market_resolution,
-                    event_ms=_prepared_value(prepared, "event_ms"),
+                    event_ms=prepared.event_ms,
                     tick_lookup=tick_lookup,
                 )
                 for market_resolution in market_resolutions
@@ -311,19 +309,13 @@ def _ingest_service_for_repos(
         intent_resolutions=repos.intent_resolutions,
         discovery=repos.discovery,
         market_ticks=repos.market_ticks,
-        market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
+        market_tick_current=repos.market_tick_current,
         enriched_events=repos.enriched_events,
         event_anchor_jobs=repos.event_anchor_jobs,
         token_radar_dirty_targets=repos.token_radar_dirty_targets,
         transaction=repos.transaction,
         event_anchor_active_window_ms=event_anchor_active_window_ms,
     )
-
-
-def _prepared_value(prepared: Any, key: str) -> Any:
-    if not isinstance(prepared, PreparedIngest):
-        raise RuntimeError("prepared_ingest_contract_required")
-    return getattr(prepared, key)
 
 
 def _now_ms() -> int:
@@ -336,38 +328,16 @@ async def _cleanup_runtime_providers(runtime: Runtime) -> list[Exception]:
         await runtime.providers.aclose()
     except Exception as exc:
         errors.append(exc)
-    if runtime.agent_execution_gateway is not None:
-        try:
-            await runtime.agent_execution_gateway.aclose()
-        except Exception as exc:
-            errors.append(exc)
-    if runtime.llm_gateway is not None:
-        try:
-            await runtime.llm_gateway.aclose()
-        except Exception as exc:
-            errors.append(exc)
     return errors
 
 
 def _cleanup_provider_roots_sync(
     providers: WiredProviders | None,
-    agent_execution_gateway: Any | None,
-    llm_gateway: LLMGateway | None,
 ) -> list[Exception]:
     errors: list[Exception] = []
     if providers is not None:
         try:
             _await_sync(providers.aclose())
-        except Exception as exc:
-            errors.append(exc)
-    if agent_execution_gateway is not None:
-        try:
-            _await_sync(agent_execution_gateway.aclose())
-        except Exception as exc:
-            errors.append(exc)
-    if llm_gateway is not None:
-        try:
-            _await_sync(llm_gateway.aclose())
         except Exception as exc:
             errors.append(exc)
     return errors

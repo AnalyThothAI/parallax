@@ -5,7 +5,6 @@ import json
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from parallax.domains.news_intel._constants import NEWS_STORY_IDENTITY_VERSION
 from parallax.domains.news_intel.repositories.news_repository_support import (
     _MATERIAL_MATCH_WINDOW_MS,
     _NEWS_ITEM_WORKER_COLUMNS_SQL,
@@ -31,7 +30,6 @@ from parallax.domains.news_intel.repositories.news_repository_support import (
     _representative_payload_should_replace,
     _required_agent_admission_context_list,
     _required_agent_admission_item_text,
-    _required_positive_news_item_source_watermark,
     _required_returning_row,
     _story_identity_payload,
 )
@@ -63,52 +61,6 @@ from parallax.platform.validation import require_nonnegative_int, require_positi
 class NewsItemRepository:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
-
-    def list_news_items_for_canonical_rebuild(self, *, limit: int) -> list[dict[str, Any]]:
-        parsed_limit = require_nonnegative_int(
-            limit,
-            error_code="news_canonical_rebuild_limit_required",
-        )
-        rows = self.conn.execute(
-            """
-            WITH candidates AS (
-              SELECT items.news_item_id,
-                     items.story_key,
-                     items.updated_at_ms,
-                     GREATEST(
-                       COALESCE(NULLIF(items.published_at_ms, 0), 0),
-                       COALESCE(NULLIF(items.fetched_at_ms, 0), 0)
-                     )::bigint AS source_watermark_ms
-                FROM news_items AS items
-               WHERE items.lifecycle_status = 'processed'
-                 AND items.story_key <> ''
-                 AND items.story_identity_version = %s
-                 AND EXISTS (
-                   SELECT 1
-                     FROM news_item_observation_edges AS edges
-                     JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id
-                    WHERE edges.news_item_id = items.news_item_id
-                      AND edge_sources.enabled = true
-                 )
-            )
-            SELECT news_item_id,
-                   story_key,
-                   source_watermark_ms
-              FROM candidates
-             WHERE source_watermark_ms > 0
-             ORDER BY updated_at_ms DESC, news_item_id ASC
-             LIMIT %s
-            """,
-            (NEWS_STORY_IDENTITY_VERSION, parsed_limit),
-        ).fetchall()
-        return [
-            {
-                "news_item_id": str(row["news_item_id"]),
-                "story_key": str(row["story_key"] or ""),
-                "source_watermark_ms": _required_positive_news_item_source_watermark(row),
-            }
-            for row in rows
-        ]
 
     def upsert_canonical_news_item(
         self,

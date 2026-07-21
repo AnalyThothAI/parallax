@@ -2,87 +2,79 @@ from __future__ import annotations
 
 import pytest
 
-from parallax.app.runtime.worker_status import manifest_worker_statuses, worker_lane_statuses
+from parallax.app.runtime.worker_manifest import worker_names
+from parallax.app.runtime.worker_status import effective_worker_status, manifest_worker_statuses
 
 
 def test_manifest_worker_statuses_rejects_unknown_worker_entries() -> None:
-    with pytest.raises(ValueError, match="Unknown worker status entries: stray_worker"):
-        manifest_worker_statuses({"stray_worker": {}})
+    with pytest.raises(ValueError, match="worker_status_manifest_mismatch"):
+        manifest_worker_statuses({"legacy_worker": {"enabled": True}})
 
 
-def test_worker_lane_statuses_aggregate_failures_and_timeouts() -> None:
-    workers = manifest_worker_statuses(
-        {
-            "token_radar_projection": {
-                "enabled": True,
-                "running": True,
-                "last_error": RuntimeError("projection failed"),
-                "iteration_duration_p99_ms": 12.5,
-                "active_run_once_age_ms": 20,
-            },
-            "token_profile_current": {
-                "enabled": True,
-                "running": False,
-                "last_result": {"ok": False},
-                "iteration_duration_p99_ms": 30.0,
-                "active_run_once_age_ms": 50,
-                "active_run_once_hard_timed_out_at_ms": 2_000,
-            },
-        }
-    )
+def test_manifest_worker_statuses_requires_complete_canonical_inventory() -> None:
+    statuses = manifest_worker_statuses(_all_worker_statuses())
 
-    projection = worker_lane_statuses(workers)["projection"]
-
-    assert projection["enabled_workers"] >= 2
-    assert projection["running_workers"] == 0
-    assert projection["failed_workers"] >= 2
-    assert "soft_timed_out_workers" not in projection
-    assert projection["hard_timed_out_workers"] >= 1
-    assert projection["oldest_active_run_once_age_ms"] == 50
-    assert projection["iteration_duration_p99_ms"] == 30.0
+    assert tuple(statuses) == worker_names()
+    assert all(status["effective_status"] == "stopped" for status in statuses.values())
 
 
-def test_worker_lane_statuses_count_each_worker_in_one_effective_status_bucket() -> None:
-    workers = manifest_worker_statuses(
-        {
-            "token_profile_current": {
-                "enabled": True,
-                "running": True,
-                "effective_status": "degraded",
-            },
-            "token_radar_projection": {
-                "enabled": True,
-                "running": False,
-                "effective_status": "stopped",
-            },
-            "market_tick_current_projection": {
-                "enabled": True,
-                "running": False,
-                "effective_status": "stopped",
-            },
-        }
-    )
+def test_manifest_worker_statuses_rejects_missing_worker() -> None:
+    payload = _all_worker_statuses()
+    payload.pop(worker_names()[0])
 
-    projection = worker_lane_statuses(workers)["projection"]
-
-    assert projection["degraded_workers"] == 1
-    assert projection["running_workers"] == 0
-    assert projection["stopped_workers"] == 2
+    with pytest.raises(ValueError, match="worker_status_manifest_mismatch"):
+        manifest_worker_statuses(payload)
 
 
-def test_worker_lane_statuses_failed_result_counts_failed_before_degraded_notes() -> None:
-    workers = manifest_worker_statuses(
-        {
-            "token_profile_current": {
-                "enabled": True,
-                "running": True,
-                "last_result": {"failed": 1, "notes": {"degraded": True}},
-            },
-        }
-    )
+@pytest.mark.parametrize(
+    "mutate",
+    [
+        lambda status: status.pop("last_error"),
+        lambda status: status.update({"legacy_queue_depth": 0}),
+    ],
+)
+def test_manifest_worker_statuses_rejects_partial_or_unknown_fields(mutate) -> None:
+    payload = _all_worker_statuses()
+    mutate(payload[worker_names()[0]])
 
-    projection = worker_lane_statuses(workers)["projection"]
+    with pytest.raises(ValueError, match="worker_status_fields_mismatch"):
+        manifest_worker_statuses(payload)
 
-    assert projection["failed_workers"] == 1
-    assert projection["degraded_workers"] == 0
-    assert projection["running_workers"] == 0
+
+@pytest.mark.parametrize(
+    ("payload", "expected"),
+    [
+        ({"effective_status": "disabled"}, "disabled"),
+        ({"effective_status": "running"}, "running"),
+        ({"effective_status": "stopped"}, "stopped"),
+        ({"effective_status": "failed"}, "failed"),
+        ({"effective_status": "degraded"}, "degraded"),
+        ({"effective_status": "unavailable"}, "unavailable"),
+    ],
+)
+def test_effective_worker_status(payload: dict[str, object], expected: str) -> None:
+    assert effective_worker_status(payload) == expected
+
+
+@pytest.mark.parametrize("payload", [{}, {"enabled": True}, {"effective_status": "legacy"}])
+def test_effective_worker_status_rejects_incomplete_payload(payload: dict[str, object]) -> None:
+    with pytest.raises(ValueError, match="worker_effective_status_required"):
+        effective_worker_status(payload)
+
+
+def _all_worker_statuses() -> dict[str, dict[str, object]]:
+    return {name: _worker_status() for name in worker_names()}
+
+
+def _worker_status() -> dict[str, object]:
+    return {
+        "enabled": True,
+        "running": False,
+        "effective_status": "stopped",
+        "unavailable_reason": None,
+        "last_started_at_ms": None,
+        "last_finished_at_ms": None,
+        "last_result": None,
+        "last_error": None,
+        "iteration_duration_p99_ms": None,
+    }

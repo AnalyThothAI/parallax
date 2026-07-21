@@ -6,7 +6,7 @@ from types import SimpleNamespace
 import pytest
 
 from parallax.app.runtime.bootstrap import _load_news_provider_contract
-from parallax.app.surfaces.api.app import _news_provider_contract_payload, _unhealthy_reasons
+from parallax.app.runtime.runtime_snapshot import RuntimeSnapshot, _news_contract_degradation
 from parallax.domains.news_intel.repositories.news_source_repository import NewsSourceRepository
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.services.news_provider_contract import (
@@ -123,7 +123,6 @@ def test_news_fetch_worker_returns_contract_error_without_provider_capability_pr
         telemetry=object(),
         feed_client=FakeCapabilityProbeProvider(),
         news_settings=SimpleNamespace(sources=(source,)),
-        wake_emitter=None,
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -151,12 +150,16 @@ def test_bootstrap_snapshots_news_provider_contract_once() -> None:
 
 
 def test_runtime_status_returns_defensive_copy_of_bootstrap_snapshot() -> None:
-    runtime = SimpleNamespace(news_provider_contract={"ok": True, "configured_provider_types": ["opennews"]})
+    contract = {"ok": True, "configured_provider_types": ["opennews"]}
+    snapshot = RuntimeSnapshot.startup(
+        startup_db_status={"ok": True},
+        composition={"ok": True},
+        news_provider_contract=contract,
+    )
 
-    payload = _news_provider_contract_payload(runtime)
-    payload["ok"] = False
+    contract["ok"] = False
 
-    assert runtime.news_provider_contract["ok"] is True
+    assert snapshot.news_provider_contract["ok"] is True
 
 
 def test_bootstrap_marks_news_provider_contract_unavailable_when_schema_query_fails() -> None:
@@ -173,16 +176,10 @@ def test_bootstrap_marks_news_provider_contract_unavailable_when_schema_query_fa
     assert payload["configured_provider_types"] == ["opennews"]
 
 
-def test_readiness_marks_news_provider_settings_contract_error_unhealthy() -> None:
-    runtime = SimpleNamespace(scheduler=SimpleNamespace(unhealthy_reasons=lambda: []))
+def test_runtime_snapshot_marks_news_provider_settings_contract_error_degraded() -> None:
+    reason = _news_contract_degradation({"ok": False, "reason": "news_provider_settings_contract_required"})
 
-    reasons = _unhealthy_reasons(
-        runtime,
-        db_status={"ok": True},
-        news_provider_contract={"ok": False, "reason": "news_provider_settings_contract_required"},
-    )
-
-    assert reasons == ["news_provider_contract_error"]
+    assert reason == "news_provider_contract_error"
 
 
 def test_news_fetch_worker_fails_fast_when_schema_introspection_missing() -> None:
@@ -196,7 +193,6 @@ def test_news_fetch_worker_fails_fast_when_schema_introspection_missing() -> Non
         telemetry=object(),
         feed_client=FakeCapabilityProbeProvider(),
         news_settings=SimpleNamespace(sources=(source,)),
-        wake_emitter=None,
     )
 
     with pytest.raises(AttributeError, match="news_source_provider_constraint_values"):

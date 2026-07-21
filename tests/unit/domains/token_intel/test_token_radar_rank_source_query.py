@@ -89,7 +89,6 @@ def _feature_request(request_key: str = "request-1") -> TokenRadarFeatureSourceR
         identity_id="asset-1",
         window="1h",
         scope="all",
-        venue="bsc",
         analysis_since_ms=1,
         score_since_ms=2,
         now_ms=3,
@@ -104,7 +103,7 @@ def test_rank_source_query_loads_feature_rows_from_narrow_source_edges() -> None
     assert rows == {"request-1": [{"request_key": "request-1", "event_id": "event-1"}]}
     assert "token_radar_rank_source_events" in conn.sql
     assert "jsonb_to_recordset" in conn.sql
-    assert "venue text" in conn.sql
+    assert "venue text" not in conn.sql
     assert "rank_source.event_received_at_ms >= requested.analysis_since_ms" in conn.sql
     assert "source_kind = 'event'" in conn.sql
 
@@ -333,6 +332,8 @@ def test_rank_source_query_loads_latest_market_context_for_requested_targets() -
     assert context[("CexToken", "cex-token-1")]["latest_price_tick_id"] == "tick-2"
     assert "JOIN market_tick_current" in conn.sql
     assert "JOIN registry_assets" in conn.sql
+    assert "current_row.target_id = registry_assets.chain_id || ':' || registry_assets.address" in conn.sql
+    assert "lower(current_row.target_id)" not in conn.sql
     assert "price_feeds.provider = 'binance'" in conn.sql
 
 

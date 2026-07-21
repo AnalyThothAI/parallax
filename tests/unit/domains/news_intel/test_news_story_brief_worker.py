@@ -111,8 +111,8 @@ def test_worker_rejects_failed_story_run_missing_execution_started_before_restor
     asyncio.run(_test_worker_rejects_failed_story_run_missing_execution_started_before_restore_or_model_call())
 
 
-def test_worker_writes_ready_story_brief_and_emits_wake() -> None:
-    asyncio.run(_test_worker_writes_ready_story_brief_and_emits_wake())
+def test_worker_writes_ready_story_brief() -> None:
+    asyncio.run(_test_worker_writes_ready_story_brief())
 
 
 def test_worker_request_audit_failure_counts_as_failed_claim() -> None:
@@ -121,6 +121,10 @@ def test_worker_request_audit_failure_counts_as_failed_claim() -> None:
 
 def test_worker_reservation_exception_fails_before_claim() -> None:
     asyncio.run(_test_worker_reservation_exception_fails_before_claim())
+
+
+def test_worker_claim_failure_releases_reserved_capacity() -> None:
+    asyncio.run(_test_worker_claim_failure_releases_reserved_capacity())
 
 
 def test_worker_execute_no_start_backpressure_retries_without_run_or_attempt() -> None:
@@ -173,22 +177,23 @@ def test_worker_rejects_claim_missing_story_target_id_without_marking_done() -> 
     asyncio.run(_test_worker_rejects_claim_missing_story_target_id_without_marking_done())
 
 
-async def _test_worker_writes_ready_story_brief_and_emits_wake() -> None:
+async def _test_worker_writes_ready_story_brief() -> None:
     db = FakeDB([_story_candidate()])
     provider = FakeStoryBriefProvider()
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
+    worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
 
-    assert provider.reserve_calls == [NEWS_STORY_BRIEF_LANE]
+    assert provider.reserve_calls == 1
+    assert provider.reserve_rate_units == [1]
+    assert db.dirty.claim_kwargs[0]["limit"] == provider.reservation.rate_units
     assert provider.execution_calls == 1
+    assert provider.reservation.acquired is False
     assert db.news.runs[0]["status"] == "completed"
     assert db.news.runs[0]["outcome"] == "ready"
     assert db.news.briefs[0]["status"] == "ready"
     assert db.news.briefs[0]["brief_json"]["summary_zh"] == "SOL ETF filing boosts attention."
     assert len(db.dirty.done) == 1
-    assert wake_bus.story_brief_updates == [1]
     assert result.processed == 1
     assert result.failed == 0
     assert result.notes["ready"] == 1
@@ -218,8 +223,7 @@ async def _test_worker_restores_completed_story_run_without_second_model_call() 
         "response_json": _ready_payload(),
     }
     db = FakeDB([candidate])
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
+    worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
 
@@ -250,7 +254,6 @@ async def _test_worker_restores_completed_story_run_without_second_model_call() 
             "now_ms": NOW_MS - 30_000,
         }
     ]
-    assert wake_bus.story_brief_updates == [1]
     assert result.processed == 1
     assert result.notes["ready"] == 1
     assert result.notes["restored_from_completed_run"] == 1
@@ -622,8 +625,7 @@ async def _test_worker_restores_failed_current_from_started_failed_story_run_wit
         "finished_at_ms": NOW_MS - 30_000,
     }
     db = FakeDB([candidate])
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, provider=provider, wake_emitter=wake_bus)
+    worker = _worker(db=db, provider=provider)
 
     result = await worker.run_once()
 
@@ -660,7 +662,6 @@ async def _test_worker_restores_failed_current_from_started_failed_story_run_wit
             "now_ms": NOW_MS - 30_000,
         }
     ]
-    assert wake_bus.story_brief_updates == [1]
     assert result.processed == 0
     assert result.failed == 0
     assert result.skipped == 1
@@ -935,11 +936,35 @@ async def _test_worker_reservation_exception_fails_before_claim() -> None:
     with pytest.raises(RuntimeError, match="reserve exploded"):
         await worker.run_once()
 
-    assert provider.reserve_calls == [NEWS_STORY_BRIEF_LANE]
+    assert provider.reserve_calls == 1
     assert provider.execution_calls == 0
     assert db.dirty.claim_thread_ids == []
     assert db.news.runs == []
     assert db.news.briefs == []
+
+
+async def _test_worker_claim_failure_releases_reserved_capacity() -> None:
+    released: list[bool] = []
+    reservation = AgentCapacityReservation(
+        acquired=True,
+        _release=lambda: released.append(True),
+    )
+    db = FakeDB([_story_candidate()])
+    provider = FakeStoryBriefProvider(reservation=reservation)
+    worker = _worker(db=db, provider=provider)
+
+    def fail_claim(**kwargs: Any) -> list[dict[str, Any]]:
+        del kwargs
+        raise RuntimeError("claim failed")
+
+    db.dirty.claim_due = fail_claim  # type: ignore[method-assign]
+
+    with pytest.raises(RuntimeError, match="claim failed"):
+        await worker.run_once()
+
+    assert released == [True]
+    assert reservation.acquired is False
+    assert provider.execution_calls == 0
 
 
 async def _test_worker_execute_no_start_backpressure_retries_without_run_or_attempt() -> None:
@@ -990,7 +1015,7 @@ async def _test_worker_capacity_denied_requires_formal_agent_capacity_reservatio
 
 async def _test_worker_capacity_denied_requires_formal_reason_enum() -> None:
     db = FakeDB([_story_candidate()])
-    reservation = AgentCapacityReservation(lane=NEWS_STORY_BRIEF_LANE, acquired=False)
+    reservation = AgentCapacityReservation(acquired=False)
     reservation.reason = "rate_limited"  # type: ignore[assignment]
     provider = FakeStoryBriefProvider(reservation=reservation)
     worker = _worker(db=db, provider=provider)
@@ -1220,7 +1245,7 @@ async def _test_worker_rejects_malformed_queue_depth_without_reserving_or_claimi
     with pytest.raises(RuntimeError, match="news_story_brief_queue_depth_required"):
         await worker.run_once()
 
-    assert provider.reserve_calls == []
+    assert provider.reserve_calls == 0
     assert db.dirty.claim_kwargs == []
 
 
@@ -1241,7 +1266,6 @@ def _worker(
     *,
     db: FakeDB,
     provider: FakeStoryBriefProvider,
-    wake_emitter: Any | None = None,
     settings: NewsStoryBriefWorkerSettings | None = None,
 ) -> NewsStoryBriefWorker:
     provider.db = db
@@ -1251,7 +1275,6 @@ def _worker(
         db=db,
         telemetry=object(),
         provider=provider,
-        wake_emitter=wake_emitter,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1356,8 +1379,8 @@ class FakeStoryBriefProvider:
         omit_result_usage: bool = False,
         omit_result_trace_metadata: bool = False,
     ) -> None:
-        self.reservation = reservation or AgentCapacityReservation(lane=NEWS_STORY_BRIEF_LANE, acquired=True)
-        self.reserve_calls: list[str] = []
+        self.reservation = reservation or AgentCapacityReservation(acquired=True)
+        self.reserve_calls = 0
         self.reserve_rate_units: list[int] = []
         self.request_audit_calls: list[str] = []
         self.execution_calls = 0
@@ -1369,9 +1392,9 @@ class FakeStoryBriefProvider:
         self.omit_result_usage = omit_result_usage
         self.omit_result_trace_metadata = omit_result_trace_metadata
 
-    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
+    def try_reserve_execution(self, *, rate_units: int = 1) -> AgentCapacityReservation:
         assert self.db is None or self.db.in_session is False
-        self.reserve_calls.append(lane)
+        self.reserve_calls += 1
         self.reserve_rate_units.append(rate_units)
         if self.reserve_error is not None:
             raise self.reserve_error
@@ -1569,11 +1592,3 @@ class FakeConn:
     @contextmanager
     def transaction(self) -> Iterator[None]:
         yield
-
-
-class FakeWakeBus:
-    def __init__(self) -> None:
-        self.story_brief_updates: list[int] = []
-
-    def notify_news_story_brief_updated(self, *, count: int) -> None:
-        self.story_brief_updates.append(count)

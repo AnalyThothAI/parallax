@@ -6,45 +6,36 @@ from parallax.app.runtime.provider_wiring.model_execution import build_agent_exe
 from parallax.platform.config.settings import Settings
 
 
-class FakeLLMGateway:
-    api_key = "sk-test"
-    base_url = "https://example.com/v1"
-    trace_export_enabled = False
-
-
 def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> None:
     settings = Settings(
         llm={"api_key": "sk-test", "base_url": "https://example.com/v1"},
         workers={
             "agent_runtime": {
-                "defaults": {"model": "qwen3.6"},
-                "global_max_concurrency": 2,
-                "global_rpm_limit": 30,
-                "lanes": {
-                    "news.story_brief": {
-                        "priority": "high",
-                        "max_concurrency": 1,
-                        "timeout_seconds": 90,
-                    }
-                },
+                "model": "qwen3.6",
+                "max_concurrency": 2,
+                "rpm_limit": 30,
+                "timeout_seconds": 90,
             }
         },
     )
 
-    gateway = build_agent_execution_gateway(settings, llm_gateway=FakeLLMGateway())
+    gateway = build_agent_execution_gateway(settings)
 
     snapshot = gateway.status_snapshot()
-    assert snapshot["global_max_concurrency"] == 2
-    assert snapshot["lanes"]["news.story_brief"]["timeout_seconds"] == 90
+    assert snapshot["lane"] == "news.story_brief"
+    assert snapshot["model"] == "qwen3.6"
+    assert snapshot["max_concurrency"] == 2
+    assert snapshot["rpm_limit"] == 30
+    assert snapshot["timeout_seconds"] == 90
 
 
 def test_build_agent_execution_gateway_hard_cuts_safety_net() -> None:
     settings = Settings(
         llm={"api_key": "sk-test"},
-        workers={"agent_runtime": {"defaults": {"model": "gpt-news"}}},
+        workers={"agent_runtime": {"model": "gpt-news"}},
     )
 
-    gateway = build_agent_execution_gateway(settings, llm_gateway=FakeLLMGateway())
+    gateway = build_agent_execution_gateway(settings)
 
     assert not hasattr(gateway, "_safety_net")
 
@@ -54,12 +45,7 @@ def test_wire_providers_passes_agent_execution_gateway_to_news_provider(monkeypa
         ws_token="secret",
         llm={"api_key": "sk-test"},
         workers={
-            "agent_runtime": {
-                "defaults": {"model": "gpt-social"},
-                "lanes": {
-                    "news.story_brief": {"model": "gpt-story"},
-                },
-            },
+            "agent_runtime": {"model": "gpt-story"},
             "news_story_brief": {"enabled": True},
         },
     )
@@ -78,6 +64,6 @@ def test_wire_providers_passes_agent_execution_gateway_to_news_provider(monkeypa
         agent_execution_gateway=agent_gateway,
     )
 
-    assert providers.agent_execution_gateway is agent_gateway
+    assert not hasattr(providers, "agent_execution_gateway")
     assert providers.news_intel.story_brief_provider is not None
     assert calls == [agent_gateway]

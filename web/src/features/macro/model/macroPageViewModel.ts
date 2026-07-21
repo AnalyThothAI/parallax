@@ -1,5 +1,7 @@
 import type { MacroModuleView } from "@lib/types";
 
+import { requireMacroArray, requireMacroRecord } from "./macroCurrentContract";
+
 export type MacroFreshnessAlertModel = {
   detail: string;
   items: string[];
@@ -19,8 +21,12 @@ export function macroStatusLabel(module?: MacroModuleView): string | null {
 }
 
 export function macroFreshnessAlert(module?: MacroModuleView): MacroFreshnessAlertModel | null {
+  if (!module) {
+    return null;
+  }
+  const dataHealth = requireMacroRecord(module.data_health, "data_health");
   const snapshotStatus = stringValue(module?.snapshot.status)?.toLowerCase() ?? null;
-  const healthStatus = stringValue(module?.data_health?.summary_status)?.toLowerCase() ?? null;
+  const healthStatus = stringValue(dataHealth.summary_status)?.toLowerCase() ?? null;
   const wholePageStale = snapshotStatus === "stale" || healthStatus === "stale";
   const staleGaps = (
     wholePageStale ? dataHealthGaps(module) : blockingDataHealthGaps(module)
@@ -77,24 +83,21 @@ function stringValue(value: unknown): string | null {
   return typeof value === "string" && value.trim() ? value : null;
 }
 
-function dataHealthGaps(module?: MacroModuleView): unknown[] {
-  const dataHealth = module?.data_health;
-  if (!dataHealth) {
-    return [];
-  }
+function dataHealthGaps(module: MacroModuleView): unknown[] {
+  const dataHealth = requireMacroRecord(module.data_health, "data_health");
   return [
-    ...(dataHealth.module_gaps ?? []),
-    ...(dataHealth.chart_gaps ?? []),
-    ...(dataHealth.global_gaps ?? []),
+    ...requireMacroArray(dataHealth.module_gaps, "data_health.module_gaps"),
+    ...requireMacroArray(dataHealth.chart_gaps, "data_health.chart_gaps"),
+    ...requireMacroArray(dataHealth.global_gaps, "data_health.global_gaps"),
   ];
 }
 
-function blockingDataHealthGaps(module?: MacroModuleView): unknown[] {
-  const dataHealth = module?.data_health;
-  if (!dataHealth) {
-    return [];
-  }
-  return [...(dataHealth.module_gaps ?? []), ...(dataHealth.chart_gaps ?? [])];
+function blockingDataHealthGaps(module: MacroModuleView): unknown[] {
+  const dataHealth = requireMacroRecord(module.data_health, "data_health");
+  return [
+    ...requireMacroArray(dataHealth.module_gaps, "data_health.module_gaps"),
+    ...requireMacroArray(dataHealth.chart_gaps, "data_health.chart_gaps"),
+  ];
 }
 
 function isStaleGap(gap: unknown): boolean {

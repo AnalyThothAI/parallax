@@ -4,7 +4,6 @@ import time
 from typing import Any
 
 from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker, unavailable_worker
-from parallax.app.runtime.worker_manifest import require_worker_manifest
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
@@ -42,7 +41,6 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 db=ctx.db,
                 telemetry=ctx.telemetry,
                 news_settings=ctx.settings.news_intel,
-                wake_emitter=ctx.wake_bus,
                 feed_client=feed_client,
             )
         else:
@@ -61,8 +59,6 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 db=ctx.db,
                 statement_timeout_seconds=workers.news_item_process.statement_timeout_seconds,
             ),
-            wake_emitter=ctx.wake_bus,
-            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
     else:
         constructed["news_item_process"] = disabled_worker(ctx, "news_item_process")
@@ -71,7 +67,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
     if workers.news_story_brief.enabled:
         worker_name = "news_story_brief"
         if not ctx.settings.llm_configured:
-            constructed[worker_name] = disabled_worker(ctx, worker_name)
+            constructed[worker_name] = unavailable_worker(ctx, worker_name, "missing_llm_configuration")
         elif story_brief_provider is not None:
             constructed[worker_name] = NewsStoryBriefWorker(
                 name=worker_name,
@@ -79,8 +75,6 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 db=ctx.db,
                 telemetry=ctx.telemetry,
                 provider=story_brief_provider,
-                wake_emitter=ctx.wake_bus,
-                wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
             )
         else:
             constructed[worker_name] = unavailable_worker(ctx, worker_name, "missing_news_story_brief_provider")
@@ -94,7 +88,6 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             settings=workers.news_page_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
     else:
         constructed["news_page_projection"] = disabled_worker(ctx, "news_page_projection")

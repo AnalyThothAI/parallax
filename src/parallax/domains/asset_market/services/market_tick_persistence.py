@@ -4,52 +4,130 @@ from collections.abc import Iterable
 from dataclasses import dataclass
 from typing import Any
 
+from parallax.domains.asset_market.repositories.market_tick_current_repository import (
+    market_tick_current_row,
+)
 from parallax.domains.asset_market.types import MarketTick
 
 
 @dataclass(frozen=True, slots=True)
 class MarketTickPersistenceResult:
     inserted_ids: list[str]
-    changed_targets: list[tuple[str, str]]
+    current_rows: list[dict[str, Any]]
+    live_market_rows: list[dict[str, Any]]
 
     @property
     def inserted(self) -> int:
         return len(self.inserted_ids)
+
+    @property
+    def changed_targets(self) -> list[tuple[str, str]]:
+        return [(str(row["target_type"]), str(row["target_id"])) for row in self.current_rows]
+
+
+@dataclass(frozen=True, slots=True)
+class MarketTickCurrentRebuildResult:
+    scanned_targets: int
+    changed_targets: tuple[tuple[str, str], ...]
+    next_cursor: tuple[str, str] | None
 
 
 class MarketTickPersistenceService:
     def __init__(self, repos: Any) -> None:
         self.repos = repos
 
-    def insert_ticks_and_enqueue_current_dirty(
+    def persist_ticks(
         self,
         ticks: Iterable[MarketTick],
         *,
-        reason: str,
         now_ms: int,
-        fail_after_ticks_for_test: bool = False,
     ) -> MarketTickPersistenceResult:
         materialized = list(ticks)
         self.repos.require_transaction(operation="market_tick_persistence")
         if not materialized:
-            return MarketTickPersistenceResult(inserted_ids=[], changed_targets=[])
+            return MarketTickPersistenceResult(inserted_ids=[], current_rows=[], live_market_rows=[])
 
-        tick_by_id = {tick.tick_id: tick for tick in materialized}
-        inserted_ids = [str(tick_id) for tick_id in self.repos.market_ticks.insert_ticks_returning_ids(materialized)]
-
-        changed_targets: list[tuple[str, str]] = list(
-            dict.fromkeys(
-                (str(tick.target_type), str(tick.target_id))
-                for inserted_id in inserted_ids
-                if (tick := tick_by_id.get(inserted_id)) is not None
-            )
+        inserted_rows = self.repos.market_ticks.insert_ticks_returning_rows(materialized)
+        latest_rows = _latest_rows_by_target(inserted_rows)
+        current_rows = self._advance_current(latest_rows)
+        product_targets = self._enqueue_changed_targets(current_rows, now_ms=now_ms)
+        live_market_rows = [
+            {
+                **row,
+                "product_target_type": product_targets[key][0],
+                "product_target_id": product_targets[key][1],
+            }
+            for row in current_rows
+            if (key := (str(row["target_type"]), str(row["target_id"]))) in product_targets
+        ]
+        return MarketTickPersistenceResult(
+            inserted_ids=[str(row["tick_id"]) for row in inserted_rows],
+            current_rows=current_rows,
+            live_market_rows=live_market_rows,
         )
-        if changed_targets:
-            self.repos.market_tick_current_dirty_targets.enqueue_targets(
-                changed_targets,
-                reason=reason,
+
+    def rebuild_current_batch(
+        self,
+        *,
+        after: tuple[str, str] | None,
+        limit: int,
+        now_ms: int,
+    ) -> MarketTickCurrentRebuildResult:
+        self.repos.require_transaction(operation="market_tick_current_rebuild")
+        latest_rows = self.repos.market_ticks.latest_target_ticks_after(after=after, limit=limit)
+        current_rows = self._advance_current(latest_rows)
+        self._enqueue_changed_targets(current_rows, now_ms=now_ms)
+        next_cursor = None
+        if latest_rows:
+            last = latest_rows[-1]
+            next_cursor = (str(last["target_type"]), str(last["target_id"]))
+        return MarketTickCurrentRebuildResult(
+            scanned_targets=len(latest_rows),
+            changed_targets=tuple(_target_keys(current_rows)),
+            next_cursor=next_cursor,
+        )
+
+    def _advance_current(
+        self,
+        latest_rows: Iterable[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        return [
+            market_tick_current_row(row)
+            for row in latest_rows
+            if self.repos.market_tick_current.upsert_current_from_tick(row)
+        ]
+
+    def _enqueue_changed_targets(
+        self,
+        current_rows: list[dict[str, Any]],
+        *,
+        now_ms: int,
+    ) -> dict[tuple[str, str], tuple[str, str]]:
+        changed_targets = _target_keys(current_rows)
+        product_targets = self.repos.registry.product_targets_for_market_targets(changed_targets)
+        changed_product_targets = list(dict.fromkeys(product_targets.values()))
+        if changed_product_targets:
+            self.repos.token_radar_dirty_targets.enqueue_market_product_targets(
+                changed_product_targets,
+                reason="market_tick_current_changed",
                 now_ms=int(now_ms),
             )
-        if fail_after_ticks_for_test:
-            raise RuntimeError("fail_after_ticks_for_test")
-        return MarketTickPersistenceResult(inserted_ids=inserted_ids, changed_targets=changed_targets)
+        return product_targets
+
+
+def _latest_rows_by_target(rows: Iterable[dict[str, Any]]) -> list[dict[str, Any]]:
+    latest: dict[tuple[str, str], dict[str, Any]] = {}
+    for row in rows:
+        key = (str(row["target_type"]), str(row["target_id"]))
+        current = latest.get(key)
+        if current is None or _tick_order(row) > _tick_order(current):
+            latest[key] = row
+    return list(latest.values())
+
+
+def _target_keys(rows: Iterable[dict[str, Any]]) -> list[tuple[str, str]]:
+    return [(str(row["target_type"]), str(row["target_id"])) for row in rows]
+
+
+def _tick_order(row: dict[str, Any]) -> tuple[int, int, str]:
+    return (int(row["observed_at_ms"]), int(row["received_at_ms"]), str(row["tick_id"]))

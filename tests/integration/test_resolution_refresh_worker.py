@@ -62,7 +62,7 @@ def _ingest_service_for_connection(conn) -> IngestService:
         intent_resolutions=repos.intent_resolutions,
         discovery=repos.discovery,
         market_ticks=repos.market_ticks,
-        market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
+        market_tick_current=repos.market_tick_current,
         enriched_events=repos.enriched_events,
         event_anchor_jobs=repos.event_anchor_jobs,
         token_radar_dirty_targets=repos.token_radar_dirty_targets,
@@ -71,11 +71,10 @@ def _ingest_service_for_connection(conn) -> IngestService:
     )
 
 
-def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_wake(tmp_path):
+def test_resolution_refresh_worker_resolves_recent_symbol_and_defers_projection(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     now_ms = 1_778_145_100_000
     address = "0x44b28991b167582f18ba0259e0173176ca125505"
-    wake_bus = RecordingWakeBus()
     try:
         migrate(conn)
         ingest = _ingest_service_for_connection(conn)
@@ -114,7 +113,6 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_w
                     )
                 ]
             ),
-            wake_emitter=wake_bus,
         )
 
         result = asyncio.run(worker.run_once(now_ms=now_ms + 60_000)).notes["result"]
@@ -163,7 +161,6 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_w
     assert after["resolution_status"] == "UNIQUE_BY_CONTEXT"
     assert after["target_type"] == "Asset"
     assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
-    assert wake_bus.resolution_updates == [("cex_token:UPEG", "project_symbol:UPEG", "symbol:UPEG")]
     assert identity["canonical_symbol"] == "UPEG"
     assert identity["canonical_name"] == "Unipeg"
     assert identity["identity_confidence"] == "provider_candidate"
@@ -727,11 +724,3 @@ class FakeDexMarket:
 class FakeEnrichment:
     def enqueue_watched_event(self, *, event_id, received_at_ms, priority=None):
         return None
-
-
-class RecordingWakeBus:
-    def __init__(self):
-        self.resolution_updates: list[tuple[str, ...]] = []
-
-    def notify_resolution_updated(self, *, lookup_keys):
-        self.resolution_updates.append(tuple(lookup_keys))

@@ -16,7 +16,7 @@ dirty target
        -> current read-model write or no-op
        -> publication/audit state
        -> acknowledge exact claim
-  -> wake downstream as a hint
+  -> next bounded interval catch-up
 ```
 
 Failure is explicit:
@@ -41,7 +41,7 @@ For live-data or missing-row problems:
 5. Inspect unresolved terminal events before changing code or replaying work.
 6. Trace one stable target key from material facts -> dirty target -> current row -> API.
 
-Do not diagnose live behavior from fixture YAML, example `.env`, generated docs, or an in-memory wake event.
+Do not diagnose live behavior from fixture YAML, example `.env`, generated docs, or process-local recollection.
 
 ## Symptom routing
 
@@ -55,7 +55,7 @@ Do not diagnose live behavior from fixture YAML, example `.env`, generated docs,
 | Duplicate external action | side-effect dedup key and CAS completion state |
 | Readiness is 503 | DB liveness, startup schema result, composition only |
 | Status is degraded but readiness is 200 | expected provider/worker degradation separation |
-| Missed wake suspected | interval catch-up query; correctness cannot depend on `NOTIFY` |
+| Work appears delayed | interval cadence, durable due/lease fields, and bounded catch-up query |
 
 ## Token Radar
 
@@ -72,6 +72,15 @@ event
 ```
 
 There is no source-event queue and no generic projection run/offset ledger. If a resolved target is missing, inspect the identity carried by the resolution and the target dirty row. If publication is stale, inspect the stable product/window/scope/venue state—not historical attempts.
+
+## Market Current
+
+Normal market ingestion appends `market_ticks`, advances `market_tick_current`,
+and enqueues changed Token Radar targets in one transaction. There is no current
+projection worker or dirty queue. If the derived current table needs repair,
+run bounded `parallax ops rebuild-market-current --execute` batches and carry
+the returned stable target cursor into the next batch. The repair reads only
+persisted facts and uses the same current-write service as normal ingestion.
 
 ## News
 
@@ -98,10 +107,10 @@ macro_sync_windows
   -> macro_observations
   -> macro_projection_dirty_targets
   -> compact bounded series
-  -> macro_view_snapshots (regime + assets brief + route-ready module views)
+  -> macro_view_snapshots (regime + route-ready module views)
 ```
 
-`macro_sync_runs` is the single attempt ledger. `macro_observations` is raw fact truth. Series rows contain compact projection data; event text/source fields live only in the whitelisted `event_metadata_json`. Assets brief and catalog module payloads are part of the snapshot written by the same view worker; module routes do not rebuild them.
+`macro_sync_runs` is the single attempt ledger. `macro_observations` is raw fact truth. Series rows contain compact projection data; event text/source fields live only in the whitelisted `event_metadata_json`. The assets daily brief is embedded only in the assets module payload, and all catalog module payloads are written by the same view worker; module routes do not rebuild them.
 
 ## Notifications
 
@@ -114,6 +123,7 @@ Rule evaluation is deterministic and provider-free. It creates or aggregates a n
 5. completes or retries with compare-and-set predicates.
 
 Never hold a DB transaction open across the network call. Never send without a durable delivery row and stable dedup basis.
+The unique `notifications.dedup_key` constraint is the sole semantic dedup authority; payload JSON is not scanned for a second identity. External-push cooldown remains independent and applies across distinct notification identities.
 
 ## Safe operator actions
 
@@ -130,7 +140,7 @@ A worker change is complete when targeted tests show:
 - bounded claim and lease behavior;
 - success/read-model/ack atomicity;
 - retry and terminal transition behavior;
-- missed-wake interval catch-up;
+- restart and downtime interval catch-up;
 - stable-key idempotency and unchanged zero-write;
 - provider I/O outside transactions;
 - status surfaces remain DB-query-free except authenticated ops inspection.

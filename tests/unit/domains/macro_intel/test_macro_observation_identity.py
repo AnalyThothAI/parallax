@@ -23,7 +23,7 @@ def _observation(**overrides: object) -> dict[str, object]:
         "frequency": "daily",
         "data_quality": "ok",
         "source_ts": "2026-05-28",
-        "raw_payload_json": {"series_key": "nyfed:SOFR", "value": 3.51},
+        "raw_payload": {"series_key": "nyfed:SOFR", "value": 3.51},
         "ingested_at_ms": 1_779_000_000_000,
         **overrides,
     }
@@ -54,7 +54,7 @@ def test_macro_observation_fact_payload_hash_ignores_import_runtime_metadata() -
     base_hash = macro_observation_fact_payload_hash(
         _observation(
             ingested_at_ms=1,
-            raw_payload_json={
+            raw_payload={
                 "series_key": "nyfed:SOFR",
                 "value": 3.51,
                 "provider_fetch_ts": "2026-05-28T00:00:00Z",
@@ -67,7 +67,7 @@ def test_macro_observation_fact_payload_hash_ignores_import_runtime_metadata() -
             ingested_at_ms=2,
             sync_run_id="macro-sync:runtime",
             provider_fetch_ts="2026-05-28T01:02:03Z",
-            raw_payload_json={
+            raw_payload={
                 "series_key": "nyfed:SOFR",
                 "value": 3.51,
                 "provider_fetch_ts": "2026-05-28T01:02:03Z",
@@ -76,3 +76,17 @@ def test_macro_observation_fact_payload_hash_ignores_import_runtime_metadata() -
     )
     assert base_hash != macro_observation_fact_payload_hash(_observation(value_numeric=3.52))
     assert base_hash.startswith("sha256:")
+    assert base_hash == "sha256:3d7de07fc8d9e87da9a245066018284880ef6e85a288eae91b69db029948e90b"
+
+
+def test_macro_observation_fact_payload_hash_rejects_retired_or_missing_raw_payload() -> None:
+    with pytest.raises(ValueError, match="raw_payload_json is not allowed"):
+        macro_observation_fact_payload_hash(_observation(raw_payload_json={"series_key": "nyfed:SOFR"}))
+
+    observation = _observation()
+    observation.pop("raw_payload")
+    with pytest.raises(ValueError, match="raw_payload is required"):
+        macro_observation_fact_payload_hash(observation)
+
+    with pytest.raises(ValueError, match="raw_payload must be an object"):
+        macro_observation_fact_payload_hash(_observation(raw_payload=[]))

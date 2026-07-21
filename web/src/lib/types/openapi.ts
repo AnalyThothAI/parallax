@@ -225,23 +225,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/notification-summary": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Notification Summary */
-        get: operations["notification_summary_api_notification_summary_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/notifications": {
         parameters: {
             query?: never;
@@ -606,15 +589,74 @@ export interface components {
         /** AccountAlertsData */
         AccountAlertsData: {
             /** Alert Type */
-            alert_type?: string | null;
+            alert_type: string | null;
             /** Items */
-            items?: {
+            items: {
                 [key: string]: unknown;
             }[];
             /** Window */
             window: string;
-        } & {
-            [key: string]: unknown;
+        };
+        /** AgentExecutionStatusData */
+        AgentExecutionStatusData: {
+            /** Capacity Denied Total */
+            capacity_denied_total: number;
+            /** Circuit Open Total */
+            circuit_open_total: number;
+            /** Circuit Open Until Ms */
+            circuit_open_until_ms: number | null;
+            /**
+             * Circuit State
+             * @enum {string}
+             */
+            circuit_state: "open" | "closed";
+            /** In Flight */
+            in_flight: number;
+            /**
+             * Lane
+             * @constant
+             */
+            lane: "news.story_brief";
+            /** Last Denied At Ms */
+            last_denied_at_ms: number | null;
+            /** Last Timeout At Ms */
+            last_timeout_at_ms: number | null;
+            /** Max Concurrency */
+            max_concurrency: number;
+            /** Model */
+            model: string;
+            /** Oldest In Flight Age Ms */
+            oldest_in_flight_age_ms: number | null;
+            /**
+             * Output Strategy
+             * @constant
+             */
+            output_strategy: "json_object";
+            /** Provider Family */
+            provider_family: string;
+            /** Provider Running */
+            provider_running: number;
+            /** Rpm Limit */
+            rpm_limit: number;
+            /**
+             * Schema Enforcement
+             * @constant
+             */
+            schema_enforcement: "client_validate";
+            /** Timeout Seconds */
+            timeout_seconds: number;
+            /** Timeout Total */
+            timeout_total: number;
+        };
+        /** AgentExecutionUnavailableData */
+        AgentExecutionUnavailableData: {
+            /** Error */
+            error: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "unavailable";
         };
         /** ApiEnvelope[AccountAlertsData] */
         ApiEnvelope_AccountAlertsData_: {
@@ -625,8 +667,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[BootstrapData] */
         ApiEnvelope_BootstrapData_: {
@@ -637,8 +677,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[LiveMarketData] */
         ApiEnvelope_LiveMarketData_: {
@@ -649,8 +687,46 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
+        };
+        /** ApiEnvelope[MacroAssetCorrelationData] */
+        ApiEnvelope_MacroAssetCorrelationData_: {
+            data?: components["schemas"]["MacroAssetCorrelationData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiEnvelope[MacroData] */
+        ApiEnvelope_MacroData_: {
+            data?: components["schemas"]["MacroData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiEnvelope[MacroModuleData] */
+        ApiEnvelope_MacroModuleData_: {
+            data?: components["schemas"]["MacroModuleData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
+        };
+        /** ApiEnvelope[MacroSeriesData] */
+        ApiEnvelope_MacroSeriesData_: {
+            data?: components["schemas"]["MacroSeriesData"] | null;
+            /** Error */
+            error?: string | null;
+            /** Field */
+            field?: string | null;
+            /** Ok */
+            ok: boolean;
         };
         /** ApiEnvelope[NewsData] */
         ApiEnvelope_NewsData_: {
@@ -661,8 +737,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[NewsFactDetailData] */
         ApiEnvelope_NewsFactDetailData_: {
@@ -673,8 +747,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[NewsObjectData] */
         ApiEnvelope_NewsObjectData_: {
@@ -685,8 +757,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[NewsSourceStatusData] */
         ApiEnvelope_NewsSourceStatusData_: {
@@ -697,8 +767,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[NotificationDeliveriesData] */
         ApiEnvelope_NotificationDeliveriesData_: {
@@ -709,8 +777,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[NotificationReadAllData] */
         ApiEnvelope_NotificationReadAllData_: {
@@ -721,8 +787,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[NotificationReadData] */
         ApiEnvelope_NotificationReadData_: {
@@ -733,20 +797,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
-        };
-        /** ApiEnvelope[NotificationSummary] */
-        ApiEnvelope_NotificationSummary_: {
-            data?: components["schemas"]["NotificationSummary"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[NotificationsData] */
         ApiEnvelope_NotificationsData_: {
@@ -757,8 +807,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[OpsDiagnosticsData] */
         ApiEnvelope_OpsDiagnosticsData_: {
@@ -769,8 +817,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[OpsQueueData] */
         ApiEnvelope_OpsQueueData_: {
@@ -781,8 +827,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[RecentData] */
         ApiEnvelope_RecentData_: {
@@ -793,8 +837,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[SearchData] */
         ApiEnvelope_SearchData_: {
@@ -805,8 +847,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[SearchInspectData] */
         ApiEnvelope_SearchInspectData_: {
@@ -817,8 +857,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[SourceEventsByIdsData] */
         ApiEnvelope_SourceEventsByIdsData_: {
@@ -829,8 +867,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[StatusData] */
         ApiEnvelope_StatusData_: {
@@ -841,8 +877,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[StocksRadarData] */
         ApiEnvelope_StocksRadarData_: {
@@ -853,8 +887,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[TargetPostsData] */
         ApiEnvelope_TargetPostsData_: {
@@ -865,8 +897,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[TargetSocialTimelineData] */
         ApiEnvelope_TargetSocialTimelineData_: {
@@ -877,8 +907,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[TokenCaseData] */
         ApiEnvelope_TokenCaseData_: {
@@ -889,8 +917,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[TokenRadarData] */
         ApiEnvelope_TokenRadarData_: {
@@ -901,8 +927,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[WatchlistHandleOverviewData] */
         ApiEnvelope_WatchlistHandleOverviewData_: {
@@ -913,8 +937,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[WatchlistHandleTimelineData] */
         ApiEnvelope_WatchlistHandleTimelineData_: {
@@ -925,8 +947,6 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** ApiEnvelope[WatchlistHandlesOverviewData] */
         ApiEnvelope_WatchlistHandlesOverviewData_: {
@@ -937,19 +957,15 @@ export interface components {
             field?: string | null;
             /** Ok */
             ok: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** BootstrapData */
         BootstrapData: {
             /** Handles */
-            handles?: string[];
+            handles: string[];
             /** Replay Limit */
             replay_limit: number;
             /** Ws Token */
             ws_token: string;
-        } & {
-            [key: string]: unknown;
         };
         /** HTTPValidationError */
         HTTPValidationError: {
@@ -958,31 +974,480 @@ export interface components {
         };
         /** LiveMarketData */
         LiveMarketData: {
-            /** Market */
-            market?: {
-                [key: string]: unknown;
-            } | null;
-            /** Status */
-            status?: string | null;
+            /** Age Ms */
+            age_ms: number | null;
+            /** Holders */
+            holders: number | null;
+            /** Liquidity Usd */
+            liquidity_usd: number | null;
+            /** Market Cap Usd */
+            market_cap_usd: number | null;
+            /** Observed At Ms */
+            observed_at_ms: number | null;
+            /** Open Interest Usd */
+            open_interest_usd: number | null;
+            /**
+             * Price Basis
+             * @enum {string}
+             */
+            price_basis: "usd" | "quote_as_usd" | "unavailable";
+            /** Price Quote */
+            price_quote: number | null;
+            /** Price Usd */
+            price_usd: number | null;
+            /** Provider */
+            provider: string | null;
+            /** Quote Symbol */
+            quote_symbol: string | null;
+            /** Received At Ms */
+            received_at_ms: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "live" | "stale" | "missing";
             /** Target Id */
             target_id: string;
             /** Target Type */
             target_type: string;
-        } & {
-            [key: string]: unknown;
+            /** Volume 24H Usd */
+            volume_24h_usd: number | null;
+        };
+        /** MacroAssetCorrelationAssetData */
+        MacroAssetCorrelationAssetData: {
+            /** Concept Key */
+            concept_key: string;
+            /** End Date */
+            end_date: string | null;
+            /** Latest Observed At */
+            latest_observed_at: string | null;
+            /** Observations Count */
+            observations_count: number;
+            /** Return Count */
+            return_count: number;
+            /** Sources */
+            sources: string[];
+            /** Start Date */
+            start_date: string | null;
+            /** Title */
+            title: string;
+        };
+        /** MacroAssetCorrelationData */
+        MacroAssetCorrelationData: {
+            /** Asof Date */
+            asof_date: string | null;
+            /** Assets */
+            assets: components["schemas"]["MacroAssetCorrelationAssetData"][];
+            /** Data Gaps */
+            data_gaps: components["schemas"]["MacroAssetCorrelationGapData"][];
+            /** Matrix */
+            matrix: components["schemas"]["MacroAssetCorrelationMatrixRowData"][];
+            /** Pairs */
+            pairs: components["schemas"]["MacroAssetCorrelationPairData"][];
+            /**
+             * Window
+             * @enum {string}
+             */
+            window: "20d" | "60d" | "120d";
+        };
+        /** MacroAssetCorrelationGapData */
+        MacroAssetCorrelationGapData: {
+            /**
+             * Code
+             * @enum {string}
+             */
+            code: "insufficient_history" | "insufficient_overlap" | "zero_variance";
+            /** Concept Key */
+            concept_key?: string | null;
+            /** Left */
+            left?: string | null;
+            /** Right */
+            right?: string | null;
+            /** Sample Size */
+            sample_size: number;
+        };
+        /** MacroAssetCorrelationMatrixRowData */
+        MacroAssetCorrelationMatrixRowData: {
+            /** Concept Key */
+            concept_key: string;
+            /** Correlations */
+            correlations: {
+                [key: string]: number | null;
+            };
+        };
+        /** MacroAssetCorrelationPairData */
+        MacroAssetCorrelationPairData: {
+            /** Available */
+            available: boolean;
+            /** Correlation */
+            correlation: number | null;
+            /** End Date */
+            end_date: string | null;
+            /** Left */
+            left: string;
+            /** Reason */
+            reason: string | null;
+            /** Right */
+            right: string;
+            /** Sample Size */
+            sample_size: number;
+            /** Start Date */
+            start_date: string | null;
+        };
+        /** MacroCurrentnessData */
+        MacroCurrentnessData: {
+            /** Facts Max Observed At */
+            facts_max_observed_at: string | null;
+            /** Projection Behind Facts */
+            projection_behind_facts: boolean;
+            /** Projection Lag Days */
+            projection_lag_days: number | null;
+            /** Publication Finished At Ms */
+            publication_finished_at_ms: number | null;
+            /** Publication Row Count */
+            publication_row_count: number | null;
+            /** Publication Status */
+            publication_status: string | null;
+        };
+        /** MacroData */
+        MacroData: {
+            /** Chain */
+            chain: {
+                [key: string]: unknown;
+            };
+            currentness: components["schemas"]["MacroCurrentnessData"];
+            /** Data Gaps */
+            data_gaps: {
+                [key: string]: unknown;
+            }[];
+            /** Features */
+            features: {
+                [key: string]: unknown;
+            };
+            /** Indicators */
+            indicators: {
+                [key: string]: unknown;
+            };
+            /** Panels */
+            panels: {
+                [key: string]: unknown;
+            };
+            /** Scenario */
+            scenario: {
+                [key: string]: unknown;
+            };
+            /** Scorecard */
+            scorecard: {
+                [key: string]: unknown;
+            };
+            snapshot: components["schemas"]["MacroSnapshotData"] | null;
+            /** Source Coverage */
+            source_coverage: {
+                [key: string]: unknown;
+            };
+            /** Triggers */
+            triggers: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** MacroModuleAvailabilityTableData */
+        MacroModuleAvailabilityTableData: {
+            /**
+             * Id
+             * @constant
+             */
+            id: "availability_proxy_notes";
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+        };
+        /** MacroModuleChartData */
+        MacroModuleChartData: {
+            /** Id */
+            id: string;
+            /**
+             * Kind
+             * @constant
+             */
+            kind: "time_series";
+            /** Min Points */
+            min_points: number;
+            /** Missing Concept Keys */
+            missing_concept_keys: string[];
+            /** Series */
+            series: components["schemas"]["MacroModuleChartSeriesData"][];
+            /** Status */
+            status: string;
+            /** Status Label */
+            status_label: string;
+            /** Subtitle */
+            subtitle: string;
+            /** Title */
+            title: string;
+        };
+        /** MacroModuleChartPointData */
+        MacroModuleChartPointData: {
+            /**
+             * Observed At
+             * Format: date
+             */
+            observed_at: string;
+            /** Value */
+            value: number;
+        };
+        /** MacroModuleChartSeriesData */
+        MacroModuleChartSeriesData: {
+            /** Concept Key */
+            concept_key: string;
+            /** Label */
+            label: string;
+            /** Points */
+            points: components["schemas"]["MacroModuleChartPointData"][];
+            /** Unit Label */
+            unit_label: string;
+        };
+        /** MacroModuleData */
+        MacroModuleData: {
+            /** Daily Brief */
+            daily_brief?: {
+                [key: string]: unknown;
+            } | null;
+            data_health: components["schemas"]["MacroModuleDataHealthData"];
+            module_evidence: components["schemas"]["MacroModuleEvidenceData"];
+            /** Module Read */
+            module_read: {
+                [key: string]: unknown;
+            };
+            primary_chart: components["schemas"]["MacroModuleChartData"];
+            provenance: components["schemas"]["MacroModuleProvenanceData"];
+            /** Related Routes */
+            related_routes: {
+                [key: string]: unknown;
+            }[];
+            snapshot: components["schemas"]["MacroModuleSnapshotData"];
+            /** Tables */
+            tables: (components["schemas"]["MacroModuleTableData"] | components["schemas"]["MacroModuleAvailabilityTableData"])[];
+            /** Tiles */
+            tiles: {
+                [key: string]: unknown;
+            }[];
+            /** Transmission */
+            transmission: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** MacroModuleDataHealthData */
+        MacroModuleDataHealthData: {
+            /** Chart Gaps */
+            chart_gaps: {
+                [key: string]: unknown;
+            }[];
+            /** Global Gaps */
+            global_gaps: {
+                [key: string]: unknown;
+            }[];
+            /** Module Gaps */
+            module_gaps: {
+                [key: string]: unknown;
+            }[];
+            /** Summary Label */
+            summary_label: string;
+            /** Summary Status */
+            summary_status: string;
+        };
+        /** MacroModuleEvidenceData */
+        MacroModuleEvidenceData: {
+            /** Confirmations */
+            confirmations: {
+                [key: string]: unknown;
+            }[];
+            /** Contradictions */
+            contradictions: {
+                [key: string]: unknown;
+            }[];
+            /** Invalidations */
+            invalidations: {
+                [key: string]: unknown;
+            }[];
+            /** Watch Triggers */
+            watch_triggers: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** MacroModuleProvenanceCurrentnessData */
+        MacroModuleProvenanceCurrentnessData: {
+            /** Facts Max Observed At */
+            facts_max_observed_at: string | null;
+            /** Projection Behind Facts */
+            projection_behind_facts: boolean;
+            /** Projection Lag Days */
+            projection_lag_days: number | null;
+        };
+        /** MacroModuleProvenanceData */
+        MacroModuleProvenanceData: {
+            currentness: components["schemas"]["MacroModuleProvenanceCurrentnessData"];
+            /** Projection Version */
+            projection_version: string;
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** MacroModuleSnapshotData */
+        MacroModuleSnapshotData: {
+            /**
+             * Asof Date
+             * Format: date
+             */
+            asof_date: string;
+            /** Asof Label */
+            asof_label: string;
+            /** Computed At Label */
+            computed_at_label: string;
+            /** Computed At Ms */
+            computed_at_ms: number;
+            /** Module Id */
+            module_id: string;
+            /** Projection Version */
+            projection_version: string;
+            /** Question */
+            question: string;
+            /** Route Path */
+            route_path: string;
+            /** Section */
+            section: string;
+            /** Source Projection Version */
+            source_projection_version: string;
+            /** Status */
+            status: string;
+            /** Status Label */
+            status_label: string;
+            /** Subtitle */
+            subtitle: string;
+            /** Title */
+            title: string;
+        };
+        /** MacroModuleTableColumnData */
+        MacroModuleTableColumnData: {
+            /** Key */
+            key: string;
+            /** Label */
+            label: string;
+        };
+        /** MacroModuleTableData */
+        MacroModuleTableData: {
+            /** Columns */
+            columns: components["schemas"]["MacroModuleTableColumnData"][];
+            /** Id */
+            id: string;
+            /** Missing Concept Keys */
+            missing_concept_keys: string[];
+            /** Rows */
+            rows: {
+                [key: string]: unknown;
+            }[];
+            /** Status */
+            status: string;
+            /** Title */
+            title: string;
+        };
+        /** MacroSeriesData */
+        MacroSeriesData: {
+            /** Data Gaps */
+            data_gaps: components["schemas"]["MacroSeriesGapData"][];
+            /** Series */
+            series: {
+                [key: string]: components["schemas"]["MacroSeriesItemData"];
+            };
+            /**
+             * Window
+             * @enum {string}
+             */
+            window: "20d" | "60d" | "120d" | "1y" | "3y";
+        };
+        /** MacroSeriesGapData */
+        MacroSeriesGapData: {
+            /** Code */
+            code: string;
+            /** Concept Key */
+            concept_key: string;
+            /** Label */
+            label: string;
+            /** Score Participation */
+            score_participation: boolean;
+            /** Severity */
+            severity: string;
+        };
+        /** MacroSeriesItemData */
+        MacroSeriesItemData: {
+            /** Concept Key */
+            concept_key: string;
+            /** Data Gaps */
+            data_gaps: components["schemas"]["MacroSeriesGapData"][];
+            /** Data Quality */
+            data_quality: string;
+            /** Latest Observed At */
+            latest_observed_at: string | null;
+            /** Points */
+            points: components["schemas"]["MacroSeriesPointData"][];
+            /** Sources */
+            sources: string[];
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "missing" | "insufficient_history";
+            /** Unit */
+            unit: string | null;
+        };
+        /** MacroSeriesPointData */
+        MacroSeriesPointData: {
+            /** Data Quality */
+            data_quality: string;
+            /**
+             * Observed At
+             * Format: date
+             */
+            observed_at: string;
+            /** Source Name */
+            source_name: string | null;
+            /** Value */
+            value: number | null;
+        };
+        /** MacroSnapshotData */
+        MacroSnapshotData: {
+            /**
+             * Asof Date
+             * Format: date
+             */
+            asof_date: string;
+            /** Computed At Ms */
+            computed_at_ms: number;
+            /** Overall Score */
+            overall_score: number | null;
+            /** Projection Version */
+            projection_version: string;
+            /** Regime */
+            regime: string;
+            /** Status */
+            status: string;
         };
         /** NarrativeAdmissionData */
         NarrativeAdmissionData: {
             /** Computed At Ms */
-            computed_at_ms?: number | null;
-            coverage?: components["schemas"]["NarrativeCoverageData"];
+            computed_at_ms: number | null;
+            coverage: components["schemas"]["NarrativeCoverageData"];
             currentness: components["schemas"]["NarrativeCurrentnessData"];
             /** Data Gaps */
-            data_gaps?: unknown[];
-            /**
-             * Is Current
-             * @default false
-             */
+            data_gaps: {
+                [key: string]: unknown;
+            }[];
+            /** Is Current */
             is_current: boolean;
             /** Reason */
             reason: string;
@@ -991,23 +1456,13 @@ export interface components {
              * @enum {string}
              */
             status: "admitted" | "suppressed" | "missing";
-        } & {
-            [key: string]: unknown;
         };
         /** NarrativeCoverageData */
         NarrativeCoverageData: {
-            /**
-             * Independent Authors
-             * @default 0
-             */
+            /** Independent Authors */
             independent_authors: number;
-            /**
-             * Source Mentions
-             * @default 0
-             */
+            /** Source Mentions */
             source_mentions: number;
-        } & {
-            [key: string]: unknown;
         };
         /** NarrativeCurrentnessData */
         NarrativeCurrentnessData: {
@@ -1018,27 +1473,23 @@ export interface components {
             display_status: "current" | "not_ready" | "out_of_frontier" | "unsupported_window";
             /** Reason */
             reason: string;
-        } & {
-            [key: string]: unknown;
         };
         /** NewsAgentAdmission */
         NewsAgentAdmission: {
             /** Basis */
-            basis?: {
+            basis: {
                 [key: string]: unknown;
             };
             /** Eligible */
-            eligible?: boolean | null;
+            eligible: boolean;
             /** Reason */
-            reason?: string | null;
+            reason: string;
             /** Representative News Item Id */
-            representative_news_item_id?: string | null;
+            representative_news_item_id: string;
             /** Status */
-            status?: string | null;
+            status: string;
             /** Version */
-            version?: string | null;
-        } & {
-            [key: string]: unknown;
+            version: string;
         };
         /** NewsAgentBrief */
         NewsAgentBrief: {
@@ -1066,33 +1517,42 @@ export interface components {
             decision_class?: string | null;
             /** Direction */
             direction?: string | null;
+            /** Event Type */
+            event_type?: string | null;
             /** Evidence Refs */
             evidence_refs?: unknown[];
             /** Invalidation Conditions */
             invalidation_conditions?: string[];
+            /** Market Domains */
+            market_domains?: string[];
             /** Market Impacts */
             market_impacts?: unknown[];
             /** Market Read Zh */
             market_read_zh?: string | null;
             /** Status */
-            status?: string | null;
+            status: string;
             /** Summary Zh */
             summary_zh?: string | null;
             /** Title Zh */
             title_zh?: string | null;
+            /** Transmission Paths */
+            transmission_paths?: unknown[];
             /** Watch Triggers */
             watch_triggers?: string[];
-        } & {
-            [key: string]: unknown;
+        };
+        /** NewsAgentSignal */
+        NewsAgentSignal: {
+            /** Decision Class */
+            decision_class?: string | null;
+            /** Direction */
+            direction?: string | null;
+            /** Status */
+            status: string;
         };
         /** NewsAlertEligibility */
         NewsAlertEligibility: {
-            /** Agent Admission Reason */
-            agent_admission_reason?: string | null;
-            /** Agent Admission Status */
-            agent_admission_status?: string | null;
             /** Agent Status */
-            agent_status?: string | null;
+            agent_status: string;
             /** Decision Class */
             decision_class?: string | null;
             /** External Push Basis */
@@ -1100,56 +1560,62 @@ export interface components {
             /** External Push Block Reason */
             external_push_block_reason?: string | null;
             /** External Push Ready */
-            external_push_ready?: boolean | null;
+            external_push_ready: boolean;
             /** In App Eligible */
-            in_app_eligible?: boolean | null;
-            market_scope?: components["schemas"]["NewsMarketScope"] | null;
-        } & {
-            [key: string]: unknown;
+            in_app_eligible: boolean;
+            market_scope: components["schemas"]["NewsMarketScope"];
         };
         /** NewsData */
         NewsData: {
             /** Items */
-            items?: components["schemas"]["NewsRow"][];
+            items: components["schemas"]["NewsRow"][];
             /** Next Cursor */
-            next_cursor?: string | null;
-        } & {
-            [key: string]: unknown;
+            next_cursor: string | null;
         };
         /** NewsFactDetailData */
         NewsFactDetailData: {
             /** Affected Targets Json */
-            affected_targets_json?: unknown[];
+            affected_targets_json: unknown[];
             /** Canonical Url */
-            canonical_url?: string | null;
+            canonical_url: string;
             /** Claim */
-            claim?: string | null;
-            /** Confidence */
-            confidence?: number | null;
+            claim: string;
             /** Created At Ms */
-            created_at_ms?: number | null;
+            created_at_ms: number;
             /** Event Type */
-            event_type?: string | null;
+            event_type: string;
             /** Evidence Quote */
-            evidence_quote?: string | null;
+            evidence_quote: string;
+            /** Evidence Span End */
+            evidence_span_end: number;
+            /** Evidence Span Start */
+            evidence_span_start: number;
+            /** Extraction Method */
+            extraction_method: string;
             /** Fact Candidate Id */
-            fact_candidate_id?: string | null;
+            fact_candidate_id: string;
             /** Headline */
-            headline?: string | null;
+            headline: string;
             /** News Item Id */
-            news_item_id?: string | null;
+            news_item_id: string;
+            /** Policy Version */
+            policy_version: string;
             /** Realis */
-            realis?: string | null;
+            realis: string;
             /** Rejection Reasons Json */
-            rejection_reasons_json?: string[];
+            rejection_reasons_json: string[];
+            /** Required Slots Json */
+            required_slots_json: {
+                [key: string]: unknown;
+            };
             /** Source Domain */
-            source_domain?: string | null;
+            source_domain: string;
+            /** Source Role */
+            source_role: string;
             /** Updated At Ms */
-            updated_at_ms?: number | null;
+            updated_at_ms: number;
             /** Validation Status */
-            validation_status?: string | null;
-        } & {
-            [key: string]: unknown;
+            validation_status: string;
         };
         /** NewsFactLane */
         NewsFactLane: {
@@ -1159,149 +1625,131 @@ export interface components {
             claim?: string | null;
             /** Event Type */
             event_type?: string | null;
+            /** Fact Candidate Id */
+            fact_candidate_id?: string | null;
             /** Realis */
             realis?: string | null;
             /** Rejection Reasons */
             rejection_reasons?: string[];
             /** Status */
-            status?: string | null;
-        } & {
-            [key: string]: unknown;
+            status: string;
         };
         /** NewsMarketScope */
         NewsMarketScope: {
             /** Basis */
-            basis?: {
+            basis: {
                 [key: string]: unknown;
             };
             /** Primary */
-            primary?: string | null;
+            primary: string;
             /** Reason */
-            reason?: string | null;
+            reason: string;
             /** Scope */
-            scope?: string[];
+            scope: string[];
             /** Status */
-            status?: string | null;
+            status: string;
             /** Version */
-            version?: string | null;
-        } & {
-            [key: string]: unknown;
+            version: string;
         };
         /** NewsObjectData */
         NewsObjectData: {
-            agent_admission?: components["schemas"]["NewsAgentAdmission"] | null;
+            agent_admission: components["schemas"]["NewsAgentAdmission"];
+            /** Agent Admission Computed At Ms */
+            agent_admission_computed_at_ms: number | null;
             /** Agent Admission Reason */
-            agent_admission_reason?: string | null;
+            agent_admission_reason: string;
             /** Agent Admission Status */
-            agent_admission_status?: string | null;
-            agent_brief?: components["schemas"]["NewsAgentBrief"] | null;
-            /** Agent Brief Computed At Ms */
-            agent_brief_computed_at_ms?: number | null;
-            /** Agent Brief Status */
-            agent_brief_status?: string | null;
+            agent_admission_status: string;
+            agent_brief: components["schemas"]["NewsAgentBrief"];
             /** Agent Representative News Item Id */
-            agent_representative_news_item_id?: string | null;
-            /** Agent Status */
-            agent_status?: string | null;
+            agent_representative_news_item_id: string;
             /** Body Text */
-            body_text?: string | null;
+            body_text: string;
             /** Canonical Url */
-            canonical_url?: string | null;
-            /** Computed At Ms */
-            computed_at_ms?: number | null;
-            /** Content */
-            content?: string | null;
+            canonical_url: string;
             /** Content Class */
-            content_class?: string | null;
+            content_class: string;
             /** Content Classification */
-            content_classification?: {
+            content_classification: {
                 [key: string]: unknown;
             };
             /** Content Tags */
-            content_tags?: string[];
-            /** Coverage Tags */
-            coverage_tags?: string[];
-            /** Duplicate Count */
-            duplicate_count?: number | null;
+            content_tags: string[];
+            /** Created At Ms */
+            created_at_ms: number;
             /** Duplicate Observation Count */
-            duplicate_observation_count?: number | null;
+            duplicate_observation_count: number;
             /** Entities */
-            entities?: unknown[];
-            /** Fact Candidate Id */
-            fact_candidate_id?: string | null;
+            entities: unknown[];
             /** Fact Candidates */
-            fact_candidates?: components["schemas"]["NewsFactLane"][];
+            fact_candidates: {
+                [key: string]: unknown;
+            }[];
             /** Fact Lanes */
-            fact_lanes?: components["schemas"]["NewsFactLane"][];
+            fact_lanes: components["schemas"]["NewsFactLane"][];
             /** Fetch Run */
-            fetch_run?: {
+            fetch_run: {
                 [key: string]: unknown;
             } | null;
             /** Fetched At Ms */
-            fetched_at_ms?: number | null;
-            /** Headline */
-            headline?: string | null;
+            fetched_at_ms: number;
             /** Language */
-            language?: string | null;
-            /** Latest At Ms */
-            latest_at_ms?: number | null;
+            language: string;
             /** Lifecycle Status */
-            lifecycle_status?: string | null;
-            market_scope?: components["schemas"]["NewsMarketScope"] | null;
+            lifecycle_status: string;
             /** News Item Id */
-            news_item_id?: string | null;
+            news_item_id: string;
             /** Observation Edges */
-            observation_edges?: {
+            observation_edges: {
                 [key: string]: unknown;
             }[];
-            /** Projection Version */
-            projection_version?: string | null;
+            /** Processed At Ms */
+            processed_at_ms: number | null;
+            /** Processing Error */
+            processing_error: string | null;
             /** Provider Item */
-            provider_item?: {
+            provider_item: {
                 [key: string]: unknown;
-            } | null;
+            };
             /** Provider Observations */
-            provider_observations?: {
+            provider_observations: {
                 [key: string]: unknown;
             }[];
-            provider_rating?: components["schemas"]["NewsProviderRating"] | null;
-            /** Provider Type */
-            provider_type?: string | null;
+            provider_rating: components["schemas"]["NewsProviderRating"];
             /** Published At Ms */
-            published_at_ms?: number | null;
+            published_at_ms: number;
             /** Representative News Item Id */
-            representative_news_item_id?: string | null;
-            /** Row Id */
-            row_id?: string | null;
-            signal?: components["schemas"]["NewsSignalEnvelope"];
-            source?: components["schemas"]["NewsSourceSummary"] | null;
+            representative_news_item_id: string;
+            signal: components["schemas"]["NewsSignalEnvelope"];
+            source: components["schemas"]["NewsSourceDetailData"];
             /** Source Domain */
-            source_domain?: string | null;
-            /** Source Domains */
-            source_domains?: string[];
-            /** Source Ids */
-            source_ids?: string[];
-            /** Source Quality Status */
-            source_quality_status?: string | null;
-            /** Source Role */
-            source_role?: string | null;
-            story?: components["schemas"]["NewsStory"] | null;
+            source_domain: string;
+            /** Source Id */
+            source_id: string;
+            story: components["schemas"]["NewsStory"];
             /** Story Key */
-            story_key?: string | null;
+            story_key: string;
             /** Summary */
-            summary?: string | null;
+            summary: string;
             /** Title */
-            title?: string | null;
+            title: string;
             /** Token Impacts */
-            token_impacts?: components["schemas"]["NewsTokenLane"][];
+            token_impacts: components["schemas"]["NewsTokenLane"][];
             /** Token Lanes */
-            token_lanes?: components["schemas"]["NewsTokenLane"][];
+            token_lanes: components["schemas"]["NewsTokenLane"][];
             /** Token Mentions */
-            token_mentions?: unknown[];
-            /** Trust Tier */
-            trust_tier?: string | null;
-        } & {
-            [key: string]: unknown;
+            token_mentions: unknown[];
+            /** Updated At Ms */
+            updated_at_ms: number;
+        };
+        /** NewsProviderCapabilitiesData */
+        NewsProviderCapabilitiesData: {
+            /** Configured Provider Types */
+            configured_provider_types: string[];
+            /** Supported Provider Types */
+            supported_provider_types: string[];
+            /** Unsupported Configured Provider Types */
+            unsupported_configured_provider_types: string[];
         };
         /** NewsProviderRating */
         NewsProviderRating: {
@@ -1319,112 +1767,84 @@ export interface components {
             signal?: string | null;
             /** Status */
             status?: string | null;
-        } & {
-            [key: string]: unknown;
         };
         /** NewsRow */
         NewsRow: {
-            agent_admission?: components["schemas"]["NewsAgentAdmission"] | null;
+            agent_admission: components["schemas"]["NewsAgentAdmission"];
             /** Agent Admission Reason */
-            agent_admission_reason?: string | null;
+            agent_admission_reason: string;
             /** Agent Admission Status */
-            agent_admission_status?: string | null;
-            agent_brief?: components["schemas"]["NewsAgentBrief"] | null;
+            agent_admission_status: string;
+            agent_brief: components["schemas"]["NewsAgentBrief"];
             /** Agent Brief Computed At Ms */
-            agent_brief_computed_at_ms?: number | null;
-            /** Agent Brief Status */
-            agent_brief_status?: string | null;
+            agent_brief_computed_at_ms: number | null;
             /** Agent Representative News Item Id */
-            agent_representative_news_item_id?: string | null;
+            agent_representative_news_item_id: string;
             /** Agent Status */
-            agent_status?: string | null;
-            /** Body Text */
-            body_text?: string | null;
+            agent_status: string;
             /** Canonical Url */
-            canonical_url?: string | null;
+            canonical_url: string;
             /** Computed At Ms */
-            computed_at_ms?: number | null;
+            computed_at_ms: number;
             /** Content Class */
-            content_class?: string | null;
+            content_class: string;
             /** Content Classification */
-            content_classification?: {
+            content_classification: {
                 [key: string]: unknown;
             };
             /** Content Tags */
-            content_tags?: string[];
-            /** Coverage Tags */
-            coverage_tags?: string[];
+            content_tags: string[];
             /** Duplicate Count */
-            duplicate_count?: number | null;
-            /** Duplicate Observation Count */
-            duplicate_observation_count?: number | null;
+            duplicate_count: number;
             /** Fact Lanes */
-            fact_lanes?: components["schemas"]["NewsFactLane"][];
-            /** Fetched At Ms */
-            fetched_at_ms?: number | null;
+            fact_lanes: components["schemas"]["NewsFactLane"][];
             /** Headline */
-            headline?: string | null;
-            /** Language */
-            language?: string | null;
+            headline: string;
             /** Latest At Ms */
-            latest_at_ms?: number | null;
+            latest_at_ms: number;
             /** Lifecycle Status */
-            lifecycle_status?: string | null;
-            market_scope?: components["schemas"]["NewsMarketScope"] | null;
+            lifecycle_status: string;
+            /** Macro Event Flow */
+            macro_event_flow?: {
+                [key: string]: unknown;
+            } | null;
             /** News Item Id */
-            news_item_id?: string | null;
+            news_item_id: string;
             /** Projection Version */
-            projection_version?: string | null;
-            provider_rating?: components["schemas"]["NewsProviderRating"] | null;
-            /** Provider Type */
-            provider_type?: string | null;
-            /** Published At Ms */
-            published_at_ms?: number | null;
+            projection_version: string;
+            provider_rating: components["schemas"]["NewsProviderRating"];
             /** Representative News Item Id */
-            representative_news_item_id?: string | null;
+            representative_news_item_id: string;
             /** Row Id */
-            row_id?: string | null;
-            signal?: components["schemas"]["NewsSignalEnvelope"];
-            source?: components["schemas"]["NewsSourceSummary"] | null;
+            row_id: string;
+            signal: components["schemas"]["NewsSignalEnvelope"];
+            source: components["schemas"]["NewsSourceSummary"];
             /** Source Domain */
-            source_domain?: string | null;
+            source_domain: string;
             /** Source Domains */
-            source_domains?: string[];
+            source_domains: string[];
             /** Source Ids */
-            source_ids?: string[];
-            /** Source Quality Status */
-            source_quality_status?: string | null;
-            /** Source Role */
-            source_role?: string | null;
-            story?: components["schemas"]["NewsStory"] | null;
+            source_ids: string[];
+            story: components["schemas"]["NewsStory"];
             /** Story Key */
-            story_key?: string | null;
+            story_key: string;
             /** Summary */
-            summary?: string | null;
-            /** Title */
-            title?: string | null;
+            summary: string;
             /** Token Impacts */
-            token_impacts?: components["schemas"]["NewsTokenLane"][];
+            token_impacts: components["schemas"]["NewsTokenLane"][];
             /** Token Lanes */
-            token_lanes?: components["schemas"]["NewsTokenLane"][];
-            /** Trust Tier */
-            trust_tier?: string | null;
-        } & {
-            [key: string]: unknown;
+            token_lanes: components["schemas"]["NewsTokenLane"][];
         };
         /** NewsSignalEnvelope */
         NewsSignalEnvelope: {
-            /** Agent Signal */
-            agent_signal?: {
-                [key: string]: unknown;
-            };
-            alert_eligibility?: components["schemas"]["NewsAlertEligibility"];
-            display_signal?: components["schemas"]["NewsSignalSummary"];
+            agent_signal: components["schemas"]["NewsAgentSignal"];
+            alert_eligibility: components["schemas"]["NewsAlertEligibility"];
+            display_signal: components["schemas"]["NewsSignalSummary"];
         };
         /** NewsSignalSummary */
         NewsSignalSummary: {
             /** Direction */
-            direction?: string | null;
+            direction: string;
             /** Label Zh */
             label_zh?: string | null;
             /** Method */
@@ -1434,109 +1854,207 @@ export interface components {
             /** Signal */
             signal?: string | null;
             /** Source */
-            source?: string | null;
+            source: string;
             /** Status */
-            status?: string | null;
+            status: string;
             /** Summary En */
             summary_en?: string | null;
             /** Summary Zh */
             summary_zh?: string | null;
             /** Title Zh */
             title_zh?: string | null;
-        } & {
-            [key: string]: unknown;
+        };
+        /** NewsSourceDetailData */
+        NewsSourceDetailData: {
+            /** Asset Universe */
+            asset_universe: string[];
+            /** Authority Scope */
+            authority_scope: {
+                [key: string]: unknown;
+            };
+            /** Coverage Tags */
+            coverage_tags: string[];
+            /** Created At Ms */
+            created_at_ms: number;
+            /** Enabled */
+            enabled: boolean;
+            /** Managed By Config */
+            managed_by_config: boolean;
+            /** Provider Type */
+            provider_type: string;
+            /** Refresh Interval Seconds */
+            refresh_interval_seconds: number;
+            /** Source Domain */
+            source_domain: string;
+            /** Source Id */
+            source_id: string | null;
+            /** Source Name */
+            source_name: string | null;
+            /** Source Quality Status */
+            source_quality_status: string;
+            /** Source Role */
+            source_role: string;
+            /** Trust Tier */
+            trust_tier: string;
+            /** Updated At Ms */
+            updated_at_ms: number;
+        };
+        /** NewsSourceHealthData */
+        NewsSourceHealthData: {
+            /** Source Id */
+            source_id: string;
+            /** Status */
+            status: string;
+        };
+        /** NewsSourceHygieneData */
+        NewsSourceHygieneData: {
+            /** Degraded Sources */
+            degraded_sources: components["schemas"]["NewsSourceHealthData"][];
+            /** Sources Missing Coverage Tags */
+            sources_missing_coverage_tags: string[];
+            /** Unsupported Sources */
+            unsupported_sources: components["schemas"]["NewsSourceProviderData"][];
+            /** Warnings */
+            warnings: components["schemas"]["NewsSourceWarningData"][];
+        };
+        /** NewsSourceProviderData */
+        NewsSourceProviderData: {
+            /** Provider Type */
+            provider_type: string;
+            /** Source Id */
+            source_id: string;
         };
         /** NewsSourceStatusData */
         NewsSourceStatusData: {
-            /** Provider Capabilities */
-            provider_capabilities?: {
-                [key: string]: unknown;
-            };
-            /** Source Hygiene */
-            source_hygiene?: {
-                [key: string]: unknown;
-            };
+            provider_capabilities: components["schemas"]["NewsProviderCapabilitiesData"];
+            source_hygiene: components["schemas"]["NewsSourceHygieneData"];
             /** Sources */
-            sources?: {
+            sources: {
                 [key: string]: unknown;
             }[];
-        } & {
-            [key: string]: unknown;
         };
         /** NewsSourceSummary */
         NewsSourceSummary: {
             /** Coverage Tags */
-            coverage_tags?: string[];
+            coverage_tags: string[];
             /** Provider Type */
-            provider_type?: string | null;
+            provider_type: string;
             /** Source Domain */
-            source_domain?: string | null;
+            source_domain: string;
             /** Source Id */
-            source_id?: string | null;
+            source_id: string | null;
             /** Source Name */
-            source_name?: string | null;
+            source_name: string | null;
             /** Source Quality Status */
-            source_quality_status?: string | null;
+            source_quality_status: string;
             /** Source Role */
-            source_role?: string | null;
+            source_role: string;
             /** Trust Tier */
-            trust_tier?: string | null;
-        } & {
-            [key: string]: unknown;
+            trust_tier: string;
+        };
+        /** NewsSourceWarningData */
+        NewsSourceWarningData: {
+            /** Reason */
+            reason: string;
+            /** Source Id */
+            source_id: string;
         };
         /** NewsStory */
         NewsStory: {
             /** Member Count */
-            member_count?: number | null;
+            member_count: number;
             /** Member News Item Ids */
-            member_news_item_ids?: string[];
+            member_news_item_ids: string[];
             /** Representative News Item Id */
-            representative_news_item_id?: string | null;
+            representative_news_item_id: string;
             /** Source Domains */
-            source_domains?: string[];
+            source_domains: string[];
             /** Story Key */
-            story_key?: string | null;
-        } & {
-            [key: string]: unknown;
+            story_key: string;
         };
         /** NewsTokenLane */
         NewsTokenLane: {
+            /** Candidate Targets */
+            candidate_targets?: {
+                [key: string]: unknown;
+            }[];
+            /** Display Name */
+            display_name?: string | null;
             /** Lane */
-            lane?: string | null;
-            /** Market Type */
-            market_type?: string | null;
+            lane: string;
             /** Reason Codes */
             reason_codes?: string[];
             /** Resolution Status */
             resolution_status?: string | null;
-            /** Score */
-            score?: number | null;
-            /** Signal */
-            signal?: string | null;
             /** Symbol */
             symbol?: string | null;
             /** Target Id */
             target_id?: string | null;
             /** Target Type */
             target_type?: string | null;
-        } & {
-            [key: string]: unknown;
         };
         /** NotificationDeliveriesData */
         NotificationDeliveriesData: {
             /** Items */
-            items?: {
+            items: {
                 [key: string]: unknown;
             }[];
-        } & {
-            [key: string]: unknown;
+        };
+        /** NotificationItemData */
+        NotificationItemData: {
+            /** Address */
+            address: string | null;
+            /** Author Handle */
+            author_handle: string | null;
+            /** Body */
+            body: string;
+            /** Chain */
+            chain: string | null;
+            /** Channels */
+            channels: string[];
+            /** Created At Ms */
+            created_at_ms: number;
+            /** Dedup Key */
+            dedup_key: string;
+            /** Entity Key */
+            entity_key: string | null;
+            /** Entity Type */
+            entity_type: string | null;
+            /** Event Id */
+            event_id: string | null;
+            /** First Seen At Ms */
+            first_seen_at_ms: number;
+            /** Last Seen At Ms */
+            last_seen_at_ms: number;
+            /** Notification Id */
+            notification_id: string;
+            /** Occurrence Count */
+            occurrence_count: number;
+            /** Payload */
+            payload: {
+                [key: string]: unknown;
+            };
+            /** Read At Ms */
+            read_at_ms: number | null;
+            /** Rule Id */
+            rule_id: string;
+            /** Severity */
+            severity: string;
+            /** Source Id */
+            source_id: string;
+            /** Source Table */
+            source_table: string;
+            /** Symbol */
+            symbol: string | null;
+            /** Title */
+            title: string;
+            /** Updated At Ms */
+            updated_at_ms: number;
         };
         /** NotificationReadAllData */
         NotificationReadAllData: {
             /** Updated Count */
             updated_count: number;
-        } & {
-            [key: string]: unknown;
         };
         /** NotificationReadData */
         NotificationReadData: {
@@ -1544,125 +2062,409 @@ export interface components {
             notification_id: string;
             /** Updated */
             updated: boolean;
-        } & {
-            [key: string]: unknown;
         };
         /** NotificationSummary */
         NotificationSummary: {
             /** Account Unread Counts */
-            account_unread_counts?: {
-                [key: string]: unknown;
+            account_unread_counts: {
+                [key: string]: number;
             };
-            /**
-             * Critical Unread Count
-             * @default 0
-             */
+            /** Critical Unread Count */
             critical_unread_count: number;
-            /**
-             * High Unread Count
-             * @default 0
-             */
+            /** High Unread Count */
             high_unread_count: number;
             /** Highest Unread Severity */
-            highest_unread_severity?: string | null;
+            highest_unread_severity: string | null;
             /** Subscriber Key */
-            subscriber_key?: string | null;
-            /**
-             * Unread Count
-             * @default 0
-             */
+            subscriber_key: string;
+            /** Unread Count */
             unread_count: number;
-        } & {
-            [key: string]: unknown;
         };
         /** NotificationsData */
         NotificationsData: {
             /** Items */
-            items?: {
+            items: components["schemas"]["NotificationItemData"][];
+            summary: components["schemas"]["NotificationSummary"];
+        };
+        /** OpsAgentExecutionCountersData */
+        OpsAgentExecutionCountersData: {
+            /** Capacity Denied Total */
+            capacity_denied_total: number;
+            /** Circuit Open Total */
+            circuit_open_total: number;
+            /** Circuit Open Until Ms */
+            circuit_open_until_ms: number | null;
+            /**
+             * Circuit State
+             * @enum {string}
+             */
+            circuit_state: "open" | "closed";
+            /** In Flight */
+            in_flight: number;
+            /** Last Denied At Ms */
+            last_denied_at_ms: number | null;
+            /** Last Timeout At Ms */
+            last_timeout_at_ms: number | null;
+            /** Oldest In Flight Age Ms */
+            oldest_in_flight_age_ms: number | null;
+            /** Provider Running */
+            provider_running: number;
+            /** Timeout Total */
+            timeout_total: number;
+        };
+        /** OpsAgentExecutionData */
+        OpsAgentExecutionData: {
+            counters: components["schemas"]["OpsAgentExecutionCountersData"] | null;
+            /** Error */
+            error?: string | null;
+            policy: components["schemas"]["OpsAgentExecutionPolicyData"] | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ok" | "degraded" | "disabled" | "unavailable" | "unknown";
+            /** Status Reason */
+            status_reason?: string | null;
+        };
+        /** OpsAgentExecutionPolicyData */
+        OpsAgentExecutionPolicyData: {
+            /**
+             * Lane
+             * @constant
+             */
+            lane: "news.story_brief";
+            /** Max Concurrency */
+            max_concurrency: number;
+            /** Model */
+            model: string;
+            /**
+             * Output Strategy
+             * @constant
+             */
+            output_strategy: "json_object";
+            /** Provider Family */
+            provider_family: string;
+            /** Rpm Limit */
+            rpm_limit: number;
+            /**
+             * Schema Enforcement
+             * @constant
+             */
+            schema_enforcement: "client_validate";
+            /** Timeout Seconds */
+            timeout_seconds: number;
+        };
+        /** OpsAssetMarketDomainData */
+        OpsAssetMarketDomainData: {
+            /** Configured Provider Count */
+            configured_provider_count: number;
+            /** Provider Count */
+            provider_count: number;
+            /** Status */
+            status: string;
+        };
+        /** OpsCollectorData */
+        OpsCollectorData: {
+            /** Connection */
+            connection: {
                 [key: string]: unknown;
-            }[];
-            /** Summary */
-            summary?: components["schemas"]["NotificationSummary"] | {
+            };
+            /** Details */
+            details: {
                 [key: string]: unknown;
-            } | null;
-        } & {
-            [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
+        };
+        /** OpsConfigData */
+        OpsConfigData: {
+            /** App Home */
+            app_home: string | null;
+            /** Config Path */
+            config_path: string | null;
+            /** Gmgn Configured */
+            gmgn_configured: boolean;
+            /** Handles Count */
+            handles_count: number;
+            /** Llm Configured */
+            llm_configured: boolean;
+            /** News Enabled */
+            news_enabled: boolean;
+            /** Notifications Enabled */
+            notifications_enabled: boolean;
+            /** Okx Dex Configured */
+            okx_dex_configured: boolean;
+            /** Upstream Channels */
+            upstream_channels: string[];
+            /** Workers Config Path */
+            workers_config_path: string | null;
+        };
+        /** OpsDatabaseData */
+        OpsDatabaseData: {
+            /** Detail */
+            detail?: string | null;
+            /** Error */
+            error?: string | null;
+            /** Ok */
+            ok: boolean;
+            /** Original Detail */
+            original_detail?: string | null;
+            /** Original Error */
+            original_error?: string | null;
+            /**
+             * Probe
+             * @constant
+             */
+            probe: "postgres_liveness";
+            /** Schema */
+            schema: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
         };
         /** OpsDiagnosticsData */
         OpsDiagnosticsData: {
-            /** Agent Execution */
-            agent_execution?: {
-                [key: string]: unknown;
-            };
+            agent_execution: components["schemas"]["OpsAgentExecutionData"];
             /** Collector */
-            collector?: {
-                [key: string]: unknown;
-            };
-            /** Config */
-            config?: {
-                [key: string]: unknown;
-            };
+            collector: components["schemas"]["OpsCollectorData"] | components["schemas"]["OpsSectionFailureData"];
+            config: components["schemas"]["OpsConfigData"];
             /** Database */
-            database?: {
-                [key: string]: unknown;
-            };
-            /** Domains */
-            domains?: {
-                [key: string]: unknown;
-            };
+            database: components["schemas"]["OpsDatabaseData"] | components["schemas"]["OpsSectionFailureData"];
+            domains: components["schemas"]["OpsDomainsData"];
             /** Generated At Ms */
-            generated_at_ms?: number | null;
-            /** Overall */
-            overall?: {
-                [key: string]: unknown;
-            };
+            generated_at_ms: number;
+            overall: components["schemas"]["OpsOverallData"];
             /** Providers */
-            providers?: {
-                [key: string]: unknown;
-            }[];
+            providers: components["schemas"]["OpsProviderData"][];
             /** Queues */
-            queues?: {
-                [key: string]: unknown;
-            }[];
-            /** Schema Version */
-            schema_version: string;
+            queues: components["schemas"]["OpsQueueSummaryData"][];
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "ops.diagnostics.v1";
             /** Suggested Checks */
-            suggested_checks?: {
-                [key: string]: unknown;
-            }[];
-            /** Worker Lanes */
-            worker_lanes?: {
-                [key: string]: unknown;
-            };
+            suggested_checks: components["schemas"]["OpsSuggestedCheckData"][];
             /** Workers */
-            workers?: {
+            workers: components["schemas"]["OpsWorkerData"][];
+        };
+        /** OpsDomainsData */
+        OpsDomainsData: {
+            /** Asset Market */
+            asset_market: components["schemas"]["OpsAssetMarketDomainData"] | components["schemas"]["OpsSectionFailureData"];
+            /** News */
+            news: components["schemas"]["OpsNewsDomainData"] | components["schemas"]["OpsSectionFailureData"];
+            /** Notifications */
+            notifications: components["schemas"]["OpsNotificationsDomainData"] | components["schemas"]["OpsSectionFailureData"];
+            /** Token Radar */
+            token_radar: components["schemas"]["OpsTokenRadarDomainData"] | components["schemas"]["OpsSectionFailureData"];
+            /** Watchlist */
+            watchlist: components["schemas"]["OpsWatchlistDomainData"] | components["schemas"]["OpsSectionFailureData"];
+        };
+        /** OpsNewsDomainData */
+        OpsNewsDomainData: {
+            /** Source Count */
+            source_count: number;
+            /** Sources */
+            sources: {
                 [key: string]: unknown;
             }[];
-        } & {
-            [key: string]: unknown;
+            /** Status */
+            status: string;
+        };
+        /** OpsNotificationsDomainData */
+        OpsNotificationsDomainData: {
+            /** Status */
+            status: string;
+            summary: components["schemas"]["NotificationSummary"];
+        };
+        /** OpsOverallData */
+        OpsOverallData: {
+            /** Reasons */
+            reasons: string[];
+            /** Section Status Counts */
+            section_status_counts: {
+                [key: string]: number;
+            };
+            /** Severity */
+            severity: string;
+            /** Status */
+            status: string;
+        };
+        /** OpsProviderData */
+        OpsProviderData: {
+            /** Capabilities */
+            capabilities: string[];
+            /** Configured */
+            configured: boolean;
+            /** Domain */
+            domain: string;
+            /** Last Error Type */
+            last_error_type: string | null;
+            /** Last State Change At Ms */
+            last_state_change_at_ms: number | null;
+            /** Provider */
+            provider: string;
+            /** Reason */
+            reason: string;
+            /** State */
+            state: string;
+            /** Status */
+            status: string;
         };
         /** OpsQueueData */
         OpsQueueData: {
             /** Counts By Status */
-            counts_by_status?: {
-                [key: string]: unknown;
+            counts_by_status: {
+                [key: string]: number;
             };
             /** Items */
-            items?: {
-                [key: string]: unknown;
-            }[];
+            items: components["schemas"]["OpsQueueItemData"][];
             /** Queue Name */
             queue_name: string;
-            /** Schema Version */
-            schema_version: string;
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "ops.queue.v1";
             /** Status Filter */
-            status_filter?: string | null;
-            /** Summary */
-            summary?: {
+            status_filter: string | null;
+            summary: components["schemas"]["OpsQueueSummaryData"];
+        };
+        /** OpsQueueItemData */
+        OpsQueueItemData: {
+            /** Attempt Count */
+            attempt_count: number | null;
+            /** Created At Ms */
+            created_at_ms: number | null;
+            /** Delivered At Ms */
+            delivered_at_ms: number | null;
+            /** Id */
+            id: unknown;
+            /** Last Attempt At Ms */
+            last_attempt_at_ms: number | null;
+            /** Last Error Preview */
+            last_error_preview: string | null;
+            /** Last Error Type */
+            last_error_type: string | null;
+            /** Max Attempts */
+            max_attempts: number | null;
+            /** Next Run At Ms */
+            next_run_at_ms: number | null;
+            /** Source */
+            source: {
                 [key: string]: unknown;
             };
-        } & {
-            [key: string]: unknown;
+            /** Status */
+            status: string | null;
+            /** Updated At Ms */
+            updated_at_ms: number | null;
+        };
+        /** OpsQueueSummaryData */
+        OpsQueueSummaryData: {
+            /** Counts By Status */
+            counts_by_status: {
+                [key: string]: number;
+            };
+            /** Dead Count */
+            dead_count: number;
+            /** Due Count */
+            due_count: number;
+            /** Failed Count */
+            failed_count: number;
+            /** Oldest Due Age Ms */
+            oldest_due_age_ms: number | null;
+            /** Oldest Running Age Ms */
+            oldest_running_age_ms: number | null;
+            /** Queue Name */
+            queue_name: string;
+            /** Reason */
+            reason: string;
+            /** Running Count */
+            running_count: number;
+            /** Status */
+            status: string;
+            /** Table */
+            table: string;
+            /** Worker Name */
+            worker_name: string;
+        };
+        /** OpsSectionFailureData */
+        OpsSectionFailureData: {
+            /** Error Type */
+            error_type: string;
+            /** Reason */
+            reason: string;
+            /** Section */
+            section: string;
+            /**
+             * Status
+             * @constant
+             */
+            status: "unknown";
+        };
+        /** OpsSuggestedCheckData */
+        OpsSuggestedCheckData: {
+            /** Cli Equivalent */
+            cli_equivalent: string;
+            /** Id */
+            id: string;
+            /** Label */
+            label: string;
+            /** Reason */
+            reason: string;
+            /** Requires Confirmation */
+            requires_confirmation: boolean;
+            /** Safe To Run */
+            safe_to_run: boolean;
+        };
+        /** OpsTokenRadarDomainData */
+        OpsTokenRadarDomainData: {
+            /** Publication */
+            publication: {
+                [key: string]: unknown;
+            };
+            /** Status */
+            status: string;
+        };
+        /** OpsWatchlistDomainData */
+        OpsWatchlistDomainData: {
+            /** Configured Handle Count */
+            configured_handle_count: number;
+            /** Status */
+            status: string;
+        };
+        /** OpsWorkerData */
+        OpsWorkerData: {
+            /** Effective Status */
+            effective_status: string;
+            /** Enabled */
+            enabled: boolean;
+            /** Group */
+            group: string;
+            /** Iteration Duration P99 Ms */
+            iteration_duration_p99_ms: number | null;
+            /** Last Error Type */
+            last_error_type: string | null;
+            /** Last Finished At Ms */
+            last_finished_at_ms: number | null;
+            /** Last Result */
+            last_result: {
+                [key: string]: unknown;
+            } | null;
+            /** Last Started At Ms */
+            last_started_at_ms: number | null;
+            /** Name */
+            name: string;
+            /** Reason */
+            reason: string;
+            /** Running */
+            running: boolean;
+            /** Status */
+            status: string;
+            /** Unavailable Reason */
+            unavailable_reason: string | null;
         };
         /** ReadinessData */
         ReadinessData: {
@@ -1675,96 +2477,117 @@ export interface components {
                 [key: string]: unknown;
             };
             /** Handles */
-            handles?: string[];
+            handles: string[];
             /** Ok */
             ok: boolean;
             /** Reasons */
-            reasons?: string[];
-            /** Store */
-            store: string;
-        } & {
-            [key: string]: unknown;
+            reasons: string[];
+            /**
+             * Store
+             * @constant
+             */
+            store: "postgresql";
         };
         /** RecentData */
         RecentData: {
             /** Events */
-            events?: {
+            events: {
                 [key: string]: unknown;
             }[];
             /** Items */
-            items?: {
+            items: {
                 [key: string]: unknown;
             }[];
             /** Scope */
             scope: string;
-        } & {
-            [key: string]: unknown;
         };
         /** SearchData */
         SearchData: {
             /** Items */
-            items?: {
+            items: {
                 [key: string]: unknown;
             }[];
-            /** Page */
-            page: {
-                [key: string]: unknown;
-            };
+            page: components["schemas"]["SearchPageData"];
             /** Query */
             query: {
                 [key: string]: unknown;
             };
             /** Target Candidates */
-            target_candidates?: {
+            target_candidates: {
                 [key: string]: unknown;
             }[];
-        } & {
-            [key: string]: unknown;
         };
         /** SearchInspectData */
         SearchInspectData: {
             /** Ambiguous Result */
-            ambiguous_result?: {
+            ambiguous_result: {
                 [key: string]: unknown;
             } | null;
-            /** Error */
-            error?: string | null;
-            /** Query */
-            query: {
-                [key: string]: unknown;
-            };
-            /** Resolver */
-            resolver?: {
-                [key: string]: unknown;
-            } | null;
+            query: components["schemas"]["SearchInspectQueryData"];
+            resolver: components["schemas"]["SearchInspectResolverData"];
             /** Token Result */
-            token_result?: {
+            token_result: {
                 [key: string]: unknown;
             } | null;
             /** Topic Result */
-            topic_result?: {
+            topic_result: {
                 [key: string]: unknown;
             } | null;
-        } & {
-            [key: string]: unknown;
+        };
+        /** SearchInspectQueryData */
+        SearchInspectQueryData: {
+            /** Normalized Q */
+            normalized_q: string;
+            /** Q */
+            q: string;
+            /**
+             * Result Kind
+             * @enum {string}
+             */
+            result_kind: "token_result" | "topic_result" | "ambiguous_result" | "empty_result";
+            /** Scope */
+            scope: string;
+            /** Window */
+            window: string;
+        };
+        /** SearchInspectResolverData */
+        SearchInspectResolverData: {
+            /** Confidence */
+            confidence: number;
+            /** Reasons */
+            reasons: string[];
+            /** Selected Target */
+            selected_target: {
+                [key: string]: unknown;
+            } | null;
+            /** Target Candidates */
+            target_candidates: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** SearchPageData */
+        SearchPageData: {
+            /** Has More */
+            has_more: boolean;
+            /** Next Cursor */
+            next_cursor: string | null;
+            /** Returned Count */
+            returned_count: number;
         };
         /** SourceEventDetail */
         SourceEventDetail: {
             /** Action */
             action: string;
             /** Author Followers */
-            author_followers?: number | null;
+            author_followers: number | null;
             /** Author Handle */
-            author_handle?: string | null;
+            author_handle: string | null;
             /** Author Name */
-            author_name?: string | null;
-            /**
-             * Author Watched
-             * @default false
-             */
+            author_name: string | null;
+            /** Author Watched */
             author_watched: boolean;
             /** Canonical Url */
-            canonical_url?: string | null;
+            canonical_url: string | null;
             /** Channel */
             channel: string;
             /** Event Id */
@@ -1772,146 +2595,257 @@ export interface components {
             /** Source Provider */
             source_provider: string;
             /** Text Clean */
-            text_clean?: string | null;
+            text_clean: string | null;
             /** Timestamp Ms */
             timestamp_ms: number;
-        } & {
-            [key: string]: unknown;
         };
         /** SourceEventsByIdsData */
         SourceEventsByIdsData: {
             /** Events */
-            events?: components["schemas"]["SourceEventDetail"][];
+            events: components["schemas"]["SourceEventDetail"][];
             /** Not Found */
-            not_found?: string[];
-        } & {
-            [key: string]: unknown;
+            not_found: string[];
         };
         /** StatusData */
         StatusData: {
             /** Agent Execution */
-            agent_execution?: {
-                [key: string]: unknown;
-            } | null;
+            agent_execution: components["schemas"]["AgentExecutionStatusData"] | components["schemas"]["AgentExecutionUnavailableData"] | null;
             /** Db */
-            db?: {
+            db: {
                 [key: string]: unknown;
-            } | null;
+            };
             /** Handles */
-            handles?: string[];
+            handles: string[];
+            /** News Provider Contract */
+            news_provider_contract: {
+                [key: string]: unknown;
+            };
             /** Ok */
             ok: boolean;
             /** Provider States */
-            provider_states?: {
-                [key: string]: unknown;
+            provider_states: {
+                [key: string]: {
+                    [key: string]: unknown;
+                };
             };
             /** Reasons */
-            reasons?: string[];
+            reasons: string[];
             /** Snapshot Gate */
-            snapshot_gate?: {
+            snapshot_gate: {
                 [key: string]: unknown;
             };
-            /** Store */
-            store?: string | null;
-            /** Worker Lanes */
-            worker_lanes?: {
-                [key: string]: components["schemas"]["WorkerLaneStatusData"];
-            };
+            /**
+             * Store
+             * @constant
+             */
+            store: "postgresql";
             /** Workers */
-            workers?: {
+            workers: {
                 [key: string]: components["schemas"]["WorkerStatusData"];
             };
-        } & {
-            [key: string]: unknown;
+        };
+        /** StocksRadarAttentionData */
+        StocksRadarAttentionData: {
+            /** Latest Seen Ms */
+            latest_seen_ms: number | null;
+            /** Mentions */
+            mentions: number;
+            /** Unique Authors */
+            unique_authors: number;
+            /** Watched Mentions */
+            watched_mentions: number;
         };
         /** StocksRadarData */
         StocksRadarData: {
-            /** Items */
-            items?: {
-                [key: string]: unknown;
-            }[];
-            /** Projection */
-            projection?: {
-                [key: string]: unknown;
-            } | null;
+            health: components["schemas"]["StocksRadarHealthData"];
+            query: components["schemas"]["StocksRadarQueryData"];
             /** Rows */
-            rows?: {
-                [key: string]: unknown;
-            }[];
+            rows: components["schemas"]["StocksRadarRowData"][];
             /** Scope */
-            scope?: string | null;
+            scope: string;
             /** Window */
-            window?: string | null;
-        } & {
-            [key: string]: unknown;
+            window: string;
+        };
+        /** StocksRadarHealthData */
+        StocksRadarHealthData: {
+            /** Quote Ready Count */
+            quote_ready_count: number;
+            /** Quote Unavailable Count */
+            quote_unavailable_count: number;
+            /** Returned Count */
+            returned_count: number;
+        };
+        /** StocksRadarLatestEventData */
+        StocksRadarLatestEventData: {
+            /** Author Handle */
+            author_handle: string | null;
+            /** Event Id */
+            event_id: string | null;
+            /** Received At Ms */
+            received_at_ms: number | null;
+            /** Text */
+            text: string | null;
+        };
+        /** StocksRadarQueryData */
+        StocksRadarQueryData: {
+            /** Limit */
+            limit: number;
+            /** Scope */
+            scope: string;
+            /** Window */
+            window: string;
+            /** Window End Ms */
+            window_end_ms: number;
+            /** Window Start Ms */
+            window_start_ms: number;
+        };
+        /** StocksRadarQuoteData */
+        StocksRadarQuoteData: {
+            /** Asof */
+            asof: string | null;
+            /** Change Pct */
+            change_pct: number | null;
+            /** Error */
+            error: string | null;
+            /** Freshness Class */
+            freshness_class: string | null;
+            /** Latency Class */
+            latency_class: string | null;
+            /** Price */
+            price: number | null;
+            /** Provider */
+            provider: string | null;
+            /** Provider Symbol */
+            provider_symbol: string | null;
+            /** Reference Close Price */
+            reference_close_price: number | null;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "ready" | "unavailable";
+        };
+        /** StocksRadarRowData */
+        StocksRadarRowData: {
+            attention: components["schemas"]["StocksRadarAttentionData"];
+            latest_event: components["schemas"]["StocksRadarLatestEventData"];
+            quote: components["schemas"]["StocksRadarQuoteData"];
+            /** Row Health */
+            row_health: string[];
+            /** Source Event Ids */
+            source_event_ids: string[];
+            target: components["schemas"]["StocksRadarTargetData"];
+        };
+        /** StocksRadarTargetData */
+        StocksRadarTargetData: {
+            /** Exchange */
+            exchange: string | null;
+            /** Instrument Type */
+            instrument_type: string | null;
+            /**
+             * Market
+             * @constant
+             */
+            market: "us_equity";
+            /** Name */
+            name: string | null;
+            /** Symbol */
+            symbol: string | null;
+            /** Target Id */
+            target_id: string | null;
+            /**
+             * Target Type
+             * @constant
+             */
+            target_type: "MarketInstrument";
         };
         /** TargetPostsData */
         TargetPostsData: {
             /** Has More */
-            has_more?: boolean | null;
+            has_more: boolean;
             /** Items */
-            items?: {
+            items: {
                 [key: string]: unknown;
             }[];
             /** Next Cursor */
-            next_cursor?: string | null;
-            /** Query */
-            query: {
-                [key: string]: unknown;
-            };
+            next_cursor: string | null;
+            query: components["schemas"]["TargetPostsQueryData"];
             /** Returned Count */
-            returned_count?: number | null;
-            /** Score Window */
-            score_window?: {
-                [key: string]: unknown;
-            } | null;
+            returned_count: number;
+            score_window: components["schemas"]["TargetPostsScoreWindowData"];
             /** Total Count */
-            total_count?: number | null;
-        } & {
-            [key: string]: unknown;
+            total_count: number;
+        };
+        /** TargetPostsQueryData */
+        TargetPostsQueryData: {
+            /** Range */
+            range: string;
+            /** Scope */
+            scope: string;
+            /** Sort */
+            sort: string;
+            /** Target Id */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+            /** Window */
+            window: string;
+        };
+        /** TargetPostsScoreWindowData */
+        TargetPostsScoreWindowData: {
+            /** Window */
+            window: string;
         };
         /** TargetSocialTimelineData */
         TargetSocialTimelineData: {
             /** Authors */
-            authors?: {
+            authors: {
                 [key: string]: unknown;
             }[];
             /** Buckets */
-            buckets?: {
+            buckets: {
                 [key: string]: unknown;
             }[];
             /** Cascade */
-            cascade?: {
+            cascade: {
                 [key: string]: unknown;
-            } | null;
+            };
             /** Has More */
-            has_more?: boolean | null;
+            has_more: boolean;
             /** Market Candles */
-            market_candles?: {
+            market_candles: {
                 [key: string]: unknown;
             } | null;
             /** Next Cursor */
-            next_cursor?: string | null;
+            next_cursor: string | null;
             /** Posts */
-            posts?: {
+            posts: {
                 [key: string]: unknown;
             }[];
-            /** Query */
-            query: {
-                [key: string]: unknown;
-            };
+            query: components["schemas"]["TargetSocialTimelineQueryData"];
             /** Returned Count */
-            returned_count?: number | null;
+            returned_count: number;
             /** Stages */
-            stages?: {
+            stages: {
                 [key: string]: unknown;
             }[];
             /** Summary */
-            summary?: {
+            summary: {
                 [key: string]: unknown;
-            } | null;
-        } & {
-            [key: string]: unknown;
+            };
+        };
+        /** TargetSocialTimelineQueryData */
+        TargetSocialTimelineQueryData: {
+            /** Bucket */
+            bucket: string;
+            /** Scope */
+            scope: string;
+            /** Target Id */
+            target_id: string;
+            /** Target Type */
+            target_type: string;
+            /** Window */
+            window: string;
         };
         /** TokenCaseData */
         TokenCaseData: {
@@ -1925,7 +2859,7 @@ export interface components {
                 [key: string]: unknown;
             };
             /** Profile */
-            profile?: {
+            profile: {
                 [key: string]: unknown;
             } | null;
             /** Target */
@@ -1936,33 +2870,314 @@ export interface components {
             timeline: {
                 [key: string]: unknown;
             };
-        } & {
-            [key: string]: unknown;
+        };
+        /** TokenFactorCompositeData */
+        TokenFactorCompositeData: {
+            family_scores: components["schemas"]["TokenFactorFamilyValuesData"];
+            /** Rank Score */
+            rank_score: number;
+            /** Raw Alpha Score */
+            raw_alpha_score: number;
+            /**
+             * Recommended Decision
+             * @enum {string}
+             */
+            recommended_decision: "discard" | "watch" | "high_alert";
+        };
+        /** TokenFactorFamiliesData */
+        TokenFactorFamiliesData: {
+            semantic_catalyst: components["schemas"]["TokenFactorFamilyData"];
+            social_heat: components["schemas"]["TokenFactorFamilyData"];
+            social_propagation: components["schemas"]["TokenFactorFamilyData"];
+            timing_risk: components["schemas"]["TokenFactorFamilyData"];
+        };
+        /** TokenFactorFamilyData */
+        TokenFactorFamilyData: {
+            /** Data Health */
+            data_health: string;
+            /** Factors */
+            factors: {
+                [key: string]: unknown;
+            };
+            /** Facts */
+            facts: {
+                [key: string]: unknown;
+            };
+            /** Raw Score */
+            raw_score: number;
+            /** Score */
+            score: number;
+            /** Weight */
+            weight: number;
+        };
+        /** TokenFactorFamilyValuesData */
+        TokenFactorFamilyValuesData: {
+            /** Semantic Catalyst */
+            semantic_catalyst: number;
+            /** Social Heat */
+            social_heat: number;
+            /** Social Propagation */
+            social_propagation: number;
+            /** Timing Risk */
+            timing_risk: number;
+        };
+        /** TokenFactorGatesData */
+        TokenFactorGatesData: {
+            /** Blocked Reasons */
+            blocked_reasons: string[];
+            /** Eligible For High Alert */
+            eligible_for_high_alert: boolean;
+            /**
+             * Max Decision
+             * @enum {string}
+             */
+            max_decision: "discard" | "watch" | "high_alert";
+            /** Risk Reasons */
+            risk_reasons: string[];
+        };
+        /** TokenFactorMarketData */
+        TokenFactorMarketData: {
+            /** Capture Method */
+            capture_method?: string | null;
+            /** Capture Reason */
+            capture_reason?: string | null;
+            /** Decision Latest */
+            decision_latest: {
+                [key: string]: unknown;
+            } | null;
+            /** Event Anchor */
+            event_anchor: {
+                [key: string]: unknown;
+            } | null;
+            readiness: components["schemas"]["TokenFactorMarketReadinessData"];
+            /** Tick Lag Ms */
+            tick_lag_ms?: number | null;
+        };
+        /** TokenFactorMarketReadinessData */
+        TokenFactorMarketReadinessData: {
+            /** Anchor Status */
+            anchor_status: string;
+            /** Dex Floor Status */
+            dex_floor_status: string;
+            /** Latest Status */
+            latest_status: string;
+            /** Missing Fields */
+            missing_fields: string[];
+            /** Stale Fields */
+            stale_fields: string[];
+        };
+        /** TokenFactorNormalizationData */
+        TokenFactorNormalizationData: {
+            /** Alpha Rank */
+            alpha_rank: number | null;
+            /** Cohort */
+            cohort: {
+                [key: string]: unknown;
+            };
+            /** Cohort Status */
+            cohort_status: string;
+            factor_ranks: components["schemas"]["TokenFactorRankValuesData"];
+            /** Status */
+            status: string;
+        };
+        /** TokenFactorProvenanceData */
+        TokenFactorProvenanceData: {
+            /** Computed At Ms */
+            computed_at_ms: number;
+            /** Source Event Ids */
+            source_event_ids: string[];
+        };
+        /** TokenFactorRankValuesData */
+        TokenFactorRankValuesData: {
+            /** Semantic Catalyst */
+            semantic_catalyst: number | null;
+            /** Social Heat */
+            social_heat: number | null;
+            /** Social Propagation */
+            social_propagation: number | null;
+            /** Timing Risk */
+            timing_risk: number | null;
+        };
+        /** TokenFactorSnapshotData */
+        TokenFactorSnapshotData: {
+            composite: components["schemas"]["TokenFactorCompositeData"];
+            /** Data Health */
+            data_health: {
+                [key: string]: unknown;
+            };
+            families: components["schemas"]["TokenFactorFamiliesData"];
+            gates: components["schemas"]["TokenFactorGatesData"];
+            market: components["schemas"]["TokenFactorMarketData"];
+            normalization: components["schemas"]["TokenFactorNormalizationData"];
+            provenance: components["schemas"]["TokenFactorProvenanceData"];
+            /**
+             * Schema Version
+             * @constant
+             */
+            schema_version: "token_factor_snapshot_v3_social_attention";
+            subject: components["schemas"]["TokenFactorSubjectData"];
+        };
+        /** TokenFactorSubjectData */
+        TokenFactorSubjectData: {
+            /** Address */
+            address: string | null;
+            /** Chain */
+            chain: string | null;
+            /** Pricefeed Id */
+            pricefeed_id: string | null;
+            /** Symbol */
+            symbol: string | null;
+            /** Target Id */
+            target_id: string | null;
+            /** Target Market Type */
+            target_market_type: string | null;
+            /** Target Type */
+            target_type: string | null;
+        };
+        /** TokenRadarAnchorCoverageData */
+        TokenRadarAnchorCoverageData: {
+            /** Missing */
+            missing: number;
+            /** Ready */
+            ready: number;
+            /** Status */
+            status: string;
+            /** Total */
+            total: number;
         };
         /** TokenRadarData */
         TokenRadarData: {
             /** Attention */
-            attention?: components["schemas"]["TokenRadarRowData"][];
-            /** Projection */
-            projection?: {
-                [key: string]: unknown;
-            };
+            attention: components["schemas"]["TokenRadarRowData"][];
+            projection: components["schemas"]["TokenRadarProjectionData"];
             /** Scope */
             scope: string;
             /** Targets */
-            targets?: components["schemas"]["TokenRadarRowData"][];
+            targets: components["schemas"]["TokenRadarRowData"][];
             /** Venue */
             venue: string;
             /** Window */
             window: string;
-        } & {
-            [key: string]: unknown;
+        };
+        /** TokenRadarIntentData */
+        TokenRadarIntentData: {
+            /** Display Name */
+            display_name?: string | null;
+            /** Display Symbol */
+            display_symbol?: string | null;
+            /** Event Id */
+            event_id: string;
+            /** Evidence */
+            evidence: unknown[];
+            /** Intent Id */
+            intent_id: string;
+        };
+        /** TokenRadarMetaData */
+        TokenRadarMetaData: {
+            /** Computed At Ms */
+            computed_at_ms?: number | null;
+            /** Lane */
+            lane?: string | null;
+            /** Listed At Ms */
+            listed_at_ms?: number | null;
+            /** Rank */
+            rank?: number | null;
+            /** Source Max Received At Ms */
+            source_max_received_at_ms?: number | null;
+        };
+        /** TokenRadarProjectionData */
+        TokenRadarProjectionData: {
+            anchor_coverage: components["schemas"]["TokenRadarAnchorCoverageData"];
+            /** Computed At Ms */
+            computed_at_ms: number | null;
+            /** Degraded Reasons */
+            degraded_reasons: string[];
+            /** Error */
+            error: string | null;
+            /** Latest Attempt Status */
+            latest_attempt_status: string;
+            /**
+             * Quality Status
+             * @enum {string}
+             */
+            quality_status: "ready" | "degraded" | "insufficient" | "failed";
+            /** Reason */
+            reason: string | null;
+            /** Row Count */
+            row_count: number;
+            /**
+             * Source
+             * @constant
+             */
+            source: "token_radar_current_rows";
+            /** Source Frontier Ms */
+            source_frontier_ms: number | null;
+            /** Source Max Received At Ms */
+            source_max_received_at_ms: number;
+            /** Source Rows */
+            source_rows: number;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "fresh" | "stale" | "pending" | "failed";
+            unresolved: components["schemas"]["TokenRadarUnresolvedData"];
+            /** Venue */
+            venue: string;
+            /** Version */
+            version: string;
+        };
+        /** TokenRadarQualityData */
+        TokenRadarQualityData: {
+            /** Degraded Reasons */
+            degraded_reasons: string[];
+            /** Status */
+            status: string;
+        };
+        /** TokenRadarResolutionData */
+        TokenRadarResolutionData: {
+            /** Candidate Ids */
+            candidate_ids: string[];
+            /** Discovery */
+            discovery: {
+                [key: string]: unknown;
+            }[];
+            /** Lookup Keys */
+            lookup_keys: string[];
+            /** Pricefeed Id */
+            pricefeed_id: string | null;
+            /** Reason Codes */
+            reason_codes: string[];
+            /** Status */
+            status: string;
+            /** Target Id */
+            target_id: string | null;
+            /** Target Type */
+            target_type: string | null;
         };
         /** TokenRadarRowData */
         TokenRadarRowData: {
+            factor_snapshot: components["schemas"]["TokenFactorSnapshotData"];
+            intent: components["schemas"]["TokenRadarIntentData"];
             narrative_admission?: components["schemas"]["NarrativeAdmissionData"] | null;
-        } & {
-            [key: string]: unknown;
+            /** Profile */
+            profile?: {
+                [key: string]: unknown;
+            } | null;
+            quality: components["schemas"]["TokenRadarQualityData"];
+            radar: components["schemas"]["TokenRadarMetaData"];
+            resolution: components["schemas"]["TokenRadarResolutionData"];
+        };
+        /** TokenRadarUnresolvedData */
+        TokenRadarUnresolvedData: {
+            /** Ambiguous Count */
+            ambiguous_count: number;
+            /** Identity Missing Count */
+            identity_missing_count: number;
+            /** Nil Count */
+            nil_count: number;
+            /** Sample Symbols */
+            sample_symbols: string[];
         };
         /** ValidationError */
         ValidationError: {
@@ -1980,72 +3195,47 @@ export interface components {
         /** WatchlistHandleOverviewData */
         WatchlistHandleOverviewData: {
             /** Candidate Mention Clusters */
-            candidate_mention_clusters?: components["schemas"]["WatchlistOverviewCluster"][];
-            /**
-             * Clusters Truncated
-             * @default false
-             */
+            candidate_mention_clusters: components["schemas"]["WatchlistOverviewCluster"][];
+            /** Clusters Truncated */
             clusters_truncated: boolean;
             metrics: components["schemas"]["WatchlistOverviewMetrics"];
             /** Narrative Clusters */
-            narrative_clusters?: components["schemas"]["WatchlistOverviewCluster"][];
+            narrative_clusters: components["schemas"]["WatchlistOverviewCluster"][];
             query: components["schemas"]["WatchlistOverviewQuery"];
             /** Resolved Token Clusters */
-            resolved_token_clusters?: components["schemas"]["WatchlistOverviewCluster"][];
+            resolved_token_clusters: components["schemas"]["WatchlistOverviewCluster"][];
             /** Risk Notes */
-            risk_notes?: string[];
-        } & {
-            [key: string]: unknown;
+            risk_notes: string[];
         };
         /** WatchlistHandleRowOverview */
         WatchlistHandleRowOverview: {
             /** Handle */
             handle: string;
             /** Last Source Event At Ms */
-            last_source_event_at_ms?: number | null;
-            /**
-             * Recent Source Event Count
-             * @default 0
-             */
+            last_source_event_at_ms: number | null;
+            /** Recent Source Event Count */
             recent_source_event_count: number;
-        } & {
-            [key: string]: unknown;
         };
         /** WatchlistHandleTimelineData */
         WatchlistHandleTimelineData: {
-            /**
-             * Has More
-             * @default false
-             */
+            /** Has More */
             has_more: boolean;
             /** Items */
-            items?: {
-                [key: string]: unknown;
-            }[];
+            items: components["schemas"]["WatchlistTimelineItem"][];
             /** Next Cursor */
-            next_cursor?: string | null;
-            /** Query */
-            query: {
-                [key: string]: unknown;
-            };
-        } & {
-            [key: string]: unknown;
+            next_cursor: string | null;
+            query: components["schemas"]["WatchlistTimelineQuery"];
         };
         /** WatchlistHandlesOverviewData */
         WatchlistHandlesOverviewData: {
             /** Items */
-            items?: components["schemas"]["WatchlistHandleRowOverview"][];
+            items: components["schemas"]["WatchlistHandleRowOverview"][];
             /** Window */
             window: string;
-        } & {
-            [key: string]: unknown;
         };
         /** WatchlistOverviewCluster */
         WatchlistOverviewCluster: {
-            /**
-             * Count
-             * @default 0
-             */
+            /** Count */
             count: number;
             /**
              * Kind
@@ -2059,40 +3249,24 @@ export interface components {
             /** Source */
             source: string;
             /** Symbol */
-            symbol?: string | null;
+            symbol: string | null;
             /** Target Id */
-            target_id?: string | null;
+            target_id: string | null;
             /** Target Type */
-            target_type?: string | null;
-        } & {
-            [key: string]: unknown;
+            target_type: string | null;
         };
         /** WatchlistOverviewMetrics */
         WatchlistOverviewMetrics: {
-            /**
-             * Candidate Mention Count
-             * @default 0
-             */
+            /** Candidate Mention Count */
             candidate_mention_count: number;
             /** Last Source Event At Ms */
-            last_source_event_at_ms?: number | null;
-            /**
-             * Narrative Count
-             * @default 0
-             */
+            last_source_event_at_ms: number | null;
+            /** Narrative Count */
             narrative_count: number;
-            /**
-             * Resolved Token Count
-             * @default 0
-             */
+            /** Resolved Token Count */
             resolved_token_count: number;
-            /**
-             * Source Event Count
-             * @default 0
-             */
+            /** Source Event Count */
             source_event_count: number;
-        } & {
-            [key: string]: unknown;
         };
         /** WatchlistOverviewQuery */
         WatchlistOverviewQuery: {
@@ -2100,109 +3274,68 @@ export interface components {
             handle: string;
             /** Window */
             window: string;
-        } & {
-            [key: string]: unknown;
         };
-        /** WorkerLaneStatusData */
-        WorkerLaneStatusData: {
-            /**
-             * Degraded Workers
-             * @default 0
-             */
-            degraded_workers: number;
-            /**
-             * Disabled Workers
-             * @default 0
-             */
-            disabled_workers: number;
-            /**
-             * Enabled Workers
-             * @default 0
-             */
-            enabled_workers: number;
-            /**
-             * Failed Workers
-             * @default 0
-             */
-            failed_workers: number;
-            /**
-             * Hard Timed Out Workers
-             * @default 0
-             */
-            hard_timed_out_workers: number;
-            /**
-             * Intentionally Not Started Workers
-             * @default 0
-             */
-            intentionally_not_started_workers: number;
-            /** Iteration Duration P99 Ms */
-            iteration_duration_p99_ms?: number | null;
-            /** Lane */
-            lane: string;
-            /** Oldest Active Run Once Age Ms */
-            oldest_active_run_once_age_ms?: number | null;
-            /**
-             * Running Workers
-             * @default 0
-             */
-            running_workers: number;
-            /**
-             * Stopped Workers
-             * @default 0
-             */
-            stopped_workers: number;
-            /**
-             * Unavailable Workers
-             * @default 0
-             */
-            unavailable_workers: number;
-        } & {
-            [key: string]: unknown;
+        /** WatchlistTimelineItem */
+        WatchlistTimelineItem: {
+            /** Action */
+            action: string;
+            /** Author Handle */
+            author_handle: string | null;
+            /** Canonical Url */
+            canonical_url: string | null;
+            /** Cashtags */
+            cashtags: string[];
+            /** Event */
+            event: {
+                [key: string]: unknown;
+            };
+            /** Event Id */
+            event_id: string;
+            /** Hashtags */
+            hashtags: string[];
+            /** Mentions */
+            mentions: string[];
+            /** Received At Ms */
+            received_at_ms: number;
+            /** Text Clean */
+            text_clean: string | null;
+            /** Token Resolutions */
+            token_resolutions: {
+                [key: string]: unknown;
+            }[];
+        };
+        /** WatchlistTimelineQuery */
+        WatchlistTimelineQuery: {
+            /** Handle */
+            handle: string;
+            /** Limit */
+            limit: number;
         };
         /** WorkerStatusData */
         WorkerStatusData: {
-            /** Active Run Once Age Ms */
-            active_run_once_age_ms?: number | null;
-            /**
-             * Active Run Once Count
-             * @default 0
-             */
-            active_run_once_count: number;
-            /** Active Run Once Hard Timed Out At Ms */
-            active_run_once_hard_timed_out_at_ms?: number | null;
-            /** Active Run Once Started At Ms */
-            active_run_once_started_at_ms?: number | null;
-            /** Details */
-            details?: {
-                [key: string]: unknown;
-            };
             /**
              * Effective Status
-             * @default disabled
+             * @enum {string}
              */
-            effective_status: string;
+            effective_status: "disabled" | "intentionally_not_started" | "unavailable" | "degraded" | "running" | "stopped" | "failed";
             /** Enabled */
             enabled: boolean;
             /** Iteration Duration P99 Ms */
-            iteration_duration_p99_ms?: number | null;
+            iteration_duration_p99_ms: number | null;
             /** Last Error */
-            last_error?: string | null;
+            last_error: string | null;
             /** Last Finished At Ms */
-            last_finished_at_ms?: number | null;
+            last_finished_at_ms: number | null;
             /** Last Result */
-            last_result?: {
+            last_result: {
                 [key: string]: unknown;
             } | null;
             /** Last Started At Ms */
-            last_started_at_ms?: number | null;
-            /** Pool Wait Ms P99 */
-            pool_wait_ms_p99?: number | null;
+            last_started_at_ms: number | null;
             /** Running */
             running: boolean;
             /** Unavailable Reason */
-            unavailable_reason?: string | null;
-        } & {
-            [key: string]: unknown;
+            unavailable_reason: string | null;
         };
     };
     responses: never;
@@ -2345,7 +3478,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ApiEnvelope_MacroData_"];
                 };
             };
         };
@@ -2365,7 +3498,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ApiEnvelope_MacroAssetCorrelationData_"];
                 };
             };
         };
@@ -2387,7 +3520,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ApiEnvelope_MacroModuleData_"];
                 };
             };
             /** @description Validation Error */
@@ -2419,7 +3552,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": unknown;
+                    "application/json": components["schemas"]["ApiEnvelope_MacroSeriesData_"];
                 };
             };
             /** @description Validation Error */
@@ -2578,26 +3711,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    notification_summary_api_notification_summary_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_NotificationSummary_"];
                 };
             };
         };

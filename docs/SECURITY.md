@@ -18,8 +18,8 @@ The supported operator-owned config files are
 `~/.parallax/workers.yaml`. `config.yaml` owns application,
 provider, credential, storage, API, and public-surface settings.
 `workers.yaml` owns worker runtime knobs such as enabled state,
-intervals, batches, concurrency, leases, attempts, timeouts, advisory
-locks, wake channels, and worker gates.
+intervals, batches, concurrency, leases, attempts, explicit boundary
+timeouts, and worker gates.
 
 Do not introduce a third config path, shadow config in environment
 variables, or duplicate worker runtime knobs under `config.yaml`.

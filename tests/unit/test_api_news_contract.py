@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from parallax.app.surfaces.api.exceptions import (
     ApiBadRequest,
@@ -73,7 +74,10 @@ def test_news_api_lists_agent_signal_news_rows_without_postgres() -> None:
                     "summary": "Issuer confirms launch.",
                     "source_domain": "example.com",
                     "canonical_url": "https://example.com/story",
-                    "token_lanes": [{"symbol": "BTC"}],
+                    "duplicate_count": 1,
+                    "source_ids": ["opennews-realtime"],
+                    "source_domains": ["example.com"],
+                    "token_lanes": [{"lane": "resolved", "symbol": "BTC"}],
                     "fact_lanes": [],
                     "signal": {
                         "display_signal": {
@@ -93,15 +97,24 @@ def test_news_api_lists_agent_signal_news_rows_without_postgres() -> None:
                         "alert_eligibility": {
                             "in_app_eligible": True,
                             "external_push_ready": False,
+                            "agent_status": "ready",
                             "decision_class": "driver",
                             "market_scope": _market_scope(),
-                            "agent_admission_status": "eligible",
-                            "agent_admission_reason": "ready_market_driver",
                         },
                     },
+                    "provider_rating": {},
                     "token_impacts": [],
-                    "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
-                    "market_scope": _market_scope(),
+                    "content_class": "regulation",
+                    "content_tags": ["sec"],
+                    "content_classification": {"status": "classified"},
+                    "agent_brief": {
+                        "status": "ready",
+                        "direction": "bullish",
+                        "decision_class": "driver",
+                    },
+                    "source": _news_source_summary(),
+                    "agent_status": "ready",
+                    "agent_brief_computed_at_ms": 3_050,
                     "agent_admission_status": "eligible",
                     "agent_admission_reason": "ready_market_driver",
                     "agent_admission": _agent_admission(),
@@ -140,6 +153,40 @@ def test_news_api_returns_null_next_cursor_when_no_extra_row_without_postgres() 
     data = response.json()["data"]
     assert [row["row_id"] for row in data["items"]] == ["row-1", "row-2"]
     assert data["next_cursor"] is None
+
+
+@pytest.mark.parametrize("field_name", ("source_domain", "content_tags", "content_classification"))
+def test_news_list_fails_closed_when_current_row_field_is_missing(field_name: str) -> None:
+    news = FakeNewsRepository()
+    news.rows[0].pop(field_name)
+    app = _app(news)
+
+    with TestClient(app) as client, pytest.raises(ValidationError, match=field_name):
+        client.get("/api/news", headers={"Authorization": "Bearer secret"})
+
+
+@pytest.mark.parametrize(
+    "retired_alias",
+    ("provider_type", "source_role", "trust_tier", "coverage_tags", "source_quality_status"),
+)
+def test_news_list_fails_closed_on_retired_top_level_source_alias(retired_alias: str) -> None:
+    news = FakeNewsRepository()
+    news.rows[0][retired_alias] = "legacy"
+    app = _app(news)
+
+    with TestClient(app) as client, pytest.raises(ValidationError, match=retired_alias):
+        client.get("/api/news", headers={"Authorization": "Bearer secret"})
+
+
+def test_news_list_fails_closed_when_nested_source_contract_is_incomplete() -> None:
+    news = FakeNewsRepository()
+    source = news.rows[0]["source"]
+    assert isinstance(source, dict)
+    source.pop("source_quality_status")
+    app = _app(news)
+
+    with TestClient(app) as client, pytest.raises(ValidationError, match="source_quality_status"):
+        client.get("/api/news", headers={"Authorization": "Bearer secret"})
 
 
 def test_news_api_paginates_zec_keyword_results_with_true_has_more_without_postgres() -> None:
@@ -368,44 +415,47 @@ def test_news_api_source_status_requires_projected_provider_type_and_coverage_ta
 
 def test_news_item_detail_hides_retired_brief_fields() -> None:
     news = FakeNewsRepository()
-    news.item_detail = {
-        "news_item_id": "news-1",
-        "representative_news_item_id": "news-1",
-        "story_key": "news-story:subject:btc-detail:t412000",
-        "story": {
-            "story_key": "news-story:subject:btc-detail:t412000",
+    news.item_detail = _news_detail()
+    news.item_detail.update(
+        {
+            "news_item_id": "news-1",
             "representative_news_item_id": "news-1",
-            "member_news_item_ids": ["news-1"],
-            "member_count": 1,
-            "source_domains": ["example.com"],
-        },
-        "market_scope": _market_scope(),
-        "agent_admission_status": "eligible",
-        "agent_admission_reason": "ready_market_driver",
-        "agent_admission": _agent_admission(),
-        "agent_representative_news_item_id": "news-1",
-        "agent_brief": {
-            "status": "ready",
-            "direction": "bullish",
-            "decision_class": "driver",
-            "brief_json": {
-                "summary_zh": "旧简报",
-                "retrieval_notes_zh": "retired",
-                "source_consensus_zh": "retired",
+            "story_key": "news-story:subject:btc-detail:t412000",
+            "story": {
+                "story_key": "news-story:subject:btc-detail:t412000",
+                "representative_news_item_id": "news-1",
+                "member_news_item_ids": ["news-1"],
+                "member_count": 1,
+                "source_domains": ["example.com"],
             },
-            "confirmation_state": "confirmed",
-            "novelty_status": "new",
-            "used_tool_call_ids": ["tool-1"],
-            "impact_zh": "retired",
-            "watch_items_zh": ["retired"],
-            "research_todos_zh": ["retired"],
-            "confidence": 0.9,
-            "prompt_version": "news-item-brief-v2",
-            "schema_version": NEWS_STORY_BRIEF_SCHEMA_VERSION,
-            "validator_version": NEWS_STORY_BRIEF_VALIDATOR_VERSION,
-            "computed_at_ms": 123,
-        },
-    }
+            "signal": _news_signal(),
+            "agent_admission_status": "eligible",
+            "agent_admission_reason": "ready_market_driver",
+            "agent_admission": _agent_admission(),
+            "agent_representative_news_item_id": "news-1",
+            "agent_brief": {
+                "status": "ready",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "brief_json": {
+                    "summary_zh": "旧简报",
+                    "retrieval_notes_zh": "retired",
+                    "source_consensus_zh": "retired",
+                },
+                "confirmation_state": "confirmed",
+                "novelty_status": "new",
+                "used_tool_call_ids": ["tool-1"],
+                "impact_zh": "retired",
+                "watch_items_zh": ["retired"],
+                "research_todos_zh": ["retired"],
+                "confidence": 0.9,
+                "prompt_version": "news-item-brief-v2",
+                "schema_version": NEWS_STORY_BRIEF_SCHEMA_VERSION,
+                "validator_version": NEWS_STORY_BRIEF_VALIDATOR_VERSION,
+                "computed_at_ms": 123,
+            },
+        }
+    )
     app = _app(news)
 
     with TestClient(app) as client:
@@ -436,12 +486,34 @@ def test_news_item_detail_hides_retired_brief_fields() -> None:
     assert data["representative_news_item_id"] == "news-1"
     assert data["story_key"] == "news-story:subject:btc-detail:t412000"
     assert data["story"]["member_count"] == 1
-    assert data["market_scope"] == _market_scope()
+    assert data["signal"]["alert_eligibility"]["market_scope"] == _market_scope()
+    assert "market_scope" not in data
     assert data["agent_admission_status"] == "eligible"
     assert data["agent_admission_reason"] == "ready_market_driver"
     assert data["agent_admission"] == _agent_admission()
     assert data["agent_representative_news_item_id"] == "news-1"
     _assert_no_legacy_admission_fields(data)
+
+
+@pytest.mark.parametrize("field_name", ("provider_item", "content_tags", "source"))
+def test_news_item_detail_fails_closed_when_required_shape_is_missing(field_name: str) -> None:
+    news = FakeNewsRepository()
+    news.item_detail = _news_detail()
+    news.item_detail.pop(field_name)
+    app = _app(news)
+
+    with TestClient(app) as client, pytest.raises(ValidationError, match=field_name):
+        client.get("/api/news/items/news-1", headers={"Authorization": "Bearer secret"})
+
+
+def test_news_item_detail_fails_closed_on_list_only_or_retired_alias() -> None:
+    news = FakeNewsRepository()
+    news.item_detail = _news_detail()
+    news.item_detail["headline"] = "legacy list alias"
+    app = _app(news)
+
+    with TestClient(app) as client, pytest.raises(ValidationError, match="headline"):
+        client.get("/api/news/items/news-1", headers={"Authorization": "Bearer secret"})
 
 
 def test_news_public_agent_brief_requires_status_without_pending_default() -> None:
@@ -570,37 +642,40 @@ def test_news_public_agent_brief_rejects_malformed_optional_nonnegative_int_fiel
 
 def test_news_item_detail_hides_agent_brief_runtime_audit_fields() -> None:
     news = FakeNewsRepository()
-    news.item_detail = {
-        "news_item_id": "news-1",
-        "agent_brief": {
-            "prompt_version": NEWS_STORY_BRIEF_PROMPT_VERSION,
-            "schema_version": NEWS_STORY_BRIEF_SCHEMA_VERSION,
-            "validator_version": NEWS_STORY_BRIEF_VALIDATOR_VERSION,
-            "guardrail_version": NEWS_STORY_BRIEF_GUARDRAIL_VERSION,
-            "status": "ready",
-            "direction": "bullish",
-            "decision_class": "driver",
-            "summary_zh": "当前简报",
-            "market_read_zh": "市场解读",
-            "bull_view": {"strength": "strong", "thesis_zh": "多头", "evidence_refs": []},
-            "bear_view": {"strength": "weak", "thesis_zh": "空头", "evidence_refs": []},
-            "data_gaps": [],
-            "evidence_refs": ["news:item"],
-            "agent_run_id": "run-news-1",
-            "artifact_version_hash": "artifact-hash",
-            "input_hash": "input-hash",
-            "output_hash": "output-hash",
-            "brief_json": {
+    news.item_detail = _news_detail()
+    news.item_detail.update(
+        {
+            "news_item_id": "news-1",
+            "agent_brief": {
+                "prompt_version": NEWS_STORY_BRIEF_PROMPT_VERSION,
+                "schema_version": NEWS_STORY_BRIEF_SCHEMA_VERSION,
+                "validator_version": NEWS_STORY_BRIEF_VALIDATOR_VERSION,
+                "guardrail_version": NEWS_STORY_BRIEF_GUARDRAIL_VERSION,
+                "status": "ready",
+                "direction": "bullish",
+                "decision_class": "driver",
                 "summary_zh": "当前简报",
                 "market_read_zh": "市场解读",
                 "bull_view": {"strength": "strong", "thesis_zh": "多头", "evidence_refs": []},
                 "bear_view": {"strength": "weak", "thesis_zh": "空头", "evidence_refs": []},
                 "data_gaps": [],
                 "evidence_refs": ["news:item"],
-                "research_todos_zh": ["retired"],
+                "agent_run_id": "run-news-1",
+                "artifact_version_hash": "artifact-hash",
+                "input_hash": "input-hash",
+                "output_hash": "output-hash",
+                "brief_json": {
+                    "summary_zh": "当前简报",
+                    "market_read_zh": "市场解读",
+                    "bull_view": {"strength": "strong", "thesis_zh": "多头", "evidence_refs": []},
+                    "bear_view": {"strength": "weak", "thesis_zh": "空头", "evidence_refs": []},
+                    "data_gaps": [],
+                    "evidence_refs": ["news:item"],
+                    "research_todos_zh": ["retired"],
+                },
             },
-        },
-    }
+        }
+    )
     app = _app(news)
 
     with TestClient(app) as client:
@@ -634,7 +709,7 @@ def test_news_item_detail_hides_agent_brief_runtime_audit_fields() -> None:
         assert key not in data["agent_brief"]
 
 
-def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None:
+def test_news_openapi_schema_exposes_one_nested_current_contract() -> None:
     app = _app(FakeNewsRepository())
 
     schema = app.openapi()
@@ -642,19 +717,69 @@ def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None
     schemas = schema["components"]["schemas"]
     row_props = schemas["NewsRow"]["properties"]
     detail_props = schemas["NewsObjectData"]["properties"]
+    source_props = schemas["NewsSourceSummary"]["properties"]
     eligibility_props = schemas["NewsAlertEligibility"]["properties"]
     provider_rating_props = schemas["NewsProviderRating"]["properties"]
     signal_props = schemas["NewsSignalEnvelope"]["properties"]
+    agent_signal_props = schemas["NewsAgentSignal"]["properties"]
     signal_summary_props = schemas["NewsSignalSummary"]["properties"]
     token_lane_props = schemas["NewsTokenLane"]["properties"]
+    fact_lane_props = schemas["NewsFactLane"]["properties"]
     agent_brief_props = schemas["NewsAgentBrief"]["properties"]
     news_query_params = {param["name"] for param in schema["paths"]["/api/news"]["get"]["parameters"]}
 
-    assert {"market_scope", "agent_admission", "agent_admission_status", "provider_rating"} <= set(row_props)
-    assert {"market_scope", "agent_admission", "agent_admission_status", "provider_rating"} <= set(detail_props)
+    assert {"agent_admission", "agent_admission_status", "provider_rating"} <= set(row_props)
+    assert {"agent_admission", "agent_admission_status", "provider_rating"} <= set(detail_props)
+    assert schemas["NewsRow"]["additionalProperties"] is False
+    assert schemas["NewsObjectData"]["additionalProperties"] is False
+    assert schemas["NewsData"]["additionalProperties"] is False
+    assert set(schemas["NewsData"]["required"]) == {"items", "next_cursor"}
+    assert schemas["NewsSourceSummary"]["additionalProperties"] is False
+    assert (
+        set(schemas["NewsSourceSummary"]["required"])
+        == set(source_props)
+        == {
+            "source_id",
+            "source_name",
+            "source_domain",
+            "provider_type",
+            "source_role",
+            "trust_tier",
+            "coverage_tags",
+            "source_quality_status",
+        }
+    )
+    assert {"source_domain", "source", "content_tags", "content_classification"} <= set(schemas["NewsRow"]["required"])
+    for retired_alias in ("provider_type", "source_role", "trust_tier", "coverage_tags", "source_quality_status"):
+        assert retired_alias not in row_props
+    assert "market_scope" not in row_props
+    assert "market_scope" not in detail_props
+    assert "headline" not in detail_props
+    assert "row_id" not in detail_props
+    assert {"title", "provider_item", "fetch_run", "observation_edges", "fact_candidates"} <= set(
+        schemas["NewsObjectData"]["required"]
+    )
     assert {"provider", "status", "direction", "signal", "score", "grade", "method"} <= set(provider_rating_props)
-    assert {"market_scope", "agent_admission_status", "agent_admission_reason"} <= set(eligibility_props)
+    assert "market_scope" in eligibility_props
+    assert "agent_admission_status" not in eligibility_props
+    assert "agent_admission_reason" not in eligibility_props
+    assert schemas["NewsAlertEligibility"]["additionalProperties"] is False
     assert schemas["NewsSignalEnvelope"]["additionalProperties"] is False
+    assert set(schemas["NewsSignalEnvelope"]["required"]) == {
+        "display_signal",
+        "agent_signal",
+        "alert_eligibility",
+    }
+    assert {"source", "status", "direction"} <= set(schemas["NewsSignalSummary"]["required"])
+    assert "status" in agent_signal_props
+    assert "status" in schemas["NewsAgentSignal"]["required"]
+    assert "lane" in schemas["NewsTokenLane"]["required"]
+    assert "status" in fact_lane_props
+    assert "status" in schemas["NewsFactLane"]["required"]
+    assert "status" in schemas["NewsAgentBrief"]["required"]
+    assert {"signal", "token_impacts", "token_lanes", "fact_lanes", "agent_brief"} <= set(
+        schemas["NewsRow"]["required"]
+    )
     assert "provider_signal" not in detail_props
     assert "provider_token_impacts" not in detail_props
     assert "provider_signal" not in signal_props
@@ -713,11 +838,11 @@ class FakeNewsRepository:
         return self.rows[start : start + max(0, int(limit))]
 
     def get_news_item_detail(self, *, news_item_id: str):
-        if self.item_detail is not None:
-            item_detail = dict(self.item_detail)
-            item_detail["agent_brief"] = _public_agent_brief_payload(item_detail.get("agent_brief"))
-            return item_detail
-        return {"news_item_id": news_item_id}
+        item_detail = (
+            dict(self.item_detail) if self.item_detail is not None else _news_detail(news_item_id=news_item_id)
+        )
+        item_detail["agent_brief"] = _public_agent_brief_payload(item_detail.get("agent_brief"))
+        return item_detail
 
     def get_news_fact_detail(self, *, fact_candidate_id: str):
         return {"fact_candidate_id": fact_candidate_id}
@@ -766,7 +891,10 @@ def _news_row(*, row_id: str, latest_at_ms: int) -> dict[str, object]:
         "summary": "Issuer confirms launch.",
         "source_domain": "example.com",
         "canonical_url": "https://example.com/story",
-        "token_lanes": [{"symbol": "BTC"}],
+        "duplicate_count": 1,
+        "source_ids": ["opennews-realtime"],
+        "source_domains": ["example.com"],
+        "token_lanes": [{"lane": "resolved", "symbol": "BTC"}],
         "fact_lanes": [],
         "signal": {
             "display_signal": {
@@ -786,21 +914,104 @@ def _news_row(*, row_id: str, latest_at_ms: int) -> dict[str, object]:
             "alert_eligibility": {
                 "in_app_eligible": True,
                 "external_push_ready": False,
+                "agent_status": "ready",
                 "decision_class": "driver",
                 "market_scope": _market_scope(),
-                "agent_admission_status": "eligible",
-                "agent_admission_reason": "ready_market_driver",
             },
         },
+        "provider_rating": {},
         "token_impacts": [],
-        "source": {"source_id": "opennews-realtime", "provider_type": "opennews"},
-        "market_scope": _market_scope(),
+        "content_class": "regulation",
+        "content_tags": ["sec"],
+        "content_classification": {"status": "classified"},
+        "agent_brief": {
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "driver",
+        },
+        "source": _news_source_summary(),
+        "agent_status": "ready",
+        "agent_brief_computed_at_ms": 3_050,
         "agent_admission_status": "eligible",
         "agent_admission_reason": "ready_market_driver",
         "agent_admission": _agent_admission(),
         "agent_representative_news_item_id": "news-1",
         "computed_at_ms": 3_100,
         "projection_version": NEWS_PAGE_PROJECTION_VERSION,
+    }
+
+
+def _news_source_summary() -> dict[str, object]:
+    return {
+        "source_id": "opennews-realtime",
+        "source_name": None,
+        "source_domain": "example.com",
+        "provider_type": "opennews",
+        "source_role": "specialist_media",
+        "trust_tier": "standard",
+        "coverage_tags": ["crypto_market"],
+        "source_quality_status": "ready",
+    }
+
+
+def _news_detail(*, news_item_id: str = "news-1") -> dict[str, object]:
+    return {
+        "news_item_id": news_item_id,
+        "source_id": "opennews-realtime",
+        "source_domain": "example.com",
+        "canonical_url": "https://example.com/story",
+        "title": "SOL ETF approved",
+        "summary": "Issuer confirms launch.",
+        "body_text": "Issuer confirms the SOL ETF launch.",
+        "language": "en",
+        "published_at_ms": 3_000,
+        "fetched_at_ms": 3_010,
+        "lifecycle_status": "raw",
+        "content_class": "regulation",
+        "processed_at_ms": None,
+        "processing_error": None,
+        "created_at_ms": 3_020,
+        "updated_at_ms": 3_030,
+        "duplicate_observation_count": 1,
+        "representative_news_item_id": news_item_id,
+        "story_key": "news-story:subject:btc-detail:t412000",
+        "story": {
+            "story_key": "news-story:subject:btc-detail:t412000",
+            "representative_news_item_id": news_item_id,
+            "member_news_item_ids": [news_item_id],
+            "member_count": 1,
+            "source_domains": ["example.com"],
+        },
+        "agent_admission_status": "eligible",
+        "agent_admission_reason": "ready_market_driver",
+        "agent_admission": _agent_admission(),
+        "agent_representative_news_item_id": news_item_id,
+        "agent_admission_computed_at_ms": 3_040,
+        "content_tags": ["sec"],
+        "content_classification": {"status": "classified"},
+        "signal": _news_signal(),
+        "provider_rating": {},
+        "token_impacts": [],
+        "token_lanes": [],
+        "fact_lanes": [],
+        "source": {
+            **_news_source_summary(),
+            "asset_universe": ["SOL"],
+            "authority_scope": {},
+            "enabled": True,
+            "managed_by_config": True,
+            "refresh_interval_seconds": 300,
+            "created_at_ms": 1_000,
+            "updated_at_ms": 2_000,
+        },
+        "provider_item": {"source_id": "opennews-realtime"},
+        "fetch_run": None,
+        "agent_brief": {"status": "ready", "direction": "bullish", "decision_class": "driver"},
+        "observation_edges": [],
+        "provider_observations": [],
+        "entities": [],
+        "token_mentions": [],
+        "fact_candidates": [],
     }
 
 
@@ -812,6 +1023,28 @@ def _market_scope() -> dict[str, object]:
         "reason": "market_scope_classified",
         "basis": {"subject": "sol_etf"},
         "version": NEWS_MARKET_SCOPE_VERSION,
+    }
+
+
+def _news_signal() -> dict[str, object]:
+    return {
+        "display_signal": {
+            "source": "agent",
+            "status": "ready",
+            "direction": "bullish",
+        },
+        "agent_signal": {
+            "status": "ready",
+            "direction": "bullish",
+            "decision_class": "driver",
+        },
+        "alert_eligibility": {
+            "in_app_eligible": True,
+            "external_push_ready": False,
+            "agent_status": "ready",
+            "decision_class": "driver",
+            "market_scope": _market_scope(),
+        },
     }
 
 
@@ -841,6 +1074,6 @@ def _app(news: FakeNewsRepository) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
-    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
+    app.include_router(create_api_router(lambda _: {"ok": True}))
     app.state.service = FakeRuntime(news)
     return app

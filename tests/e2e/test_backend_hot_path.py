@@ -20,7 +20,6 @@ from tests.support.db_seeds import (
 from tests.support.fake_providers import (
     FakeDexQuoteProvider,
     FakeGmgnUpstreamClient,
-    RecordingWakeEmitter,
 )
 from tests.support.hot_path_runtime import (
     AUTHOR_HANDLE,
@@ -64,7 +63,6 @@ def test_complete_backend_hot_path_to_token_radar(
             }
         )
 
-        wake = RecordingWakeEmitter()
         backfill_now_ms = _wall_now_ms()
         backfill_window_ms = max(
             30 * 24 * 60 * 60 * 1000,
@@ -85,13 +83,11 @@ def test_complete_backend_hot_path_to_token_radar(
                     dex_quote_market=FakeDexQuoteProvider(observed_at_ms=FIXED_NOW_MS + 500),
                     cex_market=None,
                 ),
-                wake_emitter=wake,
                 settings=backfill_settings,
                 clock=lambda: backfill_now_ms,
             ).run_once()
         )
         assert backfill_result.processed == 1
-        assert wake.market_tick_writes == [(MARKET_TARGET_TYPE, MARKET_TARGET_ID)]
         _assert_counts({"market_ticks": 1, "ready_enriched_events": 1})
 
         radar_result = asyncio.run(
@@ -100,7 +96,6 @@ def test_complete_backend_hot_path_to_token_radar(
                 settings=runtime.settings.workers.token_radar_projection,
                 db=runtime.db,
                 telemetry=runtime.telemetry,
-                wake_emitter=None,
             ).run_once(now_ms=FIXED_NOW_MS + 2_000)
         )
         assert radar_result.notes["rows_written"] >= 1

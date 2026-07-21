@@ -219,6 +219,6 @@ function readinessLabel({
   return {
     label: "not ready",
     ok: false,
-    title: status?.reasons?.join(", ") || undefined,
+    title: status ? status.reasons.join(", ") || undefined : undefined,
   };
 }

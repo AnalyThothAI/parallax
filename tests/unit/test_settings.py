@@ -19,6 +19,54 @@ from parallax.platform.config.settings import (
 )
 from parallax.platform.paths.runtime_paths import app_home, config_path, workers_config_path
 
+_FLAT_COMPAT_SETTINGS_ALIASES = frozenset(
+    {
+        "agent_runtime_default_model",
+        "api_host",
+        "api_port",
+        "binance_cex_profile_base_url",
+        "binance_cex_universe_contract_type",
+        "binance_cex_universe_quote_symbol",
+        "binance_enabled",
+        "binance_timeout_seconds",
+        "binance_usdm_futures_base_url",
+        "binance_web3_base_url",
+        "gmgn_api_key",
+        "gmgn_openapi_base_url",
+        "gmgn_timeout_seconds",
+        "gmgn_token_info_cache_ttl_seconds",
+        "llm_api_key",
+        "llm_base_url",
+        "llm_provider",
+        "llm_trace_api_key",
+        "llm_trace_enabled",
+        "llm_trace_export_configured",
+        "llm_trace_include_sensitive_data",
+        "macrodata_enabled",
+        "macrodata_fred_api_key_env",
+        "okx_dex_api_key",
+        "okx_dex_base_url",
+        "okx_dex_chain_indexes",
+        "okx_dex_passphrase",
+        "okx_dex_secret_key",
+        "okx_dex_ws_url",
+        "okx_timeout_seconds",
+        "postgres_connect_timeout_seconds",
+        "postgres_dsn",
+        "postgres_pool_max_size",
+        "postgres_pool_min_size",
+        "replay_limit",
+        "upstream_app_version",
+        "upstream_chains",
+        "upstream_channels",
+        "upstream_heartbeat_interval",
+        "upstream_idle_timeout",
+        "upstream_proxy",
+        "upstream_reconnect_delay",
+        "ws_heartbeat_interval",
+    }
+)
+
 
 def _manifest_worker_names() -> set[str]:
     from parallax.app.runtime.worker_manifest import all_worker_manifests
@@ -28,6 +76,10 @@ def _manifest_worker_names() -> set[str]:
 
 def _old_anchor_worker_key() -> str:
     return "_".join(("anchor", "price"))
+
+
+def test_settings_has_no_flat_compatibility_aliases() -> None:
+    assert _FLAT_COMPAT_SETTINGS_ALIASES.isdisjoint(Settings.__dict__)
 
 
 def write_config(home, payload, *, write_workers=True):
@@ -61,44 +113,40 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     settings = load_settings()
 
     assert settings.handles == ("toly", "cryptodevinl", "heyibinance")
-    assert settings.api_host == "0.0.0.0"  # noqa: S104 -- testing default bind-all-interfaces config value
-    assert settings.api_port == 8765
+    assert settings.api.host == "0.0.0.0"  # noqa: S104 -- testing default bind-all-interfaces config value
+    assert settings.api.port == 8765
     assert settings.ws_token == "secret"
-    assert settings.postgres_dsn == "postgresql://parallax_app@postgres:5432/parallax"
+    assert settings.storage.postgres.dsn == "postgresql://parallax_app@postgres:5432/parallax"
     assert settings.postgres_password_file == tmp_path / ".parallax" / "postgres_password"
-    assert settings.postgres_pool_max_size == 16
+    assert settings.storage.postgres.pool_max_size == 16
     assert settings.log_file == tmp_path / ".parallax" / "logs" / "parallax.log"
     assert settings.llm_configured is False
-    assert settings.llm.timeout_seconds == 120
-    assert settings.agent_runtime_default_model == "deepseek-v4-flash"
+    assert settings.llm.base_url == ""
+    assert settings.workers.agent_runtime.model == "deepseek-v4-flash"
     assert not hasattr(settings.workers, "enrichment")
     assert settings.workers.notification_delivery.running_timeout_ms == 300_000
     assert settings.workers.notification_delivery.stale_running_terminalization_batch_size == 100
     assert not hasattr(settings.workers, "handle_summary")
     assert settings.gmgn_configured is False
-    assert settings.upstream_chains == ("sol", "eth", "base", "bsc")
-    assert settings.upstream_channels == ("twitter_monitor_basic", "twitter_monitor_token")
-    assert settings.okx_dex_ws_url == "wss://wsdex.okx.com/ws/v6/dex"
-    assert settings.binance_enabled is True
-    assert settings.binance_web3_base_url == "https://web3.binance.com"
-    assert settings.binance_cex_profile_base_url == "https://www.binance.com"
-    assert settings.binance_usdm_futures_base_url == "https://fapi.binance.com"
-    assert settings.binance_cex_universe_quote_symbol == "USDT"
-    assert settings.binance_cex_universe_contract_type == "PERPETUAL"
-    assert settings.binance_timeout_seconds == 15
+    assert settings.upstream.chains == ("sol", "eth", "base", "bsc")
+    assert settings.upstream.channels == ("twitter_monitor_basic", "twitter_monitor_token")
+    assert settings.providers.okx.dex_ws_url == "wss://wsdex.okx.com/ws/v6/dex"
+    assert settings.providers.binance.enabled is True
+    assert settings.providers.binance.web3_base_url == "https://web3.binance.com"
+    assert settings.providers.binance.cex_profile_base_url == "https://www.binance.com"
+    assert settings.providers.binance.usdm_futures_base_url == "https://fapi.binance.com"
+    assert settings.providers.binance.cex_universe_quote_symbol == "USDT"
+    assert settings.providers.binance.cex_universe_contract_type == "PERPETUAL"
+    assert settings.providers.binance.timeout_seconds == 15
     assert not hasattr(settings, "okx_cex_base_url")
     assert not hasattr(settings, "okx_cex_sync_enabled")
     assert not hasattr(settings, "okx_cex_inst_types")
     assert not hasattr(settings.workers, _old_anchor_worker_key())
     assert settings.workers.market_tick_stream.subscription_limit == 100
     assert settings.workers.market_tick_poll.interval_seconds == 15
-    assert settings.workers.token_capture_tier.batch_size == 500
-    assert settings.workers.token_capture_tier.ws_limit == 100
-    assert settings.workers.token_capture_tier.poll_limit == 500
-    assert settings.workers.live_price_gateway.interval_seconds == 2
-    assert settings.workers.live_price_gateway.target_limit == 100
-    assert settings.workers.live_price_gateway.target_ttl_seconds == 300
-    assert not hasattr(settings.workers.live_price_gateway, "subscription_limit")
+    assert not hasattr(settings.workers, "market_tick_current_projection")
+    assert not hasattr(settings.workers, "token_capture_tier")
+    assert not hasattr(settings.workers, "live_price_gateway")
     assert settings.okx_dex_ws_configured is False
 
 
@@ -376,13 +424,8 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
                 }
             },
             "llm": {
-                "provider": "litellm",
                 "api_key": "sk-test",
                 "base_url": "https://example.test/v1/",
-                "timeout_seconds": 7,
-                "trace_enabled": True,
-                "trace_api_key": "sk-trace",
-                "trace_include_sensitive_data": False,
             },
         },
     )
@@ -391,35 +434,25 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
         yaml.safe_load(default_workers_yaml())
         | {
             "agent_runtime": {
-                "defaults": {
-                    "model": "gpt-test",
-                    "disable_thinking": True,
-                    "include_usage": True,
-                },
-                "lanes": {},
+                "model": "gpt-test",
             },
         },
     )
 
     settings = load_settings()
 
-    assert settings.postgres_dsn == "postgresql://parallax_app:secret@postgres:5432/parallax"
+    assert settings.storage.postgres.dsn == "postgresql://parallax_app:secret@postgres:5432/parallax"
     assert settings.postgres_password_file == tmp_path / ".parallax" / "pg_password"
-    assert settings.postgres_pool_min_size == 2
-    assert settings.postgres_pool_max_size == 12
-    assert settings.postgres_connect_timeout_seconds == 4
+    assert settings.storage.postgres.pool_min_size == 2
+    assert settings.storage.postgres.pool_max_size == 12
+    assert settings.storage.postgres.connect_timeout_seconds == 4
     assert not hasattr(settings, "sqlite_path")
     assert settings.llm_configured is True
-    assert settings.agent_runtime_default_model == "gpt-test"
-    assert settings.llm_base_url == "https://example.test/v1"
-    assert settings.llm.timeout_seconds == 7
-    assert settings.llm_trace_enabled is True
-    assert settings.llm_trace_api_key == "sk-trace"
-    assert settings.llm_trace_export_configured is False
-    assert settings.llm_trace_include_sensitive_data is False
+    assert settings.workers.agent_runtime.model == "gpt-test"
+    assert settings.llm.base_url == "https://example.test/v1"
 
 
-def test_agent_runtime_lane_config_can_override_default_model(tmp_path, monkeypatch):
+def test_agent_runtime_flat_policy_loads_from_workers_yaml(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
@@ -427,20 +460,31 @@ def test_agent_runtime_lane_config_can_override_default_model(tmp_path, monkeypa
             "ws_token": "secret",
             "handles": ["toly"],
             "llm": {
-                "provider": "litellm",
                 "api_key": "sk-test",
             },
         },
     )
     workers = yaml.safe_load(default_workers_yaml())
-    workers["agent_runtime"]["defaults"]["model"] = "gpt-base"
-    workers["agent_runtime"]["lanes"]["news.story_brief"]["model"] = "gpt-story"
+    workers["agent_runtime"].update(
+        {
+            "model": "gpt-story",
+            "provider_family": "litellm",
+            "max_tokens": 1800,
+            "max_concurrency": 2,
+            "rpm_limit": 30,
+            "timeout_seconds": 90,
+        }
+    )
     write_workers_config(tmp_path, workers)
 
     settings = load_settings()
 
-    assert settings.agent_runtime_default_model == "gpt-base"
-    assert settings.workers.agent_runtime.lanes["news.story_brief"].model == "gpt-story"
+    assert settings.workers.agent_runtime.model == "gpt-story"
+    assert settings.workers.agent_runtime.provider_family.value == "litellm"
+    assert settings.workers.agent_runtime.max_tokens == 1800
+    assert settings.workers.agent_runtime.max_concurrency == 2
+    assert settings.workers.agent_runtime.rpm_limit == 30
+    assert settings.workers.agent_runtime.timeout_seconds == 90
     assert settings.news_agent_execution_enabled is True
 
 
@@ -449,7 +493,7 @@ def test_news_agent_execution_requires_domain_worker_and_llm_demand() -> None:
         "ws_token": "secret",
         "llm": {"api_key": "sk-test"},
         "workers": {
-            "agent_runtime": {"defaults": {"model": "gpt-test"}},
+            "agent_runtime": {"model": "gpt-test"},
             "news_story_brief": {"enabled": False},
         },
     }
@@ -491,7 +535,9 @@ def test_load_settings_rejects_legacy_llm_model_fields(tmp_path, monkeypatch):
         load_settings()
 
 
-def test_litellm_does_not_infer_trace_export_from_base_url(tmp_path, monkeypatch):
+def test_litellm_uses_minimal_nested_config(tmp_path, monkeypatch):
+    from parallax.app.surfaces.cli.commands.config import handle_config
+
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
@@ -499,7 +545,6 @@ def test_litellm_does_not_infer_trace_export_from_base_url(tmp_path, monkeypatch
             "ws_token": "secret",
             "handles": ["toly"],
             "llm": {
-                "provider": "litellm",
                 "api_key": "sk-test",
                 "base_url": "https://provider.example/v1",
             },
@@ -507,9 +552,13 @@ def test_litellm_does_not_infer_trace_export_from_base_url(tmp_path, monkeypatch
     )
 
     settings = load_settings()
+    code, payload = handle_config(object())
 
-    assert settings.llm_base_url == "https://provider.example/v1"
-    assert settings.llm_trace_export_configured is False
+    assert settings.llm.base_url == "https://provider.example/v1"
+    assert not hasattr(settings, "llm_trace_export_configured")
+    assert not hasattr(settings.llm, "trace_enabled")
+    assert code == 0
+    assert "trace_export_configured" not in payload["data"]["agent_execution"]
 
 
 def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
@@ -551,21 +600,21 @@ def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
     settings = load_settings()
 
     assert settings.gmgn_configured is True
-    assert settings.gmgn_api_key == "gmgn-test"
-    assert settings.gmgn_openapi_base_url == "https://openapi.example.test"
-    assert settings.gmgn_timeout_seconds == 3
-    assert settings.gmgn_token_info_cache_ttl_seconds == 60
-    assert settings.okx_dex_base_url == "https://web3-okx.example.test"
-    assert settings.okx_dex_chain_indexes == ("501", "1")
-    assert settings.okx_dex_ws_url == "wss://okx-ws.example.test/ws/v6/dex"
+    assert settings.gmgn.api_key == "gmgn-test"
+    assert settings.gmgn.openapi_base_url == "https://openapi.example.test"
+    assert settings.gmgn.timeout_seconds == 3
+    assert settings.gmgn.token_info_cache_ttl_seconds == 60
+    assert settings.providers.okx.dex_base_url == "https://web3-okx.example.test"
+    assert settings.providers.okx.dex_chain_indexes == ("501", "1")
+    assert settings.providers.okx.dex_ws_url == "wss://okx-ws.example.test/ws/v6/dex"
     assert settings.okx_dex_ws_configured is True
-    assert settings.okx_timeout_seconds == 9
-    assert settings.binance_web3_base_url == "https://web3-binance.example.test"
-    assert settings.binance_cex_profile_base_url == "https://binance-profile.example.test"
-    assert settings.binance_usdm_futures_base_url == "https://fapi-binance.example.test"
-    assert settings.binance_cex_universe_quote_symbol == "USDT"
-    assert settings.binance_cex_universe_contract_type == "PERPETUAL"
-    assert settings.binance_timeout_seconds == 7
+    assert settings.providers.okx.timeout_seconds == 9
+    assert settings.providers.binance.web3_base_url == "https://web3-binance.example.test"
+    assert settings.providers.binance.cex_profile_base_url == "https://binance-profile.example.test"
+    assert settings.providers.binance.usdm_futures_base_url == "https://fapi-binance.example.test"
+    assert settings.providers.binance.cex_universe_quote_symbol == "USDT"
+    assert settings.providers.binance.cex_universe_contract_type == "PERPETUAL"
+    assert settings.providers.binance.timeout_seconds == 7
 
 
 def test_macrodata_fred_env_pointer_is_redacted_and_configurable(tmp_path, monkeypatch):
@@ -588,8 +637,8 @@ def test_macrodata_fred_env_pointer_is_redacted_and_configurable(tmp_path, monke
 
     settings = load_settings()
 
-    assert settings.macrodata_enabled is True
-    assert settings.macrodata_fred_api_key_env == "CUSTOM_FRED_ENV"
+    assert settings.providers.macrodata.enabled is True
+    assert settings.providers.macrodata.fred_api_key_env == "CUSTOM_FRED_ENV"
     assert settings.macrodata_fred_api_key_configured is True
 
 
@@ -600,7 +649,7 @@ def test_macrodata_fred_configured_is_false_without_env_value(tmp_path, monkeypa
 
     settings = load_settings()
 
-    assert settings.macrodata_fred_api_key_env == "FINANCE_FRED_API_KEY"
+    assert settings.providers.macrodata.fred_api_key_env == "FINANCE_FRED_API_KEY"
     assert settings.macrodata_fred_api_key_configured is False
 
 
@@ -1035,15 +1084,7 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     }
 
     assert forbidden_llm_keys.isdisjoint(llm)
-    assert list(llm) == [
-        "provider",
-        "api_key",
-        "base_url",
-        "timeout_seconds",
-        "trace_enabled",
-        "trace_api_key",
-        "trace_include_sensitive_data",
-    ]
+    assert list(llm) == ["api_key", "base_url"]
     assert "workers" not in payload
     workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
     assert not hasattr(workers, "enrichment")
@@ -1079,6 +1120,6 @@ def test_init_creates_config_workers_file_and_runtime_directories(tmp_path, monk
     assert (tmp_path / ".parallax" / "logs").is_dir()
     settings = load_settings()
     assert settings.ws_token
-    assert settings.postgres_dsn == "postgresql://parallax_app@postgres:5432/parallax"
+    assert settings.storage.postgres.dsn == "postgresql://parallax_app@postgres:5432/parallax"
     assert settings.workers.collector.mode == "continuous"
     assert settings.workers.notification_delivery.max_attempts == 5

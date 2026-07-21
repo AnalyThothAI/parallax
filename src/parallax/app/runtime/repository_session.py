@@ -14,21 +14,14 @@ from parallax.domains.asset_market.interfaces import (
     IdentityEvidenceRepository,
     MarketTickRepository,
     RegistryRepository,
-    TokenCaptureTierRepository,
     TokenProfileCurrentRepository,
 )
 from parallax.domains.asset_market.queries.token_profile_source_query import TokenProfileSourceQuery
 from parallax.domains.asset_market.repositories.asset_profile_refresh_target_repository import (
     AssetProfileRefreshTargetRepository,
 )
-from parallax.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
-    MarketTickCurrentDirtyTargetRepository,
-)
 from parallax.domains.asset_market.repositories.market_tick_current_repository import (
     MarketTickCurrentRepository,
-)
-from parallax.domains.asset_market.repositories.token_capture_tier_dirty_target_repository import (
-    TokenCaptureTierDirtyTargetRepository,
 )
 from parallax.domains.asset_market.repositories.token_image_asset_repository import (
     TokenImageAssetRepository,
@@ -96,11 +89,8 @@ class RepositorySession:
     discovery: DiscoveryRepository
     market_ticks: MarketTickRepository
     market_tick_current: MarketTickCurrentRepository
-    market_tick_current_dirty_targets: MarketTickCurrentDirtyTargetRepository
     enriched_events: EnrichedEventRepository
     event_anchor_jobs: EventAnchorBackfillJobRepository
-    token_capture_tier_dirty_targets: TokenCaptureTierDirtyTargetRepository
-    token_capture_tiers: TokenCaptureTierRepository
     token_intent_lookup: TokenIntentLookupRepository
     event_tokens: EventTokenProjectionQuery
     token_radar_dirty_targets: TokenRadarDirtyTargetRepository
@@ -150,11 +140,8 @@ def repositories_for_connection(
         discovery=DiscoveryRepository(conn),
         market_ticks=MarketTickRepository(conn),
         market_tick_current=MarketTickCurrentRepository(conn),
-        market_tick_current_dirty_targets=MarketTickCurrentDirtyTargetRepository(conn),
         enriched_events=EnrichedEventRepository(conn),
         event_anchor_jobs=EventAnchorBackfillJobRepository(conn),
-        token_capture_tier_dirty_targets=TokenCaptureTierDirtyTargetRepository(conn),
-        token_capture_tiers=TokenCaptureTierRepository(conn),
         token_intent_lookup=TokenIntentLookupRepository(conn),
         event_tokens=EventTokenProjectionQuery(conn),
         token_radar_dirty_targets=TokenRadarDirtyTargetRepository(conn),
@@ -179,8 +166,9 @@ def repositories_for_connection(
 @contextmanager
 def postgres_connection(settings: Any) -> Iterator[Any]:
     """Open the short-lived PostgreSQL connection used by application operations."""
-    dsn = with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)
-    conn = connect_postgres(dsn, connect_timeout_seconds=settings.postgres_connect_timeout_seconds)
+    postgres = settings.storage.postgres
+    dsn = with_password_from_file(postgres.dsn, settings.postgres_password_file)
+    conn = connect_postgres(dsn, connect_timeout_seconds=postgres.connect_timeout_seconds)
     try:
         yield conn
     finally:

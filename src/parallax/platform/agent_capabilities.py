@@ -36,7 +36,6 @@ class AgentCapabilityProfile(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     provider_family: AgentProviderFamily = AgentProviderFamily.LITELLM
-    client_validation_retries: int = Field(default=1, ge=0)
     request_options: AgentRequestOptions = Field(default_factory=AgentRequestOptions)
 
     @field_validator("provider_family", mode="before")
@@ -48,12 +47,10 @@ class AgentCapabilityProfile(BaseModel):
 _MODEL_CAPABILITY_DEFAULTS: dict[str, AgentCapabilityProfile] = {
     "qwen3.6": AgentCapabilityProfile(
         provider_family=AgentProviderFamily.LITELLM,
-        client_validation_retries=1,
         request_options=AgentRequestOptions(extra_body={"chat_template_kwargs": {"enable_thinking": False}}),
     ),
     "deepseek-v4-flash": AgentCapabilityProfile(
         provider_family=AgentProviderFamily.DEEPSEEK,
-        client_validation_retries=1,
         request_options=AgentRequestOptions(extra_body={"thinking": {"type": "disabled"}}),
     ),
 }

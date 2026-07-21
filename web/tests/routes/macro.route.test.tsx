@@ -109,7 +109,7 @@ describe("macro route", () => {
     expect(requestedPaths).not.toContain("/api/token-radar");
     expect(requestedPaths).not.toContain("/api/stocks-radar");
     expect(requestedPaths).not.toContain("/api/news");
-    expect(requestedPaths).not.toContain("/api/notifications");
+    expect(requestedPaths).toContain("/api/notifications");
   });
 
   it("exposes the desktop brand once in the shell", async () => {
@@ -161,6 +161,25 @@ describe("macro route", () => {
 
     expect(await screen.findByRole("alert")).toHaveTextContent("macro_module_title_missing");
     expect(screen.queryByRole("heading", { name: "美股" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("heading", { name: "美股风险" })).not.toBeInTheDocument();
+  });
+
+  it("fails closed when a module response omits current data health", async () => {
+    const baseGetApi = apiMock.getApiImpl;
+    apiMock.getApiImpl = async (path, options) => {
+      if (path === "/api/macro/modules/assets/equities") {
+        const payload = { ...macroModuleFixture() } as Record<string, unknown>;
+        delete payload.data_health;
+        return ok(payload);
+      }
+      return baseGetApi(path, options);
+    };
+
+    renderAppRoute("/macro/assets/equities");
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(
+      "macro_current_contract:module.data_health",
+    );
     expect(screen.queryByRole("heading", { name: "美股风险" })).not.toBeInTheDocument();
   });
 

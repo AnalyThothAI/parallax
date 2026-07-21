@@ -113,6 +113,7 @@ const rowWithBtcEth: NewsRow = {
     },
   ],
   fact_lanes: [],
+  agent_brief: { status: "pending" },
 };
 
 const rowWithInsufficientAgentBrief: NewsRow = {
@@ -197,6 +198,14 @@ function newsSignalEnvelope(
       in_app_eligible: true,
       external_push_ready: false,
       agent_status: "pending",
+      market_scope: {
+        scope: ["crypto"],
+        primary: "crypto",
+        status: "classified",
+        reason: "market_scope_classified",
+        basis: { subject: "crypto" },
+        version: "news_market_scope_v1",
+      },
       ...overrides.alert_eligibility,
     },
   };

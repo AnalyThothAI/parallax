@@ -794,7 +794,8 @@ def test_latest_current_rows_limits_each_lane_independently():
     assert "FROM token_radar_current_rows current_rows" in conn.sql
     assert "JOIN token_radar_publication_state state" in conn.sql
     assert "state.current_generation_id = current_rows.generation_id" not in conn.sql
-    assert "state.latest_attempt_status = 'ready'" in conn.sql
+    assert "state.current_generation_id IS NOT NULL" in conn.sql
+    assert "state.latest_attempt_status = 'ready'" not in conn.sql
     assert "PARTITION BY lane" in conn.sql
     assert "lane_rank <= %s" in conn.sql
     assert conn.params[-2:] == (8, 16)
@@ -831,7 +832,7 @@ def test_latest_current_rows_reads_materialized_listed_at_without_history_latera
     assert "token_radar_rows" not in conn.sql
 
 
-def test_current_row_for_target_reads_only_ready_published_generation():
+def test_current_row_for_target_reads_last_good_generation_after_failed_attempt():
     conn = FakeConn(rows=[{"row_id": "row-1"}])
 
     row = TokenRadarRepository(conn).current_row_for_target(
@@ -846,7 +847,8 @@ def test_current_row_for_target_reads_only_ready_published_generation():
     assert row == {"row_id": "row-1"}
     assert "JOIN token_radar_publication_state state" in conn.sql
     assert "state.current_generation_id = current_rows.generation_id" not in conn.sql
-    assert "state.latest_attempt_status = 'ready'" in conn.sql
+    assert "state.current_generation_id IS NOT NULL" in conn.sql
+    assert "state.latest_attempt_status = 'ready'" not in conn.sql
     assert "token_radar_projection_coverage" not in conn.sql
 
 
@@ -1421,7 +1423,15 @@ def _valid_factor_row() -> dict[str, object]:
 def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
     return {
         "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
-        "subject": {"target_type": "Asset", "target_id": "asset-1", "symbol": "BOV"},
+        "subject": {
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "symbol": "BOV",
+            "target_market_type": "dex",
+            "chain": "solana",
+            "address": "asset-address-1",
+            "pricefeed_id": "feed-1",
+        },
         "market": {
             "event_anchor": {
                 "target_type": "Asset",
@@ -1440,7 +1450,6 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
                 "holders": None,
                 "volume_24h_usd": None,
                 "open_interest_usd": None,
-                "raw_payload_hash": None,
             },
             "decision_latest": {
                 "target_type": "Asset",
@@ -1459,7 +1468,6 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
                 "holders": 1000,
                 "volume_24h_usd": 12_000,
                 "open_interest_usd": None,
-                "raw_payload_hash": None,
             },
             "readiness": {
                 "anchor_status": "ready",
@@ -1504,18 +1512,35 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
             },
         },
         "composite": {
+            "raw_alpha_score": rank_score,
             "rank_score": rank_score,
-            "family_scores": {},
+            "family_scores": {
+                "social_heat": rank_score,
+                "social_propagation": 10,
+                "semantic_catalyst": 10,
+                "timing_risk": 10,
+            },
             "recommended_decision": "discard",
         },
         "gates": {
             "eligible_for_high_alert": False,
-            "eligible_for_watch": True,
             "max_decision": "discard",
-            "suppression_reasons": [],
+            "blocked_reasons": [],
+            "risk_reasons": [],
         },
         "data_health": {"identity": "ready", "market": "ready", "social": "ready", "alpha": "ready"},
-        "normalization": {},
+        "normalization": {
+            "status": "ranked",
+            "cohort_status": "ready",
+            "cohort": {},
+            "factor_ranks": {
+                "social_heat": None,
+                "social_propagation": None,
+                "semantic_catalyst": None,
+                "timing_risk": None,
+            },
+            "alpha_rank": None,
+        },
         "provenance": {
             "computed_at_ms": 1_778_000_000_000,
             "source_event_ids": ["event-1"],

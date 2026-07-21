@@ -118,11 +118,11 @@ def gmgn_dex_market(settings: Settings) -> GmgnDexMarketProvider:
     return GmgnDexMarketProvider(
         GmgnOpenApiGateway(
             GmgnOpenApiClient(
-                api_key=settings.gmgn_api_key or "",
-                base_url=settings.gmgn_openapi_base_url,
-                timeout_seconds=settings.gmgn_timeout_seconds,
+                api_key=settings.gmgn.api_key or "",
+                base_url=settings.gmgn.openapi_base_url,
+                timeout_seconds=settings.gmgn.timeout_seconds,
             ),
-            token_info_cache_ttl_seconds=settings.gmgn_token_info_cache_ttl_seconds,
+            token_info_cache_ttl_seconds=settings.gmgn.token_info_cache_ttl_seconds,
         )
     )
 
@@ -145,13 +145,13 @@ def gmgn_provider_health(settings: Settings) -> ProviderHealth:
 def gmgn_upstream_factory(settings: Settings) -> UpstreamClientFactory:
     def factory(on_frame: Callable[[str], Awaitable[None]]) -> UpstreamClientProtocol:
         return DirectGmgnWebSocketClient(
-            app_version=settings.upstream_app_version,
-            channels=list(settings.upstream_channels),
-            chains=list(settings.upstream_chains),
-            proxy=settings.upstream_proxy,
-            reconnect_delay=settings.upstream_reconnect_delay,
-            heartbeat_interval=settings.upstream_heartbeat_interval,
-            idle_timeout=settings.upstream_idle_timeout,
+            app_version=settings.upstream.app_version,
+            channels=list(settings.upstream.channels),
+            chains=list(settings.upstream.chains),
+            proxy=settings.upstream.proxy,
+            reconnect_delay=settings.upstream.reconnect_delay,
+            heartbeat_interval=settings.upstream.heartbeat_interval,
+            idle_timeout=settings.upstream.idle_timeout,
             on_frame=on_frame,
         )
 

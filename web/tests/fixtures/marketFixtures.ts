@@ -20,7 +20,6 @@ export function marketObservationFixture(
     open_interest_usd: null,
     observed_at_ms: 1_700_000_000_000,
     received_at_ms: 1_700_000_000_000,
-    raw_payload_hash: null,
     ...overrides,
   };
 }

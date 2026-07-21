@@ -4,17 +4,16 @@ import time
 from collections import Counter
 from collections.abc import Callable, Mapping
 from dataclasses import asdict
-from pathlib import Path
 from typing import Any
 
 from parallax.app.runtime.job_queue import JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor
 from parallax.app.runtime.ops_cli_queries import token_radar_publication_status
-from parallax.app.runtime.worker_status import effective_worker_status, workers_status_payload
+from parallax.app.runtime.runtime_snapshot import RuntimeSnapshot
+from parallax.app.runtime.worker_status import effective_worker_status
 from parallax.domains.asset_market.providers import ProviderHealth
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
-from parallax.platform.db.postgres_client import postgres_health_check
-from parallax.platform.db.postgres_migrations import latest_migration_version
-from parallax.platform.paths.runtime_paths import workers_config_path
+from parallax.platform.db.postgres_client import postgres_liveness_check
+from parallax.platform.paths.runtime_paths import config_path, workers_config_path
 
 OPS_DIAGNOSTICS_SCHEMA_VERSION = "ops.diagnostics.v1"
 OPS_QUEUE_SCHEMA_VERSION = "ops.queue.v1"
@@ -42,33 +41,34 @@ SECRET_TOKEN_KEYS = (
 TERMINAL_SUCCESS_STATUSES = {"done", "delivered"}
 QUEUE_ALLOWED_STATUSES = {"pending", "running", "failed", "dead", "done", "delivered"}
 AGENT_EXECUTION_RECENT_SIGNAL_MS = 5 * 60 * 1000
-AGENT_EXECUTION_POLICY_KEYS = {
-    "global_max_concurrency",
+DIAGNOSTIC_STATUSES = frozenset({"blocked", "degraded", "disabled", "failed", "idle", "ok", "unavailable", "unknown"})
+HEALTHY_CONNECTION_STATES = frozenset(
+    {"authenticating", "connected", "connecting", "running", "streaming", "subscribed"}
+)
+BLOCKED_CONNECTION_STATES = frozenset({"circuit_open", "disconnected", "failed", "failed_terminal"})
+AGENT_EXECUTION_POLICY_KEYS = (
+    "lane",
+    "model",
+    "provider_family",
+    "output_strategy",
+    "schema_enforcement",
     "max_concurrency",
-    "priority",
-    "priority_label",
     "rpm_limit",
     "timeout_seconds",
-}
-AGENT_EXECUTION_COUNTER_KEYS = {
+)
+AGENT_EXECUTION_COUNTER_KEYS = (
+    "in_flight",
+    "provider_running",
+    "circuit_state",
+    "circuit_open_until_ms",
     "capacity_denied_total",
     "circuit_open_total",
-    "global_in_flight",
-    "in_flight",
-    "last_capacity_denied_at_ms",
-    "last_circuit_open_at_ms",
+    "timeout_total",
     "last_denied_at_ms",
-    "last_provider_latency_timeout_at_ms",
-    "last_rate_limit_at_ms",
-    "last_rpm_wait_at_ms",
     "last_timeout_at_ms",
     "oldest_in_flight_age_ms",
-    "provider_latency_timeout_total",
-    "provider_running",
-    "rate_limit_denied_total",
-    "rpm_waiting_count",
-    "timeout_total",
-}
+)
+AGENT_EXECUTION_FIELDS = frozenset({*AGENT_EXECUTION_POLICY_KEYS, *AGENT_EXECUTION_COUNTER_KEYS})
 
 
 def ops_diagnostics_payload(
@@ -77,14 +77,13 @@ def ops_diagnostics_payload(
     now_ms: int | None = None,
 ) -> dict[str, Any]:
     generated_at_ms = int(now_ms if now_ms is not None else _now_ms())
-    database = _section("database", lambda: _database_payload(runtime))
-    collector = _section("collector", lambda: _collector_payload(runtime))
-    providers = _providers_payload(runtime)
-    worker_status = workers_status_payload(runtime)
-    workers = _workers_payload(worker_status["workers"])
-    worker_lanes = worker_status["worker_lanes"]
+    snapshot = runtime.current_snapshot()
+    database = _section("database", lambda: _database_payload(runtime, snapshot))
+    collector = _section("collector", lambda: _collector_payload(snapshot))
+    providers = _providers_payload(runtime, snapshot)
+    workers = _workers_payload(snapshot.workers)
     queues = _queues_payload(runtime, now_ms=generated_at_ms)
-    agent_execution = _agent_execution_payload(runtime, now_ms=generated_at_ms)
+    agent_execution = _agent_execution_payload(snapshot.agent_execution, now_ms=generated_at_ms)
     domains = _domains_payload(runtime)
     payload = {
         "schema_version": OPS_DIAGNOSTICS_SCHEMA_VERSION,
@@ -103,7 +102,6 @@ def ops_diagnostics_payload(
         "collector": collector,
         "providers": providers,
         "workers": workers,
-        "worker_lanes": worker_lanes,
         "queues": queues,
         "agent_execution": agent_execution,
         "domains": domains,
@@ -167,6 +165,9 @@ def redact_diagnostics(value: Any) -> Any:
 def _section(name: str, factory: Callable[[], dict[str, Any]]) -> dict[str, Any]:
     try:
         payload = dict(factory())
+        status = payload.get("status")
+        if not isinstance(status, str) or status not in DIAGNOSTIC_STATUSES:
+            raise ValueError(f"diagnostic_section_status_invalid:{name}")
     except Exception as exc:
         return {
             "status": "unknown",
@@ -174,25 +175,22 @@ def _section(name: str, factory: Callable[[], dict[str, Any]]) -> dict[str, Any]
             "error_type": type(exc).__name__,
             "reason": _preview_error(exc),
         }
-    payload.setdefault("status", "ok")
     return payload
 
 
-def _database_payload(runtime: Any) -> dict[str, Any]:
+def _database_payload(runtime: Any, snapshot: RuntimeSnapshot) -> dict[str, Any]:
     with runtime.db.api_pool.connection() as conn:
-        payload = postgres_health_check(conn, expected_migration_version=latest_migration_version())
-    status = "ok" if payload.get("ok") else "blocked"
-    return {"status": status, **payload}
+        liveness = postgres_liveness_check(conn)
+    startup_schema = dict(snapshot.startup_db_status)
+    ok = bool(liveness.get("ok")) and bool(startup_schema.get("ok"))
+    return {**liveness, "ok": ok, "status": "ok" if ok else "blocked", "schema": startup_schema}
 
 
-def _collector_payload(runtime: Any) -> dict[str, Any]:
-    details = runtime.collector.status.to_dict()
-    if not isinstance(details, dict):
-        raise RuntimeError("collector_status_payload_must_be_dict")
-    provider = runtime.collector.upstream_client
-    connection = _provider_connection_payload(provider)
-    state = str(connection.get("state") or "")
-    status = "ok" if state in {"connected", "running"} or not provider else "degraded"
+def _collector_payload(snapshot: RuntimeSnapshot) -> dict[str, Any]:
+    details = dict(snapshot.collector)
+    connection = dict(snapshot.provider_states["gmgn_direct_ws"])
+    state = _required_connection_state(connection)
+    status = "ok" if state in HEALTHY_CONNECTION_STATES or state == "disabled" else "degraded"
     return {
         "status": status,
         "connection": connection,
@@ -200,10 +198,10 @@ def _collector_payload(runtime: Any) -> dict[str, Any]:
     }
 
 
-def _providers_payload(runtime: Any) -> list[dict[str, Any]]:
+def _providers_payload(runtime: Any, snapshot: RuntimeSnapshot) -> list[dict[str, Any]]:
     providers = []
     providers.extend(_asset_market_provider_health(runtime))
-    providers.extend(_connection_providers(runtime))
+    providers.extend(_connection_providers(snapshot))
     return sorted(providers, key=lambda item: (str(item.get("domain")), str(item.get("provider"))))
 
 
@@ -233,21 +231,17 @@ def _asset_market_provider_health(runtime: Any) -> list[dict[str, Any]]:
     return providers
 
 
-def _connection_providers(runtime: Any) -> list[dict[str, Any]]:
-    collector = runtime.collector
-    asset_market = runtime.providers.asset_market
+def _connection_providers(snapshot: RuntimeSnapshot) -> list[dict[str, Any]]:
     return [
         _connection_provider_payload(
             provider_name="gmgn_direct_ws",
             domain="ingestion",
-            provider=collector.upstream_client,
-            configured=collector.upstream_client is not None,
+            connection=snapshot.provider_states["gmgn_direct_ws"],
         ),
         _connection_provider_payload(
             provider_name="okx_dex_ws",
             domain="asset_market",
-            provider=asset_market.stream_dex_market,
-            configured=asset_market.stream_dex_market is not None,
+            connection=snapshot.provider_states["okx_dex_ws"],
         ),
     ]
 
@@ -256,11 +250,10 @@ def _connection_provider_payload(
     *,
     provider_name: str,
     domain: str,
-    provider: Any | None,
-    configured: bool,
+    connection: Mapping[str, Any],
 ) -> dict[str, Any]:
-    connection = _provider_connection_payload(provider)
-    state = str(connection.get("state") or "disabled")
+    state = _required_connection_state(connection)
+    configured = state != "disabled"
     error = connection.get("error")
     return {
         "provider": provider_name,
@@ -275,34 +268,16 @@ def _connection_provider_payload(
     }
 
 
-def _provider_connection_payload(provider: Any | None) -> dict[str, Any]:
-    if provider is None:
-        return {"state": "disabled", "last_state_change_at_ms": None}
-    try:
-        value = provider.connection_state_payload()
-    except AttributeError:
-        return {
-            "state": "failed",
-            "last_state_change_at_ms": None,
-            "error": "provider_connection_state_contract_missing",
-        }
-    except Exception as exc:
-        return {"state": "failed", "last_state_change_at_ms": None, "error": _preview_error(exc)}
-    if not isinstance(value, dict):
-        return {
-            "state": "failed",
-            "last_state_change_at_ms": None,
-            "error": "provider_connection_state_payload_not_dict",
-        }
-    return value
-
-
 def _provider_status(*, configured: bool, state: str | None = None, error: Any = None) -> str:
     if not configured:
         return "disabled"
-    if state in {"failed", "disconnected"}:
+    if state is None:
+        return "degraded" if error else "ok"
+    if state in BLOCKED_CONNECTION_STATES:
         return "blocked"
-    if error:
+    if state == "degraded_recoverable":
+        return "degraded"
+    if error or state not in HEALTHY_CONNECTION_STATES:
         return "degraded"
     return "ok"
 
@@ -310,9 +285,13 @@ def _provider_status(*, configured: bool, state: str | None = None, error: Any =
 def _provider_reason(*, configured: bool, state: str | None = None, error: Any = None) -> str:
     if not configured:
         return "not_configured"
-    if state in {"failed", "disconnected"}:
+    if state is None:
+        return "provider_error_visible" if error else "ready"
+    if state in BLOCKED_CONNECTION_STATES:
         return f"connection_{state}"
-    if error:
+    if state == "degraded_recoverable":
+        return "connection_degraded_recoverable"
+    if error or state not in HEALTHY_CONNECTION_STATES:
         return "provider_error_visible"
     return "ready"
 
@@ -337,9 +316,6 @@ def _workers_payload(workers: Mapping[str, dict[str, Any]]) -> list[dict[str, An
                 "last_result": status.get("last_result"),
                 "last_error_type": _error_type(last_error),
                 "iteration_duration_p99_ms": status.get("iteration_duration_p99_ms"),
-                "pool_wait_ms_p99": status.get("pool_wait_ms_p99"),
-                "queue_depth": status.get("queue_depth"),
-                "details": status.get("details") or {},
                 "status": effective_status,
                 "reason": _worker_reason(
                     effective_status=effective_status,
@@ -577,93 +553,61 @@ def _watchlist_domain(runtime: Any) -> dict[str, Any]:
 def _notifications_domain(runtime: Any) -> dict[str, Any]:
     with runtime.repositories() as repos:
         summary = repos.notifications.summary(subscriber_key="local")
-    return {"status": "ok", "summary": summary}
+    status = "ok" if runtime.settings.notifications.enabled else "disabled"
+    return {"status": status, "summary": summary}
 
 
-def _agent_execution_payload(runtime: Any, *, now_ms: int) -> dict[str, Any]:
-    gateway = runtime.agent_execution_gateway
-    if gateway is None:
-        return {"status": "disabled", "policy": {}, "counters": {}, "lanes": {}}
-    try:
-        raw_snapshot = gateway.status_snapshot()
-    except AttributeError:
-        return {
-            "status": "unknown",
-            "status_reason": "unavailable",
-            "error": "agent_execution_status_contract_missing",
-            "policy": {},
-            "counters": {},
-            "lanes": {},
-        }
-    except Exception:
-        return {"status": "unknown", "status_reason": "unavailable", "policy": {}, "counters": {}, "lanes": {}}
+def _agent_execution_payload(raw_snapshot: Mapping[str, Any] | None, *, now_ms: int) -> dict[str, Any]:
+    if raw_snapshot is None:
+        return {"status": "disabled", "policy": None, "counters": None}
     if not isinstance(raw_snapshot, Mapping):
         return {
-            "status": "unknown",
+            "status": "unavailable",
             "status_reason": "unavailable",
             "error": "agent_execution_status_payload_not_mapping",
-            "policy": {},
-            "counters": {},
-            "lanes": {},
+            "policy": None,
+            "counters": None,
         }
+    if raw_snapshot.get("status") == "unavailable":
+        return {
+            "status": "unavailable",
+            "status_reason": "unavailable",
+            "error": raw_snapshot.get("error"),
+            "policy": None,
+            "counters": None,
+        }
+    actual_fields = frozenset(raw_snapshot)
+    if actual_fields != AGENT_EXECUTION_FIELDS:
+        return _invalid_agent_execution_payload(
+            "agent_execution_status_fields_mismatch:"
+            f"missing={sorted(AGENT_EXECUTION_FIELDS - actual_fields)}:"
+            f"unknown={sorted(actual_fields - AGENT_EXECUTION_FIELDS)}"
+        )
 
     policy = _agent_policy_fields(raw_snapshot)
     counters = _agent_counter_fields(raw_snapshot)
-    lanes: dict[str, dict[str, Any]] = {}
-    statuses: list[str] = []
-    raw_lanes = raw_snapshot.get("lanes")
-    if isinstance(raw_lanes, Mapping):
-        for lane_name, lane_snapshot in sorted(raw_lanes.items(), key=lambda item: str(item[0])):
-            if not isinstance(lane_snapshot, Mapping):
-                continue
-            lane_policy = _agent_policy_fields(lane_snapshot)
-            nested_policy = lane_snapshot.get("policy")
-            if isinstance(nested_policy, Mapping):
-                lane_policy.update(_agent_policy_fields(nested_policy))
-            lane_counters = _agent_counter_fields(lane_snapshot)
-            lane_status = _agent_lane_status(
-                lane_snapshot,
-                policy=lane_policy,
-                counters=lane_counters,
-                now_ms=now_ms,
-            )
-            statuses.append(lane_status)
-            lanes[str(lane_name)] = {
-                "status": lane_status,
-                "policy": lane_policy,
-                "counters": lane_counters,
-            }
-
-    status = "blocked" if "blocked" in statuses else "degraded" if "degraded" in statuses else "ok"
     return {
-        "status": status,
+        "status": _agent_execution_status(policy=policy, counters=counters, now_ms=now_ms),
         "policy": policy,
         "counters": counters,
-        "lanes": lanes,
     }
 
 
 def _agent_policy_fields(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    return {key: snapshot.get(key) for key in AGENT_EXECUTION_POLICY_KEYS if key in snapshot}
+    return {key: snapshot[key] for key in AGENT_EXECUTION_POLICY_KEYS}
 
 
 def _agent_counter_fields(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    return {key: snapshot.get(key) for key in AGENT_EXECUTION_COUNTER_KEYS if key in snapshot}
+    return {key: snapshot[key] for key in AGENT_EXECUTION_COUNTER_KEYS}
 
 
-def _agent_lane_status(
-    snapshot: Mapping[str, Any],
+def _agent_execution_status(
     *,
     policy: Mapping[str, Any],
     counters: Mapping[str, Any],
     now_ms: int,
 ) -> str:
-    circuit_open = str(snapshot.get("circuit_state") or "").lower() == "open"
-    if circuit_open and _agent_priority_label(policy) == "high":
-        return "blocked"
-    if circuit_open:
-        return "degraded"
-    if _positive_counter(counters.get("rpm_waiting_count")):
+    if str(counters.get("circuit_state") or "").lower() == "open":
         return "degraded"
     timeout_seconds = _float_or_none(policy.get("timeout_seconds"))
     oldest_in_flight_age_ms = _float_or_none(counters.get("oldest_in_flight_age_ms"))
@@ -674,21 +618,10 @@ def _agent_lane_status(
         and _positive_counter(counters.get("provider_running"))
     ):
         return "degraded"
-    recent_fields = (
-        "last_capacity_denied_at_ms",
-        "last_denied_at_ms",
-        "last_provider_latency_timeout_at_ms",
-        "last_rate_limit_at_ms",
-        "last_rpm_wait_at_ms",
-        "last_timeout_at_ms",
-    )
+    recent_fields = ("last_denied_at_ms", "last_timeout_at_ms")
     if any(_is_recent_ms(counters.get(field), now_ms=now_ms) for field in recent_fields):
         return "degraded"
     return "ok"
-
-
-def _agent_priority_label(policy: Mapping[str, Any]) -> str:
-    return str(policy.get("priority_label") or policy.get("priority") or "").strip().lower()
 
 
 def _positive_counter(value: Any) -> bool:
@@ -763,18 +696,37 @@ def _overall_payload(
 
 def _config_payload(runtime: Any) -> dict[str, Any]:
     settings = runtime.settings
-    app_home = Path(str(settings.app_home)).expanduser()
+    app_home = settings.app_home.expanduser()
     return {
-        "app_home": str(app_home) if str(app_home) else None,
-        "config_path": str(app_home / "config.yaml") if str(app_home) else None,
-        "workers_config_path": str(workers_config_path(app_home)) if str(app_home) else None,
+        "app_home": str(app_home),
+        "config_path": str(config_path(app_home)),
+        "workers_config_path": str(workers_config_path(app_home)),
         "handles_count": len(tuple(settings.handles or ())),
-        "upstream_channels": list(settings.upstream_channels or ()),
+        "upstream_channels": list(settings.upstream.channels),
         "gmgn_configured": bool(settings.gmgn_configured),
         "okx_dex_configured": bool(settings.okx_dex_configured),
         "llm_configured": bool(settings.llm_configured),
-        "news_enabled": bool(settings.news_intel_enabled),
-        "notifications_enabled": bool(settings.notification_rules is not None),
+        "news_enabled": bool(settings.news_intel.enabled),
+        "notifications_enabled": bool(settings.notifications.enabled),
+    }
+
+
+def _required_connection_state(connection: Mapping[str, Any]) -> str:
+    state = connection.get("state")
+    if not isinstance(state, str) or state not in (
+        HEALTHY_CONNECTION_STATES | BLOCKED_CONNECTION_STATES | {"degraded_recoverable", "disabled"}
+    ):
+        raise ValueError("provider_connection_state_invalid")
+    return state
+
+
+def _invalid_agent_execution_payload(error: str) -> dict[str, Any]:
+    return {
+        "status": "unknown",
+        "status_reason": "invalid_contract",
+        "error": error,
+        "policy": None,
+        "counters": None,
     }
 
 

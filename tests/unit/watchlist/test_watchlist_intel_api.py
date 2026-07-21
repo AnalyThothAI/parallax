@@ -67,7 +67,15 @@ class FakeWatchlistQuery:
                 {
                     "event_id": "event-1",
                     "received_at_ms": 1_000,
+                    "author_handle": "toly",
+                    "action": "tweet",
                     "text_clean": "$SOL launch",
+                    "canonical_url": None,
+                    "cashtags": ["SOL"],
+                    "hashtags": [],
+                    "mentions": [],
+                    "event": {"event_id": "event-1"},
+                    "token_resolutions": [],
                 }
             ],
             "has_more": False,
@@ -97,7 +105,18 @@ class FakeWatchlistQuery:
                 "last_source_event_at_ms": 1_000,
             },
             "resolved_token_clusters": [],
-            "candidate_mention_clusters": [{"label": "$SOL", "count": 1, "query": "$SOL", "kind": "candidate_mention"}],
+            "candidate_mention_clusters": [
+                {
+                    "label": "$SOL",
+                    "count": 1,
+                    "query": "$SOL",
+                    "kind": "candidate_mention",
+                    "target_type": None,
+                    "target_id": None,
+                    "symbol": None,
+                    "source": "event_cashtags",
+                }
+            ],
             "narrative_clusters": [],
             "clusters_truncated": False,
             "risk_notes": ["candidate_mentions_unresolved"],
@@ -128,6 +147,6 @@ def _app(watchlist):
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
-    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
+    app.include_router(create_api_router(lambda _: {"ok": True}))
     app.state.service = FakeRuntime(watchlist)
     return app

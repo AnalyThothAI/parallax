@@ -9,7 +9,7 @@ import pytest
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 
 
-def test_import_macro_bundle_owns_persistence_and_wake_hint(monkeypatch) -> None:
+def test_import_macro_bundle_owns_persistence(monkeypatch) -> None:
     from parallax.app.operations import macro as operation
 
     events: list[tuple[str, object]] = []
@@ -30,54 +30,64 @@ def test_import_macro_bundle_owns_persistence_and_wake_hint(monkeypatch) -> None
         events.append(("import", (envelope, repos, now_ms)))
         return summary
 
-    class Wake:
-        def __init__(self, _factory) -> None:
-            pass
-
-        def notify_macro_observations_imported(self, **kwargs) -> None:
-            events.append(("wake", kwargs))
-
     monkeypatch.setattr(operation, "repositories", fake_repositories)
     monkeypatch.setattr(operation, "import_macrodata_bundle", fake_import)
-    monkeypatch.setattr(operation, "WakeBus", Wake)
 
     assert operation.import_macro_bundle(settings, {"ok": True}, now_ms=123) is summary
     assert events == [
         ("repos_enter", settings),
         ("import", ({"ok": True}, "repos", 123)),
         ("repos_exit", settings),
-        (
-            "wake",
-            {"count": 2, "max_observed_at": "2026-07-20", "asof_date": "2026-07-21"},
-        ),
     ]
 
 
-def test_import_macro_bundle_does_not_rollback_for_wake_failure(monkeypatch) -> None:
+def test_snapshot_status_uses_only_exact_current_sections() -> None:
     from parallax.app.operations import macro as operation
 
-    @contextmanager
-    def fake_repositories(_settings):
-        yield object()
-
-    class Wake:
-        def __init__(self, _factory) -> None:
-            pass
-
-        def notify_macro_observations_imported(self, **_kwargs) -> None:
-            raise RuntimeError("wake failed")
-
-    monkeypatch.setattr(operation, "repositories", fake_repositories)
-    monkeypatch.setattr(
-        operation,
-        "import_macrodata_bundle",
-        lambda *_args, **_kwargs: {"imported_observation_count": 1},
-    )
-    monkeypatch.setattr(operation, "WakeBus", Wake)
-
-    assert operation.import_macro_bundle(SimpleNamespace(), {"ok": True}, now_ms=123) == {
-        "imported_observation_count": 1
+    snapshot = _macro_snapshot()
+    snapshot["source_coverage_json"] = {
+        "latest_coverage_ratio": 0,
+        "history_coverage_ratio": 0,
+        "observed_concept_count": 0,
+        "required_concept_count": 0,
+        "history_ready_concept_count": 0,
+        "required_history_concept_count": 0,
+        "concepts_below_min_history": [],
     }
+    snapshot["scorecard_json"] = {
+        "latest_coverage_ratio": 0.9,
+        "history_coverage_ratio": 0.8,
+        "observed_concept_count": 99,
+        "required_concept_count": 100,
+    }
+
+    summary = operation._snapshot_status_summary(snapshot)
+
+    assert summary is not None
+    assert summary["coverage"] == {
+        "latest_coverage_ratio": 0,
+        "history_coverage_ratio": 0,
+        "observed_concept_count": 0,
+        "required_concept_count": 0,
+        "history_ready_concept_count": 0,
+        "required_history_concept_count": 0,
+        "concepts_below_min_history": [],
+    }
+
+
+@pytest.mark.parametrize("panels", [None, [], {"rates": "not-an-object"}])
+def test_snapshot_status_rejects_malformed_panels_without_chain_fallback(panels: object) -> None:
+    from parallax.app.operations import macro as operation
+
+    snapshot = _macro_snapshot()
+    if panels is None:
+        snapshot.pop("panels_json")
+    else:
+        snapshot["panels_json"] = panels
+    snapshot["chain_json"] = {"rates": {"score": 99, "regime": "risk_on"}}
+
+    with pytest.raises(ValueError, match="panels_json"):
+        operation._snapshot_status_summary(snapshot)
 
 
 def test_sync_macro_window_composes_provider_and_service(monkeypatch) -> None:
@@ -126,6 +136,27 @@ def test_sync_macro_window_composes_provider_and_service(monkeypatch) -> None:
             "now_ms": 123,
         },
     )
+
+
+def _macro_snapshot() -> dict[str, object]:
+    return {
+        "projection_version": "macro_regime_v4",
+        "asof_date": "2026-07-21",
+        "status": "partial",
+        "regime": "mixed",
+        "overall_score": 50,
+        "computed_at_ms": 1_779_000_000_000,
+        "panels_json": {"rates": {"score": 50, "regime": "mixed", "evidence": [], "data_gaps": []}},
+        "indicators_json": {},
+        "triggers_json": [],
+        "data_gaps_json": [],
+        "source_coverage_json": {},
+        "features_json": {},
+        "chain_json": {},
+        "scenario_json": {},
+        "scorecard_json": {},
+        "module_views_json": {},
+    }
 
 
 def test_sync_macro_window_preserves_redacted_diagnostics_on_failure(monkeypatch) -> None:

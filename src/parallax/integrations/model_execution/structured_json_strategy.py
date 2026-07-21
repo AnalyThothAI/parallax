@@ -5,13 +5,11 @@ from dataclasses import dataclass
 from typing import Any
 
 import litellm
-from pydantic import ValidationError
 
 from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from parallax.integrations.model_execution.usage import extract_model_usage
 from parallax.platform.agent_capabilities import AgentCapabilityProfile, AgentRequestOptions
 from parallax.platform.agent_execution import AgentStageSpec
-from parallax.platform.validation import require_nonnegative_int
 
 
 @dataclass(frozen=True, slots=True)
@@ -42,42 +40,26 @@ class ChatJsonObjectStrategy:
             input_payload=context.stage.input_payload,
             schema=schema,
         )
-        client_validation_retries = require_nonnegative_int(
-            context.capability_profile.client_validation_retries,
-            error_code="structured_json_client_validation_retries_required",
-        )
-        attempts = client_validation_retries + 1
-        last_error: Exception | None = None
-        raw_response: Any | None = None
         request_options = _chat_completion_request_options(context.capability_profile.request_options)
-        for attempt_index in range(attempts):
-            raw_response = await litellm.acompletion(
-                model=_litellm_model_name(context.model_name, base_url=self._base_url),
-                messages=messages,
-                response_format={"type": "json_object"},
-                api_key=self._api_key or None,
-                base_url=self._base_url or None,
-                timeout=float(context.timeout_seconds),
-                **request_options,
-            )
-            text = _first_message_content(raw_response)
-            try:
-                parsed = output_schema.validate_json(text)
-                return StructuredOutputOutcome(
-                    parsed,
-                    raw_response,
-                    {
-                        "safety_net_used": attempt_index > 0,
-                        "safety_net_retries": attempt_index,
-                        "parse_mode": "json_object_client_validate",
-                        "schema_enforcement": "client_validate",
-                        "usage": extract_model_usage(raw_response),
-                    },
-                )
-            except (ValidationError, ValueError) as exc:
-                last_error = exc
-                messages = _append_validation_reask(messages, error=str(exc))
-        raise last_error or ValueError("json_object response validation failed")
+        raw_response = await litellm.acompletion(
+            model=_litellm_model_name(context.model_name, base_url=self._base_url),
+            messages=messages,
+            response_format={"type": "json_object"},
+            api_key=self._api_key or None,
+            base_url=self._base_url or None,
+            timeout=float(context.timeout_seconds),
+            **request_options,
+        )
+        parsed = output_schema.validate_json(_first_message_content(raw_response))
+        return StructuredOutputOutcome(
+            parsed,
+            raw_response,
+            {
+                "parse_mode": "json_object_client_validate",
+                "schema_enforcement": "client_validate",
+                "usage": extract_model_usage(raw_response),
+            },
+        )
 
 
 def runner_input_payload(input_payload: Any) -> Any:
@@ -115,24 +97,6 @@ def _response_get(value: Any, key: str) -> Any:
     if isinstance(value, dict):
         return value.get(key)
     return getattr(value, key, None)
-
-
-def _append_validation_reask(
-    messages: list[dict[str, str]],
-    *,
-    error: str,
-) -> list[dict[str, str]]:
-    return [
-        *messages,
-        {
-            "role": "user",
-            "content": (
-                "The previous JSON object failed application validation. "
-                f"Validation error: {error[:1000]}\n"
-                "Return one corrected JSON object only. Use the JSON schema already provided in the system message."
-            ),
-        },
-    ]
 
 
 def _chat_completion_request_options(request_options: AgentRequestOptions) -> dict[str, Any]:

@@ -27,31 +27,18 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
 
     assert set(payload) - {"agent_runtime"} == _manifest_worker_names()
     assert _old_anchor_worker_key() not in payload
-    assert settings.agent_runtime.defaults.model == "deepseek-v4-flash"
+    assert settings.agent_runtime.model == "deepseek-v4-flash"
     assert settings.collector.mode == "continuous"
-    assert settings.collector.hard_timeout_seconds == 0
     assert settings.collector.snapshot_timeout_seconds == 0.5
     assert settings.market_tick_stream.interval_seconds == 5
     assert settings.market_tick_stream.subscription_limit == 100
     assert settings.market_tick_poll.interval_seconds == 15
     assert settings.market_tick_poll.batch_size == 100
     assert settings.market_tick_poll.concurrency == 4
-    assert settings.market_tick_current_projection.interval_seconds == 5
-    assert settings.market_tick_current_projection.batch_size == 100
-    assert settings.market_tick_current_projection.advisory_lock_key == 2026052401
     assert settings.event_anchor_backfill.interval_seconds == 1
     assert settings.event_anchor_backfill.batch_size == 50
     assert settings.event_anchor_backfill.concurrency == 8
     assert settings.event_anchor_backfill.min_age_ms == 250
-    assert settings.token_capture_tier.interval_seconds == 30
-    assert settings.token_capture_tier.batch_size == 500
-    assert settings.token_capture_tier.ws_limit == 100
-    assert settings.token_capture_tier.poll_limit == 500
-    assert settings.live_price_gateway.interval_seconds == 2
-    assert settings.live_price_gateway.target_limit == 100
-    assert settings.live_price_gateway.target_ttl_seconds == 300
-    assert not hasattr(settings.live_price_gateway, "subscription_limit")
-    assert not hasattr(settings.live_price_gateway, "live_observation_heartbeat_seconds")
     assert settings.resolution_refresh.chain_ids == ("solana", "eip155:1", "eip155:56", "eip155:8453", "ton")
     assert settings.resolution_refresh.lease_ms == 300_000
     assert settings.resolution_refresh.hot_not_found_retry_ms == 60_000
@@ -65,14 +52,10 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_image_mirror.batch_size == 100
     assert settings.token_image_mirror.max_attempts == 3
     assert settings.token_image_mirror.statement_timeout_seconds == 120
-    assert settings.token_image_mirror.advisory_lock_key == 2026052111
     assert settings.token_profile_current.interval_seconds == 60
     assert settings.token_profile_current.batch_size == 500
-    assert settings.token_capture_tier.advisory_lock_key == 2026051503
-    assert settings.token_radar_projection.advisory_lock_key == 2026051501
     assert settings.token_radar_projection.batch_size == 100
     assert settings.token_radar_projection.retry_ms == 30_000
-    assert settings.token_radar_projection.private_cache_retention_enabled is True
     assert settings.token_radar_projection.private_cache_retention_ms == 172_800_000
     assert settings.token_radar_projection.statement_timeout_seconds == 120
     assert settings.token_radar_projection.venues == ("all", "sol", "eth", "base", "bsc", "cex")
@@ -128,13 +111,14 @@ def test_worker_settings_schema_matches_manifest_worker_names() -> None:
     assert worker_fields == _manifest_worker_names()
 
 
-def test_worker_wake_channels_are_manifest_only_and_rejected_in_workers_yaml() -> None:
+@pytest.mark.parametrize("field", ["wakes_on", "hard_timeout_seconds", "advisory_lock_key"])
+def test_deleted_worker_lifecycle_control_keys_are_rejected(field: str) -> None:
     payload = yaml.safe_load(default_workers_yaml())
 
-    assert all("wakes_on" not in worker_config for worker_config in payload.values() if isinstance(worker_config, dict))
-    payload["news_item_process"]["wakes_on"] = ["news_item_written"]
+    assert all(field not in worker_config for worker_config in payload.values() if isinstance(worker_config, dict))
+    payload["news_item_process"][field] = "legacy"
 
-    with pytest.raises(ValidationError, match="wakes_on"):
+    with pytest.raises(ValidationError, match=field):
         WorkersSettings(**payload)
 
 
@@ -146,7 +130,7 @@ def test_default_config_excludes_deleted_product_settings() -> None:
 
     assert f"{deleted_product_prefix}_intel" not in config_payload
     assert not hasattr(settings, f"{deleted_product_prefix}_intel")
-    assert f"{deleted_product_prefix}.brief" not in workers_payload["agent_runtime"]["lanes"]
+    assert deleted_product_prefix not in str(workers_payload["agent_runtime"])
     assert all(not key.startswith(f"{deleted_product_prefix}_") for key in workers_payload)
     assert all(not field.startswith(f"{deleted_product_prefix}_") for field in WorkersSettings.model_fields)
 
@@ -215,93 +199,65 @@ def test_worker_settings_reject_unknown_nested_key():
         WorkersSettings(**payload)
 
 
-def test_agent_runtime_settings_default_lanes() -> None:
-    from parallax.platform.config.settings import WorkersSettings
-
+def test_agent_runtime_settings_have_one_flat_policy() -> None:
     settings = WorkersSettings()
 
-    assert settings.agent_runtime.global_max_concurrency == 4
-    assert settings.agent_runtime.global_rpm_limit == 60
-    assert settings.agent_runtime.defaults.model == "deepseek-v4-flash"
-    assert settings.agent_runtime.defaults.disable_thinking is True
-    assert settings.agent_runtime.defaults.include_usage is True
-    assert "narrative.discussion_digest" not in settings.agent_runtime.lanes
-    assert "narrative.mention_semantics" not in settings.agent_runtime.lanes
-    assert "news.item_brief" not in settings.agent_runtime.lanes
-    assert settings.agent_runtime.lanes["news.story_brief"].priority == "low"
-    assert settings.agent_runtime.lanes["news.story_brief"].max_concurrency == 1
-    assert settings.agent_runtime.lanes["news.story_brief"].timeout_seconds == 180
+    assert settings.agent_runtime.model == "deepseek-v4-flash"
+    assert settings.agent_runtime.provider_family is None
+    assert settings.agent_runtime.max_tokens == 2200
+    assert settings.agent_runtime.max_concurrency == 1
+    assert settings.agent_runtime.rpm_limit == 60
+    assert settings.agent_runtime.timeout_seconds == 180
+    assert settings.agent_runtime.circuit_breaker.failure_threshold == 5
+    assert settings.agent_runtime.circuit_breaker.window_seconds == 300
+    assert settings.agent_runtime.circuit_breaker.open_seconds == 120
 
 
-def test_agent_runtime_settings_partial_story_lane_override_preserves_global_settings() -> None:
-    from parallax.platform.config.settings import WorkersSettings
-
+def test_agent_runtime_settings_accept_flat_override() -> None:
     settings = WorkersSettings(
         agent_runtime={
-            "global_max_concurrency": 2,
-            "global_rpm_limit": 30,
-            "lanes": {
-                "news.story_brief": {
-                    "priority": "high",
-                    "model": "gpt-news",
-                    "max_concurrency": 1,
-                    "timeout_seconds": 90,
-                    "circuit_breaker": {
-                        "failure_threshold": 3,
-                        "window_seconds": 120,
-                        "open_seconds": 60,
-                    },
-                }
+            "model": "gpt-news",
+            "provider_family": "litellm",
+            "max_tokens": 1800,
+            "max_concurrency": 2,
+            "rpm_limit": 30,
+            "timeout_seconds": 90,
+            "circuit_breaker": {
+                "failure_threshold": 3,
+                "window_seconds": 120,
+                "open_seconds": 60,
             },
         }
     )
 
-    lane = settings.agent_runtime.lanes["news.story_brief"]
-    assert settings.agent_runtime.global_max_concurrency == 2
-    assert settings.agent_runtime.global_rpm_limit == 30
-    assert lane.model == "gpt-news"
-    assert lane.timeout_seconds == 90
-    assert lane.circuit_breaker.failure_threshold == 3
-    assert "narrative.mention_semantics" not in settings.agent_runtime.lanes
-    assert settings.agent_runtime.lanes["news.story_brief"].timeout_seconds == 90
+    assert settings.agent_runtime.model == "gpt-news"
+    assert settings.agent_runtime.provider_family.value == "litellm"
+    assert settings.agent_runtime.max_tokens == 1800
+    assert settings.agent_runtime.max_concurrency == 2
+    assert settings.agent_runtime.rpm_limit == 30
+    assert settings.agent_runtime.timeout_seconds == 90
+    assert settings.agent_runtime.circuit_breaker.failure_threshold == 3
 
 
-def test_agent_runtime_settings_accepts_news_story_brief_lane_override() -> None:
-    from parallax.platform.config.settings import WorkersSettings
-
-    settings = WorkersSettings(
-        agent_runtime={
-            "lanes": {
-                "news.story_brief": {
-                    "priority": "low",
-                    "model": "gpt-story",
-                    "max_concurrency": 1,
-                    "timeout_seconds": 210,
-                }
-            }
-        }
-    )
-
-    lane = settings.agent_runtime.lanes["news.story_brief"]
-    assert lane.priority == "low"
-    assert lane.model == "gpt-story"
-    assert lane.max_concurrency == 1
-    assert lane.timeout_seconds == 210
-
-
-def test_agent_runtime_settings_reject_unknown_lane_key() -> None:
-    with pytest.raises(ValidationError):
-        WorkersSettings(
-            agent_runtime={
-                "lanes": {
-                    "unknown.agent_lane": {
-                        "priority": "high",
-                        "max_concurrency": 1,
-                        "timeout_seconds": 90,
-                    }
-                }
-            }
-        )
+@pytest.mark.parametrize(
+    "legacy_field, legacy_value",
+    [
+        ("defaults", {"model": "gpt-base"}),
+        ("lanes", {"news.story_brief": {"model": "gpt-story"}}),
+        ("global_max_concurrency", 2),
+        ("global_rpm_limit", 30),
+        ("client_validation_retries", 2),
+        ("priority", "high"),
+        ("disable_thinking", True),
+        ("include_usage", True),
+    ],
+)
+def test_agent_runtime_settings_reject_removed_policy_layers(
+    legacy_field: str,
+    legacy_value: object,
+) -> None:
+    with pytest.raises(ValidationError, match=legacy_field):
+        WorkersSettings(agent_runtime={legacy_field: legacy_value})
 
 
 def test_worker_settings_reject_zero_asset_profile_refresh_policies():
@@ -327,20 +283,13 @@ def test_worker_settings_reject_zero_notification_delivery_running_policies():
         WorkersSettings(**payload)
 
 
-def test_worker_settings_reject_zero_hard_timeout_for_non_continuous_workers() -> None:
-    payload = yaml.safe_load(default_workers_yaml())
-    payload["news_fetch"]["hard_timeout_seconds"] = 0
-
-    with pytest.raises(ValidationError, match="hard_timeout_seconds"):
-        WorkersSettings(**payload)
-
-
-def test_worker_settings_reject_legacy_live_gateway_fields():
-    payload = yaml.safe_load(default_workers_yaml())
-    payload["live_price_gateway"]["subscription_limit"] = 100
-
-    with pytest.raises(ValidationError):
-        WorkersSettings(**payload)
+@pytest.mark.parametrize(
+    "worker_name",
+    ["market_tick_current_projection", "token_capture_tier", "live_price_gateway"],
+)
+def test_worker_settings_reject_retired_market_control_workers(worker_name: str) -> None:
+    with pytest.raises(ValidationError, match=worker_name):
+        WorkersSettings(**{worker_name: {"enabled": True}})
 
 
 def test_news_workers_have_defaults():
@@ -348,12 +297,9 @@ def test_news_workers_have_defaults():
     settings = WorkersSettings(**payload)
 
     assert settings.news_fetch.interval_seconds == 60
-    assert settings.news_fetch.hard_timeout_seconds == 180
     assert settings.news_fetch.batch_size == 5
     assert settings.news_fetch.lease_ms == 60_000
     assert settings.news_fetch.statement_timeout_seconds == 30
-    assert settings.news_fetch.advisory_lock_key == 2026051905
-    assert settings.news_item_process.advisory_lock_key == 2026051902
     assert settings.news_item_process.batch_size == 10
     assert settings.news_item_process.lease_ms == 120_000
     assert settings.news_item_process.max_attempts == 3
@@ -361,81 +307,52 @@ def test_news_workers_have_defaults():
     assert settings.news_item_process.statement_timeout_seconds == 30
     assert not hasattr(settings, "news_story_projection")
     assert settings.news_story_brief.interval_seconds == 10
-    assert settings.news_story_brief.hard_timeout_seconds == 240
     assert settings.news_story_brief.batch_size == 5
     assert settings.news_story_brief.lease_ms == 120_000
     assert settings.news_story_brief.retry_ms == 60_000
     assert settings.news_story_brief.statement_timeout_seconds == 30
-    assert settings.news_story_brief.advisory_lock_key == 2026061801
     assert settings.news_story_brief.backpressure_cooldown_ms == 60_000
     assert settings.news_page_projection.batch_size == 100
     assert settings.news_page_projection.lease_ms == 120_000
     assert settings.news_page_projection.retry_ms == 30_000
     assert settings.news_page_projection.statement_timeout_seconds == 30
-    assert settings.news_page_projection.advisory_lock_key == 2026051904
-
-
-def test_default_worker_advisory_lock_keys_are_unique():
-    settings = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
-    keys = {
-        worker_name: getattr(worker_settings, "advisory_lock_key", None)
-        for worker_name, worker_settings in settings
-        if getattr(worker_settings, "advisory_lock_key", None) is not None
-    }
-
-    assert len(keys.values()) == len(set(keys.values()))
 
 
 def test_agent_runtime_capability_fields_default_to_model_registry() -> None:
     settings = WorkersSettings()
 
-    assert settings.agent_runtime.defaults.provider_family is None
-    assert settings.agent_runtime.defaults.client_validation_retries is None
-    assert settings.agent_runtime.defaults.max_tokens is None
-    assert settings.agent_runtime.lanes["news.story_brief"].max_tokens == 2200
+    assert settings.agent_runtime.provider_family is None
+    assert settings.agent_runtime.max_tokens == 2200
 
 
 def test_agent_runtime_default_model_uses_registered_capability_profile() -> None:
-    settings = WorkersSettings(agent_runtime={"defaults": {"model": "deepseek-v4-flash"}})
-    policy = AgentRuntimePolicy.model_validate(settings.agent_runtime.model_dump(mode="json"))
-
-    profile = policy.capability_for_lane("news.story_brief")
+    settings = WorkersSettings(agent_runtime={"model": "deepseek-v4-flash"})
+    profile = settings.agent_runtime.capability_profile()
 
     assert profile.provider_family.value == "deepseek"
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
 
 
 def test_platform_agent_runtime_policy_default_matches_workers_settings_default() -> None:
-    assert AgentRuntimePolicy().defaults.model == WorkersSettings().agent_runtime.defaults.model
+    assert AgentRuntimePolicy() == WorkersSettings().agent_runtime
 
 
-def test_agent_runtime_lane_accepts_capability_overrides() -> None:
+def test_agent_runtime_accepts_capability_overrides() -> None:
     settings = WorkersSettings(
         agent_runtime={
-            "lanes": {
-                "news.story_brief": {
-                    "provider_family": "deepseek",
-                    "client_validation_retries": 2,
-                    "max_tokens": 1800,
-                }
-            }
+            "provider_family": "deepseek",
+            "max_tokens": 1800,
         }
     )
 
-    lane = settings.agent_runtime.lanes["news.story_brief"]
-    assert lane.provider_family == "deepseek"
-    assert lane.client_validation_retries == 2
-    assert lane.max_tokens == 1800
+    assert settings.agent_runtime.provider_family.value == "deepseek"
+    assert settings.agent_runtime.max_tokens == 1800
 
 
 def test_agent_runtime_rejects_legacy_output_strategy_field() -> None:
     with pytest.raises(ValidationError, match="output_strategy"):
         WorkersSettings(
             agent_runtime={
-                "lanes": {
-                    "news.story_brief": {
-                        "output_strategy": "freeform_yaml",
-                    }
-                }
+                "output_strategy": "freeform_yaml",
             }
         )

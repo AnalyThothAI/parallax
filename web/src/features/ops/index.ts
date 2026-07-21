@@ -1,5 +1,6 @@
 export { useOpsDiagnosticsQuery, useOpsQueueQuery } from "./api/useOpsDiagnosticsQuery";
 export type {
+  OpsAgentExecution,
   OpsDiagnostics,
   OpsProvider,
   OpsQueueData,

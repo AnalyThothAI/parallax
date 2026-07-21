@@ -15,8 +15,11 @@ import {
 
 import {
   domainRows,
+  requireOpsDiagnostics,
+  requireOpsQueueData,
   statusRank,
   statusTone,
+  type OpsAgentExecution,
   type OpsDiagnostics,
   type OpsJson,
   type OpsProvider,
@@ -66,15 +69,22 @@ export function OpsDiagnosticsPage({
     return <PageState.Error error={error} onRetry={onRefresh} />;
   }
   if (!diagnostics) {
-    return <PageState.Empty title="暂无诊断数据" hint="运行时诊断暂不可用。" />;
+    return <PageState.Error error={new Error("ops_current_contract:diagnostics_required")} />;
   }
 
-  const incidents = incidentRows(diagnostics);
-  const chain = runtimeChain(diagnostics);
-  const providersByStatus = sortByAttention(diagnostics.providers);
-  const workersByStatus = sortByAttention(diagnostics.workers);
-  const rows = domainRows(diagnostics);
-  const overall = statusTone(diagnostics.overall.status);
+  let currentDiagnostics: OpsDiagnostics;
+  try {
+    currentDiagnostics = requireOpsDiagnostics(diagnostics);
+  } catch (contractError) {
+    return <PageState.Error error={contractError} onRetry={onRefresh} />;
+  }
+
+  const incidents = incidentRows(currentDiagnostics);
+  const chain = runtimeChain(currentDiagnostics);
+  const providersByStatus = sortByAttention(currentDiagnostics.providers);
+  const workersByStatus = sortByAttention(currentDiagnostics.workers);
+  const rows = domainRows(currentDiagnostics);
+  const overall = statusTone(currentDiagnostics.overall.status);
 
   return (
     <main className="ops-page ops-page-v2">
@@ -89,11 +99,7 @@ export function OpsDiagnosticsPage({
         </div>
         <div className="ops-command-status">
           <StatusChip status={overall} />
-          <span>
-            {diagnostics.generated_at_ms
-              ? `${relativeTimeLabel(diagnostics.generated_at_ms)}前`
-              : "实时"}
-          </span>
+          <span>{`${relativeTimeLabel(currentDiagnostics.generated_at_ms)}前`}</span>
         </div>
       </header>
 
@@ -101,7 +107,7 @@ export function OpsDiagnosticsPage({
         <section className="ops-panel ops-incident-panel" aria-labelledby="ops-incident-board">
           <SectionHeader
             title="故障看板"
-            detail={incidentSummary(diagnostics, incidents.length)}
+            detail={incidentSummary(currentDiagnostics, incidents.length)}
             id="ops-incident-board"
           />
           <div className="ops-incident-list">
@@ -115,7 +121,7 @@ export function OpsDiagnosticsPage({
                   </div>
                 </div>
               ))
-            ) : (
+            ) : overall === "ok" ? (
               <div className="ops-incident is-ok">
                 <CheckCircle2 aria-hidden />
                 <div>
@@ -123,11 +129,21 @@ export function OpsDiagnosticsPage({
                   <span>当前暴露的模块均为正常、空闲或停用状态。</span>
                 </div>
               </div>
+            ) : (
+              <div className="ops-incident is-unknown">
+                <ServerCog aria-hidden />
+                <div>
+                  <b>诊断未定位到具体阻塞项</b>
+                  <span>
+                    {currentDiagnostics.overall.reasons[0] ?? "整体状态并非正常，请检查原始诊断。"}
+                  </span>
+                </div>
+              </div>
             )}
           </div>
           <div className="ops-check-row">
-            <span>建议检查 {diagnostics.suggested_checks?.length ?? 0} 项</span>
-            {(diagnostics.suggested_checks ?? []).slice(0, 3).map((check) => (
+            <span>建议检查 {currentDiagnostics.suggested_checks.length} 项</span>
+            {currentDiagnostics.suggested_checks.slice(0, 3).map((check) => (
               <code key={String(check.id ?? check.label)}>{String(check.label ?? check.id)}</code>
             ))}
           </div>
@@ -135,7 +151,7 @@ export function OpsDiagnosticsPage({
 
         <section className="ops-panel ops-live-panel" aria-labelledby="ops-live-input">
           <SectionHeader title="实时输入" detail="采集计数" id="ops-live-input" />
-          <CollectorSnapshot diagnostics={diagnostics} />
+          <CollectorSnapshot diagnostics={currentDiagnostics} />
         </section>
       </section>
 
@@ -168,7 +184,7 @@ export function OpsDiagnosticsPage({
         <section className="ops-panel" aria-labelledby="ops-worker-fleet">
           <SectionHeader
             title="Worker 状态"
-            detail={`${diagnostics.workers.length} 个 Worker / ${diagnostics.providers.length} 个 Provider`}
+            detail={`${currentDiagnostics.workers.length} 个 Worker / ${currentDiagnostics.providers.length} 个 Provider`}
             id="ops-worker-fleet"
           />
           <div className="ops-fleet">
@@ -191,12 +207,12 @@ export function OpsDiagnosticsPage({
       <section className="ops-panel" aria-labelledby="ops-queue-inspector">
         <SectionHeader
           title="队列排查"
-          detail={`${diagnostics.queues.length} 个允许查看的队列`}
+          detail={`${currentDiagnostics.queues.length} 个允许查看的队列`}
           id="ops-queue-inspector"
         />
         <div className="ops-queue-layout">
           <div className="ops-queue-list" aria-label="任务队列">
-            {sortByAttention(diagnostics.queues).map((item) => (
+            {sortByAttention(currentDiagnostics.queues).map((item) => (
               <QueueButton
                 active={item.queue_name === selectedQueueName}
                 key={item.queue_name}
@@ -211,7 +227,7 @@ export function OpsDiagnosticsPage({
 
       <section className="ops-panel ops-config" aria-labelledby="ops-runtime-config">
         <SectionHeader title="运行配置" detail="仅显示路径和配置开关" id="ops-runtime-config" />
-        <ConfigGrid config={diagnostics.config} />
+        <ConfigGrid config={currentDiagnostics.config} />
       </section>
     </main>
   );
@@ -289,11 +305,7 @@ function ProviderRow({ provider }: { provider: OpsProvider }) {
         <small>{provider.domain}</small>
       </span>
       <StatusChip status={provider.status} />
-      <em>
-        {runtimeStateLabel(
-          provider.reason ?? provider.last_error_type ?? provider.state ?? "ready",
-        )}
-      </em>
+      <em>{runtimeStateLabel(provider.reason)}</em>
     </div>
   );
 }
@@ -308,10 +320,7 @@ function WorkerRow({ worker }: { worker: OpsWorker }) {
       </span>
       <StatusChip status={worker.status} />
       <em>
-        {worker.running ? "运行中" : worker.enabled ? "空闲" : "停用"}
-        {worker.queue_depth === null || worker.queue_depth === undefined
-          ? ""
-          : ` / 队列 ${worker.queue_depth}`}
+        {runtimeStateLabel(worker.reason)}
         {duration === null ? "" : ` / p99 ${Math.round(duration)}ms`}
       </em>
     </div>
@@ -376,20 +385,28 @@ function QueueDetail({
       </div>
     );
   }
+  let currentQueue: OpsQueueData;
+  try {
+    currentQueue = requireOpsQueueData(queue);
+  } catch (contractError) {
+    return <PageState.Error error={contractError} />;
+  }
   return (
     <div className="ops-queue-detail">
       <header>
         <div>
-          <b>{queue.queue_name}</b>
-          <span>{queueStatusLine(queue.counts_by_status)}</span>
+          <b>{currentQueue.queue_name}</b>
+          <span>{queueStatusLine(currentQueue.counts_by_status)}</span>
         </div>
-        <StatusChip status={queue.summary.status} />
+        <StatusChip status={currentQueue.summary.status} />
       </header>
       <div className="ops-queue-rows">
-        {queue.items.slice(0, 12).map((item) => (
-          <QueueItemRow item={item} key={`${item.id ?? "job"}:${item.updated_at_ms ?? ""}`} />
+        {currentQueue.items.slice(0, 12).map((item) => (
+          <QueueItemRow item={item} key={`${String(item.id)}:${item.updated_at_ms ?? ""}`} />
         ))}
-        {queue.items.length === 0 ? <span className="ops-empty-line">暂无活跃任务</span> : null}
+        {currentQueue.items.length === 0 ? (
+          <span className="ops-empty-line">暂无活跃任务</span>
+        ) : null}
       </div>
     </div>
   );
@@ -399,7 +416,7 @@ function QueueItemRow({ item }: { item: OpsQueueItem }) {
   return (
     <div className="ops-queue-row">
       <div>
-        <b>{String(item.id ?? "unknown")}</b>
+        <b>{item.id === null || item.id === undefined ? "未知" : String(item.id)}</b>
         <div className="ops-source-line">
           {sourceEntries(item.source).map(([key, value]) => (
             <small key={key}>{`${key}: ${String(value)}`}</small>
@@ -409,7 +426,7 @@ function QueueItemRow({ item }: { item: OpsQueueItem }) {
       <StatusChip status={statusTone(item.status)} />
       <span>{attemptLabel(item)}</span>
       <span>{item.updated_at_ms ? `${relativeTimeLabel(item.updated_at_ms)}前` : "未更新"}</span>
-      <em>{item.last_error_type ?? "就绪"}</em>
+      <em>{item.last_error_type ?? "未记录错误"}</em>
     </div>
   );
 }
@@ -466,10 +483,7 @@ function chainIcon(icon: ChainLane["icon"]) {
 
 function runtimeChain(diagnostics: OpsDiagnostics): ChainLane[] {
   const collectorDetails = objectValue(diagnostics.collector.details);
-  const agentExecution = diagnostics.agent_execution
-    ? objectValue(diagnostics.agent_execution)
-    : { status: "disabled" };
-  const agentExecutionStatus = statusString(agentExecution.status) ?? "disabled";
+  const agentExecutionStatus = diagnostics.agent_execution.status;
   const providerState = worstStatus(diagnostics.providers);
   const workerState = worstStatus(diagnostics.workers);
 
@@ -494,16 +508,16 @@ function runtimeChain(diagnostics: OpsDiagnostics): ChainLane[] {
       title: "News & Agent",
       status: worstStatus([diagnostics.domains.news, { status: agentExecutionStatus }]),
       intent: "News read models 与 Agent 执行状态保持各自可审计。",
-      primary: `${numberString(diagnostics.domains.news?.source_count)} 个新闻来源`,
-      secondary: `新闻${statusLabel(statusTone(diagnostics.domains.news?.status))} / Agent ${statusLabel(agentExecutionStatus)}`,
+      primary: `${numberString(diagnostics.domains.news.source_count)} 个新闻来源`,
+      secondary: `新闻${statusLabel(statusTone(diagnostics.domains.news.status))} / Agent ${statusLabel(agentExecutionStatus)}`,
       icon: "workflow",
     },
     {
       title: "Delivery",
       status: worstStatus([diagnostics.domains.notifications, diagnostics.domains.watchlist]),
       intent: "Watchlist source monitor 和 notifications 服务操作员。",
-      primary: `Watchlist${statusLabel(statusTone(diagnostics.domains.watchlist?.status))}`,
-      secondary: `通知${statusLabel(statusTone(diagnostics.domains.notifications?.status))}`,
+      primary: `Watchlist${statusLabel(statusTone(diagnostics.domains.watchlist.status))}`,
+      secondary: `通知${statusLabel(statusTone(diagnostics.domains.notifications.status))}`,
       icon: "list",
     },
   ];
@@ -519,9 +533,9 @@ function incidentRows(diagnostics: OpsDiagnostics): Array<{
     [];
 
   for (const queue of sortByAttention(diagnostics.queues)) {
-    const dead = numberValue(queue.dead_count) ?? 0;
-    const failed = numberValue(queue.failed_count) ?? 0;
-    const due = numberValue(queue.due_count) ?? 0;
+    const dead = queue.dead_count;
+    const failed = queue.failed_count;
+    const due = queue.due_count;
     if (dead > 0) {
       incidents.push({
         id: `queue:${queue.queue_name}:dead`,
@@ -553,11 +567,8 @@ function incidentRows(diagnostics: OpsDiagnostics): Array<{
     }
   }
 
-  const agentStatus = statusTone(diagnostics.agent_execution?.status);
-  if (
-    diagnostics.agent_execution &&
-    (agentStatus === "blocked" || agentStatus === "degraded" || agentStatus === "unknown")
-  ) {
+  const agentStatus = statusTone(diagnostics.agent_execution.status);
+  if (agentStatus === "blocked" || agentStatus === "degraded" || agentStatus === "unknown") {
     incidents.push({
       id: "agent_execution",
       title: `Agent 执行${statusLabel(agentStatus)}`,
@@ -572,11 +583,13 @@ function incidentRows(diagnostics: OpsDiagnostics): Array<{
 }
 
 function incidentSummary(diagnostics: OpsDiagnostics, visibleCount: number): string {
-  const counts = diagnostics.overall.section_status_counts ?? {};
-  const blocked = numberValue(counts.blocked) ?? 0;
-  const degraded = numberValue(counts.degraded) ?? 0;
-  if (blocked > 0) return `${blocked} 个阻塞 / ${degraded} 个降级`;
-  if (degraded > 0) return `${degraded} 个降级`;
+  const counts = diagnostics.overall.section_status_counts;
+  const blocked = numberValue(counts.blocked);
+  const degraded = numberValue(counts.degraded);
+  if (blocked !== null && blocked > 0) {
+    return degraded !== null ? `${blocked} 个阻塞 / ${degraded} 个降级` : `${blocked} 个阻塞`;
+  }
+  if (degraded !== null && degraded > 0) return `${degraded} 个降级`;
   return `${visibleCount} 个活跃问题`;
 }
 
@@ -587,15 +600,14 @@ function domainIncidentDetail(name: string, payload: OpsJson): string {
   return stringValue(payload.reason ?? payload.error_type ?? payload.status, "需要检查");
 }
 
-function agentIncidentDetail(agentExecution: OpsJson | undefined): string {
-  const lanes = objectValue(agentExecution?.lanes);
-  const degraded = Object.entries(lanes)
-    .filter(([, value]) => statusTone(statusString(objectValue(value).status)) !== "ok")
-    .map(([key]) => key);
-  if (degraded.length > 0) {
-    return degraded.slice(0, 3).join(", ");
-  }
-  return "全局 Agent 计数显示最近存在容量或耗时压力。";
+function agentIncidentDetail(agentExecution: OpsAgentExecution): string {
+  const policy = objectValue(agentExecution.policy);
+  const lane = typeof policy.lane === "string" ? policy.lane : null;
+  const detail = stringValue(
+    agentExecution.error ?? agentExecution.status_reason,
+    `Agent 执行${statusLabel(statusTone(agentExecution.status))}`,
+  );
+  return lane ? `${lane}: ${detail}` : detail;
 }
 
 function worstStatus(items: Array<{ status?: string | null } | undefined>): OpsSectionStatus {
@@ -622,17 +634,18 @@ function queueStatusLine(counts: Record<string, number>): string {
   return entries.map(([key, value]) => `${queueStateLabel(key)}:${value}`).join(" / ");
 }
 
-function sourceEntries(source: OpsJson | null | undefined): Array<[string, unknown]> {
-  const entries = Object.entries(source ?? {}).filter(
+function sourceEntries(source: OpsJson): Array<[string, unknown]> {
+  const entries = Object.entries(source).filter(
     ([, value]) => value !== null && value !== undefined,
   );
   return entries.length ? entries.slice(0, 3) : [["source", "n/a"]];
 }
 
 function attemptLabel(item: OpsQueueItem): string {
-  const attempts = item.attempt_count ?? 0;
-  const max = item.max_attempts ?? 0;
-  return `尝试 ${attempts}/${max}`;
+  if (item.attempt_count === null || item.max_attempts === null) {
+    return "尝试 未知";
+  }
+  return `尝试 ${item.attempt_count}/${item.max_attempts}`;
 }
 
 function relativeLabel(value: number | null): string {
@@ -642,7 +655,7 @@ function relativeLabel(value: number | null): string {
 
 function numberString(value: unknown): string {
   const parsed = numberValue(value);
-  return parsed === null ? "0" : String(Math.round(parsed));
+  return parsed === null ? "未知" : String(Math.round(parsed));
 }
 
 function numberValue(value: unknown): number | null {
@@ -654,12 +667,8 @@ function numberValue(value: unknown): number | null {
   return null;
 }
 
-function stringValue(value: unknown, fallback = "ready"): string {
+function stringValue(value: unknown, fallback: string): string {
   return typeof value === "string" && value.trim() ? value : fallback;
-}
-
-function statusString(value: unknown): string | null {
-  return typeof value === "string" && value.trim() ? value : null;
 }
 
 function objectValue(value: unknown): OpsJson {

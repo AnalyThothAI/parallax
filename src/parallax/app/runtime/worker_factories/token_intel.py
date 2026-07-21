@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker
-from parallax.app.runtime.worker_manifest import require_worker_manifest
 from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from parallax.platform.runtime.worker_base import WorkerBase
 
@@ -17,6 +16,5 @@ def construct_token_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             settings=workers.token_radar_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
     }

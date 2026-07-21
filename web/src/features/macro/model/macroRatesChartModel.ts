@@ -6,6 +6,8 @@ import type {
   MacroSeriesPoint,
 } from "@lib/types";
 
+import { requireMacroArray } from "./macroCurrentContract";
+
 export type RatesCorridorSeriesKey =
   | "target_lower"
   | "target_upper"
@@ -74,7 +76,10 @@ export function buildRatesCorridorModel(
     ...REQUIRED_CORRIDOR_KEYS.filter((key) => !isRenderable(seriesByKey.get(key))).map(
       (key) => CORRIDOR_LABELS[key],
     ),
-    ...(chart.missing_concept_keys ?? []).flatMap((concept) => {
+    ...requireMacroArray<string>(
+      chart.missing_concept_keys,
+      "primary_chart.missing_concept_keys",
+    ).flatMap((concept) => {
       const key = CORRIDOR_SERIES_BY_CONCEPT[concept];
       return key ? [CORRIDOR_LABELS[key]] : [];
     }),
@@ -99,7 +104,14 @@ function buildCorridorSeries(
   if (!label) {
     return null;
   }
-  const payloadPoints = normalizeSeriesPoints(payload?.points ?? []);
+  const payloadPoints = normalizeSeriesPoints(
+    payload
+      ? requireMacroArray<MacroSeriesPoint>(
+          payload.points,
+          `series_data.series.${stringValue(series.concept_key) ?? key}.points`,
+        )
+      : [],
+  );
   return {
     key,
     label,
@@ -121,7 +133,7 @@ function normalizeSeriesPoints(points: MacroSeriesPoint[]): RatesCorridorPoint[]
 }
 
 function chartSeries(chart: MacroModuleChart): MacroSemanticRecord[] {
-  return Array.isArray(chart.series) ? chart.series : [];
+  return requireMacroArray<MacroSemanticRecord>(chart.series, "primary_chart.series");
 }
 
 function renderableSeries(series: RatesCorridorSeries | undefined): RatesCorridorSeries | null {

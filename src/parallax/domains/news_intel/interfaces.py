@@ -94,7 +94,7 @@ def _symbols(row: Mapping[str, Any], field_name: str) -> tuple[str, ...]:
     for value in values:
         if not isinstance(value, Mapping):
             raise ValueError(f"news_notification_candidate_{field_name}_invalid")
-        raw_symbol = value.get("symbol") or value.get("target_symbol")
+        raw_symbol = value.get("symbol")
         if raw_symbol is None:
             continue
         if not isinstance(raw_symbol, str):

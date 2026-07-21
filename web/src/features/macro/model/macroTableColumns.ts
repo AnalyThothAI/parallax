@@ -1,5 +1,7 @@
 import type { MacroModuleTable, MacroSemanticRecord } from "@lib/types";
 
+import { requireMacroArray } from "./macroCurrentContract";
+
 export type MacroTableSortDirection = "asc" | "desc";
 
 export type MacroTableColumnModel = {
@@ -31,7 +33,7 @@ export function buildMacroTableModel(table: MacroModuleTable): MacroTableModel {
   if (!id) {
     return { columns: [], rows: [], tableId: "" };
   }
-  const rows = Array.isArray(table.rows) ? table.rows : [];
+  const rows = requireMacroArray<MacroSemanticRecord>(table.rows, `tables.${id}.rows`);
   const candidateColumns = columnModels(table);
   const candidateRows = rows.reduce<MacroTableRowModel[]>((accumulator, row) => {
     const id = rowId(row);

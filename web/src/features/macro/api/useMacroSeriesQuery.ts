@@ -1,7 +1,8 @@
 import { getApi } from "@lib/api/client";
-import type { MacroSeriesData } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
 import { useQuery } from "@tanstack/react-query";
+
+import { requireMacroSeriesData } from "../model/macroCurrentContract";
 
 export function useMacroSeriesQuery({
   conceptKeys,
@@ -16,14 +17,14 @@ export function useMacroSeriesQuery({
   return useQuery({
     queryKey: queryKeys.macroSeries(normalizedConceptKeys, window),
     queryFn: async () => {
-      const response = await getApi<MacroSeriesData>("/api/macro/series", {
+      const response = await getApi<unknown>("/api/macro/series", {
         params: {
           concept_keys: normalizedConceptKeys.join(","),
           window,
         },
         token,
       });
-      return response.data;
+      return requireMacroSeriesData(response.data);
     },
     enabled: Boolean(token) && normalizedConceptKeys.length > 0,
     refetchInterval: 60_000,

@@ -132,34 +132,6 @@ def test_news_item_source_watermarks_reads_persisted_item_times_without_worker_c
     assert "now_ms" not in conn.sql
 
 
-def test_canonical_rebuild_list_reads_only_current_servable_news_items() -> None:
-    conn = CapturingConnection()
-    repo = NewsItemRepository(conn)
-
-    rows = repo.list_news_items_for_canonical_rebuild(limit=25)
-
-    assert rows == []
-    assert "FROM news_items AS items" in conn.sql
-    assert "items.lifecycle_status = 'processed'" in conn.sql
-    assert "items.story_key <> ''" in conn.sql
-    assert "items.story_identity_version = %s" in conn.sql
-    assert "JOIN news_sources AS edge_sources ON edge_sources.source_id = edges.source_id" in conn.sql
-    assert "edge_sources.enabled = true" in conn.sql
-    assert "source_watermark_ms > 0" in conn.sql
-    assert conn.params == (NEWS_STORY_IDENTITY_VERSION, 25)
-
-
-@pytest.mark.parametrize("limit", [-1, True, "25"])
-def test_canonical_rebuild_list_rejects_malformed_limit_before_sql(limit: object) -> None:
-    conn = CapturingConnection()
-    repo = NewsItemRepository(conn)
-
-    with pytest.raises(ValueError, match="news_canonical_rebuild_limit_required"):
-        repo.list_news_items_for_canonical_rebuild(limit=limit)  # type: ignore[arg-type]
-
-    assert conn.statements == []
-
-
 @pytest.mark.parametrize(
     ("field_name", "bad_value"),
     [
@@ -346,7 +318,6 @@ def test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write() -> 
         ("signal", None),
         ("provider_rating", None),
         ("agent_brief", None),
-        ("market_scope", None),
         ("macro_event_flow", None),
         ("agent_admission", None),
         ("token_lanes", {}),
@@ -370,6 +341,51 @@ def test_news_page_row_payload_requires_formal_json_sections_before_write(field_
 
     assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
+
+
+def test_news_page_row_payload_rejects_retired_top_level_market_scope() -> None:
+    conn = CapturingConnection()
+    repo = NewsPageRepository(conn)
+    row = _valid_news_page_row()
+    row["market_scope"] = _valid_market_scope_payload()
+
+    with pytest.raises(ValueError, match="news_page_row_payload_retired:market_scope"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
+
+
+def test_news_page_row_payload_requires_nested_market_scope() -> None:
+    conn = CapturingConnection()
+    repo = NewsPageRepository(conn)
+    row = _valid_news_page_row()
+    signal = dict(row["signal"])
+    alert_eligibility = dict(signal["alert_eligibility"])
+    alert_eligibility.pop("market_scope")
+    signal["alert_eligibility"] = alert_eligibility
+    row["signal"] = signal
+
+    with pytest.raises(
+        ValueError,
+        match=r"news_page_row_payload_required:signal\.alert_eligibility\.market_scope",
+    ):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
+
+
+@pytest.mark.parametrize("field_name", ["agent_admission_status", "agent_admission_reason"])
+def test_news_page_row_payload_rejects_retired_nested_agent_admission_aliases(field_name: str) -> None:
+    conn = CapturingConnection()
+    repo = NewsPageRepository(conn)
+    row = _valid_news_page_row()
+    signal = dict(row["signal"])
+    alert_eligibility = dict(signal["alert_eligibility"])
+    alert_eligibility[field_name] = "legacy"
+    signal["alert_eligibility"] = alert_eligibility
+    row["signal"] = signal
+
+    with pytest.raises(
+        ValueError,
+        match=f"news_page_row_payload_retired:signal.alert_eligibility.{field_name}",
+    ):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
 
 @pytest.mark.parametrize(
@@ -623,7 +639,6 @@ def test_news_page_row_payload_rejects_agent_admission_mismatch_before_write(
         ("representative_news_item_id", None),
         ("story_key", None),
         ("story", None),
-        ("market_scope", None),
         ("agent_admission_status", None),
         ("agent_admission_reason", None),
         ("agent_admission", None),
@@ -728,7 +743,6 @@ def test_news_item_detail_reads_agent_current_from_projected_page_row_only() -> 
         ("content_classification", None),
         ("source", None),
         ("agent_brief", None),
-        ("market_scope", None),
         ("agent_admission_status", None),
         ("agent_admission_reason", None),
         ("agent_admission", None),
@@ -3713,7 +3727,20 @@ def _valid_news_page_row() -> dict[str, object]:
         "content_tags": ["etf"],
         "content_classification": {"status": "classified"},
         "source": {"source_id": "source-1", "source_domain": "example.com"},
-        "signal": {"display_signal": "neutral"},
+        "signal": {
+            "display_signal": {
+                "source": "provider",
+                "status": "ready",
+                "direction": "neutral",
+            },
+            "agent_signal": {"status": "pending"},
+            "alert_eligibility": {
+                "in_app_eligible": False,
+                "external_push_ready": False,
+                "agent_status": "pending",
+                "market_scope": _valid_market_scope_payload(),
+            },
+        },
         "provider_rating": {},
         "token_impacts": [],
         "agent_brief": {"status": "pending"},
@@ -3726,7 +3753,6 @@ def _valid_news_page_row() -> dict[str, object]:
         "source_ids_json": [],
         "source_domains_json": [],
         "provider_article_keys_json": [],
-        "market_scope": {"primary": "crypto"},
         "macro_event_flow": None,
         "agent_admission": _valid_agent_admission_payload(),
         "agent_admission_status": "eligible",
@@ -3806,7 +3832,6 @@ def _valid_news_item_detail_page_row() -> dict[str, object]:
         "page_agent_brief": {"status": "pending"},
         "agent_status": "pending",
         "agent_brief_computed_at_ms": None,
-        "market_scope": {"primary": "crypto"},
         "agent_admission_status": "eligible",
         "agent_admission_reason": "eligible",
         "agent_admission": _valid_agent_admission_payload(),
@@ -3909,7 +3934,6 @@ def _valid_news_page_read_row() -> dict[str, object]:
         "agent_brief": {"status": "pending"},
         "agent_status": "pending",
         "agent_brief_computed_at_ms": None,
-        "market_scope": {"primary": "crypto"},
         "agent_admission_status": "eligible",
         "agent_admission_reason": "eligible",
         "agent_admission": _valid_agent_admission_payload(),

@@ -20,29 +20,12 @@ export function appStatusFixture(overrides: Partial<StatusData> = {}): StatusDat
     snapshot_gate: {},
     db: { ok: true },
     provider_states: {},
+    agent_execution: null,
+    news_provider_contract: { ok: true },
     workers: {
       collector: workerStatusFixture({
         enabled: true,
         running: true,
-        details: {
-          started_at_ms: NOW,
-          frames_received: 88,
-          twitter_events: 44,
-          matched_twitter_events: 7,
-          events_published: 7,
-          duplicate_twitter_events: 2,
-          duplicate_matched_twitter_events: 0,
-          parse_errors: 0,
-          last_frame_at_ms: NOW,
-          last_event_at_ms: NOW,
-          last_matched_event_at_ms: NOW,
-        },
-      }),
-      enrichment: workerStatusFixture({
-        enabled: true,
-        running: true,
-        queue_depth: 0,
-        details: { job_counts: { pending: 0, running: 0, failed: 0, dead: 0, done: 8 } },
       }),
       token_radar_projection: workerStatusFixture({
         enabled: true,
@@ -57,25 +40,14 @@ export function appStatusFixture(overrides: Partial<StatusData> = {}): StatusDat
           notes: { rows_written: 0, source_rows: 0 },
         },
       }),
-      token_capture_tier: workerStatusFixture({
-        enabled: true,
-        running: true,
-        last_started_at_ms: NOW,
-      }),
       market_tick_stream: workerStatusFixture({ enabled: false, running: false }),
       market_tick_poll: workerStatusFixture({
         enabled: true,
         running: true,
         last_started_at_ms: NOW,
       }),
-      live_price_gateway: workerStatusFixture({
-        enabled: true,
-        running: true,
-        details: { configured: true, subscription_limit: 200 },
-      }),
-      handle_summary: workerStatusFixture(),
       notification_rule: workerStatusFixture({ enabled: true, running: true }),
-      notification_delivery: workerStatusFixture({ enabled: true, running: true, queue_depth: 0 }),
+      notification_delivery: workerStatusFixture({ enabled: true, running: true }),
       asset_profile_refresh: workerStatusFixture(),
       resolution_refresh: workerStatusFixture(),
     },
@@ -84,17 +56,19 @@ export function appStatusFixture(overrides: Partial<StatusData> = {}): StatusDat
 }
 
 function workerStatusFixture(overrides: Partial<StatusData["workers"]["collector"]> = {}) {
+  const enabled = overrides.enabled ?? false;
+  const running = overrides.running ?? false;
   return {
-    enabled: false,
-    running: false,
+    enabled,
+    running,
+    effective_status:
+      overrides.effective_status ?? (!enabled ? "disabled" : running ? "running" : "stopped"),
+    unavailable_reason: null,
     last_started_at_ms: null,
     last_finished_at_ms: null,
     last_result: null,
     last_error: null,
     iteration_duration_p99_ms: null,
-    queue_depth: null,
-    pool_wait_ms_p99: null,
-    details: {},
     ...overrides,
   };
 }
@@ -126,15 +100,31 @@ export function tokenRadarFixture(overrides: Partial<AssetFlowData> = {}): Asset
   return {
     window: "1h",
     scope: "all",
+    venue: "all",
     targets: [],
     attention: [],
     projection: {
       status: "fresh",
       version: "token-radar-route-fixture",
-      source: "route_test",
+      source: "token_radar_current_rows",
+      venue: "all",
+      reason: null,
+      latest_attempt_status: "ready",
       row_count: 0,
       source_rows: 0,
+      source_max_received_at_ms: 0,
+      source_frontier_ms: null,
       computed_at_ms: NOW,
+      error: null,
+      anchor_coverage: { status: "fresh", ready: 0, missing: 0, total: 0 },
+      quality_status: "ready",
+      degraded_reasons: [],
+      unresolved: {
+        identity_missing_count: 0,
+        nil_count: 0,
+        ambiguous_count: 0,
+        sample_symbols: [],
+      },
     },
     ...overrides,
   };
@@ -216,6 +206,9 @@ export function notificationFixture(overrides: Partial<NotificationItem> = {}): 
     entity_key: "token:rkc",
     author_handle: "traderpow",
     symbol: "RKC",
+    chain: null,
+    address: null,
+    event_id: null,
     source_table: "events",
     source_id: "event:rkc",
     occurrence_count: 1,

@@ -497,8 +497,8 @@ export type RecentData = {
 
 export type WatchlistHandleRowOverview = {
   handle: string;
-  last_source_event_at_ms?: number | null;
-  recent_source_event_count?: number;
+  last_source_event_at_ms: number | null;
+  recent_source_event_count: number;
 };
 
 export type WatchlistHandlesOverviewData = {
@@ -508,13 +508,13 @@ export type WatchlistHandlesOverviewData = {
 
 export type WatchlistOverviewCluster = {
   label: string;
-  count?: number;
+  count: number;
   query: string;
   kind: "resolved_token" | "candidate_mention" | "narrative";
   source: string;
-  symbol?: string | null;
-  target_id?: string | null;
-  target_type?: string | null;
+  symbol: string | null;
+  target_id: string | null;
+  target_type: string | null;
 };
 
 export type WatchlistHandleOverviewData = {
@@ -524,27 +524,27 @@ export type WatchlistHandleOverviewData = {
     resolved_token_count: number;
     candidate_mention_count: number;
     narrative_count: number;
-    last_source_event_at_ms?: number | null;
+    last_source_event_at_ms: number | null;
   };
   resolved_token_clusters: WatchlistOverviewCluster[];
   candidate_mention_clusters: WatchlistOverviewCluster[];
   narrative_clusters: WatchlistOverviewCluster[];
-  clusters_truncated?: boolean;
+  clusters_truncated: boolean;
   risk_notes: string[];
 };
 
 export type WatchlistTimelineItem = {
   event_id: string;
   received_at_ms: number;
-  author_handle?: string | null;
-  action?: string | null;
-  text_clean?: string | null;
-  canonical_url?: string | null;
-  cashtags?: string[];
-  hashtags?: string[];
-  mentions?: string[];
-  event?: EventRecord;
-  token_resolutions?: TokenResolutionRecord[];
+  author_handle: string | null;
+  action: string | null;
+  text_clean: string | null;
+  canonical_url: string | null;
+  cashtags: string[];
+  hashtags: string[];
+  mentions: string[];
+  event: EventRecord;
+  token_resolutions: TokenResolutionRecord[];
 };
 
 export type WatchlistHandleTimelineData = {
@@ -554,7 +554,7 @@ export type WatchlistHandleTimelineData = {
   };
   items: WatchlistTimelineItem[];
   has_more: boolean;
-  next_cursor?: string | null;
+  next_cursor: string | null;
 };
 
 export type SearchItem = {
@@ -774,77 +774,12 @@ export type SearchInspectData = {
   ambiguous_result?: SearchAmbiguousResult | null;
 };
 
-export type AssetFlowAssetBlock = {
-  asset_id?: string | null;
-  symbol?: string | null;
-  asset_type?: string | null;
-  identity_status?: string | null;
-};
-
-export type AssetFlowTargetBlock = {
-  target_type?: "Asset" | "CexToken" | "Project" | string | null;
-  target_id?: string | null;
-  symbol?: string | null;
-  name?: string | null;
-  status?: string | null;
-  chain_id?: string | null;
-  token_standard?: string | null;
-  address?: string | null;
-  pricefeed_id?: string | null;
-  native_market_id?: string | null;
-  quote_symbol?: string | null;
-  feed_type?: string | null;
-  provider?: string | null;
-};
-
-export type AssetFlowVenueBlock = {
-  venue_id?: string | null;
-  venue_type?: "cex" | "dex" | string | null;
-  exchange?: string | null;
-  chain?: string | null;
-  address?: string | null;
-  inst_id?: string | null;
-  base_symbol?: string | null;
-  quote_symbol?: string | null;
-  inst_type?: string | null;
-};
-
-export type AssetFlowAttentionBlock = {
-  mentions_5m: number;
-  mentions_1h: number;
-  mentions_4h: number;
-  mentions_24h: number;
-  mentions_window: number;
-  unique_authors: number;
-  watched_mentions: number;
-  latest_seen_ms: number;
-  previous_mentions: number;
-  mention_delta: number;
-  mention_delta_pct: number | null;
-  z_score: number | null;
-  z_ewma: number | null;
-  robust_z: number | null;
-  new_burst_score: number | null;
-  stream_share: number;
-  baseline_version: string;
-  baseline_status: string;
-  baseline_sample_count: number;
-  baseline_nonzero_sample_count: number;
-  zero_slot_count: number;
-};
-
 export type TokenRadarIntentBlock = {
-  intent_id?: string | null;
+  intent_id: string;
+  event_id: string;
   display_symbol?: string | null;
   display_name?: string | null;
-  evidence?: unknown[];
-};
-
-export type TokenRadarDataHealth = {
-  identity?: string | null;
-  market?: string | null;
-  coverage?: string | null;
-  [key: string]: unknown;
+  evidence: unknown[];
 };
 
 export type MarketObservationSnapshot = {
@@ -864,7 +799,6 @@ export type MarketObservationSnapshot = {
   open_interest_usd?: number | null;
   observed_at_ms?: number | null;
   received_at_ms?: number | null;
-  raw_payload_hash?: string | null;
 };
 
 export type MarketReadiness = {
@@ -893,31 +827,25 @@ export type TokenRadarRowMeta = {
 };
 
 export type AssetFlowRow = {
-  intent?: TokenRadarIntentBlock;
-  target?: AssetFlowTargetBlock;
-  attention: AssetFlowAttentionBlock;
-  source_event_ids?: string[];
-  market: MarketContext;
-  radar?: TokenRadarRowMeta;
+  intent: TokenRadarIntentBlock;
+  radar: TokenRadarRowMeta;
   narrative_admission?: NarrativeAdmission | null;
   resolution: {
     status: "EXACT" | "UNIQUE_BY_CONTEXT" | "NIL" | "AMBIGUOUS" | string;
-    resolution_status?: string | null;
-    target_type?: string | null;
-    target_id?: string | null;
-    pricefeed_id?: string | null;
-    reason_codes?: string[];
-    candidate_ids?: string[];
-    lookup_keys?: string[];
-    discovery?: TokenDiscoveryAudit[];
-    confidence?: number | null;
-    reasons?: string[];
-    risks?: string[];
-    candidates?: unknown[];
+    target_type: string | null;
+    target_id: string | null;
+    pricefeed_id: string | null;
+    reason_codes: string[];
+    candidate_ids: string[];
+    lookup_keys: string[];
+    discovery: TokenDiscoveryAudit[];
   };
   factor_snapshot: TokenFactorSnapshot;
   profile?: TokenProfileBlock | null;
-  data_health?: TokenRadarDataHealth;
+  quality: {
+    status: string;
+    degraded_reasons: string[];
+  };
 };
 
 export type TokenDiscoveryAudit = {
@@ -934,18 +862,36 @@ export type TokenDiscoveryAudit = {
 export type AssetFlowData = {
   window: WindowKey;
   scope: ScopeKey;
+  venue: string;
   targets: AssetFlowRow[];
   attention: AssetFlowRow[];
   projection: {
     status: "fresh" | "stale" | "pending" | string;
     version: string;
     source: string;
-    reason?: string | null;
-    row_count?: number | null;
-    source_rows?: number | null;
-    source_max_received_at_ms?: number | null;
-    computed_at_ms?: number | null;
-    error?: string | null;
+    venue: string;
+    reason: string | null;
+    latest_attempt_status: string;
+    row_count: number;
+    source_rows: number;
+    source_max_received_at_ms: number;
+    source_frontier_ms: number | null;
+    computed_at_ms: number | null;
+    error: string | null;
+    anchor_coverage: {
+      status: string;
+      ready: number;
+      missing: number;
+      total: number;
+    };
+    quality_status: "ready" | "degraded" | "insufficient" | "failed" | string;
+    degraded_reasons: string[];
+    unresolved: {
+      identity_missing_count: number;
+      nil_count: number;
+      ambiguous_count: number;
+      sample_symbols: string[];
+    };
   };
 };
 
@@ -1257,7 +1203,7 @@ export type TokenFlowItem = {
 export type TokenPostItem = {
   event_id: string;
   tweet_id?: string | null;
-  handle?: string | null;
+  author_handle?: string | null;
   text?: string | null;
   url?: string | null;
   received_at_ms?: number | null;
@@ -1337,7 +1283,6 @@ export type TokenTimelineAuthor = {
 export type TokenTimelinePost = {
   event_id: string;
   tweet_id?: string | null;
-  handle?: string | null;
   author_handle?: string | null;
   received_at_ms?: number | null;
   bucket_start_ms?: number | null;
@@ -1528,20 +1473,20 @@ export type TokenFactorFamily = {
 export type TokenFactorSnapshot = {
   schema_version: "token_factor_snapshot_v3_social_attention";
   subject: {
-    target_type?: string | null;
-    target_id?: string | null;
-    symbol?: string | null;
-    target_market_type?: string | null;
-    chain?: string | null;
-    address?: string | null;
-    pricefeed_id?: string | null;
+    target_type: string | null;
+    target_id: string | null;
+    symbol: string | null;
+    target_market_type: string | null;
+    chain: string | null;
+    address: string | null;
+    pricefeed_id: string | null;
   };
   market: MarketContext;
   gates: {
     eligible_for_high_alert: boolean;
-    max_decision?: string | null;
+    max_decision: "discard" | "watch" | "high_alert";
     blocked_reasons: string[];
-    risk_reasons?: string[];
+    risk_reasons: string[];
   };
   data_health: {
     identity: string;
@@ -1552,18 +1497,17 @@ export type TokenFactorSnapshot = {
   };
   families: Record<TokenFactorFamilyKey, TokenFactorFamily>;
   normalization: {
-    status?: string | null;
-    cohort?: Record<string, unknown>;
-    factor_ranks?: Record<string, unknown>;
-    alpha_rank?: number | null;
-    cohort_size?: number | null;
-    [key: string]: unknown;
+    status: string;
+    cohort_status: string;
+    cohort: Record<string, unknown>;
+    factor_ranks: Record<TokenFactorFamilyKey, number | null>;
+    alpha_rank: number | null;
   };
   composite: {
-    raw_alpha_score?: number | null;
-    rank_score?: number | null;
-    recommended_decision: string;
-    family_scores?: Record<string, number | null | undefined>;
+    raw_alpha_score: number;
+    rank_score: number;
+    recommended_decision: "discard" | "watch" | "high_alert";
+    family_scores: Record<TokenFactorFamilyKey, number>;
   };
   provenance: {
     source_event_ids: string[];
@@ -1598,14 +1542,39 @@ export type EnrichmentJobsData = {
 export type WorkerStatusData = {
   enabled: boolean;
   running: boolean;
-  last_started_at_ms?: number | null;
-  last_finished_at_ms?: number | null;
-  last_result?: Record<string, unknown> | null;
-  last_error?: string | null;
-  iteration_duration_p99_ms?: number | null;
-  queue_depth?: number | null;
-  pool_wait_ms_p99?: number | null;
-  details?: Record<string, unknown>;
+  effective_status: string;
+  unavailable_reason: string | null;
+  last_started_at_ms: number | null;
+  last_finished_at_ms: number | null;
+  last_result: Record<string, unknown> | null;
+  last_error: string | null;
+  iteration_duration_p99_ms: number | null;
+};
+
+export type AgentExecutionStatusData = {
+  lane: "news.story_brief";
+  model: string;
+  provider_family: string;
+  output_strategy: "json_object";
+  schema_enforcement: "client_validate";
+  max_concurrency: number;
+  rpm_limit: number;
+  timeout_seconds: number;
+  in_flight: number;
+  provider_running: number;
+  circuit_state: "open" | "closed";
+  circuit_open_until_ms: number | null;
+  capacity_denied_total: number;
+  circuit_open_total: number;
+  timeout_total: number;
+  last_denied_at_ms: number | null;
+  last_timeout_at_ms: number | null;
+  oldest_in_flight_age_ms: number | null;
+};
+
+export type AgentExecutionUnavailableData = {
+  status: "unavailable";
+  error: string;
 };
 
 export type StatusData = {
@@ -1613,9 +1582,11 @@ export type StatusData = {
   reasons: string[];
   handles: string[];
   store: string;
-  snapshot_gate?: Record<string, unknown>;
-  db?: Record<string, unknown> | null;
-  provider_states?: Record<string, unknown>;
+  snapshot_gate: Record<string, unknown>;
+  db: Record<string, unknown>;
+  provider_states: Record<string, unknown>;
+  agent_execution: AgentExecutionStatusData | AgentExecutionUnavailableData | null;
+  news_provider_contract: Record<string, unknown>;
   workers: Record<string, WorkerStatusData> & {
     collector: WorkerStatusData;
   };

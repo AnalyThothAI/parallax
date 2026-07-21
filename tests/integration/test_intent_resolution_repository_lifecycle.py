@@ -15,38 +15,39 @@ def test_resolution_supersedes_by_lifecycle_not_resolution_status(tmp_path):
         _insert_event_and_intent(conn)
         repo = IntentResolutionRepository(conn)
 
-        first = repo.insert_resolution(
-            DeterministicResolution(
-                intent_id="intent-1",
-                event_id="event-1",
-                resolution_status="NIL",
-                target_type=None,
-                target_id=None,
-                pricefeed_id=None,
-                resolver_policy_version=TOKEN_RADAR_RESOLVER_POLICY_VERSION,
-                reason_codes=["SYMBOL_NOT_IN_REGISTRY"],
-                candidate_ids=[],
-                lookup_keys=["symbol:UPEG"],
-                decision_time_ms=1_000,
-                created_at_ms=1_000,
+        with conn.transaction():
+            first = repo.insert_resolution(
+                DeterministicResolution(
+                    intent_id="intent-1",
+                    event_id="event-1",
+                    resolution_status="NIL",
+                    target_type=None,
+                    target_id=None,
+                    pricefeed_id=None,
+                    resolver_policy_version=TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+                    reason_codes=["SYMBOL_NOT_IN_REGISTRY"],
+                    candidate_ids=[],
+                    lookup_keys=["symbol:UPEG"],
+                    decision_time_ms=1_000,
+                    created_at_ms=1_000,
+                )
             )
-        )
-        second = repo.insert_resolution(
-            DeterministicResolution(
-                intent_id="intent-1",
-                event_id="event-1",
-                resolution_status="UNIQUE_BY_CONTEXT",
-                target_type="Asset",
-                target_id="asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505",
-                pricefeed_id=None,
-                resolver_policy_version=TOKEN_RADAR_RESOLVER_POLICY_VERSION,
-                reason_codes=["MARKET_DOMINANT_CHAIN_ASSET"],
-                candidate_ids=["asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505"],
-                lookup_keys=["symbol:UPEG"],
-                decision_time_ms=2_000,
-                created_at_ms=2_000,
+            second = repo.insert_resolution(
+                DeterministicResolution(
+                    intent_id="intent-1",
+                    event_id="event-1",
+                    resolution_status="UNIQUE_BY_CONTEXT",
+                    target_type="Asset",
+                    target_id="asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505",
+                    pricefeed_id=None,
+                    resolver_policy_version=TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+                    reason_codes=["MARKET_DOMINANT_CHAIN_ASSET"],
+                    candidate_ids=["asset:eip155:1:erc20:0x44b28991b167582f18ba0259e0173176ca125505"],
+                    lookup_keys=["symbol:UPEG"],
+                    decision_time_ms=2_000,
+                    created_at_ms=2_000,
+                )
             )
-        )
         active = repo.active_resolution_for_intent("intent-1")
         rows = conn.execute(
             """
@@ -85,8 +86,9 @@ def test_resolution_late_replay_does_not_rollback_current_pointer(tmp_path):
             decision_time_ms=1_000,
         )
 
-        current = repo.insert_resolution(current_decision)
-        replay = repo.insert_resolution(late_old_decision)
+        with conn.transaction():
+            current = repo.insert_resolution(current_decision)
+            replay = repo.insert_resolution(late_old_decision)
         active = repo.active_resolution_for_intent("intent-1")
         rows = conn.execute(
             """
@@ -119,8 +121,9 @@ def test_resolution_current_replay_keeps_superseded_timestamp_null(tmp_path):
             decision_time_ms=2_000,
         )
 
-        first = repo.insert_resolution(decision)
-        replay = repo.insert_resolution(decision)
+        with conn.transaction():
+            first = repo.insert_resolution(decision)
+            replay = repo.insert_resolution(decision)
         stored = repo.get(first["resolution_id"])
         rows = conn.execute(
             """
@@ -168,17 +171,16 @@ def _insert_event_and_intent(conn):
 
     with conn.transaction():
         EvidenceRepository(conn).insert_event(make_event(), is_watched=True)
-    conn.execute(
-        """
-        INSERT INTO token_intents(
-          intent_id, event_id, intent_key, construction_policy, primary_evidence_id,
-          display_symbol, display_name, chain_hint, address_hint, intent_status,
-          intent_confidence, created_at_ms, updated_at_ms
+        conn.execute(
+            """
+            INSERT INTO token_intents(
+              intent_id, event_id, intent_key, construction_policy, primary_evidence_id,
+              display_symbol, display_name, chain_hint, address_hint, intent_status,
+              intent_confidence, created_at_ms, updated_at_ms
+            )
+            VALUES (
+              'intent-1', 'event-1', 'symbol:UPEG', 'test', NULL,
+              'UPEG', NULL, NULL, NULL, 'pending', 1.0, 1, 1
+            )
+            """
         )
-        VALUES (
-          'intent-1', 'event-1', 'symbol:UPEG', 'test', NULL,
-          'UPEG', NULL, NULL, NULL, 'pending', 1.0, 1, 1
-        )
-        """
-    )
-    conn.commit()

@@ -48,14 +48,12 @@ class ResolutionRefreshWorker(WorkerBase):
         db: Any,
         telemetry: Any,
         dex_discovery_market: Any,
-        wake_emitter: Any | None = None,
     ) -> None:
         if dex_discovery_market is None:
             raise RuntimeError("resolution_refresh_provider_required")
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
         self.dex_discovery_market = dex_discovery_market
         self.chain_ids = tuple(str(item).strip() for item in settings.chain_ids if str(item).strip())
-        self.wake_emitter = wake_emitter
         self.max_attempts = settings.max_attempts
         self.lease_ms = settings.lease_ms
         self.hot_not_found_retry_ms = settings.hot_not_found_retry_ms
@@ -63,9 +61,6 @@ class ResolutionRefreshWorker(WorkerBase):
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         observed_at_ms = int(now_ms if now_ms is not None else _now_ms())
         result = await asyncio.to_thread(self._run_refresh_once, observed_at_ms)
-        if result.get("resolution_wake_lookup_keys") and self.wake_emitter is not None:
-            self.wake_emitter.notify_resolution_updated(lookup_keys=result["resolution_wake_lookup_keys"])
-        result.pop("resolution_wake_lookup_keys", None)
         notes: dict[str, Any] = {"result": result}
         if int(result.get("provider_unavailable") or 0) > 0:
             notes["status"] = "degraded"
@@ -232,7 +227,6 @@ class ResolutionRefreshWorker(WorkerBase):
             result["reprocess"] = reprocess_result
             result["reprocessed_intents"] = reprocess_result["reprocessed_intents"]
             if reprocess_result["resolved_intents"]:
-                result["resolution_wake_lookup_keys"] = sorted_lookup_keys
                 resolved_lookup_keys.update(sorted_lookup_keys)
         if processed_claims:
             _complete_lookup_claims(

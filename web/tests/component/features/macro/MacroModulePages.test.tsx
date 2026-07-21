@@ -529,7 +529,7 @@ describe("Macro module pages", () => {
     renderWithProviders(
       <MacroModulePageRenderer
         module={macroModuleFixture({
-          primary_chart: { id: "equity_proxy_performance", series: [] },
+          primary_chart: { id: "equity_proxy_performance", min_points: 2, series: [] },
           tables: [],
         })}
         moduleId="assets/equities"
@@ -1374,7 +1374,6 @@ describe("Macro module pages", () => {
       },
       tables: [assetDashboardTable({ includeDate: false, includeSource: false })],
       daily_brief: {
-        brief_key: "assets_today",
         status: "partial",
         headline: "今日判断：样本不足",
         data_quality: {

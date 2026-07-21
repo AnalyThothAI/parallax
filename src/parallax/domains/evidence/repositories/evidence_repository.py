@@ -3,8 +3,9 @@ from __future__ import annotations
 import hashlib
 import json
 import time
+from collections.abc import Mapping
 from dataclasses import asdict
-from typing import Any
+from typing import Any, TypedDict
 
 from psycopg.types.json import Jsonb
 
@@ -15,6 +16,45 @@ from parallax.domains.evidence.types.twitter_event import TwitterEvent
 from parallax.platform.db.postgres_client import require_transaction
 from parallax.platform.db.write_contract import mutation_count
 from parallax.platform.validation import require_nonnegative_int, require_positive_int
+
+
+class EventRead(TypedDict):
+    event_id: str
+    logical_dedup_key: str
+    canonical_url: str | None
+    source_provider: str
+    source_transport: str
+    coverage: str
+    channel: str
+    action: str
+    original_action: str | None
+    tweet_id: str | None
+    internal_id: str | None
+    timestamp_ms: int
+    received_at_ms: int
+    author_handle: str | None
+    author_name: str | None
+    author_avatar: str | None
+    author_followers: int | None
+    author_tags: list[str]
+    text: str | None
+    text_raw: str | None
+    text_clean: str | None
+    search_text: str | None
+    urls: list[str]
+    cashtags: list[str]
+    hashtags: list[str]
+    mentions: list[str]
+    media: list[dict[str, Any]]
+    reference: dict[str, Any] | None
+    matched_handles: list[str]
+    is_watched: bool
+    matched_at_ms: int
+    raw: dict[str, Any] | None
+    unfollow_target: dict[str, Any] | None
+    avatar_change: dict[str, Any] | None
+    bio_change: dict[str, Any] | None
+    token_snapshot: dict[str, Any] | None
 
 
 class EvidenceRepository:
@@ -110,7 +150,7 @@ class EvidenceRepository:
         symbol: str | None = None,
         since_ms: int | None = None,
         watched_only: bool = True,
-    ) -> list[dict[str, Any]]:
+    ) -> list[EventRead]:
         parsed_limit = require_nonnegative_int(limit, error_code="evidence_recent_events_limit_required")
         if parsed_limit == 0:
             return []
@@ -159,7 +199,7 @@ class EvidenceRepository:
         symbols: set[str] | None = None,
         since_ms: int | None = None,
         watched_only: bool = True,
-    ) -> list[dict[str, Any]]:
+    ) -> list[EventRead]:
         parsed_limit = require_positive_int(limit, error_code="evidence_token_filter_limit_required")
         parsed_per_filter_limit = require_positive_int(
             per_filter_limit,
@@ -235,7 +275,7 @@ class EvidenceRepository:
         ).fetchall()
         return [decode_event_row(row) for row in rows]
 
-    def events_by_ids(self, event_ids: list[str]) -> dict[str, dict[str, Any]]:
+    def events_by_ids(self, event_ids: list[str]) -> dict[str, EventRead]:
         if not event_ids:
             return {}
         placeholders = ",".join("%s" for _ in event_ids)
@@ -283,12 +323,17 @@ def _token_filter_keysets(
     return [item[0] for item in filters], [item[1] for item in filters], [item[2] for item in filters]
 
 
-def event_to_row(event: TwitterEvent, *, is_watched: bool, now_ms: int) -> dict[str, Any]:
+def materialize_event(
+    event: TwitterEvent,
+    *,
+    is_watched: bool,
+    now_ms: int,
+) -> tuple[dict[str, Any], EventRead]:
     event_dict = event.to_dict()
     reference_text = event.reference.text if event.reference else None
     projection = build_text_projection(event.content.text, reference_text=reference_text)
     matched_handles = [handle.lower() for handle in event.matched_handles]
-    sanitized: dict[str, Any] = _sanitize_postgres_value(
+    event_read: EventRead = _sanitize_postgres_value(
         {
             "event_id": event.event_id,
             "logical_dedup_key": logical_dedup_key(event),
@@ -307,52 +352,120 @@ def event_to_row(event: TwitterEvent, *, is_watched: bool, now_ms: int) -> dict[
             "author_name": event.author.name,
             "author_avatar": event.author.avatar,
             "author_followers": event.author.followers,
-            "author_tags_json": _json(event.author.tags),
+            "author_tags": list(event.author.tags),
             "text": event.content.text,
             "text_raw": projection.text_raw,
             "text_clean": projection.text_clean,
             "search_text": projection.search_text,
-            "urls_json": _json(projection.urls),
-            "cashtags_json": _json(projection.cashtags),
-            "hashtags_json": _json(projection.hashtags),
-            "mentions_json": _json(projection.mentions),
-            "media_json": _json([asdict(item) for item in event.content.media]),
-            "reference_json": _json(event_dict["reference"]),
-            "matched_handles_json": _json(matched_handles),
+            "urls": list(projection.urls),
+            "cashtags": list(projection.cashtags),
+            "hashtags": list(projection.hashtags),
+            "mentions": list(projection.mentions),
+            "media": [asdict(item) for item in event.content.media],
+            "reference": event_dict["reference"],
+            "matched_handles": matched_handles,
             "is_watched": is_watched,
             "matched_at_ms": now_ms if is_watched else 0,
-            "raw_json": _json(event.raw),
+            "raw": event.raw,
+            "unfollow_target": event_dict["unfollow_target"],
+            "avatar_change": event_dict["avatar_change"],
+            "bio_change": event_dict["bio_change"],
+            "token_snapshot": event_dict["token_snapshot"],
+        }
+    )
+    sanitized: dict[str, Any] = _sanitize_postgres_value(
+        {
+            **{
+                key: event_read[key]
+                for key in (
+                    "event_id",
+                    "logical_dedup_key",
+                    "canonical_url",
+                    "source_provider",
+                    "source_transport",
+                    "coverage",
+                    "channel",
+                    "action",
+                    "original_action",
+                    "tweet_id",
+                    "internal_id",
+                    "timestamp_ms",
+                    "received_at_ms",
+                    "author_handle",
+                    "author_name",
+                    "author_avatar",
+                    "author_followers",
+                    "text",
+                    "text_raw",
+                    "text_clean",
+                    "search_text",
+                    "is_watched",
+                    "matched_at_ms",
+                )
+            },
+            "author_tags_json": _json(event_read["author_tags"]),
+            "urls_json": _json(event_read["urls"]),
+            "cashtags_json": _json(event_read["cashtags"]),
+            "hashtags_json": _json(event_read["hashtags"]),
+            "mentions_json": _json(event_read["mentions"]),
+            "media_json": _json(event_read["media"]),
+            "reference_json": _json(event_read["reference"]),
+            "matched_handles_json": _json(event_read["matched_handles"]),
+            "raw_json": _json(event_read["raw"]),
             "event_json": _json(event_dict),
             "created_at_ms": now_ms,
             "updated_at_ms": now_ms,
         }
     )
-    return sanitized
+    return sanitized, event_read
 
 
-def decode_event_row(row: dict[str, Any] | dict[str, Any]) -> dict[str, Any]:
+def event_to_row(event: TwitterEvent, *, is_watched: bool, now_ms: int) -> dict[str, Any]:
+    row, _event_read = materialize_event(event, is_watched=is_watched, now_ms=now_ms)
+    return row
+
+
+def decode_event_row(row: Mapping[str, Any]) -> EventRead:
     data = dict(row)
-    event = _json_loads(data.get("event_json"), {})
-    if not isinstance(event, dict):
-        event = {}
-    event.update(
-        {
-            "event_id": data.get("event_id"),
-            "logical_dedup_key": data.get("logical_dedup_key"),
-            "canonical_url": data.get("canonical_url"),
-            "received_at_ms": data.get("received_at_ms"),
-            "author_handle": data.get("author_handle"),
-            "text_clean": data.get("text_clean"),
-            "search_text": data.get("search_text"),
-            "urls": _json_loads(data.get("urls_json"), []),
-            "cashtags": _json_loads(data.get("cashtags_json"), []),
-            "hashtags": _json_loads(data.get("hashtags_json"), []),
-            "mentions": _json_loads(data.get("mentions_json"), []),
-            "is_watched": data.get("is_watched"),
-            "matched_at_ms": data.get("matched_at_ms"),
-        }
-    )
-    return event
+    event_payload = _required_json_object(data["event_json"], field="event_json")
+    return {
+        "event_id": _required_text(data["event_id"], field="event_id"),
+        "logical_dedup_key": _required_text(data["logical_dedup_key"], field="logical_dedup_key"),
+        "canonical_url": _optional_text(data["canonical_url"], field="canonical_url"),
+        "source_provider": _required_text(data["source_provider"], field="source_provider"),
+        "source_transport": _required_text(data["source_transport"], field="source_transport"),
+        "coverage": _required_text(data["coverage"], field="coverage"),
+        "channel": _required_text(data["channel"], field="channel"),
+        "action": _required_text(data["action"], field="action"),
+        "original_action": _optional_text(data["original_action"], field="original_action"),
+        "tweet_id": _optional_text(data["tweet_id"], field="tweet_id"),
+        "internal_id": _optional_text(data["internal_id"], field="internal_id"),
+        "timestamp_ms": _required_positive_int(data["timestamp_ms"], field="timestamp_ms"),
+        "received_at_ms": _required_positive_int(data["received_at_ms"], field="received_at_ms"),
+        "author_handle": _optional_text(data["author_handle"], field="author_handle"),
+        "author_name": _optional_text(data["author_name"], field="author_name"),
+        "author_avatar": _optional_text(data["author_avatar"], field="author_avatar"),
+        "author_followers": _optional_nonnegative_int(data["author_followers"], field="author_followers"),
+        "author_tags": _required_string_list(data["author_tags_json"], field="author_tags_json"),
+        "text": _optional_text(data["text"], field="text"),
+        "text_raw": _optional_text(data["text_raw"], field="text_raw"),
+        "text_clean": _optional_text(data["text_clean"], field="text_clean"),
+        "search_text": _optional_text(data["search_text"], field="search_text"),
+        "urls": _required_string_list(data["urls_json"], field="urls_json"),
+        "cashtags": _required_string_list(data["cashtags_json"], field="cashtags_json"),
+        "hashtags": _required_string_list(data["hashtags_json"], field="hashtags_json"),
+        "mentions": _required_string_list(data["mentions_json"], field="mentions_json"),
+        "media": _required_object_list(data["media_json"], field="media_json"),
+        "reference": _optional_json_object(data["reference_json"], field="reference_json"),
+        "matched_handles": _required_string_list(data["matched_handles_json"], field="matched_handles_json"),
+        "is_watched": _required_bool(data["is_watched"], field="is_watched"),
+        "matched_at_ms": _required_nonnegative_int(data["matched_at_ms"], field="matched_at_ms"),
+        "raw": _optional_json_object(data["raw_json"], field="raw_json"),
+        "unfollow_target": _optional_json_object(event_payload["unfollow_target"], field="unfollow_target"),
+        "avatar_change": _optional_json_object(event_payload["avatar_change"], field="avatar_change"),
+        "bio_change": _optional_json_object(event_payload["bio_change"], field="bio_change"),
+        "token_snapshot": _optional_json_object(event_payload["token_snapshot"], field="token_snapshot"),
+    }
 
 
 def _json(value: Any) -> Jsonb:
@@ -374,17 +487,67 @@ def _sanitize_postgres_value(value: Any) -> Any:
     return value
 
 
-def _json_loads(value: Any, default: Any) -> Any:
+def _required_json_object(value: Any, *, field: str) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        raise TypeError(f"event_read_{field}_mapping_required")
+    return dict(value)
+
+
+def _optional_json_object(value: Any, *, field: str) -> dict[str, Any] | None:
     if value is None:
-        return default
+        return None
+    return _required_json_object(value, field=field)
+
+
+def _required_string_list(value: Any, *, field: str) -> list[str]:
+    if not isinstance(value, list) or any(not isinstance(item, str) for item in value):
+        raise TypeError(f"event_read_{field}_string_list_required")
+    return list(value)
+
+
+def _required_object_list(value: Any, *, field: str) -> list[dict[str, Any]]:
+    if not isinstance(value, list) or any(not isinstance(item, Mapping) for item in value):
+        raise TypeError(f"event_read_{field}_object_list_required")
+    return [dict(item) for item in value]
+
+
+def _optional_text(value: Any, *, field: str) -> str | None:
+    if value is None:
+        return None
     if not isinstance(value, str):
-        return value
-    if not value.strip():
-        return default
-    try:
-        return json.loads(value)
-    except json.JSONDecodeError:
-        return default
+        raise TypeError(f"event_read_{field}_text_required")
+    return value
+
+
+def _required_text(value: Any, *, field: str) -> str:
+    if not isinstance(value, str) or not value.strip():
+        raise TypeError(f"event_read_{field}_text_required")
+    return value
+
+
+def _required_positive_int(value: Any, *, field: str) -> int:
+    parsed = _required_nonnegative_int(value, field=field)
+    if parsed == 0:
+        raise TypeError(f"event_read_{field}_positive_int_required")
+    return parsed
+
+
+def _required_nonnegative_int(value: Any, *, field: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise TypeError(f"event_read_{field}_nonnegative_int_required")
+    return value
+
+
+def _optional_nonnegative_int(value: Any, *, field: str) -> int | None:
+    if value is None:
+        return None
+    return _required_nonnegative_int(value, field=field)
+
+
+def _required_bool(value: Any, *, field: str) -> bool:
+    if not isinstance(value, bool):
+        raise TypeError(f"event_read_{field}_bool_required")
+    return value
 
 
 def _now_ms() -> int:

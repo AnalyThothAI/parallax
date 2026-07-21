@@ -8,7 +8,7 @@ from parallax.app.runtime.bootstrap import _PooledIngestStore
 from parallax.app.runtime.provider_wiring.types import AssetMarketProviders
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.asset_market.providers import DexTokenQuote
-from parallax.domains.asset_market.repositories.market_tick_repository import MarketTickRepository
+from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
 from parallax.domains.asset_market.types import MarketTick, market_tick_id
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
@@ -151,8 +151,13 @@ def test_ingest_chain_event_with_existing_tick_writes_composite_tick_capture(tmp
         created_at_ms=observed_at_ms,
         raw_payload_json={"source": "test"},
     )
-    MarketTickRepository(conn).insert_tick(tick)
-    conn.commit()
+    repos = repositories_for_connection(
+        conn,
+        notification_delivery_running_timeout_ms=300_000,
+        notification_delivery_stale_running_terminalization_batch_size=100,
+    )
+    with repos.transaction():
+        MarketTickPersistenceService(repos).persist_ticks([tick], now_ms=observed_at_ms)
     store = _PooledIngestStore(
         _SingleConnectionDB(conn),
         providers=AssetMarketProviders(dex_quote_market=_DexQuoteProvider([])),

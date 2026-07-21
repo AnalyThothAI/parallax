@@ -3,12 +3,7 @@ import { describe, expect, it } from "vitest";
 
 describe("watchlist route state", () => {
   it("reads only the selected handle", () => {
-    expect(
-      parseWatchlistRouteState(
-        new URLSearchParams("handle=marionawfal"),
-        "toly",
-      ),
-    ).toEqual({
+    expect(parseWatchlistRouteState(new URLSearchParams("handle=marionawfal"), "toly")).toEqual({
       selectedHandle: "marionawfal",
     });
   });

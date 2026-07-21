@@ -20,8 +20,6 @@ class MacroSyncWorker(WorkerBase):
         db: Any,
         telemetry: Any,
         settings_root: Settings,
-        wake_waiter: Any | None = None,
-        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         runner: object | None = None,
         service_factory: Callable[[], MacroSyncService] | None = None,
@@ -34,10 +32,8 @@ class MacroSyncWorker(WorkerBase):
             settings=settings,
             db=db,
             telemetry=telemetry,
-            wake_waiter=wake_waiter,
         )
         self.settings_root = settings_root
-        self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
         self.runner = runner
         self.service_factory = service_factory
@@ -97,7 +93,6 @@ class MacroSyncWorker(WorkerBase):
             settings=self.settings_root,
             db=self.db,
             runner=self.runner,  # type: ignore[arg-type]
-            wake_emitter=self.wake_emitter,
             clock_ms=self.clock_ms,
         )
 

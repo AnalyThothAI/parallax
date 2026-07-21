@@ -10,11 +10,12 @@ from parallax.domains.news_intel._constants import (
     NEWS_STORY_BRIEF_SCHEMA_VERSION,
     NEWS_STORY_BRIEF_VALIDATOR_VERSION,
 )
+from parallax.platform.agent_execution import AGENT_RUNTIME_LANE
 from parallax.platform.agent_hashing import text_sha256
 
 NEWS_STORY_BRIEF_WORKFLOW_NAME = "parallax.news_story_brief"
 NEWS_STORY_BRIEF_AGENT_NAME = "NewsStoryBriefAgent"
-NEWS_STORY_BRIEF_LANE = "news.story_brief"
+NEWS_STORY_BRIEF_LANE = AGENT_RUNTIME_LANE
 
 NewsStoryBriefStatus = Literal["ready", "insufficient", "failed"]
 NewsStoryBriefDirection = Literal["bullish", "bearish", "mixed", "neutral"]

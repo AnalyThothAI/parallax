@@ -292,8 +292,8 @@ def test_mark_error_terminalizes_exhausted_target_dirty_claim() -> None:
     ("operation", "error"),
     [
         pytest.param(
-            lambda repo: repo.enqueue_market_targets(
-                [("chain_token", "eip155:1:0xabc")],
+            lambda repo: repo.enqueue_market_product_targets(
+                [("Asset", "asset-1")],
                 reason="market_tick_current_changed",
                 now_ms=1_700_000_000_000,
             ),
@@ -373,8 +373,8 @@ def test_target_dirty_generic_enqueue_rejects_invalid_cursor_rowcount(rowcount: 
             reason="intent_written",
             now_ms=1_700_000_000_000,
         ),
-        lambda repo: repo.enqueue_market_targets(
-            [("chain_token", "eip155:1:0xabc")],
+        lambda repo: repo.enqueue_market_product_targets(
+            [("Asset", "asset-1")],
             reason="market_tick_current_changed",
             now_ms=1_700_000_000_000,
         ),
@@ -507,14 +507,14 @@ def test_target_dirty_completion_requires_formal_identity_fields_without_alias_f
     assert conn.sql == []
 
 
-def test_enqueue_market_targets_maps_market_key_to_radar_identity_in_db() -> None:
+def test_enqueue_market_product_targets_accepts_only_canonical_product_keys() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 2
 
-    count = TokenRadarDirtyTargetRepository(conn).enqueue_market_targets(
+    count = TokenRadarDirtyTargetRepository(conn).enqueue_market_product_targets(
         [
-            ("chain_token", "eip155:1:0xabc"),
-            {"target_type": "cex_symbol", "target_id": "binance:BTC-USDT"},
+            ("Asset", "asset-1"),
+            {"target_type_key": "CexToken", "identity_id": "cex_token:BTC"},
         ],
         reason="market_tick_current_changed",
         now_ms=1_700_000_000_000,
@@ -522,20 +522,20 @@ def test_enqueue_market_targets_maps_market_key_to_radar_identity_in_db() -> Non
 
     sql = conn.sql[-1]
     assert count == 2
-    assert "JOIN registry_assets" in sql
-    assert "JOIN price_feeds" in sql
+    assert "JOIN registry_assets" not in sql
+    assert "JOIN price_feeds" not in sql
     assert "INSERT INTO token_radar_dirty_targets" in sql
     assert "ON CONFLICT(target_type_key, identity_id) DO UPDATE SET" in sql
-    assert conn.params[-1]["target_types"] == ["chain_token", "cex_symbol"]
-    assert conn.params[-1]["target_ids"] == ["eip155:1:0xabc", "binance:BTC-USDT"]
+    assert conn.params[-1]["target_type_keys"] == ["Asset", "CexToken"]
+    assert conn.params[-1]["identity_ids"] == ["asset-1", "cex_token:BTC"]
 
 
-def test_enqueue_market_targets_uses_stable_hash_and_coalesces_fresh_targets() -> None:
+def test_enqueue_market_product_targets_uses_stable_hash_and_persists_future_due() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 1
 
-    TokenRadarDirtyTargetRepository(conn).enqueue_market_targets(
-        [("chain_token", "eip155:1:0xabc")],
+    TokenRadarDirtyTargetRepository(conn).enqueue_market_product_targets(
+        [("Asset", "asset-1")],
         reason="market_tick_current_changed",
         now_ms=1_700_000_000_000,
     )
@@ -547,6 +547,8 @@ def test_enqueue_market_targets_uses_stable_hash_and_coalesces_fresh_targets() -
     assert "latest_market_observed_at_ms" in sql
     assert "features.projection_version = %(projection_version)s" in sql
     assert "%(market_dirty_min_interval_ms)s" in sql
+    assert "THEN latest_feature.latest_market_observed_at_ms + %(market_dirty_min_interval_ms)s" in sql
+    assert "scheduled.due_at_ms" in sql
     assert "payload_hash IS DISTINCT FROM EXCLUDED.payload_hash" in sql
     assert "token_radar_dirty_targets.due_at_ms > EXCLUDED.due_at_ms" in sql
     assert "leased_until_ms = NULL" in sql
@@ -700,6 +702,12 @@ def test_market_current_target_enqueue_maps_persisted_current_rows_since_waterma
     assert "GREATEST(current_row.tick_observed_at_ms, current_row.updated_at_ms) >= %(since_ms)s" in sql
     assert "JOIN registry_assets" in sql
     assert "JOIN price_feeds" in sql
+    assert "registry_assets.status IN ('candidate', 'canonical')" in sql
+    assert "price_feeds.provider = 'binance'" in sql
+    assert "price_feeds.feed_type = 'cex_swap'" in sql
+    assert "price_feeds.quote_symbol = 'USDT'" in sql
+    assert "price_feeds.status = 'canonical'" in sql
+    assert "eligible.due_at_ms" in sql
     assert "INSERT INTO token_radar_dirty_targets" in sql
     assert "market_dirty" in sql
     assert "repair_dirty" in sql

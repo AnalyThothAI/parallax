@@ -14,7 +14,7 @@ export const newsSignalTone = (signal: Pick<NewsSignalSummary, "direction">): st
       : "is-neutral";
 
 export const newsSignalStatusLabel = (signal: Pick<NewsSignalSummary, "status">): string =>
-  signal.status || "partial";
+  signal.status;
 
 export type NewsAgentReviewBadge = {
   label: string;
@@ -24,28 +24,18 @@ export type NewsAgentReviewBadge = {
 };
 
 export const newsAgentReviewBadge = (
-  row: Pick<NewsRow, "agent_brief" | "agent_brief_status" | "agent_status" | "signal">,
+  row: Pick<NewsRow, "agent_brief" | "agent_status" | "signal">,
 ): NewsAgentReviewBadge => {
   const eligibility = row.signal.alert_eligibility;
-  const agentSignal =
-    row.signal.agent_signal && typeof row.signal.agent_signal === "object"
-      ? row.signal.agent_signal
-      : {};
-  const status = String(
-    row.agent_brief?.status ??
-      eligibility?.agent_status ??
-      row.agent_status ??
-      row.agent_brief_status ??
-      "pending",
-  ).toLowerCase();
+  const agentSignal = row.signal.agent_signal;
+  const status = row.agent_brief.status.toLowerCase();
   const decisionClass = String(
-    row.agent_brief?.decision_class ??
-      eligibility?.decision_class ??
+    row.agent_brief.decision_class ??
+      eligibility.decision_class ??
       agentSignal.decision_class ??
       "",
   ).toLowerCase();
-  const reason =
-    eligibility?.external_push_block_reason ?? eligibility?.agent_admission_reason ?? null;
+  const reason = eligibility.external_push_block_reason ?? null;
   const badge = (
     label: string,
     tone: NewsAgentReviewBadge["tone"],
@@ -57,7 +47,7 @@ export const newsAgentReviewBadge = (
     title: [label, detail].filter(Boolean).join(" · "),
   });
 
-  if (eligibility?.external_push_ready === true) {
+  if (eligibility.external_push_ready === true) {
     return badge("AGENT READY", "is-ready", null);
   }
   if (status === "ready") {
@@ -94,5 +84,5 @@ export const tokenMarketLabel = (
 export const newsDisplayTokenLanes = (
   row: Pick<NewsRow, "token_lanes" | "token_impacts">,
 ): NewsTokenLane[] => {
-  return row.token_lanes ?? [];
+  return row.token_lanes;
 };

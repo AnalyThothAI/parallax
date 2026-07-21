@@ -6,6 +6,7 @@ from parallax.domains.notifications.runtime.notification_delivery import Notific
 from parallax.platform.config.settings import NotificationChannelConfig
 from parallax.platform.runtime.worker_base import WorkerBase
 from parallax.platform.runtime.worker_result import WorkerResult
+from tests.notification_helpers import insert_notification_row
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -68,7 +69,8 @@ def delivery_worker(conn, *, channels, adapter=None, pushdeer_adapter=None, sett
 
 
 def seed_delivery(repo: NotificationRepository, *, max_attempts=3, provider="apprise"):
-    notification = repo.insert_notification(
+    notification = insert_notification_row(
+        repo,
         dedup_key="news:pepe",
         rule_id="news_high_signal",
         severity="high",

@@ -21,6 +21,7 @@ from parallax.domains.notifications.repositories.notification_repository import 
 from parallax.domains.token_intel.services.token_radar_projector import TokenRadarProjector
 from parallax.domains.token_intel.services.token_radar_publisher import TokenRadarPublisher
 from parallax.platform.config.settings import default_workers_yaml
+from tests.notification_helpers import insert_notification_row
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
@@ -80,7 +81,7 @@ def seed_postgres(db_path: Path) -> None:
             intent_resolutions=repos.intent_resolutions,
             discovery=repos.discovery,
             market_ticks=repos.market_ticks,
-            market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
+            market_tick_current=repos.market_tick_current,
             enriched_events=repos.enriched_events,
             event_anchor_jobs=repos.event_anchor_jobs,
             token_radar_dirty_targets=repos.token_radar_dirty_targets,
@@ -145,8 +146,8 @@ def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = No
     payload["gmgn"] = {"api_key": "gmgn-test", "openapi_base_url": "https://openapi.gmgn.ai"}
     workers_payload = yaml.safe_load(default_workers_yaml())
     if llm:
-        payload["llm"] = {"provider": "litellm", "api_key": "sk-test"}
-        workers_payload["agent_runtime"]["defaults"]["model"] = "gpt-test"
+        payload["llm"] = {"api_key": "sk-test"}
+        workers_payload["agent_runtime"]["model"] = "gpt-test"
     path = app_home / "config.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     (app_home / "workers.yaml").write_text(yaml.safe_dump(workers_payload, sort_keys=False), encoding="utf-8")
@@ -175,7 +176,6 @@ class CliTests(unittest.TestCase):
             ["ops", "rebuild-token-intents", "--window", "5m", "--limit", "5"],
             ["ops", "audit-token-intent", "--event-id", "event-1"],
             ["ops", "rebuild-token-radar", "--window", "1h"],
-            ["ops", "audit-token-radar", "--window", "5m", "--scope", "all"],
             ["ops", "factor-diagnostics", "--window", "1h", "--scope", "all", "--limit", "200"],
             ["ops", "sync-us-equity-symbols"],
             ["ops", "rebuild-token-profiles", "--limit", "5"],
@@ -189,7 +189,6 @@ class CliTests(unittest.TestCase):
                 "0",
                 "--execute",
             ],
-            ["ops", "enqueue-token-capture-tier-rank-set", "--execute"],
         ]
 
         parsed = [parser.parse_args(command) for command in commands]
@@ -222,29 +221,39 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[14].window, "5m")
         self.assertEqual(parsed[15].ops_command, "audit-token-intent")
         self.assertEqual(parsed[16].ops_command, "rebuild-token-radar")
-        self.assertEqual(parsed[17].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[18].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[18].limit, 200)
-        self.assertEqual(parsed[19].ops_command, "sync-us-equity-symbols")
-        self.assertEqual(parsed[20].ops_command, "rebuild-token-profiles")
-        self.assertEqual(parsed[20].limit, 5)
+        self.assertEqual(parsed[17].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[17].limit, 200)
+        self.assertEqual(parsed[18].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[19].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[19].limit, 5)
+        self.assertEqual(parsed[20].ops_command, "enqueue-token-radar-dirty-targets")
+        self.assertEqual(parsed[20].source, "events")
+        self.assertEqual(parsed[20].since_ms, 0)
+        self.assertEqual(parsed[20].limit, 5000)
+        self.assertTrue(parsed[20].dry_run)
         self.assertEqual(parsed[21].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[21].source, "events")
-        self.assertEqual(parsed[21].since_ms, 0)
-        self.assertEqual(parsed[21].limit, 5000)
-        self.assertTrue(parsed[21].dry_run)
-        self.assertEqual(parsed[22].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[22].source, "market-current")
-        self.assertTrue(parsed[22].execute)
-        self.assertEqual(parsed[23].ops_command, "enqueue-token-capture-tier-rank-set")
-        self.assertEqual(parsed[23].window, "24h")
-        self.assertTrue(parsed[23].execute)
+        self.assertEqual(parsed[21].source, "market-current")
+        self.assertTrue(parsed[21].execute)
 
     def test_cli_ops_worker_status_is_not_registered(self):
         parser = build_parser()
 
         with self.assertRaises(SystemExit):
             parser.parse_args(["ops", "worker-status"])
+
+    def test_cli_ops_token_capture_tier_repair_is_not_registered(self):
+        parser = build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["ops", "enqueue-token-capture-tier-rank-set", "--execute"])
+
+    def test_cli_ops_redundant_news_rebuild_and_radar_audit_are_not_registered(self):
+        parser = build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["ops", "rebuild-news-canonical-items", "--dry-run"])
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["ops", "audit-token-radar", "--window", "5m"])
 
     def test_cli_ops_rebuild_narrative_intel_is_not_registered(self):
         parser = build_parser()
@@ -298,7 +307,7 @@ class CliTests(unittest.TestCase):
         )
         self.assertTrue(payload["data"]["agent_execution"]["llm_configured"])
         self.assertEqual(payload["data"]["agent_execution"]["model"], "gpt-test")
-        self.assertEqual(payload["data"]["agent_execution"]["provider"], "litellm")
+        self.assertEqual(payload["data"]["agent_execution"]["provider_family"], "litellm")
         self.assertEqual(
             payload["data"]["providers"]["gmgn"],
             {
@@ -386,8 +395,9 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[0]["data"]["events"][0]["event_id"], "event-1")
         self.assertEqual(lines[1]["data"]["items"][0]["event"]["event_id"], "event-1")
         self.assertEqual(lines[2]["data"]["scope"], "all")
-        self.assertEqual(lines[2]["data"]["targets"][0]["target"]["symbol"], "PEPE")
-        self.assertEqual(lines[2]["data"]["targets"][0]["attention"]["mentions_5m"], 1)
+        factor_snapshot = lines[2]["data"]["targets"][0]["factor_snapshot"]
+        self.assertEqual(factor_snapshot["subject"]["symbol"], "PEPE")
+        self.assertEqual(factor_snapshot["families"]["social_heat"]["facts"]["mentions_5m"], 1)
         self.assertEqual(
             {item["alert_type"] for item in lines[3]["data"]["items"]},
             {"account_token"},
@@ -404,7 +414,8 @@ class CliTests(unittest.TestCase):
                 notifications = NotificationRepository(
                     conn, running_timeout_ms=300_000, stale_running_terminalization_batch_size=100
                 )
-                notification = notifications.insert_notification(
+                notification = insert_notification_row(
+                    notifications,
                     dedup_key="news:pepe",
                     rule_id="news_high_signal",
                     severity="high",

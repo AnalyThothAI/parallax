@@ -47,6 +47,7 @@ def macro_observation_id(observation: Mapping[str, Any]) -> str:
 
 
 def macro_observation_fact_payload_hash(observation: Mapping[str, Any]) -> str:
+    raw_payload = require_macro_observation_raw_payload(observation)
     payload = {
         "source_name": observation.get("source_name"),
         "series_key": observation.get("series_key"),
@@ -57,11 +58,22 @@ def macro_observation_fact_payload_hash(observation: Mapping[str, Any]) -> str:
         "frequency": observation.get("frequency"),
         "data_quality": observation.get("data_quality"),
         "source_ts": observation.get("source_ts"),
-        "raw_payload_json": _fact_raw_payload(
-            observation.get("raw_payload_json") or observation.get("raw_payload") or {}
-        ),
+        # Keep the persisted hash document stable while the input DTO hard-cuts
+        # to the single canonical ``raw_payload`` field.
+        "raw_payload_json": _fact_raw_payload(raw_payload),
     }
     return _stable_payload_hash(payload)
+
+
+def require_macro_observation_raw_payload(observation: Mapping[str, Any]) -> dict[str, Any]:
+    if "raw_payload_json" in observation:
+        raise ValueError("macro observation raw_payload_json is not allowed")
+    if "raw_payload" not in observation:
+        raise ValueError("macro observation raw_payload is required")
+    raw_payload = observation["raw_payload"]
+    if not isinstance(raw_payload, Mapping):
+        raise ValueError("macro observation raw_payload must be an object")
+    return {str(key): value for key, value in raw_payload.items()}
 
 
 def _stable_payload_hash(payload: Mapping[str, Any]) -> str:
@@ -93,4 +105,5 @@ __all__ = [
     "macro_observation_fact_payload_hash",
     "macro_observation_id",
     "normalize_macro_date",
+    "require_macro_observation_raw_payload",
 ]

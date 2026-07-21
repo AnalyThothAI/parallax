@@ -20,7 +20,6 @@ export function mockLiveRadarRoute(apiMock: ApiMock) {
   const summary = notificationSummaryFixture();
   apiMock.getApiImpl = async (path, requestOptions) => {
     if (path === "/api/status") return ok(appStatusFixture());
-    if (path === "/api/notification-summary") return ok(summary);
     if (path === "/api/notifications") {
       return ok({ items: [], summary });
     }
@@ -52,7 +51,6 @@ export function mockNotificationRoute(apiMock: ApiMock) {
     if (path === "/api/status") {
       return ok(appStatusFixture());
     }
-    if (path === "/api/notification-summary") return ok(summary);
     if (path === "/api/notifications") return ok({ items: [notification], summary });
     if (path === "/api/recent") return ok(recentReplayFixture());
     if (path === "/api/token-radar") return ok(tokenRadarFixture());

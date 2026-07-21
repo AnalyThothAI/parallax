@@ -70,11 +70,10 @@ class NotificationDeliveryWorker(WorkerBase):
         channels: dict[str, NotificationChannelConfig],
         adapter: Any | None = None,
         pushdeer_adapter: Any | None = None,
-        wake_waiter: Any | None = None,
     ):
         if db is None:
             raise RuntimeError("notification_delivery_db_required")
-        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
+        super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
         self.channels = channels
         self.adapter = adapter or AppriseNotificationAdapter()
         self.pushdeer_adapter = pushdeer_adapter or PushDeerNotificationAdapter()

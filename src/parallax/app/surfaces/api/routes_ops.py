@@ -13,7 +13,7 @@ from parallax.app.runtime.ops_diagnostics import (
 )
 from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
-from parallax.app.surfaces.api.responses import _json
+from parallax.app.surfaces.api.responses import _validated_json
 from parallax.app.surfaces.api.validators import _limit
 
 router = APIRouter()
@@ -31,7 +31,10 @@ def ops_diagnostics(
         runtime,
         now_ms=_now_ms(),
     )
-    return _json({"ok": True, "data": data})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.OpsDiagnosticsData],
+        {"ok": True, "data": data},
+    )
 
 
 @router.get(
@@ -53,7 +56,18 @@ def ops_queue(
         now_ms=_now_ms(),
     )
     if data == INVALID_QUEUE:
-        return _json({"ok": False, "error": "invalid_queue"}, status_code=400)
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.OpsQueueData],
+            {"ok": False, "error": "invalid_queue"},
+            status_code=400,
+        )
     if data == INVALID_STATUS:
-        return _json({"ok": False, "error": "invalid_status", "field": "status"}, status_code=400)
-    return _json({"ok": True, "data": data})
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.OpsQueueData],
+            {"ok": False, "error": "invalid_status", "field": "status"},
+            status_code=400,
+        )
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.OpsQueueData],
+        {"ok": True, "data": data},
+    )

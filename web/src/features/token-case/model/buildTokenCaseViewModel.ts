@@ -129,7 +129,7 @@ function buildPostEvent(post: TokenPostItem, livePriceUsd: number | null): Token
   const reasons = post.post_quality.reasons ?? [];
   return {
     id: post.event_id,
-    handle: cleanText(post.handle ?? post.author_role),
+    handle: cleanText(post.author_handle),
     text: cleanText(post.text) ?? "(empty post)",
     url: cleanText(post.url),
     timestampMs: post.received_at_ms ?? null,

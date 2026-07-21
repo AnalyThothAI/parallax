@@ -23,7 +23,6 @@ class TokenRadarFeatureSourceRequest:
     identity_id: str
     window: str
     scope: str
-    venue: str
     analysis_since_ms: int
     score_since_ms: int
     now_ms: int
@@ -152,7 +151,6 @@ def _feature_request_payload(request: TokenRadarFeatureSourceRequest) -> dict[st
         "identity_id": str(request.identity_id),
         "window": str(request.window),
         "scope": str(request.scope),
-        "venue": str(request.venue),
         "analysis_since_ms": int(request.analysis_since_ms),
         "score_since_ms": int(request.score_since_ms),
         "now_ms": int(request.now_ms),
@@ -241,7 +239,7 @@ asset_market AS (
    AND registry_assets.asset_id = requested.identity_id
   JOIN market_tick_current current_row
     ON current_row.target_type = 'chain_token'
-   AND lower(current_row.target_id) = lower(registry_assets.chain_id || ':' || registry_assets.address)
+   AND current_row.target_id = registry_assets.chain_id || ':' || registry_assets.address
 ),
 cex_market AS (
   SELECT
@@ -297,7 +295,6 @@ WITH requested AS (
     identity_id text,
     "window" text,
     scope text,
-    venue text,
     analysis_since_ms bigint,
     score_since_ms bigint,
     now_ms bigint

@@ -11,7 +11,7 @@ describe("MacroMarketBoard", () => {
   it("requires explicit panel titles instead of manufacturing market-board chrome", () => {
     render(
       <MacroMarketBoard
-        chart={{ id: "credit_chart", series: [] }}
+        chart={{ id: "credit_chart", min_points: 2, series: [] }}
         moduleId="credit/stress"
         supportingTable={{
           id: "credit_table",
@@ -37,7 +37,7 @@ describe("MacroMarketBoard", () => {
   it("omits table source notes whose formatted copy is empty", () => {
     const { container } = render(
       <MacroMarketBoard
-        chart={{ id: "credit_chart", series: [] }}
+        chart={{ id: "credit_chart", min_points: 2, series: [] }}
         moduleId="credit/stress"
         supportingTable={{
           id: "credit_table",
@@ -70,7 +70,7 @@ describe("MacroMarketBoard", () => {
   it("does not expose source descriptions as table notes without backend notes", () => {
     render(
       <MacroMarketBoard
-        chart={{ id: "credit_chart", series: [] }}
+        chart={{ id: "credit_chart", min_points: 2, series: [] }}
         moduleId="credit/stress"
         supportingTable={{
           id: "credit_table",
@@ -101,7 +101,11 @@ describe("MacroMarketBoard", () => {
   it("omits chart chrome when chart series are not renderable after model filtering", () => {
     render(
       <MacroMarketBoard
-        chart={{ id: "asset_proxy_performance", series: [{ concept_key: "asset:spx" }] }}
+        chart={{
+          id: "asset_proxy_performance",
+          min_points: 2,
+          series: [{ concept_key: "asset:spx" }],
+        }}
         moduleId="assets/equities"
         supportingTable={{
           id: "asset_table",
@@ -132,7 +136,7 @@ describe("MacroMarketBoard", () => {
   it("requires explicit chart status labels instead of exposing chart status codes", () => {
     render(
       <MacroMarketBoard
-        chart={{ id: "credit_chart", status: "partial", series: [] }}
+        chart={{ id: "credit_chart", min_points: 2, status: "partial", series: [] }}
         moduleId="credit/stress"
         supportingTable={{
           id: "credit_table",
@@ -158,7 +162,7 @@ describe("MacroMarketBoard", () => {
   it("drops supporting tables without backend ids and titles", () => {
     render(
       <MacroMarketBoard
-        chart={{ id: "credit_chart", series: [] }}
+        chart={{ id: "credit_chart", min_points: 2, series: [] }}
         moduleId="credit/stress"
         supportingTable={
           {

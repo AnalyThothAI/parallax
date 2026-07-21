@@ -55,13 +55,12 @@ Required reading:
 Verification:
 
 - `uv run parallax ops queue-inspect --help`
-- `uv run pytest tests/architecture/test_worker_inventory_contract.py`
-- `uv run pytest tests/architecture/test_worker_runtime_contracts.py`
+- `uv run pytest tests/architecture/test_kiss_runtime_invariants.py`
 - Targeted unit/integration test for the worker state transition.
 
 Done when:
 
-- Identify whether the issue is durable facts, dirty targets, job rows, wake hints, catch-up cadence, or public route behavior.
+- Identify whether the issue is durable facts, dirty targets, job rows, catch-up cadence, or public route behavior.
 - Prove any fix with a regression test that fails before the implementation when behavior changes.
 - Do not run external provider IO inside a DB worker session.
 

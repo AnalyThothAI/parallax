@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
 from parallax.app.surfaces.api.exceptions import ApiBadRequest
-from parallax.app.surfaces.api.responses import _json
+from parallax.app.surfaces.api.responses import _validated_json
 from parallax.app.surfaces.api.validators import _limit, _positive_limit, _post_range, _scope, _target_type, _window
 from parallax.domains.asset_market.read_models.market_candles_service import MarketCandlesService
 from parallax.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
@@ -60,8 +60,13 @@ def search(
                 now_ms=_now_ms(),
             )
     except SearchCursorError:
-        return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
-    return _json(
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.SearchData],
+            {"ok": False, "error": "invalid_cursor"},
+            status_code=400,
+        )
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.SearchData],
         {
             "ok": results.ok,
             "data": {
@@ -71,7 +76,7 @@ def search(
                 "items": results.items,
             },
             "error": results.error,
-        }
+        },
     )
 
 
@@ -106,7 +111,10 @@ def search_inspect(
         )
         if isinstance(data.get("token_result"), dict):
             data["token_result"].pop("agent_brief", None)
-    return _json({"ok": True, "data": data})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.SearchInspectData],
+        {"ok": True, "data": data},
+    )
 
 
 @router.get("/token-case", response_model=api_schemas.ApiEnvelope[api_schemas.TokenCaseData])
@@ -146,8 +154,15 @@ def token_case(
             )
             data.pop("agent_brief", None)
     except TokenCaseTargetNotFound:
-        return _json({"ok": False, "error": "target_not_found"}, status_code=404)
-    return _json({"ok": True, "data": data})
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.TokenCaseData],
+            {"ok": False, "error": "target_not_found"},
+            status_code=404,
+        )
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.TokenCaseData],
+        {"ok": True, "data": data},
+    )
 
 
 @router.get("/target-posts", response_model=api_schemas.ApiEnvelope[api_schemas.TargetPostsData])
@@ -181,12 +196,27 @@ def target_posts(
                 cursor=cursor or None,
             )
     except TokenTargetPostsRangeError:
-        return _json({"ok": False, "error": "invalid_range", "field": "range"}, status_code=400)
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.TargetPostsData],
+            {"ok": False, "error": "invalid_range", "field": "range"},
+            status_code=400,
+        )
     except TokenTargetPostsSortError:
-        return _json({"ok": False, "error": "invalid_sort", "field": "sort"}, status_code=400)
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.TargetPostsData],
+            {"ok": False, "error": "invalid_sort", "field": "sort"},
+            status_code=400,
+        )
     except TokenTargetPostsCursorError:
-        return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
-    return _json({"ok": True, "data": data})
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.TargetPostsData],
+            {"ok": False, "error": "invalid_cursor"},
+            status_code=400,
+        )
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.TargetPostsData],
+        {"ok": True, "data": data},
+    )
 
 
 @router.get(
@@ -224,8 +254,15 @@ def target_social_timeline(
                 cursor=cursor or None,
             )
     except TokenTargetCursorError:
-        return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
-    return _json({"ok": True, "data": data})
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.TargetSocialTimelineData],
+            {"ok": False, "error": "invalid_cursor"},
+            status_code=400,
+        )
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.TargetSocialTimelineData],
+        {"ok": True, "data": data},
+    )
 
 
 def _market_candles_service() -> MarketCandlesService:

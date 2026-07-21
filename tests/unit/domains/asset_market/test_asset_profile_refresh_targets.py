@@ -207,6 +207,38 @@ def test_asset_profile_refresh_target_enqueue_requires_formal_source_watermark_w
     assert conn.sql == ""
 
 
+@pytest.mark.parametrize(
+    ("target", "error"),
+    [
+        (
+            {key: value for key, value in _target().items() if key != "target_type"},
+            "asset profile refresh target target_type is required",
+        ),
+        (
+            {
+                **{key: value for key, value in _target().items() if key != "target_id"},
+                "asset_id": "asset-legacy",
+            },
+            "asset profile refresh target target_id is required",
+        ),
+    ],
+)
+def test_asset_profile_refresh_target_requires_canonical_target_identity(
+    target: dict[str, Any],
+    error: str,
+) -> None:
+    conn = _ScriptedConnection()
+
+    with pytest.raises(ValueError, match=error):
+        AssetProfileRefreshTargetRepository(conn).enqueue_targets(
+            [target],
+            reason="resolution_updated",
+            now_ms=NOW_MS,
+        )
+
+    assert conn.sql == ""
+
+
 def test_ops_discovery_enqueues_missing_current_token_radar_assets() -> None:
     conn = _BackfillConnection(
         [

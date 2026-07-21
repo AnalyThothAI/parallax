@@ -3,6 +3,7 @@ import json
 import unittest
 from types import SimpleNamespace
 
+from parallax.domains.evidence.interfaces import materialize_event
 from parallax.domains.ingestion.interfaces import IngestedEvent
 from parallax.domains.ingestion.runtime.collector_service import CollectorService
 from parallax.platform.runtime.worker_result import WorkerResult
@@ -23,8 +24,9 @@ class MemoryStore:
     def ingest_event(self, event, *, is_watched):
         self.twitter_events.append(event)
         self.watched_flags.append(is_watched)
+        _row, event_read = materialize_event(event, is_watched=is_watched, now_ms=event.received_at_ms)
         return IngestedEvent(
-            event=event,
+            event=event_read,
             entities=[],
             alerts=[],
             token_intents=[],
@@ -108,6 +110,9 @@ class CollectorServiceTests(unittest.TestCase):
                 [payload["event"]["event_id"] for payload in publisher.payloads],
                 ["gmgn:twitter_monitor_basic:keep"],
             )
+            published_event = publisher.payloads[0]["event"]
+            self.assertEqual(published_event["source_provider"], "gmgn")
+            self.assertFalse({"author", "source", "content"} & set(published_event))
             self.assertEqual(store.event_token_resolution_ids, ["gmgn:twitter_monitor_basic:keep"])
             self.assertEqual(
                 publisher.payloads[0]["token_resolutions"],

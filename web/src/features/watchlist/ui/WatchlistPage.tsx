@@ -1,7 +1,4 @@
-import type {
-  WatchlistHandleOverviewData,
-  WatchlistHandleRowOverview,
-} from "@lib/types";
+import type { WatchlistHandleOverviewData, WatchlistHandleRowOverview } from "@lib/types";
 import * as PageState from "@shared/ui/PageState";
 import { useEffect, useMemo } from "react";
 

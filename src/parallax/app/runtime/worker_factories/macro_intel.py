@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker
-from parallax.app.runtime.worker_manifest import require_worker_manifest
 from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 from parallax.domains.macro_intel.runtime.macro_view_projection_worker import (
     MacroViewProjectionWorker,
@@ -15,7 +14,7 @@ def construct_macro_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
     workers = ctx.settings.workers
     if not workers.macro_sync.enabled:
         constructed["macro_sync"] = disabled_worker(ctx, "macro_sync")
-    elif ctx.settings.macrodata_enabled:
+    elif ctx.settings.providers.macrodata.enabled:
         worker_name = "macro_sync"
         constructed[worker_name] = MacroSyncWorker(
             name=worker_name,
@@ -23,7 +22,6 @@ def construct_macro_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             db=ctx.db,
             telemetry=ctx.telemetry,
             settings_root=ctx.settings,
-            wake_emitter=ctx.wake_bus,
             runner=MacrodataBundleRunner(settings=ctx.settings),
         )
     else:
@@ -35,7 +33,6 @@ def construct_macro_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             settings=workers.macro_view_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
     else:
         constructed["macro_view_projection"] = disabled_worker(ctx, "macro_view_projection")

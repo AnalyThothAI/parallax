@@ -3,22 +3,17 @@ from __future__ import annotations
 import json
 import math
 import os
-import shutil
 import subprocess
 import sys
 from collections.abc import Mapping, Sequence
-from dataclasses import dataclass
 from importlib import import_module
 from importlib.metadata import PackageNotFoundError, version
 from importlib.util import find_spec
-from pathlib import Path
 from typing import Any
 
+from parallax.domains.macro_intel.services.macro_sync_types import MacrodataBundleRunResult
 
-@dataclass(frozen=True)
-class MacrodataBundleRunResult:
-    envelope: Mapping[str, Any]
-    diagnostics: dict[str, Any]
+_MACRODATA_PYTHON_ENTRYPOINT = "from macrodata.surfaces.cli import main; main()"
 
 
 class MacrodataBundleRunner:
@@ -28,7 +23,7 @@ class MacrodataBundleRunner:
 
     def history_bundle(self, *, bundle: str, start: str, end: str) -> MacrodataBundleRunResult:
         fred_state = fred_api_key_state(self.settings, environ=self.environ)
-        command_prefix = resolve_macrodata_command(environ=self.environ)
+        command_prefix = resolve_macrodata_command()
         timeout_seconds = _macrodata_timeout_seconds(self.settings)
         command = [
             *command_prefix,
@@ -95,30 +90,13 @@ class MacrodataRunnerError(RuntimeError):
         self.diagnostics = dict(diagnostics)
 
 
-def resolve_macrodata_executable(*, environ: Mapping[str, str] | None = None) -> str:
-    env = os.environ if environ is None else environ
-    executable = shutil.which("macrodata", path=env.get("PATH"))
-    if executable and _executable_path_is_usable(executable):
-        return executable
-    sibling = Path(sys.executable).parent / "macrodata"
-    if sibling.exists() and _executable_path_is_usable(str(sibling)):
-        return str(sibling)
+def resolve_macrodata_command() -> list[str]:
+    if _macrodata_cli_entrypoint_available():
+        return [sys.executable, "-c", _MACRODATA_PYTHON_ENTRYPOINT]
     raise MacrodataRunnerError(
-        "macrodata executable not found",
-        diagnostics={"error_code": "macrodata_executable_missing"},
+        "macrodata package entrypoint not found",
+        diagnostics={"error_code": "macrodata_entrypoint_missing"},
     )
-
-
-def resolve_macrodata_command(*, environ: Mapping[str, str] | None = None) -> list[str]:
-    try:
-        return [resolve_macrodata_executable(environ=environ)]
-    except MacrodataRunnerError as exc:
-        diagnostics = getattr(exc, "diagnostics", {})
-        if diagnostics.get("error_code") != "macrodata_executable_missing":
-            raise
-        if _macrodata_cli_entrypoint_available():
-            return [sys.executable, "-c", "from macrodata.surfaces.cli import main; main()"]
-        raise
 
 
 def macrodata_runtime_state(
@@ -126,18 +104,16 @@ def macrodata_runtime_state(
     required_series: Sequence[str] = (),
     required_bundles: Sequence[str] = (),
     required_bundle_series: Mapping[str, Sequence[str]] | None = None,
-    environ: Mapping[str, str] | None = None,
 ) -> dict[str, Any]:
     command_path: str | None = None
     command_mode = "missing"
     command_error_code: str | None = None
     try:
-        command = resolve_macrodata_command(environ=environ)
+        command = resolve_macrodata_command()
         command_path = command[0] if command else None
-        command_mode = "python_entrypoint" if _is_python_entrypoint_command(command) else "console_script"
+        command_mode = "python_entrypoint"
     except MacrodataRunnerError as exc:
-        diagnostics = getattr(exc, "diagnostics", {})
-        command_error_code = str(diagnostics.get("error_code") or "macrodata_runner_error")
+        command_error_code = str(exc.diagnostics.get("error_code") or "macrodata_runner_error")
 
     catalog_series = _macrodata_catalog_series()
     macro_core_series = _macrodata_bundle_series("macro-core")
@@ -195,7 +171,10 @@ def macrodata_runtime_state(
 
 
 def _macrodata_cli_entrypoint_available() -> bool:
-    return find_spec("macrodata.surfaces.cli") is not None
+    try:
+        return find_spec("macrodata.surfaces.cli") is not None
+    except (ImportError, AttributeError, ValueError):
+        return False
 
 
 def _macrodata_cli_package_version() -> str | None:
@@ -231,35 +210,13 @@ def _macrodata_bundle_series(bundle_name: str) -> set[str] | None:
         bundle_series = bundles.get(bundle_name)
         if isinstance(bundle_series, Sequence) and not isinstance(bundle_series, str | bytes | bytearray):
             return {str(series_key) for series_key in bundle_series}
-    if bundle_name == "macro-core":
-        macro_core = getattr(module, "MACRO_CORE", None)
-        if isinstance(macro_core, Sequence) and not isinstance(macro_core, str | bytes | bytearray):
-            return {str(series_key) for series_key in macro_core}
     return None
-
-
-def _is_python_entrypoint_command(command: Sequence[str]) -> bool:
-    return len(command) >= 3 and command[1] == "-c" and "macrodata.surfaces.cli" in command[2]
 
 
 def _edge_sample(values: Sequence[str], *, edge_count: int) -> list[str]:
     if len(values) <= edge_count * 2:
         return list(values)
     return [*values[:edge_count], "...", *values[-edge_count:]]
-
-
-def _executable_path_is_usable(path: str) -> bool:
-    if not os.access(path, os.X_OK):
-        return False
-    try:
-        with Path(path).open("rb") as handle:
-            first_line = handle.readline(256).rstrip()
-    except (IndexError, OSError):
-        return True
-    if not first_line.startswith(b"#!"):
-        return True
-    interpreter = first_line[2:].strip().split(maxsplit=1)[0].decode(errors="ignore")
-    return not interpreter.startswith("/") or Path(interpreter).exists()
 
 
 def fred_api_key_state(settings: object, *, environ: Mapping[str, str] | None = None) -> dict[str, Any]:
@@ -274,9 +231,9 @@ def fred_api_key_state(settings: object, *, environ: Mapping[str, str] | None = 
 
 def _configured_fred_env_name(settings: object) -> str | None:
     try:
-        env_name = settings.macrodata_fred_api_key_env
+        env_name = settings.providers.macrodata.fred_api_key_env
     except AttributeError as exc:
-        raise RuntimeError("macrodata_fred_api_key_env_settings_required") from exc
+        raise RuntimeError("macrodata_provider_settings_required") from exc
     if env_name is None:
         return None
     if isinstance(env_name, str) and env_name.strip():
@@ -322,5 +279,4 @@ __all__ = [
     "fred_api_key_state",
     "macrodata_runtime_state",
     "resolve_macrodata_command",
-    "resolve_macrodata_executable",
 ]

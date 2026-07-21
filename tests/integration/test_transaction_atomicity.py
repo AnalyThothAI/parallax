@@ -2,13 +2,13 @@ from __future__ import annotations
 
 from contextlib import contextmanager
 from decimal import Decimal
-from types import SimpleNamespace
 from typing import Any
 
 import pytest
 
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
 from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
 from parallax.domains.asset_market.types import MarketTick, market_tick_id
 from parallax.platform.db import postgres_client
@@ -21,7 +21,6 @@ def _worker_pool_bundle(pool: Any) -> DBPoolBundle:
     return DBPoolBundle(
         api_pool=None,
         worker_pool=pool,
-        wake_pool=None,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )
@@ -111,7 +110,7 @@ def test_repository_session_transaction_owns_database_transaction() -> None:
     assert conn.events == ["begin", "body", "commit"]
 
 
-def test_market_tick_persistence_rolls_back_tick_and_dirty_target_after_enqueue() -> None:
+def test_market_tick_persistence_rolls_back_fact_current_and_downstream_dirty_target() -> None:
     setup_conn = connect_postgres_test(read_only=False)
     pool = create_pool(
         postgres_test_dsn(),
@@ -123,70 +122,53 @@ def test_market_tick_persistence_rolls_back_tick_and_dirty_target_after_enqueue(
     )
     now_ms = 1_900_000_000_000
     tick = _market_tick(observed_at_ms=now_ms)
+    asset_id = "asset:solana:token:atomicity"
     try:
-        setup_conn.execute(
-            "DELETE FROM market_tick_current_dirty_targets WHERE target_type = %s AND target_id = %s",
-            (tick.target_type, tick.target_id),
+        _delete_market_tick_target(setup_conn, tick, asset_id=asset_id)
+        asset = RegistryRepository(setup_conn).upsert_chain_asset(
+            chain_id="solana",
+            address="atomicity",
+            observed_at_ms=now_ms - 1,
         )
-        setup_conn.execute(
-            "DELETE FROM market_ticks WHERE observed_at_ms = %s AND tick_id = %s",
-            (tick.observed_at_ms, tick.tick_id),
-        )
+        assert asset["asset_id"] == asset_id
         setup_conn.commit()
 
         bundle = _worker_pool_bundle(pool)
         with (
-            pytest.raises(RuntimeError, match="fail_after_ticks_for_test"),
+            pytest.raises(RuntimeError, match="fail_after_market_projection"),
             bundle.worker_session("market_tick_atomicity") as repos,
             repos.transaction(),
         ):
-            dirty_recorder = DirtyTargetRecorder(repos.market_tick_current_dirty_targets)
-            service = MarketTickPersistenceService(
-                SimpleNamespace(
-                    conn=repos.conn,
-                    market_ticks=repos.market_ticks,
-                    market_tick_current_dirty_targets=dirty_recorder,
-                    require_transaction=repos.require_transaction,
-                )
-            )
-            service.insert_ticks_and_enqueue_current_dirty(
-                [tick],
-                reason="test_atomicity",
-                now_ms=now_ms,
-                fail_after_ticks_for_test=True,
-            )
-
-        assert dirty_recorder.calls == [
-            {
-                "targets": [(tick.target_type, tick.target_id)],
-                "reason": "test_atomicity",
-                "now_ms": now_ms,
-            }
-        ]
+            result = MarketTickPersistenceService(repos).persist_ticks([tick], now_ms=now_ms)
+            assert result.changed_targets == [(tick.target_type, tick.target_id)]
+            raise RuntimeError("fail_after_market_projection")
 
         tick_count = setup_conn.execute(
             "SELECT count(*) AS row_count FROM market_ticks WHERE observed_at_ms = %s AND tick_id = %s",
             (tick.observed_at_ms, tick.tick_id),
         ).fetchone()
-        dirty_count = setup_conn.execute(
+        current_count = setup_conn.execute(
             """
             SELECT count(*) AS row_count
-            FROM market_tick_current_dirty_targets
+            FROM market_tick_current
             WHERE target_type = %s AND target_id = %s
             """,
             (tick.target_type, tick.target_id),
         ).fetchone()
+        dirty_count = setup_conn.execute(
+            """
+            SELECT count(*) AS row_count
+            FROM token_radar_dirty_targets
+            WHERE target_type_key = 'Asset' AND identity_id = %s
+            """,
+            (asset_id,),
+        ).fetchone()
         assert tick_count["row_count"] == 0
+        assert current_count["row_count"] == 0
         assert dirty_count["row_count"] == 0
     finally:
-        setup_conn.execute(
-            "DELETE FROM market_tick_current_dirty_targets WHERE target_type = %s AND target_id = %s",
-            (tick.target_type, tick.target_id),
-        )
-        setup_conn.execute(
-            "DELETE FROM market_ticks WHERE observed_at_ms = %s AND tick_id = %s",
-            (tick.observed_at_ms, tick.tick_id),
-        )
+        _delete_market_tick_target(setup_conn, tick, asset_id=asset_id)
+        setup_conn.execute("DELETE FROM registry_assets WHERE asset_id = %s", (asset_id,))
         setup_conn.commit()
         setup_conn.close()
         pool.close()
@@ -208,31 +190,14 @@ class FakeTransactionConnection:
             self.events.append("commit")
 
 
-class DirtyTargetRecorder:
-    def __init__(self, delegate: Any) -> None:
-        self.delegate = delegate
-        self.calls: list[dict[str, Any]] = []
-
-    def enqueue_targets(self, targets: Any, *, reason: str, now_ms: int) -> int:
-        materialized = list(targets)
-        self.calls.append(
-            {
-                "targets": materialized,
-                "reason": reason,
-                "now_ms": now_ms,
-            }
-        )
-        return self.delegate.enqueue_targets(materialized, reason=reason, now_ms=now_ms)
-
-
-def _delete_market_tick_target(conn: Any, tick: MarketTick) -> None:
+def _delete_market_tick_target(conn: Any, tick: MarketTick, *, asset_id: str) -> None:
     conn.execute(
         "DELETE FROM market_tick_current WHERE target_type = %s AND target_id = %s",
         (tick.target_type, tick.target_id),
     )
     conn.execute(
-        "DELETE FROM market_tick_current_dirty_targets WHERE target_type = %s AND target_id = %s",
-        (tick.target_type, tick.target_id),
+        "DELETE FROM token_radar_dirty_targets WHERE target_type_key = 'Asset' AND identity_id = %s",
+        (asset_id,),
     )
     conn.execute(
         "DELETE FROM market_ticks WHERE target_type = %s AND target_id = %s",

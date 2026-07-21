@@ -12,27 +12,9 @@ from parallax.platform.runtime.worker_base import WorkerBase
 from parallax.platform.runtime.worker_result import WorkerResult
 
 
-class _Lock:
+class _DB:
     def __init__(self, events: list[tuple[Any, ...]]) -> None:
         self.events = events
-
-    def release(self) -> None:
-        self.events.append(("lock_release",))
-
-
-class _DB:
-    def __init__(self, events: list[tuple[Any, ...]], *, lock_available: bool = True) -> None:
-        self.events = events
-        self.lock_available = lock_available
-
-    def wake_emitter(self) -> object:
-        return object()
-
-    def acquire_advisory_lock_connection(self, worker_name: str, key: int) -> _Lock:
-        self.events.append(("lock_acquire", worker_name, key))
-        if not self.lock_available:
-            raise RuntimeError("advisory_lock_unavailable")
-        return _Lock(self.events)
 
     async def aclose(self) -> None:
         self.events.append(("db_close",))
@@ -121,33 +103,8 @@ def test_run_worker_once_uses_factory_and_public_worker_lifecycle(monkeypatch) -
         "notes": {"rows_written": 1},
     }
     assert ("factory", ("token_profile_current",), 7) in events
-    assert ("lock_acquire", "token_profile_current", 2026051702) in events
     assert events.index(("worker_run_once",)) < events.index(("worker_stop",))
-    assert events.index(("worker_stop",)) < events.index(("lock_release",))
-    assert events.index(("lock_release",)) < events.index(("worker_close",))
-    assert events[-1] == ("db_close",)
-
-
-def test_run_worker_once_reports_lock_contention_without_private_cli_reflection(monkeypatch) -> None:
-    from parallax.app.operations import run_worker_once as operation
-
-    events: list[tuple[Any, ...]] = []
-    db = _DB(events, lock_available=False)
-
-    monkeypatch.setattr(operation.DBPoolBundle, "create", staticmethod(lambda _settings, *, telemetry: db))
-
-    execution = operation.run_worker_once(Settings(), "token_profile_current")
-
-    assert execution.payload() == {
-        "worker_name": "token_profile_current",
-        "processed": 0,
-        "failed": 0,
-        "dead": 0,
-        "skipped": 1,
-        "notes": {"reason": "advisory_lock_unavailable"},
-    }
-    assert ("worker_run_once",) not in events
-    assert ("lock_acquire", "token_profile_current", 2026051702) in events
+    assert events.index(("worker_stop",)) < events.index(("worker_close",))
     assert events[-1] == ("db_close",)
 
 
@@ -279,7 +236,7 @@ def test_refresh_asset_profiles_prepares_each_provider_inside_transaction(monkey
         }
 
     monkeypatch.setattr(operation.DBPoolBundle, "create", staticmethod(lambda _settings, *, telemetry: db))
-    monkeypatch.setattr(operation, "wire_asset_market_providers", lambda _settings: providers)
+    monkeypatch.setattr(operation, "wire_asset_market", lambda _settings: providers)
     monkeypatch.setattr(
         operation,
         "construct_worker",

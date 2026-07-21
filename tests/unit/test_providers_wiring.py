@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 from types import SimpleNamespace
 
 import httpx
@@ -286,11 +287,32 @@ def test_discovery_provider_close_is_idempotent(monkeypatch) -> None:
     assert created[0].close_count == 1
 
 
-def test_fallback_quote_provider_close_requires_primary_close_contract() -> None:
-    provider = asset_market_wiring.FallbackDexQuoteProvider(primary=FakeDexQuoteProvider(), fallback=None)
+def test_fallback_quote_provider_close_owns_only_fallback() -> None:
+    primary = CloseCountingDexQuoteProvider()
+    fallback = CloseCountingDexQuoteProvider()
+    provider = asset_market_wiring.FallbackDexQuoteProvider(primary=primary, fallback=fallback)
 
-    with pytest.raises(AttributeError, match="close"):
-        provider.close()
+    provider.close()
+
+    assert primary.close_count == 0
+    assert fallback.close_count == 1
+
+
+def test_asset_market_providers_close_composite_dependencies_once() -> None:
+    async def scenario() -> None:
+        primary = CloseCountingDexQuoteProvider()
+        fallback = CloseCountingDexQuoteProvider()
+        providers = providers_wiring.AssetMarketProviders(
+            dex_quote_market=asset_market_wiring.FallbackDexQuoteProvider(primary=primary, fallback=fallback),
+            dex_candle_market=primary,
+        )
+
+        await providers.aclose()
+
+        assert primary.close_count == 1
+        assert fallback.close_count == 1
+
+    asyncio.run(scenario())
 
 
 def test_serialized_discovery_provider_close_requires_inner_close_contract() -> None:
@@ -326,7 +348,7 @@ def test_asset_market_wiring_closes_okx_partial_provider_when_gmgn_wiring_fails(
     monkeypatch.setattr(gmgn_wiring, "gmgn_dex_market", fail_gmgn)
 
     with pytest.raises(RuntimeError, match="gmgn failed"):
-        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn())
+        asset_market_wiring.wire_asset_market(_settings_with_okx_and_gmgn())
 
     assert binance_cex_provider.close_count == 1
     assert okx_provider.close_count == 1
@@ -348,7 +370,7 @@ def test_asset_market_wiring_preserves_gmgn_error_when_partial_cleanup_fails(mon
     monkeypatch.setattr(gmgn_wiring, "gmgn_dex_market", fail_gmgn)
 
     with pytest.raises(RuntimeError, match="gmgn failed") as exc_info:
-        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn())
+        asset_market_wiring.wire_asset_market(_settings_with_okx_and_gmgn())
 
     assert "cleanup failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
     assert "cex close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
@@ -368,7 +390,7 @@ def test_asset_market_wiring_records_malformed_okx_bundle_fields_during_partial_
     monkeypatch.setattr(gmgn_wiring, "gmgn_dex_market", fail_gmgn)
 
     with pytest.raises(RuntimeError, match="gmgn failed") as exc_info:
-        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn())
+        asset_market_wiring.wire_asset_market(_settings_with_okx_and_gmgn())
 
     notes = "\n".join(getattr(exc_info.value, "__notes__", []))
     assert okx_provider.close_count == 1
@@ -450,7 +472,7 @@ def test_news_story_brief_provider_wiring_requires_agent_execution_gateway_for_n
             "api_key": "sk-test",
         },
         workers={
-            "agent_runtime": {"defaults": {"model": "gpt-news"}},
+            "agent_runtime": {"model": "gpt-news"},
             "news_story_brief": {"enabled": True},
         },
     )
@@ -870,12 +892,7 @@ def _settings_with_news_llm_models() -> Settings:
             "api_key": "sk-test",
         },
         workers={
-            "agent_runtime": {
-                "defaults": {"model": "gpt-enrich"},
-                "lanes": {
-                    "news.story_brief": {"model": "gpt-story"},
-                },
-            },
+            "agent_runtime": {"model": "gpt-story"},
             "news_story_brief": {"enabled": True},
         },
     )

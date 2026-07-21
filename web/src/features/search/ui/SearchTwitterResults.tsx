@@ -157,7 +157,7 @@ function rowFromPost(post: TokenTimelinePost): EvidenceRow {
     receivedAtMs: post.received_at_ms,
     phase: post.stage_phase ?? post.mention_source ?? "post",
     stageId: post.stage_id,
-    handle: post.handle ?? post.author_handle,
+    handle: post.author_handle,
     text: post.text ?? referenceText(post.reference),
     anchor:
       price?.price_usd !== undefined && price?.price_usd !== null

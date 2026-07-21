@@ -6,9 +6,9 @@ from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
 from parallax.app.surfaces.api import schemas as api_schemas
-from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms, _worker_object
+from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
 from parallax.app.surfaces.api.exceptions import ApiBadRequest
-from parallax.app.surfaces.api.responses import _json
+from parallax.app.surfaces.api.responses import _validated_json
 from parallax.app.surfaces.api.validators import (
     _limit,
     _scope,
@@ -17,6 +17,7 @@ from parallax.app.surfaces.api.validators import (
     _window,
 )
 from parallax.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
+from parallax.domains.asset_market.services.live_market import live_market_snapshot
 from parallax.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from parallax.domains.token_intel.read_models.stocks_radar_service import StocksRadarService
 
@@ -43,7 +44,10 @@ def token_radar(
         venue=parsed_venue,
         now_ms=_now_ms(),
     )
-    return _json({"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, "venue": parsed_venue, **data}})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.TokenRadarData],
+        {"ok": True, "data": {"window": parsed_window, "scope": parsed_scope, "venue": parsed_venue, **data}},
+    )
 
 
 @router.get("/stocks-radar", response_model=api_schemas.ApiEnvelope[api_schemas.StocksRadarData])
@@ -65,7 +69,10 @@ def stocks_radar(
             scope=parsed_scope,
             now_ms=_now_ms(),
         )
-    return _json({"ok": True, "data": data})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.StocksRadarData],
+        {"ok": True, "data": data},
+    )
 
 
 @router.get("/live-market", response_model=api_schemas.ApiEnvelope[api_schemas.LiveMarketData])
@@ -78,12 +85,21 @@ def live_market(
     parsed_target_type = _target_type(target_type)
     if not parsed_target_type or not target_id:
         raise ApiBadRequest("target_required", field="target_id")
-    gateway = _worker_object(runtime, "live_price_gateway")
-    if gateway is None:
-        snapshot = {"target_type": parsed_target_type, "target_id": target_id, "status": "unsupported"}
-    else:
-        snapshot = gateway.snapshot(target_type=parsed_target_type, target_id=target_id, now_ms=_now_ms())
-    return _json({"ok": True, "data": snapshot})
+    with runtime.repositories() as repos:
+        row = repos.token_targets.latest_market_tick(
+            target_type=parsed_target_type,
+            target_id=target_id,
+        )
+    snapshot = live_market_snapshot(
+        row,
+        target_type=parsed_target_type,
+        target_id=target_id,
+        now_ms=_now_ms(),
+    )
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.LiveMarketData],
+        {"ok": True, "data": snapshot},
+    )
 
 
 def _token_radar_data(

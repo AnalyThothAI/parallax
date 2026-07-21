@@ -7,20 +7,20 @@ Reliability is built from durable PostgreSQL state, stable identities, bounded r
 | Surface | Meaning | May query queues? |
 |---|---|---|
 | `/healthz` | process is alive | no |
-| `/readyz` | DB is reachable, startup schema is compatible, core composition is complete | no |
-| `/api/status` | current in-memory worker/provider degradation | no |
+| `/readyz` | DB is reachable; cached startup schema/composition is valid | no |
+| `/api/status` | one current in-memory runtime snapshot | no |
 | authenticated ops diagnostics | queue detail, terminal evidence, provider diagnostics | yes, on demand |
 
-A degraded optional provider or a worker business error does not make the HTTP process unready. Startup migration/schema validation is captured once; readiness performs only lightweight DB liveness and composition checks.
+A degraded optional provider or a worker business error does not make the HTTP process unready. Startup migration/schema validation and composition are captured once; readiness performs only lightweight DB liveness against that cached result. Worker, collector, provider-connection, News-contract, and agent-execution state is captured by the single typed `RuntimeSnapshot`; status and ops diagnostics do not poll those components independently.
 
 ## Durable catch-up
 
 - PostgreSQL facts/control rows are the recovery source.
-- `NOTIFY` is a wake hint only.
-- Every listener also wakes at a bounded interval and re-reads its durable queue/frontier.
+- Every worker runs at a bounded interval and re-reads its durable queue/frontier.
+- There is no separate database or in-process wake plane to reconcile.
 - Claims are bounded and leased; expired leases are recoverable.
 - Empty queues do not trigger broad historical scans.
-- A worker may have one advisory single-writer lock, but correctness still comes from row identities and transactions.
+- Single-writer ownership is enforced by composition and stable row identities; transaction-scoped data locks remain local to the write they protect.
 
 ## Transaction and I/O boundary
 
@@ -35,7 +35,7 @@ short claim/load transaction
   -> short persist/ack transaction
 ```
 
-WorkerBase supplies the hard runtime timeout and duration telemetry. Domain workers do not maintain a second soft-timeout state machine.
+WorkerBase supplies sequential iteration and duration telemetry. Provider, database, model, network, and subprocess boundaries own their explicit timeouts; the generic loop does not force-cancel domain work.
 
 ## Idempotency and current rows
 

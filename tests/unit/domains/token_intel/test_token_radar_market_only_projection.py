@@ -3,6 +3,8 @@ from __future__ import annotations
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
+
 from parallax.domains.token_intel.services.token_radar_projector import TokenRadarProjector
 
 
@@ -11,7 +13,9 @@ def test_market_only_claim_reuses_edges_and_overlays_latest_market_context(monke
     claim = {
         "target_type_key": "Asset",
         "identity_id": "asset-1",
+        "dirty_reason": "market_tick_current_changed",
         "market_dirty": True,
+        "repair_dirty": False,
     }
     rank_sources = FakeRankSources(
         source_rows=[
@@ -48,17 +52,24 @@ def test_market_only_claim_reuses_edges_and_overlays_latest_market_context(monke
 
     projected = projector.project_claims(
         claimed_targets=(claim,),
-        work_items=(("5m", "all", "bsc"),),
+        work_items=(
+            ("5m", "all", "all"),
+            ("5m", "all", "sol"),
+            ("5m", "all", "eth"),
+            ("5m", "all", "base"),
+            ("5m", "all", "bsc"),
+            ("5m", "all", "cex"),
+        ),
         now_ms=now_ms,
     )
 
     assert rank_sources.populate_calls == []
     assert rank_sources.latest_market_calls == [[claim]]
+    assert len(rank_sources.load_calls[0]) == 1
     request = rank_sources.load_calls[0][0]
-    assert (request.window, request.scope, request.venue, request.target_type_key, request.identity_id) == (
+    assert (request.window, request.scope, request.target_type_key, request.identity_id) == (
         "5m",
         "all",
-        "bsc",
         "Asset",
         "asset-1",
     )
@@ -67,6 +78,73 @@ def test_market_only_claim_reuses_edges_and_overlays_latest_market_context(monke
     assert scored_source["latest_price_usd"] == 2.5
     assert projected[0].error is None
     assert projected[0].rank_sets == frozenset({("5m", "all", "all"), ("5m", "all", "bsc")})
+
+
+@pytest.mark.parametrize(
+    "claim",
+    [
+        {
+            "target_type_key": "Asset",
+            "identity_id": "asset-1",
+            "dirty_reason": "mixed",
+            "market_dirty": True,
+            "repair_dirty": False,
+        },
+        {
+            "target_type_key": "Asset",
+            "identity_id": "asset-1",
+            "dirty_reason": "ops_market_current_repair",
+            "market_dirty": True,
+            "repair_dirty": True,
+        },
+    ],
+    ids=("mixed-social-and-market", "explicit-repair"),
+)
+def test_mixed_or_repair_market_claim_refreshes_edges_and_overlays_market(
+    monkeypatch,
+    claim: dict[str, Any],
+) -> None:
+    now_ms = 1_777_800_060_000
+    rank_sources = FakeRankSources(
+        source_rows=[
+            {
+                "event_id": "event-existing",
+                "received_at_ms": now_ms - 60_000,
+                "target_type": "Asset",
+                "target_id": "asset-1",
+            }
+        ],
+        latest_market_context={
+            ("Asset", "asset-1"): {
+                "latest_price_tick_id": "fresh-tick",
+                "latest_price_observed_at_ms": now_ms - 10_000,
+            }
+        },
+    )
+    projector = TokenRadarProjector(repos=SimpleNamespace(token_radar_rank_sources=rank_sources))
+
+    monkeypatch.setattr(
+        TokenRadarProjector,
+        "project_source_request",
+        lambda self, **kwargs: {
+            "source_rows": len(kwargs["source_rows"]),
+            "status": "updated",
+            "rank_set_changed": False,
+            "target_venue": "all",
+        },
+    )
+
+    projected = projector.project_claims(
+        claimed_targets=(claim,),
+        work_items=(("5m", "all", "all"),),
+        now_ms=now_ms,
+    )
+
+    assert len(rank_sources.populate_calls) == 1
+    assert rank_sources.populate_calls[0]["targets"] == [claim]
+    assert rank_sources.populate_calls[0]["projected_at_ms"] == now_ms
+    assert rank_sources.latest_market_calls == [[claim]]
+    assert projected[0].error is None
 
 
 class FakeRankSources:

@@ -282,14 +282,6 @@ const providerRow: NewsRow = {
   latest_at_ms: 1_779_000_000_000,
   source_domain: "6551.io",
   canonical_url: "https://example.test/news-1",
-  market_scope: {
-    scope: ["crypto"],
-    primary: "crypto",
-    status: "classified",
-    reason: "crypto_evidence",
-    basis: { fixture: "providerRow" },
-    version: "news_market_scope_v1",
-  },
   agent_admission_status: "eligible",
   agent_admission_reason: "eligible",
   agent_admission: {
@@ -320,7 +312,9 @@ const providerRow: NewsRow = {
       market_type: "cex",
     },
   ],
+  token_impacts: [],
   fact_lanes: [{ event_type: "fund_flow", status: "accepted" }],
+  agent_brief: { status: "pending" },
 };
 
 function newsSignalEnvelope(displaySignal: NewsSignalSummary): NewsSignalEnvelope {
@@ -339,8 +333,6 @@ function newsSignalEnvelope(displaySignal: NewsSignalSummary): NewsSignalEnvelop
         basis: { fixture: "newsSignalEnvelope" },
         version: "news_market_scope_v1",
       },
-      agent_admission_status: "eligible",
-      agent_admission_reason: "eligible",
     },
   };
 }
@@ -357,6 +349,8 @@ const providerDetail: NewsItemDetail = {
   },
   agent_brief: {
     status: "ready",
+    direction: "bullish",
+    decision_class: "driver",
     summary_zh: "ETF 资金流持续增强。",
     market_read_zh: "AI reads this as a liquidity signal worth watching.",
   },

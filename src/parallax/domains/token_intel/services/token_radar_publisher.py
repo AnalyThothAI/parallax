@@ -2,7 +2,6 @@ from __future__ import annotations
 
 import time
 from collections.abc import Mapping, Sequence
-from decimal import Decimal
 from typing import Any
 
 from parallax.domains.token_intel._constants import (
@@ -29,7 +28,6 @@ class TokenRadarPublisher:
         *,
         windows: tuple[str, ...] = (),
         scopes: tuple[str, ...] = (),
-        venues: tuple[str, ...] = (),
         work_items: tuple[tuple[str, ...], ...] | None = None,
         score_work_items: tuple[tuple[str, ...], ...] | None = None,
         now_ms: int | None = None,
@@ -57,7 +55,6 @@ class TokenRadarPublisher:
             return self._rebuild_dirty_targets_in_transaction(
                 windows=windows,
                 scopes=scopes,
-                venues=venues,
                 work_items=work_items,
                 score_work_items=score_work_items,
                 now_ms=now_ms,
@@ -75,7 +72,6 @@ class TokenRadarPublisher:
         *,
         windows: tuple[str, ...],
         scopes: tuple[str, ...],
-        venues: tuple[str, ...],
         work_items: tuple[tuple[str, ...], ...] | None,
         score_work_items: tuple[tuple[str, ...], ...] | None,
         now_ms: int | None,
@@ -88,10 +84,9 @@ class TokenRadarPublisher:
         claimed_targets: Sequence[Mapping[str, Any]] | None,
     ) -> dict[str, Any]:
         computed_at_ms = int(now_ms if now_ms is not None else time.time() * 1000)
-        source_work_items = _resolve_work_items(
+        source_work_items = _resolve_score_work_items(
             windows=windows,
             scopes=scopes,
-            venues=venues,
             work_items=score_work_items if score_work_items is not None else work_items,
         )
         due_work_items = _resolve_due_work_items(work_items=work_items)
@@ -154,33 +149,25 @@ class TokenRadarPublisher:
         publish_items.update(touched)
         if publish_items:
             result["status"] = "ready"
-        for window, scope, venue in sorted(publish_items):
-            key = f"{window}:{scope}:{venue}"
-            try:
-                rank_result = self.publish_rank_set(
-                    window=window,
-                    scope=scope,
-                    venue=venue,
-                    now_ms=computed_at_ms,
-                    limit=rank_limit,
-                )
+        for (window, scope), venues in _group_publish_items(publish_items).items():
+            rank_results = self.publish_rank_sets(
+                window=window,
+                scope=scope,
+                venues=venues,
+                now_ms=computed_at_ms,
+                limit=rank_limit,
+            )
+            for venue in venues:
+                rank_result = rank_results[venue]
                 rank_status = str(rank_result.get("status") or "")
                 if rank_status not in {"ready", "unchanged"}:
-                    raise RuntimeError(f"rank refresh did not publish current rows: {rank_status or 'unknown'}")
-            except Exception as exc:
-                failures += 1
-                first_error = first_error or str(exc)
-                first_publish_error = first_publish_error or str(exc)
-                failed_publish_items.add((window, scope, venue))
-                rank_result = {
-                    "rows_written": 0,
-                    "source_rows": 0,
-                    "computed_at_ms": computed_at_ms,
-                    "status": "failed",
-                    "error": str(exc),
-                }
-            result["windows"][key] = rank_result
-            result["rows_written"] += int(rank_result.get("rows_written") or 0)
+                    error = str(rank_result.get("error") or f"rank refresh did not publish current rows: {rank_status}")
+                    failures += 1
+                    first_error = first_error or error
+                    first_publish_error = first_publish_error or error
+                    failed_publish_items.add((window, scope, venue))
+                result["windows"][f"{window}:{scope}:{venue}"] = rank_result
+                result["rows_written"] += int(rank_result.get("rows_written") or 0)
 
         if failures:
             result["status"] = "failed"
@@ -244,76 +231,148 @@ class TokenRadarPublisher:
         limit: int,
         venue: str = TOKEN_RADAR_DEFAULT_VENUE,
     ) -> dict[str, Any]:
+        result = self.publish_rank_sets(
+            window=window,
+            scope=scope,
+            venues=(venue,),
+            now_ms=now_ms,
+            limit=limit,
+        )[venue]
+        if result.get("status") == "failed":
+            raise RuntimeError(str(result.get("error") or "rank publication failed"))
+        return result
+
+    def publish_rank_sets(
+        self,
+        *,
+        window: str,
+        scope: str,
+        venues: tuple[str, ...],
+        now_ms: int,
+        limit: int,
+    ) -> dict[str, dict[str, Any]]:
         computed_at_ms = int(now_ms)
-        attempt_id = f"attempt:{PROJECTION_VERSION}:{window}:{scope}:{venue}:{computed_at_ms}"
+        requested_venues = tuple(dict.fromkeys(str(venue) for venue in venues))
         try:
-            projected = self.projector.build_rank_set(
+            projected_by_venue = self.projector.build_rank_sets(
                 window=window,
                 scope=scope,
-                venue=venue,
+                venues=requested_venues,
                 now_ms=computed_at_ms,
                 limit=limit,
             )
-            rows = list(projected.rows)
-            generation_id = stable_generation_id(
+        except Exception as exc:
+            return {
+                venue: self._failed_rank_publication(
+                    window=window,
+                    scope=scope,
+                    venue=venue,
+                    computed_at_ms=computed_at_ms,
+                    error=exc,
+                )
+                for venue in requested_venues
+            }
+        results: dict[str, dict[str, Any]] = {}
+        for venue in requested_venues:
+            try:
+                results[venue] = self._publish_rank_projection(
+                    window=window,
+                    scope=scope,
+                    venue=venue,
+                    computed_at_ms=computed_at_ms,
+                    projected=projected_by_venue[venue],
+                )
+            except Exception as exc:
+                results[venue] = self._failed_rank_publication(
+                    window=window,
+                    scope=scope,
+                    venue=venue,
+                    computed_at_ms=computed_at_ms,
+                    error=exc,
+                )
+        return results
+
+    def _publish_rank_projection(
+        self,
+        *,
+        window: str,
+        scope: str,
+        venue: str,
+        computed_at_ms: int,
+        projected: Any,
+    ) -> dict[str, Any]:
+        rows = list(projected.rows)
+        generation_id = stable_generation_id(
+            projection_version=PROJECTION_VERSION,
+            window=window,
+            scope=scope,
+            venue=venue,
+            rows=rows,
+        )
+        source_frontier_ms = max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0)
+        with self.repos.transaction():
+            publication_result = self.repos.token_radar.publish_current_generation(
                 projection_version=PROJECTION_VERSION,
                 window=window,
                 scope=scope,
                 venue=venue,
+                generation_id=generation_id,
+                published_at_ms=computed_at_ms,
+                source_frontier_ms=source_frontier_ms,
                 rows=rows,
+                source_rows=projected.source_rows,
+                started_at_ms=computed_at_ms,
+                finished_at_ms=_now_ms(),
+                on_current_changes=self._enqueue_downstream_dirty_targets,
             )
-            source_frontier_ms = max(
-                (int(row.get("source_max_received_at_ms") or 0) for row in rows),
-                default=0,
-            )
-            with self.repos.transaction():
-                publication_result = self.repos.token_radar.publish_current_generation(
-                    projection_version=PROJECTION_VERSION,
-                    window=window,
-                    scope=scope,
-                    venue=venue,
-                    generation_id=generation_id,
-                    published_at_ms=computed_at_ms,
-                    source_frontier_ms=source_frontier_ms,
-                    rows=rows,
-                    source_rows=projected.source_rows,
-                    started_at_ms=computed_at_ms,
-                    finished_at_ms=_now_ms(),
-                    on_current_changes=self._enqueue_downstream_dirty_targets,
-                )
-                status = str(publication_result.get("status") or "")
-                published_generation_id = str(publication_result.get("generation_id") or generation_id)
-                rows_written = int(publication_result.get("rows_written") or 0)
-                if status == "stale_skipped":
-                    return {
-                        "rows_written": 0,
-                        "source_rows": projected.source_rows,
-                        "computed_at_ms": computed_at_ms,
-                        "generation_id": published_generation_id,
-                        "status": "stale_skipped",
-                    }
-                if status not in {"published", "unchanged"}:
-                    raise RuntimeError(f"rank refresh did not publish current rows: {status or 'unknown'}")
+        status = str(publication_result.get("status") or "")
+        published_generation_id = str(publication_result.get("generation_id") or generation_id)
+        rows_written = int(publication_result.get("rows_written") or 0)
+        if status == "stale_skipped":
             return {
-                "rows_written": rows_written,
+                "rows_written": 0,
                 "source_rows": projected.source_rows,
                 "computed_at_ms": computed_at_ms,
                 "generation_id": published_generation_id,
-                "status": "ready" if status == "published" else "unchanged",
+                "status": "stale_skipped",
             }
-        except Exception as exc:
-            with self.repos.transaction():
-                self.repos.token_radar.mark_publication_failed(
-                    projection_version=PROJECTION_VERSION,
-                    window=window,
-                    scope=scope,
-                    venue=venue,
-                    generation_id=attempt_id,
-                    started_at_ms=computed_at_ms,
-                    finished_at_ms=_now_ms(),
-                    error=str(exc),
-                )
-            raise
+        if status not in {"published", "unchanged"}:
+            raise RuntimeError(f"rank refresh did not publish current rows: {status or 'unknown'}")
+        return {
+            "rows_written": rows_written,
+            "source_rows": projected.source_rows,
+            "computed_at_ms": computed_at_ms,
+            "generation_id": published_generation_id,
+            "status": "ready" if status == "published" else "unchanged",
+        }
+
+    def _failed_rank_publication(
+        self,
+        *,
+        window: str,
+        scope: str,
+        venue: str,
+        computed_at_ms: int,
+        error: Exception,
+    ) -> dict[str, Any]:
+        with self.repos.transaction():
+            self.repos.token_radar.mark_publication_failed(
+                projection_version=PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                venue=venue,
+                generation_id=f"attempt:{PROJECTION_VERSION}:{window}:{scope}:{venue}:{computed_at_ms}",
+                started_at_ms=computed_at_ms,
+                finished_at_ms=_now_ms(),
+                error=str(error),
+            )
+        return {
+            "rows_written": 0,
+            "source_rows": 0,
+            "computed_at_ms": computed_at_ms,
+            "status": "failed",
+            "error": str(error),
+        }
 
     def _enqueue_downstream_dirty_targets(
         self,
@@ -340,14 +399,6 @@ class TokenRadarPublisher:
             window=window,
             scope=scope,
             rows=rows,
-            previous_by_key=previous_by_key,
-            computed_at_ms=computed_at_ms,
-        )
-        self._enqueue_capture_tiers(
-            window=window,
-            scope=scope,
-            rows=rows,
-            exited_rows=exited_rows,
             previous_by_key=previous_by_key,
             computed_at_ms=computed_at_ms,
         )
@@ -415,33 +466,6 @@ class TokenRadarPublisher:
             )
         _enqueue_by_reason(self.repos.asset_profile_refresh_targets, targets, now_ms=computed_at_ms)
 
-    def _enqueue_capture_tiers(
-        self,
-        *,
-        window: str,
-        scope: str,
-        rows: list[dict[str, Any]],
-        exited_rows: list[dict[str, Any]],
-        previous_by_key: dict[tuple[str, str, str], dict[str, Any]],
-        computed_at_ms: int,
-    ) -> None:
-        tier_rows = [row for row in rows if _resolved_target(row) is not None]
-        tier_exited_rows = [row for row in exited_rows if _resolved_target(row) is not None]
-        if not _capture_tier_rank_set_changed(
-            rows=tier_rows,
-            exited_rows=tier_exited_rows,
-            previous_by_key=previous_by_key,
-        ):
-            return
-        source_watermark_ms = _rank_set_source_watermark_ms(rows=tier_rows, exited_rows=tier_exited_rows)
-        self.repos.token_capture_tier_dirty_targets.enqueue_rank_set(
-            reason=f"token_radar_capture_tier_rank_set:{window}:{scope}",
-            rows=tier_rows,
-            exited_rows=tier_exited_rows,
-            source_watermark_ms=source_watermark_ms,
-            now_ms=computed_at_ms,
-        )
-
 
 def _resolve_work_items(
     *,
@@ -456,6 +480,17 @@ def _resolve_work_items(
     return tuple((window, scope, venue) for window in windows for scope in scopes for venue in resolved_venues)
 
 
+def _resolve_score_work_items(
+    *,
+    windows: tuple[str, ...],
+    scopes: tuple[str, ...],
+    work_items: tuple[tuple[str, ...], ...] | None,
+) -> tuple[tuple[str, str], ...]:
+    if work_items is not None:
+        return tuple(dict.fromkeys((str(item[0]), str(item[1])) for item in work_items if len(item) >= 2))
+    return tuple((window, scope) for window in windows for scope in scopes)
+
+
 def _resolve_due_work_items(
     *,
     work_items: tuple[tuple[str, ...], ...] | None,
@@ -463,6 +498,15 @@ def _resolve_due_work_items(
     if work_items is None:
         return ()
     return _resolve_work_items(windows=(), scopes=(), venues=(), work_items=work_items)
+
+
+def _group_publish_items(
+    work_items: set[tuple[str, str, str]],
+) -> dict[tuple[str, str], tuple[str, ...]]:
+    grouped: dict[tuple[str, str], list[str]] = {}
+    for window, scope, venue in sorted(work_items):
+        grouped.setdefault((window, scope), []).append(venue)
+    return {key: tuple(venues) for key, venues in grouped.items()}
 
 
 def _normalize_work_item(item: tuple[str, ...]) -> tuple[str, str, str]:
@@ -609,8 +653,8 @@ def _asset_profile_targets(
         return []
     target_type, target_id = resolved
     subject = _rank_subject(row)
-    chain_id = _optional_text(row.get("chain_id") or row.get("asset_chain_id") or subject.get("chain_id"))
-    address = _optional_text(row.get("address") or row.get("asset_address") or subject.get("address"))
+    chain_id = _optional_text(subject.get("chain"))
+    address = _optional_text(subject.get("address"))
     if not chain_id or not address:
         raise RuntimeError("asset_profile_refresh_target_identity_required")
     symbol = _first_real_symbol(row.get("asset_symbol"), subject.get("symbol"), row.get("display_symbol"))
@@ -677,103 +721,11 @@ def _enqueue_by_reason(repo: Any, targets: list[dict[str, Any]], *, now_ms: int)
         repo.enqueue_targets(reason_targets, reason=reason, now_ms=now_ms)
 
 
-def _capture_tier_rank_set_changed(
-    *,
-    rows: Sequence[Mapping[str, Any]],
-    exited_rows: Sequence[Mapping[str, Any]],
-    previous_by_key: Mapping[tuple[str, str, str], Mapping[str, Any]],
-) -> bool:
-    if exited_rows:
-        return True
-    for row in rows:
-        previous = previous_by_key.get(_current_key(row))
-        if previous is None or _capture_tier_rank_payload(row) != _capture_tier_rank_payload(previous):
-            return True
-    return False
-
-
-def _capture_tier_rank_payload(row: Mapping[str, Any]) -> tuple[Any, ...]:
-    resolved = _resolved_target(row)
-    target_type, target_id = resolved if resolved is not None else ("", "")
-    return (
-        target_type,
-        target_id,
-        _capture_target_key(row),
-        _capture_row_payload_hash(row),
-        str(row.get("lane") or ""),
-        row.get("rank"),
-        _normalized_score(row.get("rank_score", row.get("score"))),
-        str(row.get("decision") or ""),
-        str(row.get("quality_status") or ""),
-        _json_ready(row.get("degraded_reasons_json") or []),
-    )
-
-
-def _capture_target_key(row: Mapping[str, Any]) -> tuple[str, str]:
-    resolved = _resolved_target(row)
-    if resolved is None:
-        return ("", "")
-    target_type, _target_id = resolved
-    subject = _rank_subject(row)
-    if target_type == "Asset":
-        chain_id = _optional_text(row.get("chain_id") or row.get("asset_chain_id") or subject.get("chain_id"))
-        address = _optional_text(row.get("address") or row.get("asset_address") or subject.get("address"))
-        if chain_id and address:
-            normalized_address = address.lower() if address.startswith(("0x", "0X")) else address
-            return ("chain_token", f"{chain_id}:{normalized_address}")
-    if target_type == "CexToken":
-        pricefeed_provider, pricefeed_market_id = _cex_pricefeed_target(
-            row.get("pricefeed_id") or subject.get("pricefeed_id")
-        )
-        provider = (_optional_text(row.get("provider") or subject.get("provider") or pricefeed_provider) or "").lower()
-        native_market_id = (
-            _optional_text(row.get("native_market_id") or subject.get("native_market_id") or pricefeed_market_id) or ""
-        ).upper()
-        if provider and native_market_id:
-            return ("cex_symbol", f"{provider}:{native_market_id}")
-    return ("", "")
-
-
-def _capture_row_payload_hash(row: Mapping[str, Any]) -> str:
-    resolved = _resolved_target(row)
-    target_type, target_id = resolved if resolved is not None else ("", "")
-    return stable_token_radar_payload_hash(
-        {
-            "target_type": target_type,
-            "target_id": target_id,
-            "capture_target": _capture_target_key(row),
-            "lane": str(row.get("lane") or ""),
-            "rank": row.get("rank"),
-            "rank_score": _normalized_score(row.get("rank_score", row.get("score"))),
-            "decision": row.get("decision"),
-            "quality_status": row.get("quality_status"),
-            "degraded_reasons_json": _json_ready(row.get("degraded_reasons_json") or []),
-            "pricefeed_id": row.get("pricefeed_id"),
-            "factor_snapshot_json": row.get("factor_snapshot_json"),
-            "source_event_ids_json": _json_ready(row.get("source_event_ids_json") or []),
-            "data_health_json": _json_ready(row.get("data_health_json") or {}),
-            "resolution_json": _json_ready(row.get("resolution_json") or {}),
-        }
-    )
-
-
 def _source_watermark_ms(row: Mapping[str, Any]) -> int:
     value = row.get("source_max_received_at_ms")
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise RuntimeError("token_radar_downstream_source_watermark_required")
     return value
-
-
-def _rank_set_source_watermark_ms(
-    *,
-    rows: Sequence[Mapping[str, Any]],
-    exited_rows: Sequence[Mapping[str, Any]],
-) -> int:
-    watermarks = [_source_watermark_ms(row) for row in rows]
-    watermarks.extend(_source_watermark_ms(row) for row in exited_rows)
-    if not watermarks:
-        raise RuntimeError("token_radar_downstream_source_watermark_required")
-    return max(watermarks)
 
 
 def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -782,15 +734,6 @@ def _rank_subject(row: Mapping[str, Any]) -> Mapping[str, Any]:
         return {}
     subject = snapshot.get("subject")
     return subject if isinstance(subject, Mapping) else {}
-
-
-def _normalized_score(value: Any) -> str | None:
-    if value is None or str(value).strip() == "":
-        return None
-    try:
-        return format(Decimal(str(value)).normalize(), "f")
-    except Exception:
-        return str(value)
 
 
 def _optional_text(value: Any) -> str | None:

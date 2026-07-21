@@ -43,11 +43,11 @@ def test_market_tick_id_is_deterministic_from_dedupe_key() -> None:
     )
 
 
-def test_insert_tick_rejects_non_deterministic_tick_id() -> None:
+def test_insert_ticks_rejects_non_deterministic_tick_id() -> None:
     conn = _ScriptedConnection([])
 
     try:
-        MarketTickRepository(conn).insert_tick(_tick(tick_id="tick-1"))
+        MarketTickRepository(conn).insert_ticks_returning_rows([_tick(tick_id="tick-1")])
     except ValueError as exc:
         assert "market tick id must be deterministic" in str(exc)
     else:
@@ -57,17 +57,18 @@ def test_insert_tick_rejects_non_deterministic_tick_id() -> None:
 
 
 def test_insert_market_tick_is_idempotent_without_update() -> None:
-    conn = _ScriptedConnection([])
     tick = _tick()
+    conn = _ScriptedConnection([{"tick_id": tick.tick_id}, None])
 
     repository = MarketTickRepository(conn)
-    assert repository.insert_tick(tick) == tick.tick_id
-    assert repository.insert_tick(tick) == tick.tick_id
+    assert repository.insert_ticks_returning_rows([tick]) == [{"tick_id": tick.tick_id}]
+    assert repository.insert_ticks_returning_rows([tick]) == []
 
     sql = "\n".join(conn.sql)
     assert "INSERT INTO market_ticks" in sql
     assert "ON CONFLICT(observed_at_ms, target_type, target_id, source_provider) DO NOTHING" in sql
-    assert "RETURNING tick_id" in sql
+    assert "RETURNING" in sql
+    assert "tick_id" in sql
     assert "UPDATE market_ticks" not in sql
     assert "market_tick_current" not in sql
     assert "current_upsert" not in sql
@@ -83,13 +84,13 @@ def test_insert_market_tick_appends_only_and_does_not_write_current_projection()
     conn = _ScriptedConnection([])
     tick = _tick()
 
-    MarketTickRepository(conn).insert_tick(tick)
+    MarketTickRepository(conn).insert_ticks_returning_rows([tick])
 
     sql = conn.sql[-1]
     normalized_sql = " ".join(sql.split())
     assert "INSERT INTO market_ticks" in normalized_sql
     assert "ON CONFLICT(observed_at_ms, target_type, target_id, source_provider) DO NOTHING" in normalized_sql
-    assert "RETURNING tick_id" in normalized_sql
+    assert "RETURNING" in normalized_sql
     assert "WITH inserted AS" not in normalized_sql
     assert "current_upsert" not in normalized_sql
     assert "market_tick_current" not in normalized_sql
@@ -100,7 +101,7 @@ def test_insert_market_tick_strips_nul_bytes_from_raw_payload() -> None:
     conn = _ScriptedConnection([])
     tick = _tick(raw_payload_json={"symbol\x00": "ZEC\x00", "links": ["https://x.example/\x00zec"]})
 
-    MarketTickRepository(conn).insert_tick(tick)
+    MarketTickRepository(conn).insert_ticks_returning_rows([tick])
 
     assert conn.params[0]["raw_payload_json"].obj == {
         "symbol": "ZEC",
@@ -108,25 +109,15 @@ def test_insert_market_tick_strips_nul_bytes_from_raw_payload() -> None:
     }
 
 
-def test_insert_ticks_returns_actual_inserted_count() -> None:
+def test_insert_ticks_returns_only_rows_that_were_inserted() -> None:
     first_tick = _tick(observed_at_ms=1_700_000_000_000)
     duplicate_tick = _tick(observed_at_ms=1_700_000_000_000)
     conn = _ScriptedConnection([{"tick_id": first_tick.tick_id}, None])
 
-    count = MarketTickRepository(conn).insert_ticks([first_tick, duplicate_tick])
+    rows = MarketTickRepository(conn).insert_ticks_returning_rows([first_tick, duplicate_tick])
 
-    assert count == 1
+    assert rows == [{"tick_id": first_tick.tick_id}]
     assert len(conn.sql) == 2
-
-
-def test_insert_ticks_returning_ids_returns_only_inserted_ids() -> None:
-    first_tick = _tick(observed_at_ms=1_700_000_000_000)
-    second_tick = _tick(observed_at_ms=1_700_000_000_001)
-    conn = _ScriptedConnection([{"tick_id": first_tick.tick_id}, {"tick_id": second_tick.tick_id}])
-
-    inserted_ids = MarketTickRepository(conn).insert_ticks_returning_ids([first_tick, second_tick])
-
-    assert inserted_ids == [first_tick.tick_id, second_tick.tick_id]
 
 
 def test_insert_market_tick_returning_write_requires_cursor_rowcount() -> None:
@@ -134,7 +125,7 @@ def test_insert_market_tick_returning_write_requires_cursor_rowcount() -> None:
     conn = _ScriptedConnection([{"tick_id": tick.tick_id}], rowcounts=[_ROWCOUNT_MISSING])
 
     with pytest.raises(TypeError, match="market_tick_repository_rowcount_invalid"):
-        MarketTickRepository(conn).insert_ticks_returning_ids([tick])
+        MarketTickRepository(conn).insert_ticks_returning_rows([tick])
 
 
 @pytest.mark.parametrize(
@@ -157,14 +148,14 @@ def test_insert_market_tick_returning_write_rejects_invalid_or_mismatched_rowcou
     conn = _ScriptedConnection([row], rowcounts=[rowcount])
 
     with pytest.raises(TypeError, match="market_tick_repository_rowcount_invalid"):
-        MarketTickRepository(conn).insert_ticks_returning_ids([tick])
+        MarketTickRepository(conn).insert_ticks_returning_rows([tick])
 
 
 def test_insert_market_tick_returning_write_accepts_zero_rowcount_conflict() -> None:
     tick = _tick()
     conn = _ScriptedConnection([None], rowcounts=[0])
 
-    assert MarketTickRepository(conn).insert_ticks_returning_ids([tick]) == []
+    assert MarketTickRepository(conn).insert_ticks_returning_rows([tick]) == []
 
 
 def test_latest_at_or_before_uses_observed_window_and_order() -> None:
@@ -194,40 +185,44 @@ def test_latest_at_or_before_uses_observed_window_and_order() -> None:
     }
 
 
-def test_latest_for_target_uses_received_age_and_order() -> None:
-    conn = _ScriptedConnection([None])
+def test_nearest_around_uses_bounded_observed_range_and_distance_order() -> None:
+    conn = _ScriptedConnection([{"tick_id": "tick-nearest"}])
 
-    row = MarketTickRepository(conn).latest_for_target(
-        target_type="cex_symbol",
-        target_id="OKX:BTC-USDT",
-        max_age_ms=60_000,
-        now_ms=1_700_000_200_000,
-    )
-
-    assert row is None
-    sql = conn.sql[-1]
-    assert "received_at_ms >= %(min_received_at_ms)s" in sql
-    assert "ORDER BY observed_at_ms DESC, received_at_ms DESC, tick_id DESC" in sql
-    assert conn.params[-1]["min_received_at_ms"] == 1_700_000_140_000
-
-
-def test_first_between_uses_inclusive_observed_range_and_ascending_order() -> None:
-    conn = _ScriptedConnection([{"tick_id": "tick-early"}])
-
-    row = MarketTickRepository(conn).first_between(
+    row = MarketTickRepository(conn).nearest_around(
         target_type="chain_token",
         target_id="solana:abc",
-        start_ms=1_700_000_000_000,
-        end_ms=1_700_000_010_000,
+        at_ms=1_700_000_005_000,
+        max_lag_ms=5_000,
     )
 
-    assert row == {"tick_id": "tick-early"}
+    assert row == {"tick_id": "tick-nearest"}
     sql = conn.sql[-1]
-    assert "observed_at_ms >= %(start_ms)s" in sql
-    assert "observed_at_ms <= %(end_ms)s" in sql
-    assert "ORDER BY observed_at_ms ASC, received_at_ms ASC, tick_id ASC" in sql
-    assert conn.params[-1]["start_ms"] == 1_700_000_000_000
-    assert conn.params[-1]["end_ms"] == 1_700_000_010_000
+    assert "observed_at_ms >= %(min_observed_at_ms)s" in sql
+    assert "observed_at_ms <= %(max_observed_at_ms)s" in sql
+    assert "ORDER BY ABS(observed_at_ms - %(at_ms)s) ASC" in sql
+    assert conn.params[-1]["min_observed_at_ms"] == 1_700_000_000_000
+    assert conn.params[-1]["max_observed_at_ms"] == 1_700_000_010_000
+
+
+def test_latest_target_rebuild_uses_bounded_recursive_stable_key_seek() -> None:
+    conn = _ScriptedConnection([{"tick_id": "tick-latest", "target_type": "chain_token", "target_id": "solana:abc"}])
+
+    rows = MarketTickRepository(conn).latest_target_ticks_after(
+        after=("chain_token", "eip155:1:0xabc"),
+        limit=25,
+    )
+
+    assert rows == [{"tick_id": "tick-latest", "target_type": "chain_token", "target_id": "solana:abc"}]
+    sql = conn.sql[-1]
+    assert "WITH RECURSIVE targets(target_type, target_id, position)" in sql
+    assert "WHERE targets.position < %(limit)s" in sql
+    assert "(ticks.target_type, ticks.target_id) > (targets.target_type, targets.target_id)" in sql
+    assert "SELECT DISTINCT target_type, target_id" not in sql
+    assert conn.params[-1] == {
+        "after_target_type": "chain_token",
+        "after_target_id": "eip155:1:0xabc",
+        "limit": 25,
+    }
 
 
 class _ScriptedConnection:

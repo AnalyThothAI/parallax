@@ -2,23 +2,29 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol, cast
 
+from parallax.domains.asset_market.chain_identity import chain_address_key
 from parallax.domains.asset_market.providers import (
     DexMarketFactUpdate,
     DexMarketStreamProvider,
     DexMarketStreamTarget,
 )
-from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
+from parallax.domains.asset_market.services.live_market import live_market_update_payload
+from parallax.domains.asset_market.services.market_tick_persistence import (
+    MarketTickPersistenceResult,
+    MarketTickPersistenceService,
+)
 from parallax.domains.asset_market.types import (
     MarketTick,
     MarketTickSourceProvider,
     MarketTickSourceTier,
     market_tick_id,
 )
+from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
 from parallax.platform.config.settings import MarketTickStreamWorkerSettings
 from parallax.platform.runtime.worker_base import WorkerBase
 from parallax.platform.runtime.worker_result import WorkerResult
@@ -39,11 +45,11 @@ class MarketTickStreamWorker(WorkerBase):
         *,
         pool_bundle: Any,
         stream_dex_market: DexMarketStreamProvider,
-        wake_emitter: Any | None = None,
         clock: Any | None = None,
         name: str = "market_tick_stream",
         settings: MarketTickStreamWorkerSettings,
         telemetry: Any,
+        on_live_market_update: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         if pool_bundle is None:
             raise RuntimeError("market_tick_stream_db_required")
@@ -56,13 +62,13 @@ class MarketTickStreamWorker(WorkerBase):
             telemetry=telemetry,
         )
         self.stream_dex_market = stream_dex_market
-        self.wake_emitter = wake_emitter
         self.subscription_limit = settings.subscription_limit
         self.stream_cycle_seconds = settings.stream_cycle_seconds
         self.clock = clock or _now_ms
+        self.on_live_market_update = on_live_market_update
 
     async def run_once(self) -> WorkerResult:
-        rows = self._list_tier1_rows()
+        rows = self._list_stream_rows()
         targets, skipped_targets = _stream_targets(rows, limit=self.subscription_limit)
         if not targets:
             return WorkerResult(
@@ -96,9 +102,15 @@ class MarketTickStreamWorker(WorkerBase):
             notes=notes,
         )
 
-    def _list_tier1_rows(self) -> list[dict[str, Any]]:
+    def _list_stream_rows(self) -> list[dict[str, Any]]:
+        now_ms = int(self.clock())
         with self.db.worker_session(self.name) as repos:
-            rows = repos.token_capture_tiers.list_by_tier(1, limit=self.subscription_limit)
+            rows = repos.registry.ranked_market_targets(
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                since_ms=now_ms - WINDOW_MS["24h"],
+                target_types=("chain_token",),
+                limit=self.subscription_limit,
+            )
         return [dict(row) for row in rows]
 
     async def _stream_and_persist_ticks(
@@ -138,7 +150,7 @@ class MarketTickStreamWorker(WorkerBase):
                         continue
                     ticks.append(tick)
             except Exception as exc:
-                inserted = self._persist_ticks(ticks)
+                inserted = await self._persist_ticks(ticks)
                 degraded_result = _degraded_stream_result(
                     inserted=inserted,
                     attempted=len(ticks),
@@ -152,7 +164,7 @@ class MarketTickStreamWorker(WorkerBase):
                 return degraded_result
         except Exception as exc:
             if inserted is None:
-                inserted = self._persist_ticks(ticks)
+                inserted = await self._persist_ticks(ticks)
             return _degraded_stream_result(
                 inserted=inserted,
                 attempted=len(ticks),
@@ -160,22 +172,32 @@ class MarketTickStreamWorker(WorkerBase):
                 stream_dex_market=stream_dex_market,
                 exc=exc,
             )
-        inserted = self._persist_ticks(ticks)
+        inserted = await self._persist_ticks(ticks)
         return _StreamPersistResult(inserted=inserted, attempted=len(ticks), skipped=skipped)
 
-    def _persist_ticks(self, ticks: Iterable[MarketTick]) -> int:
+    async def _persist_ticks(self, ticks: Iterable[MarketTick]) -> int:
         materialized = list(ticks)
         if not materialized:
             return 0
+        result = await asyncio.to_thread(self._persist_ticks_sync, materialized)
+        await self._publish_current_rows(result.live_market_rows)
+        return result.inserted
+
+    def _persist_ticks_sync(self, ticks: list[MarketTick]) -> MarketTickPersistenceResult:
         with self.db.worker_session(self.name) as repos, repos.transaction():
-            result = MarketTickPersistenceService(repos).insert_ticks_and_enqueue_current_dirty(
-                materialized,
-                reason="market_tick_written",
+            return MarketTickPersistenceService(repos).persist_ticks(
+                ticks,
                 now_ms=int(self.clock()),
             )
-        for target_type, target_id in result.changed_targets:
-            _emit_wake(self.wake_emitter, target_type=target_type, target_id=target_id)
-        return result.inserted
+
+    async def _publish_current_rows(self, rows: list[dict[str, Any]]) -> None:
+        if self.on_live_market_update is None:
+            return
+        for row in rows:
+            try:
+                await self.on_live_market_update(live_market_update_payload(row))
+            except Exception as exc:
+                self.logger.bind(error=type(exc).__name__).warning("live market WebSocket publish failed")
 
 
 @dataclass(frozen=True, slots=True)
@@ -348,13 +370,7 @@ def _int_or_none(value: Any) -> int | None:
 
 
 def _target_key(chain_id: str, address: str) -> tuple[str, str]:
-    return (str(chain_id).strip(), str(address).strip().lower())
-
-
-def _emit_wake(wake_emitter: Any, *, target_type: str, target_id: str) -> None:
-    if wake_emitter is None:
-        return
-    wake_emitter.notify_market_tick_written(target_type=target_type, target_id=target_id)
+    return chain_address_key(chain_id, address)
 
 
 def _now_ms() -> int:

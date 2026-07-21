@@ -22,7 +22,6 @@ from parallax.domains.news_intel.runtime.news_runtime_settings import (
 from parallax.domains.news_intel.services.news_story_brief_input import build_news_story_brief_input_packet
 from parallax.domains.news_intel.services.news_story_brief_validation import validate_news_story_brief_output
 from parallax.domains.news_intel.types.news_story_brief import (
-    NEWS_STORY_BRIEF_LANE,
     NewsStoryBriefAgentConfig,
     NewsStoryBriefInputPacket,
     default_news_story_brief_agent_config,
@@ -52,8 +51,6 @@ class NewsStoryBriefWorker(WorkerBase):
         db: Any,
         telemetry: Any,
         provider: Any,
-        wake_waiter: Any | None = None,
-        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         run_id_factory: Callable[[], str] | None = None,
         name: str = "news_story_brief",
@@ -67,10 +64,8 @@ class NewsStoryBriefWorker(WorkerBase):
             settings=settings,
             db=db,
             telemetry=telemetry,
-            wake_waiter=wake_waiter,
         )
         self.provider = provider
-        self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
         self.run_id_factory = run_id_factory or _default_run_id
         self._next_retention_prune_at_ms = 0
@@ -100,7 +95,7 @@ class NewsStoryBriefWorker(WorkerBase):
             )
 
         rate_units = min(self._batch_size(), queue_depth)
-        reservation = provider.try_reserve_execution(NEWS_STORY_BRIEF_LANE, rate_units=rate_units)
+        reservation = provider.try_reserve_execution(rate_units=rate_units)
         if not reservation.acquired:
             backpressure_outcome = _backpressure_outcome(reservation)
             return WorkerResult(
@@ -155,8 +150,6 @@ class NewsStoryBriefWorker(WorkerBase):
                 "pruned_story_agent_runs": pruned_story_agent_runs,
             }
             skipped = 0
-            current_updates = 0
-
             for target in claimed:
                 try:
                     story_key = _required_story_brief_target_story_key(target)
@@ -194,7 +187,6 @@ class NewsStoryBriefWorker(WorkerBase):
                             )
                             notes["restored_from_failed_run"] = int(notes.get("restored_from_failed_run", 0)) + 1
                             skipped += 1
-                            current_updates += 1
                             await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                             continue
                         status = await self._process_candidate(
@@ -204,7 +196,6 @@ class NewsStoryBriefWorker(WorkerBase):
                             source_watermark_ms=_target_source_watermark_ms(target),
                         )
                     notes[status] = int(notes.get(status, 0)) + 1
-                    current_updates += 1
                     await asyncio.to_thread(self._mark_targets_done, [target], now_ms=now)
                 except _NoStartBackpressure as exc:
                     notes["backpressure"] += 1
@@ -228,8 +219,6 @@ class NewsStoryBriefWorker(WorkerBase):
                         now_ms=now,
                     )
 
-            if current_updates > 0 and self.wake_emitter is not None:
-                self.wake_emitter.notify_news_story_brief_updated(count=current_updates)
             return WorkerResult(
                 processed=int(notes["ready"]) + int(notes["insufficient"]),
                 failed=int(notes["failed"]),

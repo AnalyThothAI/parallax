@@ -3,12 +3,12 @@ from __future__ import annotations
 from dataclasses import dataclass, field
 from typing import Any
 
-from parallax.domains.evidence.interfaces import TwitterEvent
+from parallax.domains.evidence.interfaces import EventRead
 
 
 @dataclass(frozen=True, slots=True)
 class IngestedEvent:
-    event: TwitterEvent
+    event: EventRead
     entities: list[dict[str, Any]]
     alerts: list[dict[str, Any]]
     inserted: bool

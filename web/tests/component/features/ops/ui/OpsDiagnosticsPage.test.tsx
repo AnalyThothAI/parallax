@@ -1,15 +1,24 @@
 import { OpsDiagnosticsPage } from "@features/ops";
 import type { OpsDiagnostics } from "@features/ops";
-import { fireEvent, render, screen } from "@testing-library/react";
-import { describe, expect, it, vi } from "vitest";
+import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { notificationSummaryFixture } from "@tests/fixtures/appRouteFixtures";
+import {
+  activeOpsAgentExecutionFixture,
+  opsDiagnosticsFixture,
+  opsQueueFixture,
+} from "@tests/fixtures/opsFixture";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("OpsDiagnosticsPage", () => {
+  afterEach(cleanup);
+
   it("renders the command-center summary, chain lanes, and queue selection", () => {
     const onSelectQueue = vi.fn();
+    const diagnostics = opsDiagnosticsFixture();
 
     render(
       <OpsDiagnosticsPage
-        diagnostics={fakeDiagnostics}
+        diagnostics={diagnostics}
         loading={false}
         queue={null}
         selectedQueueName={null}
@@ -36,11 +45,12 @@ describe("OpsDiagnosticsPage", () => {
   });
 
   it("renders selected queue rows as operator-ready work items", () => {
+    const diagnostics = opsDiagnosticsFixture();
     render(
       <OpsDiagnosticsPage
-        diagnostics={fakeDiagnostics}
+        diagnostics={diagnostics}
         loading={false}
-        queue={fakeNotificationQueue}
+        queue={opsQueueFixture()}
         selectedQueueName="notification_deliveries"
         onSelectQueue={vi.fn()}
       />,
@@ -51,93 +61,86 @@ describe("OpsDiagnosticsPage", () => {
     expect(screen.getByText("notification_id: notification-1")).toBeInTheDocument();
     expect(screen.getByText("RuntimeError")).toBeInTheDocument();
   });
+
+  it("fails closed when the diagnostics boundary is missing", () => {
+    const malformed = { ...opsDiagnosticsFixture() } as Record<string, unknown>;
+    delete malformed.overall;
+
+    render(
+      <OpsDiagnosticsPage
+        diagnostics={malformed as unknown as OpsDiagnostics}
+        loading={false}
+        queue={null}
+        selectedQueueName={null}
+        onSelectQueue={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("ops_current_contract:diagnostics");
+    expect(screen.queryByText("没有阻塞项")).not.toBeInTheDocument();
+  });
+
+  it("does not call a degraded but unlocalized diagnostic healthy", () => {
+    const diagnostics = opsDiagnosticsFixture();
+    diagnostics.queues = [];
+    diagnostics.domains.notifications = { status: "ok", summary: notificationSummaryFixture() };
+    diagnostics.overall = {
+      status: "degraded",
+      severity: "warning",
+      reasons: ["unlocalized_runtime_degradation"],
+      section_status_counts: { degraded: 1 },
+    };
+
+    render(
+      <OpsDiagnosticsPage
+        diagnostics={diagnostics}
+        loading={false}
+        queue={null}
+        selectedQueueName={null}
+        onSelectQueue={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("诊断未定位到具体阻塞项")).toBeInTheDocument();
+    expect(screen.queryByText("没有阻塞项")).not.toBeInTheDocument();
+  });
+
+  it("describes an agent incident from the fixed lane policy", () => {
+    const diagnostics = opsDiagnosticsFixture();
+    diagnostics.agent_execution = {
+      ...activeOpsAgentExecutionFixture(),
+      status: "degraded",
+      status_reason: "recent_timeout",
+      error: "model timeout",
+    };
+
+    render(
+      <OpsDiagnosticsPage
+        diagnostics={diagnostics}
+        loading={false}
+        queue={null}
+        selectedQueueName={null}
+        onSelectQueue={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByText("news.story_brief: model timeout")).toBeInTheDocument();
+  });
+
+  it("fails closed when selected queue data is malformed", () => {
+    const malformedQueue = { ...opsQueueFixture() } as Record<string, unknown>;
+    delete malformedQueue.status_filter;
+
+    render(
+      <OpsDiagnosticsPage
+        diagnostics={opsDiagnosticsFixture()}
+        loading={false}
+        queue={malformedQueue as never}
+        selectedQueueName="notification_deliveries"
+        onSelectQueue={vi.fn()}
+      />,
+    );
+
+    expect(screen.getByRole("alert")).toHaveTextContent("ops_current_contract:queue");
+  });
 });
-
-const fakeDiagnostics: OpsDiagnostics = {
-  schema_version: "ops.diagnostics.v1",
-  generated_at_ms: 1_700_000_000_000,
-  overall: {
-    status: "degraded",
-    severity: "warning",
-    reasons: ["retryable_failures_present"],
-    section_status_counts: { ok: 4, degraded: 1 },
-  },
-  config: {
-    app_home: "/Users/qinghuan/.parallax",
-    config_path: "/Users/qinghuan/.parallax/config.yaml",
-    workers_config_path: "/Users/qinghuan/.parallax/workers.yaml",
-    handles_count: 3,
-    gmgn_configured: true,
-    okx_dex_configured: true,
-    llm_configured: false,
-  },
-  database: { status: "ok", probe: "postgres_liveness" },
-  collector: { status: "ok", details: { frames_received: 12 } },
-  providers: [
-    {
-      provider: "gmgn",
-      domain: "asset_market",
-      configured: true,
-      capabilities: ["quote_dex_exact"],
-      state: "configured",
-      status: "ok",
-      reason: "ready",
-    },
-  ],
-  workers: [
-    {
-      name: "token_radar_projection",
-      group: "asset_market",
-      enabled: true,
-      running: true,
-      queue_depth: 0,
-      status: "ok",
-      reason: "running",
-    },
-  ],
-  queues: [
-    {
-      queue_name: "notification_deliveries",
-      table: "notification_deliveries",
-      worker_name: "notification_delivery",
-      counts_by_status: { dead: 1, pending: 2, running: 1 },
-      due_count: 2,
-      running_count: 0,
-      dead_count: 1,
-      failed_count: 0,
-      oldest_due_age_ms: 90_000,
-      status: "blocked",
-      reason: "dead_jobs_present",
-    },
-  ],
-  domains: {
-    news: { status: "ok", source_count: 3 },
-    notifications: { status: "blocked", dead_jobs: 1 },
-  },
-  suggested_checks: [
-    { id: "inspect_worker_status", label: "inspect worker queues" },
-    { id: "inspect_news_sources", label: "inspect news sources" },
-  ],
-};
-
-const fakeNotificationQueue = {
-  schema_version: "ops.queue.v1",
-  queue_name: "notification_deliveries",
-  counts_by_status: { dead: 1, pending: 2, running: 1 },
-  summary: fakeDiagnostics.queues[0],
-  items: [
-    {
-      id: "delivery-1",
-      status: "dead",
-      attempt_count: 2,
-      max_attempts: 3,
-      updated_at_ms: 1_700_000_000_000,
-      next_run_at_ms: 1_700_000_030_000,
-      last_error_type: "RuntimeError",
-      source: {
-        notification_id: "notification-1",
-        channel: "in_app",
-      },
-    },
-  ],
-};

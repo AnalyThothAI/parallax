@@ -15,8 +15,8 @@ PostgreSQL facts remain truth. Read models are rebuildable. Control-plane rows s
 
 There is no central durable `agent_tasks` queue. Domain workers own admission, claim, retry, finalize, run ledgers, and business validation. `AgentExecutionGateway` owns execution mechanics only:
 
-- lane policy and model selection
-- global and lane concurrency bulkheads
+- the fixed News story-brief model and capability policy
+- one capacity gate
 - RPM reservation
 - timeout and circuit-breaker state
 - structured JSON object dispatch
@@ -24,14 +24,38 @@ There is no central durable `agent_tasks` queue. Domain workers own admission, c
 - trace metadata, usage, input/output hashes, and request/result audit envelopes
 
 Domains submit typed `AgentStageSpec` packets with Pydantic output types. Domains must not branch on provider-specific response formats or call LiteLLM/OpenAI directly.
-Capacity reservations release lane/global/RPM resources through a synchronous
+Capacity reservations release capacity resources through a synchronous
 callback owned by `AgentExecutionGateway`. `AgentCapacityReservation.release()`
 is async only because callers already await the public method; its internal
 `_release()` callback must return `None`. Awaitable release results are
 malformed execution-plane wiring, not an alternate lifecycle shape.
-Provider wiring for known product lanes reads the formal
-`workers.agent_runtime.lanes` settings directly. Missing lane settings are
-malformed runtime configuration, not a provider-local timeout fallback.
+The gateway has one runtime purpose: `news.story_brief`. The lane string remains
+a stable audit tag on `AgentStageSpec`; it is not a configurable selector or a
+runtime policy lookup. Any other stage lane is malformed input. The single flat
+`workers.agent_runtime` object owns model, capability overrides, token budget,
+concurrency, RPM, timeout, and circuit-breaker policy. There are no global
+limits, lane maps, defaults overlays, or provider-local timeout fallbacks.
+`rate_units` reserves a bounded batch of calls before domain work is claimed.
+One execution performs exactly one provider call and then validates once;
+schema failure returns to the durable worker retry path instead of hiding an
+uncounted paid call inside the client.
+
+The operator-owned `~/.parallax/workers.yaml` uses the same flat shape:
+
+```yaml
+agent_runtime:
+  model: deepseek-v4-flash
+  provider_family: null
+  max_tokens: 2200
+  max_concurrency: 1
+  rpm_limit: 60
+  timeout_seconds: 180.0
+  circuit_breaker:
+    failure_threshold: 5
+    window_seconds: 300
+    open_seconds: 120
+```
+
 Domain adapters that build `AgentStageSpec` must carry validated request-audit
 trace identity into the gateway. Missing or mismatched `run_id` trace metadata,
 or a missing product group id from the stage input packet, is malformed
@@ -49,11 +73,10 @@ representative item, bounded member evidence, and News-owned entity/fact
 context before submitting an `AgentStageSpec`. It does not run a News-local
 research tool loop or database retrieval tools at agent time.
 
-Prompt text is part of the execution artefact. The shared gateway hashes
-`AgentStageSpec.instructions`, and the News story brief client includes the
-current News prompt text hash in its artifact version hash. A prompt edit
-therefore changes request audit/freshness even when a version constant was not
-manually bumped.
+Prompt text and the effective capability policy are part of the execution
+artefact. The News client delegates its freshness hash to the same gateway
+method used by request audit, so prompt, provider family, request options, model,
+schema, or runtime changes cannot reuse an older brief.
 
 There is no shared runtime tool loop. The shared `AgentExecutionGateway` runs
 structured JSON model calls only. It does not receive `tools=`, execute domain
@@ -72,8 +95,8 @@ market-wide `agent_admission` state and `market_scope_json` after claiming
 work. Admission decides whether a brief may execute; dirty-target priority is
 only a deterministic scheduling hint. Bounded packet builders keep context
 intentionally narrow so repeated or low-value news does not consume the same
-model budget as fresh material changes. Model output budgets live in the
-`workers.agent_runtime.lanes["news.story_brief"]` policy.
+model budget as fresh material changes. Model output budgets live in
+`workers.agent_runtime.max_tokens`.
 
 ## Knowledge Catalog
 
@@ -95,8 +118,8 @@ requirement because Parallax models do not execute tools. The runtime does not
 need shell-command guards, tool-permission callbacks, or generic post-tool
 mutation hooks inside `AgentExecutionGateway`.
 
-The justified observer seams are worker status, wake hints, agent audit
-envelopes, telemetry, and domain ledgers. Queue-depth sampling is an explicit
+The justified observer seams are worker status, agent audit envelopes,
+telemetry, and domain ledgers. Queue-depth sampling is an explicit
 operator diagnostic, not a runtime hook or hot status-path dependency. New
 observer seams must be typed, read-only unless owned by the domain writer, and
 testable through the manifest/audit contract.
@@ -106,7 +129,7 @@ testable through the manifest/audit contract.
 ```text
 domain worker
   -> exact fact/read-model packet
-  -> reserve agent lane capacity/RPM
+  -> reserve agent capacity/RPM
   -> AgentStageSpec
   -> AgentExecutionGateway
   -> structured JSON model call
@@ -124,14 +147,14 @@ No-start backpressure does not claim business work, burn a provider attempt, or 
 | Shared runtime policy and audit types | `src/parallax/platform/agent_execution.py` |
 | Model capability profiles | `src/parallax/platform/agent_capabilities.py` |
 | LiteLLM execution gateway | `src/parallax/integrations/model_execution/execution_gateway.py` |
-| Worker existence/lane/kind manifest | `src/parallax/app/runtime/worker_manifest.py` |
+| Worker existence/kind manifest | `src/parallax/app/runtime/worker_manifest.py` |
 | Cross-domain worker ownership | `docs/WORKERS.md` |
 | System-level invariants | `docs/ARCHITECTURE.md` |
 
 ## Domain Responsibilities
 
 - Build a bounded input packet from persisted facts/read models.
-- Reserve lane capacity before claiming work that can burn business attempts.
+- Reserve agent capacity before claiming work that can burn business attempts.
 - Persist request/result audit details in the domain ledger.
 - Validate model claims against known evidence refs and domain rules.
 - Abstain or mark degraded state when inputs are insufficient.

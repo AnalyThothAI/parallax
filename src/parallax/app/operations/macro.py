@@ -4,10 +4,9 @@ import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from datetime import date
-from typing import Any, cast
+from typing import Any
 
-from parallax.app.runtime.repository_session import postgres_connection, repositories
-from parallax.app.runtime.wake_bus import WakeBus
+from parallax.app.runtime.repository_session import repositories
 from parallax.domains.macro_intel._constants import (
     MACRO_CONCEPT_METADATA,
     MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT,
@@ -20,6 +19,7 @@ from parallax.domains.macro_intel._constants import (
     MACRO_VIEW_PROJECTION_VERSION,
 )
 from parallax.domains.macro_intel.observation_identity import normalize_macro_date
+from parallax.domains.macro_intel.services.macro_module_shared import required_list, required_mapping
 from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 from parallax.domains.macro_intel.services.macrodata_bundle_importer import import_macrodata_bundle
@@ -53,14 +53,13 @@ def import_macro_bundle(
     *,
     now_ms: int | None = None,
 ) -> Mapping[str, Any]:
-    """Persist one validated bundle and emit a best-effort wake hint."""
+    """Persist one validated bundle for interval-driven projection catch-up."""
     with repositories(settings) as repos:
         summary = import_macrodata_bundle(
             envelope,
             repos=repos,
             now_ms=_now_ms() if now_ms is None else int(now_ms),
         )
-    _notify_imported_observations(settings, summary)
     return summary
 
 
@@ -187,25 +186,14 @@ def _projection_lag_days(facts_max_observed_at: date | None, snapshot_asof: date
 def _snapshot_status_summary(snapshot: Mapping[str, Any] | None) -> dict[str, Any] | None:
     if snapshot is None:
         return None
-    heavy_keys = {
-        "chain_json",
-        "data_gaps_json",
-        "features_json",
-        "indicators_json",
-        "panels_json",
-        "scenario_json",
-        "scorecard_json",
-        "source_coverage_json",
-    }
-    if not any(key in snapshot for key in heavy_keys):
-        return cast(dict[str, Any], _json_ready(snapshot))
-
-    panels = _object_map(snapshot.get("panels_json")) or _object_map(snapshot.get("chain_json"))
-    features = _object_map(snapshot.get("features_json"))
-    indicators = _object_map(snapshot.get("indicators_json"))
-    data_gaps = _sequence(snapshot.get("data_gaps_json"))
-    scorecard = _mapping(snapshot.get("scorecard_json"))
-    source_coverage = _mapping(snapshot.get("source_coverage_json"))
+    panels = _required_object_map(snapshot, "panels_json")
+    features = required_mapping(snapshot, "features_json")
+    indicators = required_mapping(snapshot, "indicators_json")
+    required_list(snapshot, "triggers_json")
+    data_gaps = required_list(snapshot, "data_gaps_json")
+    source_coverage = required_mapping(snapshot, "source_coverage_json")
+    for field_name in ("chain_json", "scenario_json", "scorecard_json", "module_views_json"):
+        required_mapping(snapshot, field_name)
     return {
         "projection_version": snapshot.get("projection_version"),
         "asof_date": _json_ready(snapshot.get("asof_date")),
@@ -218,14 +206,10 @@ def _snapshot_status_summary(snapshot: Mapping[str, Any] | None) -> dict[str, An
         "data_gap_count": len(data_gaps),
         "data_gap_codes": _edge_sample([str(gap.get("code")) for gap in data_gaps if isinstance(gap, Mapping)]),
         "coverage": {
-            "latest_coverage_ratio": source_coverage.get("latest_coverage_ratio")
-            or scorecard.get("latest_coverage_ratio"),
-            "history_coverage_ratio": source_coverage.get("history_coverage_ratio")
-            or scorecard.get("history_coverage_ratio"),
-            "observed_concept_count": source_coverage.get("observed_concept_count")
-            or scorecard.get("observed_concept_count"),
-            "required_concept_count": source_coverage.get("required_concept_count")
-            or scorecard.get("required_concept_count"),
+            "latest_coverage_ratio": source_coverage.get("latest_coverage_ratio"),
+            "history_coverage_ratio": source_coverage.get("history_coverage_ratio"),
+            "observed_concept_count": source_coverage.get("observed_concept_count"),
+            "required_concept_count": source_coverage.get("required_concept_count"),
             "history_ready_concept_count": source_coverage.get("history_ready_concept_count"),
             "required_history_concept_count": source_coverage.get("required_history_concept_count"),
             "concepts_below_min_history": list(source_coverage.get("concepts_below_min_history") or []),
@@ -316,10 +300,12 @@ def _mapping(value: object) -> Mapping[str, Any]:
     return value if isinstance(value, Mapping) else {}
 
 
-def _object_map(value: object) -> dict[str, Mapping[str, Any]]:
-    if not isinstance(value, Mapping):
-        return {}
-    return {str(key): item for key, item in value.items() if isinstance(item, Mapping)}
+def _required_object_map(value: Mapping[str, Any], field_name: str) -> dict[str, Mapping[str, Any]]:
+    items = required_mapping(value, field_name)
+    invalid_key = next((str(key) for key, item in items.items() if not isinstance(item, Mapping)), None)
+    if invalid_key is not None:
+        raise ValueError(f"macro_view_snapshot_section_invalid:{field_name}.{invalid_key}")
+    return {str(key): item for key, item in items.items() if isinstance(item, Mapping)}
 
 
 def _sequence(value: object) -> Sequence[Any]:
@@ -345,28 +331,6 @@ def _to_date(value: object) -> date | None:
         return normalize_macro_date(value)
     except ValueError:
         return None
-
-
-def _notify_imported_observations(settings: Settings, summary: Mapping[str, Any]) -> None:
-    imported_count = int(summary.get("imported_observation_count") or 0)
-    if imported_count <= 0:
-        return
-    try:
-        WakeBus(lambda: postgres_connection(settings)).notify_macro_observations_imported(
-            count=imported_count,
-            max_observed_at=_json_scalar(summary.get("max_observed_at")),
-            asof_date=_json_scalar(summary.get("asof")),
-        )
-    except Exception:
-        return
-
-
-def _json_scalar(value: object) -> str | None:
-    if value is None:
-        return None
-    if isinstance(value, date):
-        return value.isoformat()
-    return str(value)
 
 
 def _now_ms() -> int:

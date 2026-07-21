@@ -40,7 +40,7 @@ export function patchTokenCaseLiveMarketUpdate(
         data: {
           ...response.data,
           market_live: {
-            status: "ready",
+            status: "live",
             target_type: update.target_type,
             target_id: update.target_id,
             ...update.market.decision_latest,
@@ -75,19 +75,22 @@ export function patchAssetFlowRows(
     changed = true;
     return {
       ...row,
-      market: {
-        ...row.market,
-        decision_latest: {
-          target_type: update.target_type,
-          target_id: update.target_id,
-          ...update.market.decision_latest,
-        },
-        readiness: {
-          ...row.market.readiness,
-          latest_status: "live",
-          stale_fields: (row.market.readiness.stale_fields ?? []).filter(
-            (field) => field !== "decision_latest",
-          ),
+      factor_snapshot: {
+        ...row.factor_snapshot,
+        market: {
+          ...row.factor_snapshot.market,
+          decision_latest: {
+            target_type: update.target_type,
+            target_id: update.target_id,
+            ...update.market.decision_latest,
+          },
+          readiness: {
+            ...row.factor_snapshot.market.readiness,
+            latest_status: "live",
+            stale_fields: (row.factor_snapshot.market.readiness.stale_fields ?? []).filter(
+              (field) => field !== "decision_latest",
+            ),
+          },
         },
       },
     };
@@ -100,7 +103,8 @@ function assetFlowRowMatchesMarketUpdate(
   update: LiveMarketUpdatePayload,
 ): boolean {
   return (
-    row.target?.target_type === update.target_type && row.target?.target_id === update.target_id
+    row.factor_snapshot.subject.target_type === update.target_type &&
+    row.factor_snapshot.subject.target_id === update.target_id
   );
 }
 

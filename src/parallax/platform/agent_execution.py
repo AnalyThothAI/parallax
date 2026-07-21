@@ -17,6 +17,7 @@ from parallax.platform.agent_capabilities import (
 from parallax.platform.agent_hashing import json_sha256
 
 RUNTIME_VERSION = "litellm-execution-plane-v1"
+AGENT_RUNTIME_LANE = "news.story_brief"
 
 
 class AgentExecutionErrorClass(StrEnum):
@@ -49,87 +50,41 @@ class AgentCircuitBreakerPolicy(BaseModel):
     open_seconds: int = Field(default=120, ge=1)
 
 
-class AgentLanePolicy(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    model: str | None = None
-    provider_family: AgentProviderFamily | None = None
-    client_validation_retries: int | None = Field(default=None, ge=0)
-    max_tokens: int | None = Field(default=None, ge=1)
-    priority: str = "normal"
-    max_concurrency: int = Field(default=1, ge=1)
-    timeout_seconds: float = Field(default=180.0, ge=1)
-    rpm_limit: int | None = Field(default=None, ge=1)
-    circuit_breaker: AgentCircuitBreakerPolicy = Field(default_factory=AgentCircuitBreakerPolicy)
-
-    @field_validator("model", mode="before")
-    @classmethod
-    def parse_optional_model(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        normalized = str(value).strip()
-        return normalized or None
-
-
-class AgentRuntimeDefaultsPolicy(BaseModel):
+class AgentRuntimePolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     model: str = "deepseek-v4-flash"
     provider_family: AgentProviderFamily | None = None
-    client_validation_retries: int | None = Field(default=None, ge=0)
-    max_tokens: int | None = Field(default=None, ge=1)
-    disable_thinking: bool = True
-    include_usage: bool = True
+    max_tokens: int = Field(default=2200, ge=1)
+    max_concurrency: int = Field(default=1, ge=1)
+    rpm_limit: int = Field(default=60, ge=1)
+    timeout_seconds: float = Field(default=180.0, ge=1)
+    circuit_breaker: AgentCircuitBreakerPolicy = Field(default_factory=AgentCircuitBreakerPolicy)
 
     @field_validator("model", mode="before")
     @classmethod
     def parse_model(cls, value: Any) -> str:
         normalized = str(value or "").strip()
         if not normalized:
-            raise ValueError("agent_runtime.defaults.model is required")
+            raise ValueError("agent_runtime.model is required")
         return normalized
 
+    @field_validator("provider_family", mode="before")
+    @classmethod
+    def parse_provider_family(cls, value: Any) -> str | None:
+        if value is None:
+            return None
+        normalized = str(value).strip().lower()
+        return normalized or None
 
-class AgentRuntimePolicy(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    defaults: AgentRuntimeDefaultsPolicy = Field(default_factory=AgentRuntimeDefaultsPolicy)
-    global_max_concurrency: int = Field(default=4, ge=1)
-    global_rpm_limit: int = Field(default=60, ge=1)
-    lanes: dict[str, AgentLanePolicy] = Field(default_factory=dict)
-
-    def lane_for(self, lane: str) -> AgentLanePolicy:
-        return self.lanes.get(str(lane), AgentLanePolicy())
-
-    def model_for_lane(self, lane: str) -> str:
-        lane_model = self.lane_for(lane).model
-        return str(lane_model or self.defaults.model).strip()
-
-    def capability_for_lane(self, lane: str) -> AgentCapabilityProfile:
-        lane_policy = self.lane_for(lane)
-        model = self.model_for_lane(lane)
-        if _lane_has_capability_override(lane_policy):
-            return resolve_agent_capability_profile(
-                model=model,
-                override=_capability_profile_from_parts(
-                    provider_family=lane_policy.provider_family or self.defaults.provider_family,
-                    client_validation_retries=_first_non_none(
-                        lane_policy.client_validation_retries,
-                        self.defaults.client_validation_retries,
-                    ),
-                    max_tokens=_first_non_none(lane_policy.max_tokens, self.defaults.max_tokens),
-                ),
-            )
-        if _defaults_have_capability_override(self.defaults):
-            return resolve_agent_capability_profile(
-                model=model,
-                override=_capability_profile_from_parts(
-                    provider_family=self.defaults.provider_family,
-                    client_validation_retries=self.defaults.client_validation_retries,
-                    max_tokens=self.defaults.max_tokens,
-                ),
-            )
-        return resolve_agent_capability_profile(model=model)
+    def capability_profile(self) -> AgentCapabilityProfile:
+        return resolve_agent_capability_profile(
+            model=self.model,
+            override=_capability_profile_from_parts(
+                provider_family=self.provider_family,
+                max_tokens=self.max_tokens,
+            ),
+        )
 
 
 class AgentStageSpec(BaseModel):
@@ -147,6 +102,14 @@ class AgentStageSpec(BaseModel):
     group_id: str = ""
     knowledge_refs: tuple[str, ...] = ()
     trace_metadata: dict[str, Any] = Field(default_factory=dict)
+
+    @field_validator("lane", mode="before")
+    @classmethod
+    def parse_lane(cls, value: Any) -> str:
+        lane = str(value or "").strip()
+        if lane != AGENT_RUNTIME_LANE:
+            raise ValueError(f"agent_stage_lane_required:{AGENT_RUNTIME_LANE}")
+        return lane
 
     @property
     def input_hash(self) -> str:
@@ -178,7 +141,6 @@ class AgentExecutionRequestAudit(BaseModel):
     latency_ms: float | None = None
     usage: dict[str, Any] = Field(default_factory=dict)
     parse_mode: str | None = None
-    safety_net: dict[str, Any] = Field(default_factory=dict)
     trace_metadata: dict[str, Any] = Field(default_factory=dict)
     execution_started: bool = False
     status: AgentExecutionStatus = AgentExecutionStatus.PLANNED
@@ -280,48 +242,20 @@ class AgentExecutionCancelled(asyncio.CancelledError):
 ReleaseCallback = Callable[[], None]
 
 
-def _lane_has_capability_override(lane_policy: AgentLanePolicy) -> bool:
-    return (
-        lane_policy.provider_family is not None
-        or lane_policy.client_validation_retries is not None
-        or lane_policy.max_tokens is not None
-    )
-
-
-def _defaults_have_capability_override(defaults: AgentRuntimeDefaultsPolicy) -> bool:
-    return (
-        defaults.provider_family is not None
-        or defaults.client_validation_retries is not None
-        or defaults.max_tokens is not None
-    )
-
-
 def _capability_profile_from_parts(
     *,
     provider_family: AgentProviderFamily | None,
-    client_validation_retries: int | None,
-    max_tokens: int | None,
+    max_tokens: int,
 ) -> AgentCapabilityProfile:
     payload: dict[str, Any] = {}
     if provider_family is not None:
         payload["provider_family"] = provider_family
-    if client_validation_retries is not None:
-        payload["client_validation_retries"] = client_validation_retries
-    if max_tokens is not None:
-        payload["request_options"] = AgentRequestOptions(max_tokens=max_tokens)
+    payload["request_options"] = AgentRequestOptions(max_tokens=max_tokens)
     return AgentCapabilityProfile(**payload)
-
-
-def _first_non_none(*values: int | None) -> int | None:
-    for value in values:
-        if value is not None:
-            return value
-    return None
 
 
 @dataclass(slots=True)
 class AgentCapacityReservation:
-    lane: str
     acquired: bool
     reason: AgentExecutionErrorClass | None = None
     rate_units: int = 1
@@ -345,6 +279,7 @@ class AgentCapacityReservation:
 
 
 __all__ = [
+    "AGENT_RUNTIME_LANE",
     "RUNTIME_VERSION",
     "AgentCapabilityProfile",
     "AgentCapacityReservation",
@@ -356,8 +291,6 @@ __all__ = [
     "AgentExecutionResult",
     "AgentExecutionResultAudit",
     "AgentExecutionStatus",
-    "AgentLanePolicy",
-    "AgentRuntimeDefaultsPolicy",
     "AgentRuntimePolicy",
     "AgentStageSpec",
 ]

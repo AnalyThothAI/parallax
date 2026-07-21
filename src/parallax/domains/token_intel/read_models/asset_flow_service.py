@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from parallax.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
 from parallax.platform.validation import require_nonnegative_int
 
 from .token_radar_narrative_admission import narrative_admission_from_current_row
@@ -13,6 +14,19 @@ WINDOW_MS = {
     "4h": 4 * 60 * 60 * 1000,
     "24h": 24 * 60 * 60 * 1000,
 }
+
+_TOKEN_RADAR_RESOLUTION_KEYS = frozenset(
+    {
+        "status",
+        "target_type",
+        "target_id",
+        "pricefeed_id",
+        "reason_codes",
+        "candidate_ids",
+        "lookup_keys",
+        "discovery",
+    }
+)
 
 
 class AssetFlowService:
@@ -67,7 +81,7 @@ class AssetFlowService:
         public_rows = [_public_row(row, window=window) for row in rows]
         _hydrate_profiles(public_rows, profiles=self.profiles)
         unresolved = _unresolved_diagnostics(rows)
-        targetful_rows = [row for row in public_rows if _mapping(row.get("target")).get("target_id")]
+        targetful_rows = [row for row in public_rows if _public_target(row).get("target_id")]
         targets = [row for row in targetful_rows if row.get("_lane") == "resolved"]
         attention = [row for row in targetful_rows if row.get("_lane") == "attention"]
         for row in [*targets, *attention]:
@@ -106,20 +120,13 @@ class AssetFlowService:
 
 
 def _public_row(row: dict[str, Any], *, window: str) -> dict[str, Any]:
-    factor_snapshot = _mapping(row.get("factor_snapshot_json"))
-    score = _composite_from_snapshot(factor_snapshot)
-    if row.get("rank_score") is not None:
-        score["rank_score"] = _float_or_none(row.get("rank_score"))
+    factor_snapshot = require_token_factor_snapshot(row.get("factor_snapshot_json"), field_name="factor_snapshot_json")
     target = _target_from_snapshot(factor_snapshot)
     return {
         "_lane": row.get("lane"),
         "intent": row.get("intent_json") or {},
-        "target": target,
-        "attention": _attention_from_snapshot(factor_snapshot),
-        "market": _market_from_snapshot(factor_snapshot),
         "radar": _radar_from_row(row),
-        "resolution": row.get("resolution_json") or {},
-        "score": score,
+        "resolution": _resolution_from_row(row),
         "quality": {
             "status": row.get("quality_status"),
             "degraded_reasons": _string_list(row.get("degraded_reasons_json")),
@@ -128,20 +135,23 @@ def _public_row(row: dict[str, Any], *, window: str) -> dict[str, Any]:
             narrative_admission_from_current_row(row, window=window) if target.get("target_id") else None
         ),
         "factor_snapshot": factor_snapshot,
-        "data_health": row.get("data_health_json") or {},
-        "source_event_ids": row.get("source_event_ids_json") or [],
     }
 
 
 def _hydrate_profiles(rows: list[dict[str, Any]], *, profiles: Any) -> None:
-    profile_blocks = profiles.profiles_for_targets([_mapping(row.get("target")) for row in rows])
+    profile_blocks = profiles.profiles_for_targets([_public_target(row) for row in rows])
     for row in rows:
-        target = _mapping(row.get("target"))
+        target = _public_target(row)
         target_type = str(target.get("target_type") or "")
         target_id = str(target.get("target_id") or "")
         key = (target_type, target_id)
         if key in profile_blocks:
             row["profile"] = profile_blocks[key]
+
+
+def _public_target(row: dict[str, Any]) -> dict[str, Any]:
+    snapshot = require_token_factor_snapshot(row.get("factor_snapshot"), field_name="factor_snapshot")
+    return _target_from_snapshot(snapshot)
 
 
 def _target_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
@@ -156,15 +166,6 @@ def _target_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _attention_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    family = _family(snapshot, "social_heat")
-    return _mapping(family.get("facts"))
-
-
-def _market_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    return _mapping(snapshot.get("market"))
-
-
 def _radar_from_row(row: dict[str, Any]) -> dict[str, Any]:
     return {
         "lane": row.get("lane"),
@@ -177,9 +178,7 @@ def _radar_from_row(row: dict[str, Any]) -> dict[str, Any]:
 
 def _anchor_coverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
     total = len(rows)
-    ready = sum(
-        1 for row in rows if _mapping(_mapping(row.get("market")).get("readiness")).get("anchor_status") == "ready"
-    )
+    ready = sum(1 for row in rows if _anchor_status(row) == "ready")
     missing = total - ready
     if total == 0:
         status = "missing"
@@ -192,22 +191,34 @@ def _anchor_coverage(rows: list[dict[str, Any]]) -> dict[str, Any]:
     return {"status": status, "ready": ready, "missing": missing, "total": total}
 
 
+def _anchor_status(row: dict[str, Any]) -> Any:
+    snapshot = require_token_factor_snapshot(row.get("factor_snapshot"), field_name="factor_snapshot")
+    market = _mapping(snapshot.get("market"))
+    return _mapping(market.get("readiness")).get("anchor_status")
+
+
 def _unresolved_diagnostics(rows: list[dict[str, Any]]) -> dict[str, Any]:
-    unresolved = [row for row in rows if not row.get("target_id")]
+    unresolved: list[tuple[dict[str, Any], dict[str, Any]]] = []
+    for row in rows:
+        snapshot = require_token_factor_snapshot(
+            row.get("factor_snapshot_json"),
+            field_name="factor_snapshot_json",
+        )
+        subject = _mapping(snapshot.get("subject"))
+        if not subject.get("target_id"):
+            unresolved.append((row, subject))
     symbols: list[str] = []
     nil_count = 0
     ambiguous_count = 0
-    for row in unresolved:
-        snapshot = _mapping(row.get("factor_snapshot_json"))
-        subject = _mapping(snapshot.get("subject"))
+    for row, subject in unresolved:
         intent = _mapping(row.get("intent_json"))
-        resolution = _mapping(row.get("resolution_json"))
-        status = str(resolution.get("status") or subject.get("status") or row.get("resolution_status") or "").strip()
+        resolution = _resolution_from_row(row)
+        status = str(resolution.get("status") or "").strip()
         if status == "NIL":
             nil_count += 1
         elif status == "AMBIGUOUS":
             ambiguous_count += 1
-        symbol = subject.get("symbol") or intent.get("display_symbol") or intent.get("symbol")
+        symbol = subject.get("symbol") or intent.get("display_symbol")
         if symbol and str(symbol) not in symbols:
             symbols.append(str(symbol))
     return {
@@ -218,13 +229,19 @@ def _unresolved_diagnostics(rows: list[dict[str, Any]]) -> dict[str, Any]:
     }
 
 
-def _composite_from_snapshot(snapshot: dict[str, Any]) -> dict[str, Any]:
-    return _mapping(snapshot.get("composite"))
-
-
-def _family(snapshot: dict[str, Any], name: str) -> dict[str, Any]:
-    families = _mapping(snapshot.get("families"))
-    return _mapping(families.get(name))
+def _resolution_from_row(row: dict[str, Any]) -> dict[str, Any]:
+    resolution = _mapping(row.get("resolution_json"))
+    keys = set(resolution)
+    missing = sorted(_TOKEN_RADAR_RESOLUTION_KEYS - keys)
+    if missing:
+        raise ValueError(f"token_radar_resolution.{missing[0]} is required")
+    extra = sorted(keys - _TOKEN_RADAR_RESOLUTION_KEYS)
+    if extra:
+        raise ValueError(f"token_radar_resolution.{extra[0]} is not allowed")
+    for field in ("reason_codes", "candidate_ids", "lookup_keys", "discovery"):
+        if not isinstance(resolution[field], list):
+            raise ValueError(f"token_radar_resolution.{field} must be a list")
+    return resolution
 
 
 def _mapping(value: Any) -> dict[str, Any]:
@@ -289,13 +306,6 @@ def _int_or_none(value: Any) -> int | None:
         return None
 
 
-def _float_or_none(value: Any) -> float | None:
-    try:
-        return float(value) if value is not None else None
-    except (TypeError, ValueError, OverflowError):
-        return None
-
-
 def _pending_projection_payload(publication_state: dict[str, Any] | None, *, venue: str) -> dict[str, Any]:
     publication_status = str((publication_state or {}).get("latest_attempt_status") or "")
     if not publication_state:
@@ -327,5 +337,11 @@ def _pending_projection_payload(publication_state: dict[str, Any] | None, *, ven
             "anchor_coverage": {"status": projection_status, "ready": 0, "missing": 0, "total": 0},
             "quality_status": quality_status,
             "degraded_reasons": degraded_reasons,
+            "unresolved": {
+                "identity_missing_count": 0,
+                "nil_count": 0,
+                "ambiguous_count": 0,
+                "sample_symbols": [],
+            },
         },
     }

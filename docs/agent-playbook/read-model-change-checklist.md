@@ -19,8 +19,8 @@ Use this checklist for any Parallax change that creates, rewrites, republishes, 
 5. Reject `generation_id`, `run_id`, `attempt`, timestamp, random UUID, or provider-frame id as current-row identity unless the table is explicitly historical.
 6. Prove unchanged projections write zero serving rows.
 7. Confirm row count is bounded by product/window cardinality, not by run count.
-8. Confirm `NOTIFY` is only a wake hint.
-9. Confirm every listener re-reads PostgreSQL and runs bounded `interval_seconds` catch-up.
+8. Confirm the worker re-reads PostgreSQL and runs bounded `interval_seconds` catch-up.
+9. Confirm correctness has no database or in-process wake dependency.
 10. Confirm queue-depth and status hooks are read-only.
 11. Confirm public routes do not call providers or workers as a repair path.
 12. Confirm domain `ARCHITECTURE.md`, `docs/WORKERS.md`, and tests name the same writer.
@@ -38,7 +38,7 @@ Use this checklist for any Parallax change that creates, rewrites, republishes, 
 
 - What fact change makes this read model stale?
 - What exact key makes one current row replace another?
-- What happens when the wake notification is missed?
+- What durable state is found on the next interval after downtime?
 - What happens when the worker starts after one hour of downtime?
 - What proves that rerunning the projection does not create duplicate serving rows?
 - Which public consumer would show stale or degraded state, and how is that state represented honestly?

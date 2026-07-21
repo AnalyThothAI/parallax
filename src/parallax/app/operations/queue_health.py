@@ -38,10 +38,8 @@ STATUS_QUEUE_SPECS = {
 DIRTY_TARGET_TABLES = frozenset(
     {
         "asset_profile_refresh_targets",
-        "market_tick_current_dirty_targets",
         "macro_projection_dirty_targets",
         "news_projection_dirty_targets",
-        "token_capture_tier_dirty_targets",
         "token_discovery_dirty_lookup_keys",
         "token_image_source_dirty_targets",
         "token_profile_current_dirty_targets",

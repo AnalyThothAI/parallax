@@ -57,7 +57,7 @@ def validate_source_authority(
 
     scoped_target_ids = _normalized_set(scope.get("target_ids"))
     scoped_targets = _normalized_target_scope(scope.get("targets"))
-    scoped_symbols = _normalized_set(scope.get("symbols") or scope.get("asset_symbols"))
+    scoped_symbols = _normalized_set(scope.get("symbols"))
     if scoped_target_ids and not _has_scoped_target_id(affected_targets, scoped_target_ids):
         _append_reason(reasons, "target_out_of_authority_scope")
     if scoped_targets and not _has_scoped_target(affected_targets, scoped_targets):
@@ -76,7 +76,7 @@ def _normalized_set(value: object) -> set[str]:
 
 
 def _has_explicit_scope(scope: Mapping[str, Any]) -> bool:
-    for key in ("event_types", "domains", "targets", "target_ids", "symbols", "asset_symbols"):
+    for key in ("event_types", "domains", "targets", "target_ids", "symbols"):
         if list(_iter_values(scope.get(key))):
             return True
     return False

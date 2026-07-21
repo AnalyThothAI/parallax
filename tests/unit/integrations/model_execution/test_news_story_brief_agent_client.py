@@ -17,9 +17,6 @@ from parallax.domains.news_intel.types.news_story_brief import (
 from parallax.integrations.model_execution.news_story_brief_agent_client import (
     LiteLLMNewsStoryBriefClient,
 )
-from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
-from parallax.platform.agent_execution import RUNTIME_VERSION
-from parallax.platform.agent_hashing import artifact_hash_for, json_sha256, text_sha256
 
 
 def test_news_story_brief_client_builds_stage_and_delegates_reservation() -> None:
@@ -27,11 +24,11 @@ def test_news_story_brief_client_builds_stage_and_delegates_reservation() -> Non
     client = LiteLLMNewsStoryBriefClient(agent_gateway=gateway)
     packet = _packet()
 
-    reservation = client.try_reserve_execution(NEWS_STORY_BRIEF_LANE)
+    reservation = client.try_reserve_execution()
     audit = client.request_audit(run_id="run-1", packet=packet)
 
     assert reservation is gateway.reservation
-    assert gateway.reserved_lanes == [NEWS_STORY_BRIEF_LANE]
+    assert gateway.reserved_rate_units == [1]
     assert audit["lane"] == NEWS_STORY_BRIEF_LANE
     assert client.artifact_version_hash == audit["artifact_version_hash"]
     stage = gateway.audit_stages[0]
@@ -40,15 +37,14 @@ def test_news_story_brief_client_builds_stage_and_delegates_reservation() -> Non
     assert stage.agent_name == NEWS_STORY_BRIEF_AGENT_NAME
     assert client.model == "gpt-news"
     assert stage.output_type is NewsStoryBriefPayload
-    expected_artifact_hash = artifact_hash_for(
-        model=client.model,
-        prompt_version=stage.prompt_version,
-        schema_version=stage.schema_version,
-        runtime_version=RUNTIME_VERSION,
-        output_schema_hash=json_sha256(StrictJsonOutputSchema(stage.output_type).json_schema()),
-        prompt_text_hash=text_sha256(stage.instructions),
-    )
-    assert client.artifact_version_hash == expected_artifact_hash
+    assert gateway.artifact_requests == [
+        {
+            "output_type": NewsStoryBriefPayload,
+            "prompt_version": stage.prompt_version,
+            "schema_version": stage.schema_version,
+            "instructions": stage.instructions,
+        }
+    ]
 
 
 def test_news_story_brief_client_executes_strict_payload_with_caller_reservation() -> None:
@@ -76,8 +72,9 @@ def test_news_story_brief_client_executes_strict_payload_with_caller_reservation
 class FakeGateway:
     def __init__(self) -> None:
         self.reservation = object()
-        self.reserved_lanes: list[str] = []
+        self.reserved_rate_units: list[int] = []
         self.audit_stages: list[Any] = []
+        self.artifact_requests: list[dict[str, Any]] = []
         self.executions: list[Any] = []
         self.payload = NewsStoryBriefPayload(
             status="ready",
@@ -100,33 +97,27 @@ class FakeGateway:
             ],
         )
 
-    def try_reserve(self, lane: str, *, rate_units: int = 1) -> object:
-        assert rate_units == 1
-        self.reserved_lanes.append(lane)
+    def try_reserve(self, *, rate_units: int = 1) -> object:
+        self.reserved_rate_units.append(rate_units)
         return self.reservation
 
-    def model_for_lane(self, lane: str) -> str:
-        assert lane == NEWS_STORY_BRIEF_LANE
+    @property
+    def model(self) -> str:
         return "gpt-news"
 
     def request_audit(self, stage: Any) -> Any:
         self.audit_stages.append(stage)
-        output_schema = StrictJsonOutputSchema(stage.output_type)
-        artifact_version_hash = artifact_hash_for(
-            model=self.model_for_lane(stage.lane),
-            prompt_version=stage.prompt_version,
-            schema_version=stage.schema_version,
-            runtime_version=RUNTIME_VERSION,
-            output_schema_hash=json_sha256(output_schema.json_schema()),
-            prompt_text_hash=text_sha256(stage.instructions),
-        )
         return SimpleNamespace(
             model_dump=lambda mode="json": {
                 "lane": stage.lane,
                 "mode": mode,
-                "artifact_version_hash": artifact_version_hash,
+                "artifact_version_hash": "artifact-runtime",
             }
         )
+
+    def artifact_version_hash(self, **kwargs: Any) -> str:
+        self.artifact_requests.append(kwargs)
+        return "artifact-runtime"
 
     async def execute(self, stage: Any, *, reservation: object | None = None) -> Any:
         self.executions.append(SimpleNamespace(stage=stage, reservation=reservation))

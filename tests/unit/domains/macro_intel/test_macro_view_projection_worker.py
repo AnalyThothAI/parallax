@@ -88,8 +88,9 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     }
     assert len(repo.snapshots) == 1
     assert repo.snapshots[0]["panels_json"]["volatility"]["regime"] == "carry"
-    assert repo.snapshots[0]["assets_brief_json"]["asof_date"] == "2026-05-20"
+    assert "assets_brief_json" not in repo.snapshots[0]
     assert tuple(repo.snapshots[0]["module_views_json"]) == MACRO_MODULE_IDS
+    assert repo.snapshots[0]["module_views_json"]["assets"]["daily_brief"]["asof_date"] == "2026-05-20"
     assert repo.done_targets == [(target, NOW_MS)]
     assert repo.call_depths == [
         ("claim_macro_projection_dirty_targets", 1),

@@ -13,7 +13,7 @@ providers / public streams
   -> HTTP / WebSocket / CLI
 ```
 
-`NOTIFY` is only a latency hint. Correctness comes from PostgreSQL state and each listener's bounded `interval_seconds` catch-up.
+Workers recover exclusively from PostgreSQL state through bounded `interval_seconds` catch-up. There is no database wake plane or in-memory correctness dependency.
 
 ## Truth and derived state
 
@@ -67,6 +67,15 @@ Provider, model, subprocess, filesystem, and network I/O stays outside database 
 
 ## Current product projections
 
+### Market Current
+
+`market_tick_current` is a transactionally maintained index over append-only
+`market_ticks`: a newly inserted fact, monotonic current advance, and downstream
+Radar dirty enqueue share one transaction. It has no projection worker or dirty
+queue. Recovery remains CQRS-rebuildable through the explicit bounded
+`ops rebuild-market-current` application operation, which scans stable target
+keys in the fact tape and uses the same current-write service.
+
 ### Token Radar
 
 ```text
@@ -98,11 +107,11 @@ macro_sync_windows
   -> provider bundle
   -> macro_observations + macro_sync_runs
   -> compact bounded macro series
-  -> macro_view_snapshots (including assets_brief_json and module_views_json)
+  -> macro_view_snapshots (including route-ready module_views_json)
   -> /api/macro
 ```
 
-`macro_observations` owns raw provider truth. Compact series rows retain only concept/date/value/source/unit/frequency/quality plus a small whitelisted event metadata object. The view writer owns the assets brief and every catalog module payload. Module HTTP requests read `module_views_json` directly; there is no request-time observation scan, News join, second daily-brief projection, or duplicate import ledger.
+`macro_observations` owns raw provider truth. Compact series rows retain only concept/date/value/source/unit/frequency/quality plus a small whitelisted event metadata object. The view writer embeds the assets daily brief only in `module_views_json.assets.daily_brief` and owns every catalog module payload. Module HTTP requests read `module_views_json` directly; there is no request-time observation scan, News join, second daily-brief projection, or duplicate import ledger.
 
 ### Evidence watchlist and account alerts
 

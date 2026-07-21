@@ -9,8 +9,6 @@ import yaml
 from parallax.domains.asset_market.runtime import token_profile_current_worker as module
 from parallax.platform.config.settings import WorkersSettings, default_workers_yaml
 
-ADVISORY_LOCK_KEY = 2026051702
-
 
 def test_token_profile_current_worker_run_once_records_result_and_uses_one_db_session(monkeypatch):
     calls: list[dict] = []
@@ -512,7 +510,7 @@ def test_rebuild_token_profile_current_once_requires_session_source_query_contra
     ]
 
 
-def test_worker_exposes_single_writer_advisory_lock_key() -> None:
+def test_worker_has_no_process_lifecycle_lock_contract() -> None:
     worker = module.TokenProfileCurrentWorker(
         name="token_profile_current",
         settings=worker_settings(),
@@ -520,15 +518,15 @@ def test_worker_exposes_single_writer_advisory_lock_key() -> None:
         telemetry=object(),
     )
 
-    assert module.TokenProfileCurrentWorker.SINGLE_WRITER_KEY == ADVISORY_LOCK_KEY
-    assert worker._advisory_lock_key() == ADVISORY_LOCK_KEY
+    assert not hasattr(worker, "SINGLE_WRITER_KEY")
+    assert not hasattr(worker, "_advisory_lock_key")
 
 
-def test_default_workers_yaml_includes_token_profile_current_advisory_lock() -> None:
+def test_default_workers_yaml_includes_token_profile_retry_policy() -> None:
     workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
 
-    assert workers.token_profile_current.advisory_lock_key == ADVISORY_LOCK_KEY
     assert workers.token_profile_current.retry_ms == 30_000
+    assert not hasattr(workers.token_profile_current, "advisory_lock_key")
 
 
 def worker_settings(**overrides):
@@ -541,7 +539,6 @@ def worker_settings(**overrides):
         "lease_ms": 60_000,
         "retry_ms": 30_000,
         "max_attempts": 3,
-        "advisory_lock_key": ADVISORY_LOCK_KEY,
     }
     values.update(overrides)
     return SimpleNamespace(**values)

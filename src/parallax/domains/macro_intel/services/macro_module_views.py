@@ -5,6 +5,7 @@ from datetime import UTC, date, datetime
 from typing import Any
 
 from parallax.domains.macro_intel._constants import MACRO_MODULE_VIEW_VERSION
+from parallax.domains.macro_intel.services.macro_assets_brief import build_macro_assets_brief
 from parallax.domains.macro_intel.services.macro_module_assets import build_asset_module_read
 from parallax.domains.macro_intel.services.macro_module_catalog import (
     MACRO_MODULE_IDS,
@@ -104,7 +105,7 @@ def build_macro_module_views(
     observations: Sequence[Mapping[str, Any]],
 ) -> dict[str, dict[str, Any]]:
     facts_max_observed_at, projection_lag_days, projection_behind_facts = _projection_currentness(snapshot)
-    assets_brief = required_mapping(snapshot, "assets_brief_json")
+    assets_brief = build_macro_assets_brief(snapshot=snapshot)
     observations_by_concept: dict[str, list[Mapping[str, Any]]] = {}
     for observation in observations:
         concept_key = str(observation.get("concept_key") or "")

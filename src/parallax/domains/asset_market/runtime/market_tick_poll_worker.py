@@ -3,13 +3,18 @@ from __future__ import annotations
 import asyncio
 import time
 from collections import Counter
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Awaitable, Callable, Iterable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, cast
 
+from parallax.domains.asset_market.chain_identity import chain_address_key
 from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
-from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
+from parallax.domains.asset_market.services.live_market import live_market_update_payload
+from parallax.domains.asset_market.services.market_tick_persistence import (
+    MarketTickPersistenceResult,
+    MarketTickPersistenceService,
+)
 from parallax.domains.asset_market.types import (
     DEX_QUOTE_SOURCE_PROVIDERS,
     MarketTick,
@@ -17,6 +22,7 @@ from parallax.domains.asset_market.types import (
     MarketTickSourceTier,
     market_tick_id,
 )
+from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
 from parallax.platform.config.settings import MarketTickPollWorkerSettings
 from parallax.platform.runtime.worker_base import WorkerBase
 from parallax.platform.runtime.worker_result import WorkerResult
@@ -35,10 +41,10 @@ class MarketTickPollWorker(WorkerBase):
         pool_bundle: Any,
         providers: Any,
         settings: MarketTickPollWorkerSettings,
-        wake_emitter: Any | None = None,
         clock: Any | None = None,
         name: str = "market_tick_poll",
         telemetry: Any | None = None,
+        on_live_market_update: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
     ) -> None:
         if providers is None:
             raise RuntimeError("market_tick_poll_providers_required")
@@ -53,16 +59,16 @@ class MarketTickPollWorker(WorkerBase):
         self.providers = providers
         self.dex_quote_market = providers.dex_quote_market
         self.cex_market = providers.cex_market
-        self.wake_emitter = wake_emitter
         self.batch_size = settings.batch_size
         self.concurrency = settings.concurrency
         self.clock = clock or _now_ms
-        self._recent_tier2_attempts: set[tuple[str, str]] = set()
+        self.on_live_market_update = on_live_market_update
+        self._recent_attempts: set[tuple[str, str]] = set()
 
     async def run_once(self) -> WorkerResult:
         # DB read happens off the event loop; provider IO must not run while a
         # DB session is held, so we materialize rows first, then drop the session.
-        rows = await asyncio.to_thread(self._list_tier2_rows)
+        rows = await asyncio.to_thread(self._list_poll_rows)
         targets = _poll_targets(rows)
 
         # New semaphore per cycle so concurrency state does not leak across runs.
@@ -77,7 +83,9 @@ class MarketTickPollWorker(WorkerBase):
         skipped_reasons.update(cex_result.skipped_reasons)
         ticks = [*chain_result.ticks, *cex_result.ticks]
 
-        inserted = await asyncio.to_thread(self._persist_ticks, ticks)
+        persistence = await asyncio.to_thread(self._persist_ticks, ticks)
+        await self._publish_current_rows(persistence.live_market_rows)
+        inserted = persistence.inserted
         return WorkerResult(
             processed=inserted,
             skipped=sum(skipped_reasons.values()),
@@ -91,29 +99,37 @@ class MarketTickPollWorker(WorkerBase):
             },
         )
 
-    def _list_tier2_rows(self) -> list[dict[str, Any]]:
-        exclude_keys = _target_key_dicts(self._recent_tier2_attempts)
+    def _list_poll_rows(self) -> list[dict[str, Any]]:
+        now_ms = int(self.clock())
+        exclude_keys = tuple(sorted(self._recent_attempts))
         with self.db.worker_session(self.name) as repos:
-            rows = _list_tier2_page(
-                repos,
+            rows = repos.registry.ranked_market_targets(
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                since_ms=now_ms - WINDOW_MS["24h"],
+                target_types=("chain_token", "cex_symbol"),
                 limit=self.batch_size,
                 exclude_keys=exclude_keys,
             )
             if not rows and exclude_keys:
-                self._recent_tier2_attempts.clear()
-                rows = repos.token_capture_tiers.list_by_tier(2, limit=self.batch_size)
-        self._remember_tier2_attempts(rows)
+                self._recent_attempts.clear()
+                rows = repos.registry.ranked_market_targets(
+                    projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                    since_ms=now_ms - WINDOW_MS["24h"],
+                    target_types=("chain_token", "cex_symbol"),
+                    limit=self.batch_size,
+                )
+        self._remember_attempts(rows)
         return [dict(row) for row in rows]
 
-    def _remember_tier2_attempts(self, rows: Sequence[Mapping[str, Any]]) -> None:
+    def _remember_attempts(self, rows: Sequence[Mapping[str, Any]]) -> None:
         for row in rows:
             target_type = str(row.get("target_type") or "").strip()
             target_id = str(row.get("target_id") or "").strip()
             if target_type and target_id:
-                self._recent_tier2_attempts.add((target_type, target_id))
+                self._recent_attempts.add((target_type, target_id))
         max_recent = max(self.batch_size * 50, 1_000)
-        if len(self._recent_tier2_attempts) > max_recent:
-            self._recent_tier2_attempts.clear()
+        if len(self._recent_attempts) > max_recent:
+            self._recent_attempts.clear()
 
     async def _poll_chain_targets_async(
         self,
@@ -239,19 +255,28 @@ class MarketTickPollWorker(WorkerBase):
             ).warning("market tick poll quote skipped")
         return _PollProviderResult(ticks=ticks, skipped_reasons=skipped_reasons)
 
-    def _persist_ticks(self, ticks: Iterable[MarketTick]) -> int:
+    def _persist_ticks(self, ticks: Iterable[MarketTick]) -> MarketTickPersistenceResult:
         materialized = list(ticks)
         if not materialized:
-            return 0
+            return MarketTickPersistenceResult(
+                inserted_ids=[],
+                current_rows=[],
+                live_market_rows=[],
+            )
         with self.db.worker_session(self.name) as repos, repos.transaction():
-            result = MarketTickPersistenceService(repos).insert_ticks_and_enqueue_current_dirty(
+            return MarketTickPersistenceService(repos).persist_ticks(
                 materialized,
-                reason="market_tick_written",
                 now_ms=int(self.clock()),
             )
-        for target_type, target_id in result.changed_targets:
-            _emit_wake(self.wake_emitter, target_type=target_type, target_id=target_id)
-        return result.inserted
+
+    async def _publish_current_rows(self, rows: list[dict[str, Any]]) -> None:
+        if self.on_live_market_update is None:
+            return
+        for row in rows:
+            try:
+                await self.on_live_market_update(live_market_update_payload(row))
+            except Exception as exc:
+                self.logger.bind(error=type(exc).__name__).warning("live market WebSocket publish failed")
 
 
 @dataclass(frozen=True, slots=True)
@@ -285,23 +310,6 @@ class _PollProviderResult:
 class _SingleTargetOutcome:
     tick: MarketTick | None
     skip_reason: str | None
-
-
-def _list_tier2_page(
-    repos: Any,
-    *,
-    limit: int,
-    exclude_keys: list[dict[str, str]],
-) -> list[Mapping[str, Any]]:
-    if exclude_keys:
-        rows = repos.token_capture_tiers.list_by_tier(2, limit=limit, exclude_keys=exclude_keys)
-    else:
-        rows = repos.token_capture_tiers.list_by_tier(2, limit=limit)
-    return [dict(row) for row in rows]
-
-
-def _target_key_dicts(keys: set[tuple[str, str]]) -> list[dict[str, str]]:
-    return [{"target_type": target_type, "target_id": target_id} for target_type, target_id in sorted(keys)]
 
 
 def _poll_targets(rows: Sequence[Mapping[str, Any]]) -> _PollTargets:
@@ -492,7 +500,7 @@ def _clean_str(value: Any) -> str:
 
 
 def _target_key(chain_id: str, address: str) -> tuple[str, str]:
-    return (str(chain_id).strip(), str(address).strip().lower())
+    return chain_address_key(chain_id, address)
 
 
 def _dex_source_provider(quote: DexTokenQuote) -> MarketTickSourceProvider:
@@ -500,12 +508,6 @@ def _dex_source_provider(quote: DexTokenQuote) -> MarketTickSourceProvider:
     if source_provider in DEX_QUOTE_SOURCE_PROVIDERS:
         return cast(MarketTickSourceProvider, source_provider)
     return DEX_SOURCE_PROVIDER
-
-
-def _emit_wake(wake_emitter: Any, *, target_type: str, target_id: str) -> None:
-    if wake_emitter is None:
-        return
-    wake_emitter.notify_market_tick_written(target_type=target_type, target_id=target_id)
 
 
 def _provider_error_reason(exc: Exception) -> str:

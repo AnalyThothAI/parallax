@@ -9,6 +9,8 @@ from fastapi.testclient import TestClient
 import parallax.app.runtime.bootstrap as bootstrap_module
 import parallax.app.surfaces.api.app as app_module
 from parallax.app.runtime.bootstrap import Runtime, bootstrap
+from parallax.app.runtime.runtime_snapshot import RuntimeSnapshot, capture_runtime_snapshot
+from parallax.app.runtime.worker_manifest import worker_names
 from parallax.app.surfaces.api.app import _readiness_payload, _status_payload, create_app
 from parallax.platform.config.settings import Settings
 from parallax.platform.db.postgres_client import postgres_health_check
@@ -30,6 +32,41 @@ def make_settings(tmp_path, **kwargs) -> Settings:
 
 def close_runtime(runtime: Runtime) -> None:
     asyncio.run(runtime.aclose())
+
+
+def attach_runtime_snapshot(runtime: SimpleNamespace) -> SimpleNamespace:
+    runtime.snapshot = RuntimeSnapshot.startup(
+        startup_db_status={"ok": True, "probe": "startup"},
+        composition={"ok": True},
+        news_provider_contract=getattr(runtime, "news_provider_contract", {"ok": True}),
+    )
+
+    def current_snapshot() -> RuntimeSnapshot:
+        runtime.snapshot = capture_runtime_snapshot(runtime)
+        return runtime.snapshot
+
+    runtime.current_snapshot = current_snapshot
+    return runtime
+
+
+def full_worker_statuses(**overrides: dict[str, object]) -> dict[str, dict[str, object]]:
+    statuses = {
+        name: {
+            "enabled": False,
+            "running": False,
+            "effective_status": "disabled",
+            "unavailable_reason": None,
+            "last_started_at_ms": None,
+            "last_finished_at_ms": None,
+            "last_result": None,
+            "last_error": None,
+            "iteration_duration_p99_ms": None,
+        }
+        for name in worker_names()
+    }
+    for name, values in overrides.items():
+        statuses[name].update(values)
+    return statuses
 
 
 class FakePool:
@@ -83,8 +120,6 @@ class FakeDB:
     def __init__(self) -> None:
         self.api_pool = FakePool()
         self.worker_pool = FakePool()
-        self.lock_pool = FakePool()
-        self.wake_pool = FakePool()
         self.notification_delivery_running_timeout_ms = 120_000
         self.notification_delivery_stale_running_terminalization_batch_size = 100
 
@@ -96,17 +131,8 @@ class FakeDB:
     def worker_session(self, _name):
         yield SimpleNamespace()
 
-    def wake_emitter(self):
-        return None
-
-    def wake_listener(self, _name, _channels):
-        return None
-
-    def acquire_advisory_lock_connection(self, _name, _key):
-        return SimpleNamespace(release=lambda: None)
-
     async def aclose(self) -> None:
-        for pool in (self.api_pool, self.worker_pool, self.lock_pool, self.wake_pool):
+        for pool in (self.api_pool, self.worker_pool):
             pool.close()
 
 
@@ -212,9 +238,6 @@ class FailingScheduler:
     def status_payload(self):
         return {}
 
-    def unhealthy_reasons(self):
-        return []
-
     async def start(self) -> None:
         return None
 
@@ -225,9 +248,6 @@ class FailingScheduler:
 class NoopScheduler:
     def status_payload(self):
         return {}
-
-    def unhealthy_reasons(self):
-        return []
 
     async def start(self) -> None:
         return None
@@ -240,7 +260,6 @@ def fake_wired_providers(
     settings,
     *,
     start_collector,
-    agent_execution_gateway=None,
     asset_market=None,
     news_intel=None,
     upstream_client_factory=None,
@@ -258,7 +277,6 @@ def fake_wired_providers(
             discovery_chain_ids=(),
         ),
         news_intel=news_intel or SimpleNamespace(feed_client=None, story_brief_provider=None),
-        agent_execution_gateway=agent_execution_gateway,
     )
 
 
@@ -271,7 +289,6 @@ def patch_runtime_dependencies(monkeypatch, *, asset_market=None, news_intel=Non
         lambda settings, *, start_collector, agent_execution_gateway=None: fake_wired_providers(
             settings,
             start_collector=start_collector,
-            agent_execution_gateway=agent_execution_gateway,
             asset_market=asset_market,
             news_intel=news_intel,
             upstream_client_factory=upstream_client_factory,
@@ -286,6 +303,29 @@ def test_healthz_handler_is_async_to_avoid_threadpool_starvation(tmp_path):
     route = next(route for route in app.routes if getattr(route, "path", None) == "/healthz")
 
     assert inspect.iscoroutinefunction(route.endpoint)
+
+
+def test_lifespan_closes_runtime_when_scheduler_start_fails(monkeypatch):
+    events: list[str] = []
+
+    class FailingScheduler:
+        async def start(self) -> None:
+            events.append("start")
+            raise RuntimeError("worker start failed")
+
+    class FailingRuntime:
+        scheduler = FailingScheduler()
+
+        async def aclose(self) -> None:
+            events.append("close")
+
+    monkeypatch.setattr(app_module, "bootstrap", lambda *_args, **_kwargs: FailingRuntime())
+    app = create_app(settings=Settings(ws_token="secret"), start_collector=False)
+
+    with pytest.raises(RuntimeError, match="worker start failed"), TestClient(app):
+        pass
+
+    assert events == ["start", "close"]
 
 
 def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
@@ -338,10 +378,8 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         "watchlist_handle_summary",
         "market_tick_stream",
         "market_tick_poll",
-        "token_capture_tier",
         "asset_profile_refresh",
         "resolution_refresh",
-        "live_price_gateway",
         "token_resolution",
         "provider_status",
     }
@@ -371,26 +409,14 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         "worker:asset_profile_refresh:unavailable:missing_asset_profile_provider",
         "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider",
         "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider",
+        "worker:news_story_brief:unavailable:missing_llm_configuration",
+        "worker:notification_delivery:unavailable:missing_notification_delivery_channel",
         "worker:resolution_refresh:unavailable:missing_asset_discovery_provider",
     ]
     assert not any("factory_not_constructed" in reason for reason in api_status_payload["reasons"])
     assert "event_anchor_backfill" in api_status_payload["workers"]
     assert api_status_payload["workers"]["event_anchor_backfill"]["enabled"] is True
-    assert set(api_status_payload["worker_lanes"]) >= {"ingest", "projection", "agent"}
-    for lane in api_status_payload["worker_lanes"].values():
-        assert set(lane) >= {
-            "disabled_workers",
-            "intentionally_not_started_workers",
-            "unavailable_workers",
-            "degraded_workers",
-            "running_workers",
-            "stopped_workers",
-            "failed_workers",
-        }
-    assert api_status_payload["worker_lanes"]["ingest"]["intentionally_not_started_workers"] >= 1
-    assert api_status_payload["worker_lanes"]["ingest"]["unavailable_workers"] >= 1
-    assert api_status_payload["worker_lanes"]["projection"]["enabled_workers"] >= 1
-    assert api_status_payload["worker_lanes"]["agent"]["failed_workers"] == 0
+    assert "worker_lanes" not in api_status_payload
     assert metrics.status_code == 200
     assert metrics.headers["content-type"].startswith("text/plain")
     assert "gmgn_db_pool_wait_ms" in metrics.text
@@ -501,7 +527,6 @@ def test_bootstrap_failure_after_provider_wiring_closes_providers(monkeypatch, t
     assert async_provider.closed == 1
     assert db.api_pool.closed is True
     assert db.worker_pool.closed is True
-    assert db.wake_pool.closed is True
 
 
 def test_runtime_postgres_health_check_reports_migration_version(tmp_path):
@@ -556,6 +581,11 @@ def test_readiness_does_not_query_worker_provider_or_business_freshness(monkeypa
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", notifications={"enabled": False}),
         db=FakeDB(),
+        snapshot=RuntimeSnapshot.startup(
+            startup_db_status={"ok": True},
+            composition={"ok": True},
+            news_provider_contract={"ok": True},
+        ),
         scheduler=ForbiddenDependency(),
         collector=ForbiddenDependency(),
         providers=ForbiddenDependency(),
@@ -616,7 +646,6 @@ def test_disabled_collector_does_not_create_upstream_client(monkeypatch, tmp_pat
         storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
         workers={
             "collector": {"enabled": False},
-            "live_price_gateway": {"enabled": False},
             "token_radar_projection": {"enabled": False},
         },
         notifications={"enabled": False},
@@ -634,7 +663,6 @@ def test_disabled_collector_does_not_create_upstream_client(monkeypatch, tmp_pat
         assert runtime.collector.upstream_client is None
         assert created_upstream_clients == []
         assert runtime.scheduler.workers["collector"].status_payload()["enabled"] is False
-        assert runtime.scheduler.workers["live_price_gateway"].status_payload()["enabled"] is False
         assert runtime.providers.asset_market.stream_dex_market is asset_market.stream_dex_market
     finally:
         close_runtime(runtime)
@@ -656,10 +684,8 @@ def test_start_collector_false_only_disables_collector(monkeypatch, tmp_path):
         workers={
             "market_tick_stream": {"enabled": True},
             "market_tick_poll": {"enabled": True},
-            "token_capture_tier": {"enabled": True},
             "asset_profile_refresh": {"enabled": True},
             "resolution_refresh": {"enabled": True},
-            "live_price_gateway": {"enabled": True},
             "token_radar_projection": {"enabled": False},
         },
         notifications={"enabled": False},
@@ -674,10 +700,8 @@ def test_start_collector_false_only_disables_collector(monkeypatch, tmp_path):
         for name in (
             "market_tick_stream",
             "market_tick_poll",
-            "token_capture_tier",
             "asset_profile_refresh",
             "resolution_refresh",
-            "live_price_gateway",
         ):
             assert runtime.scheduler.workers[name].status_payload()["enabled"] is True
     finally:
@@ -712,20 +736,26 @@ def test_notification_delivery_starts_when_rule_worker_disabled(monkeypatch, tmp
         close_runtime(runtime)
 
 
-def test_readiness_uses_scheduler_workers_payload(monkeypatch):
+def test_status_uses_runtime_snapshot_worker_and_agent_state():
     agent_execution = {
-        "global_max_concurrency": 4,
-        "global_in_flight": 0,
-        "lanes": {
-            "news.story_brief": {
-                "max_concurrency": 1,
-                "in_flight": 0,
-                "circuit_state": "closed",
-                "capacity_denied_total": 0,
-                "circuit_open_total": 0,
-                "timeout_total": 0,
-            }
-        },
+        "lane": "news.story_brief",
+        "model": "gpt-news",
+        "provider_family": "openai",
+        "output_strategy": "json_object",
+        "schema_enforcement": "client_validate",
+        "max_concurrency": 1,
+        "rpm_limit": 60,
+        "timeout_seconds": 180.0,
+        "in_flight": 0,
+        "provider_running": 0,
+        "circuit_state": "closed",
+        "circuit_open_until_ms": None,
+        "capacity_denied_total": 0,
+        "circuit_open_total": 0,
+        "timeout_total": 0,
+        "last_denied_at_ms": None,
+        "last_timeout_at_ms": None,
+        "oldest_in_flight_age_ms": None,
     }
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
@@ -734,59 +764,31 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
         agent_execution_gateway=SimpleNamespace(status_snapshot=lambda: agent_execution),
         news_provider_contract={"ok": True},
         scheduler=SimpleNamespace(
-            status_payload=lambda: {
-                "news_story_brief": {
+            tasks={},
+            status_payload=lambda: full_worker_statuses(
+                news_story_brief={
                     "enabled": True,
                     "running": True,
+                    "effective_status": "running",
                     "last_started_at_ms": 1_000,
                     "last_finished_at_ms": 2_000,
                     "last_result": {"processed": 1},
                     "last_error": None,
                     "iteration_duration_p99_ms": None,
-                    "pool_wait_ms_p99": None,
-                }
-            },
-            unhealthy_reasons=lambda: [],
+                },
+            ),
         ),
     )
-    worker_status = {
-        "workers": runtime.scheduler.status_payload(),
-        "worker_lanes": {},
-    }
-    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
-    monkeypatch.setattr(app_module, "workers_status_payload", lambda _: worker_status)
+    attach_runtime_snapshot(runtime)
 
-    payload, status_code = _status_payload(runtime)
+    payload = _status_payload(runtime)
 
-    assert status_code == 200
     assert payload["workers"]["news_story_brief"]["running"] is True
     assert payload["workers"]["news_story_brief"]["last_result"] == {"processed": 1}
     assert payload["agent_execution"] == agent_execution
 
 
-def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
-    projection_statuses = {
-        "market_tick_current_projection": {"enabled": False, "running": False, "effective_status": "disabled"},
-        "token_capture_tier": {
-            "enabled": False,
-            "running": False,
-            "effective_status": "intentionally_not_started",
-        },
-        "token_profile_current": {
-            "enabled": True,
-            "running": False,
-            "effective_status": "unavailable",
-            "unavailable_reason": "missing_profile_source",
-        },
-        "token_radar_projection": {"enabled": True, "running": True, "effective_status": "degraded"},
-        "news_page_projection": {
-            "enabled": True,
-            "running": False,
-            "effective_status": "failed",
-            "last_error": "projection failed",
-        },
-        "macro_view_projection": {"enabled": False, "running": False, "effective_status": "disabled"},
-    }
+def test_status_reports_formal_failed_worker():
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
         collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
@@ -794,57 +796,60 @@ def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
         agent_execution_gateway=None,
         scheduler=SimpleNamespace(
-            status_payload=lambda: projection_statuses,
-            unhealthy_reasons=lambda: [],
+            tasks={},
+            status_payload=lambda: full_worker_statuses(
+                token_radar_projection={
+                    "enabled": True,
+                    "effective_status": "failed",
+                    "last_result": {"ok": False},
+                },
+            ),
         ),
     )
-    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
-    monkeypatch.setattr(app_module, "_news_provider_contract_payload", lambda _: {"ok": True})
+    attach_runtime_snapshot(runtime)
 
-    payload, _status_code = _status_payload(runtime)
+    payload = _status_payload(runtime)
 
-    projection = payload["worker_lanes"]["projection"]
-    assert projection["disabled_workers"] == 2
-    assert projection["intentionally_not_started_workers"] == 1
-    assert projection["unavailable_workers"] == 1
-    assert projection["degraded_workers"] == 1
-    assert projection["running_workers"] == 0
-    assert projection["stopped_workers"] == 0
-    assert projection["failed_workers"] == 1
+    assert payload["ok"] is False
+    assert payload["workers"]["token_radar_projection"]["effective_status"] == "failed"
+    assert "worker:token_radar_projection:failed" in payload["reasons"]
 
 
-def test_readiness_reports_result_derived_failed_worker(monkeypatch):
-    failed_worker = SimpleNamespace(
-        status_payload=lambda: {
-            "enabled": True,
-            "running": False,
-            "last_result": {"ok": False},
-            "last_error": None,
-        }
-    )
+def test_status_reports_terminal_news_source_as_degraded() -> None:
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
         collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
         db=FakeDB(),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
         agent_execution_gateway=None,
-        scheduler=bootstrap_module.WorkerScheduler(
-            workers={"token_radar_projection": failed_worker},
-            db=FakeDB(),
+        scheduler=SimpleNamespace(
+            tasks={},
+            status_payload=lambda: full_worker_statuses(
+                news_fetch={
+                    "enabled": True,
+                    "effective_status": "degraded",
+                    "last_result": {
+                        "processed": 0,
+                        "failed": 0,
+                        "notes": {
+                            "degraded": True,
+                            "terminal_sources": {"source-402": "provider_payment_required"},
+                        },
+                    },
+                },
+            ),
         ),
     )
-    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
-    monkeypatch.setattr(app_module, "_news_provider_contract_payload", lambda _: {"ok": True})
+    attach_runtime_snapshot(runtime)
 
-    payload, status_code = _status_payload(runtime)
+    payload = _status_payload(runtime)
 
-    assert status_code == 503
     assert payload["ok"] is False
-    assert payload["workers"]["token_radar_projection"]["effective_status"] == "failed"
-    assert "worker:token_radar_projection:failed" in payload["reasons"]
+    assert payload["workers"]["news_fetch"]["effective_status"] == "degraded"
+    assert payload["reasons"] == ["worker:news_fetch:degraded"]
 
 
-def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):
+def test_status_reports_okx_circuit_open_as_degraded_without_failing_readiness():
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
         collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
@@ -863,17 +868,15 @@ def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):
         agent_execution_gateway=None,
         news_provider_contract={"ok": True},
         scheduler=SimpleNamespace(
-            status_payload=lambda: {},
-            unhealthy_reasons=lambda: [],
+            tasks={},
+            status_payload=full_worker_statuses,
         ),
     )
-    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
-    monkeypatch.setattr(app_module, "workers_status_payload", lambda _: {"workers": {}, "worker_lanes": {}})
+    attach_runtime_snapshot(runtime)
 
-    payload, status_code = _status_payload(runtime)
+    payload = _status_payload(runtime)
 
-    assert status_code == 200
-    assert payload["ok"] is True
-    assert payload["reasons"] == []
+    assert payload["ok"] is False
+    assert payload["reasons"] == ["provider:okx_dex_ws:circuit_open"]
     assert payload["provider_states"]["okx_dex_ws"]["state"] == "circuit_open"
     assert payload["provider_states"]["okx_dex_ws"]["last_error_category"] == "connect_timeout"

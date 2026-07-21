@@ -110,21 +110,20 @@ class EventMarketCaptureService:
 
         req = _CaptureRequest(event_id, intent_id, resolution_id, target_type, target_id, event_ms)
         if target_type == "chain_token":
-            return _capture_chain_token(req, resolution=resolution, providers=self._providers, now_ms=self._now_ms)
-        return _capture_cex_symbol(req, resolution=resolution, providers=self._providers, now_ms=self._now_ms)
+            return _capture_chain_token(req, providers=self._providers, now_ms=self._now_ms)
+        return _capture_cex_symbol(req, providers=self._providers, now_ms=self._now_ms)
 
 
 def _capture_chain_token(
     req: _CaptureRequest,
     *,
-    resolution: Mapping[str, Any],
     providers: AssetMarketProviderBundle,
     now_ms: Callable[[], int],
 ) -> CaptureResult:
     provider = providers.dex_quote_market
     if provider is None:
         return _unavailable(req, reason="missing_provider", created_at_ms=now_ms())
-    chain_id, address = _chain_token_market_key(resolution, target_id=req.target_id)
+    chain_id, address = _parse_chain_token_target_id(req.target_id)
     if not chain_id or not address:
         return _unavailable(req, reason="missing_market_key", created_at_ms=now_ms())
 
@@ -177,14 +176,13 @@ def _capture_chain_token(
 def _capture_cex_symbol(
     req: _CaptureRequest,
     *,
-    resolution: Mapping[str, Any],
     providers: AssetMarketProviderBundle,
     now_ms: Callable[[], int],
 ) -> CaptureResult:
     provider = providers.cex_market
     if provider is None:
         return _unavailable(req, reason="missing_provider", created_at_ms=now_ms())
-    exchange, instrument = _cex_market_key(resolution, target_id=req.target_id)
+    exchange, instrument = _parse_cex_symbol_target_id(req.target_id)
     if not instrument:
         return _unavailable(req, reason="missing_market_key", created_at_ms=now_ms())
 
@@ -357,25 +355,11 @@ def _ticker_open_interest_usd(ticker: CexTicker) -> Decimal | None:
     return None
 
 
-def _chain_token_market_key(resolution: Mapping[str, Any], *, target_id: str) -> tuple[str, str]:
-    chain_id = _clean_str(resolution.get("chain_id")) or _clean_str(resolution.get("chain"))
-    address = _clean_str(resolution.get("token_address")) or _clean_str(resolution.get("address"))
-    parsed_chain_id, parsed_address = _parse_chain_token_target_id(target_id)
-    return chain_id or parsed_chain_id, address or parsed_address
-
-
 def _parse_chain_token_target_id(target_id: str) -> tuple[str, str]:
     chain_id, separator, address = target_id.rpartition(":")
     if not separator:
         return "", ""
     return chain_id.strip(), address.strip()
-
-
-def _cex_market_key(resolution: Mapping[str, Any], *, target_id: str) -> tuple[str, str]:
-    exchange = _clean_str(resolution.get("exchange"))
-    instrument = _clean_str(resolution.get("instrument")) or _clean_str(resolution.get("native_market_id"))
-    parsed_exchange, parsed_instrument = _parse_cex_symbol_target_id(target_id)
-    return exchange or parsed_exchange, instrument or parsed_instrument
 
 
 def _parse_cex_symbol_target_id(target_id: str) -> tuple[str, str]:

@@ -15,6 +15,7 @@ describe("useNewsPage", () => {
           data: {
             items: [
               {
+                ...requiredNewsRowSections(),
                 row_id: "row-1",
                 news_item_id: "news-1",
                 lifecycle_status: "processed",
@@ -28,13 +29,16 @@ describe("useNewsPage", () => {
                 }),
                 token_lanes: [
                   {
+                    lane: "resolved",
                     symbol: "BTC",
                     market_type: "cex",
                     resolution_status: "resolved",
                     target_id: "asset:btc",
                   },
                 ],
+                token_impacts: [],
                 fact_lanes: [],
+                agent_brief: { status: "pending" },
               },
             ],
             next_cursor: null,
@@ -48,7 +52,7 @@ describe("useNewsPage", () => {
     await waitFor(() =>
       expect(result.current.data?.items[0].signal.display_signal.label_zh).toBe("利好"),
     );
-    expect(result.current.data?.items[0].agent_brief).toBeUndefined();
+    expect(result.current.data?.items[0].agent_brief.status).toBe("pending");
     expect(result.current.data?.items[0].token_lanes[0]).toMatchObject({
       lane: "resolved",
       market_type: "cex",
@@ -98,6 +102,7 @@ describe("useNewsPage", () => {
             data: {
               items: [
                 {
+                  ...requiredNewsRowSections(),
                   row_id: "row-btc",
                   news_item_id: "news-btc",
                   lifecycle_status: "processed",
@@ -108,8 +113,10 @@ describe("useNewsPage", () => {
                     status: "ready",
                     direction: "bullish",
                   }),
+                  token_impacts: [],
                   token_lanes: [],
                   fact_lanes: [],
+                  agent_brief: { status: "pending" },
                 },
               ],
               next_cursor: null,
@@ -124,6 +131,7 @@ describe("useNewsPage", () => {
                 data: {
                   items: [
                     {
+                      ...requiredNewsRowSections(),
                       row_id: "row-eth",
                       news_item_id: "news-eth",
                       lifecycle_status: "processed",
@@ -134,8 +142,10 @@ describe("useNewsPage", () => {
                         status: "ready",
                         direction: "bearish",
                       }),
+                      token_impacts: [],
                       token_lanes: [],
                       fact_lanes: [],
+                      agent_brief: { status: "pending" },
                     },
                   ],
                   next_cursor: null,
@@ -179,6 +189,30 @@ function newsSignalEnvelope(displaySignal: Record<string, unknown>) {
       in_app_eligible: true,
       external_push_ready: false,
       agent_status: "pending",
+      market_scope: {
+        scope: ["crypto"],
+        primary: "crypto",
+        status: "classified",
+        reason: "market_scope_classified",
+        basis: { subject: "crypto" },
+        version: "news_market_scope_v1",
+      },
     },
+  };
+}
+
+function requiredNewsRowSections() {
+  return {
+    source_domain: "example.com",
+    source: {
+      source_domain: "example.com",
+      provider_type: "opennews",
+      source_role: "aggregator",
+      trust_tier: "standard",
+      coverage_tags: [],
+      source_quality_status: "healthy",
+    },
+    content_tags: [],
+    content_classification: {},
   };
 }

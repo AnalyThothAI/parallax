@@ -110,7 +110,7 @@ def open_runtime(tmp_path):
         intent_resolutions=repos.intent_resolutions,
         discovery=repos.discovery,
         market_ticks=repos.market_ticks,
-        market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
+        market_tick_current=repos.market_tick_current,
         enriched_events=repos.enriched_events,
         event_anchor_jobs=repos.event_anchor_jobs,
         token_radar_dirty_targets=repos.token_radar_dirty_targets,

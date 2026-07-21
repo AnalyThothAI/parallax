@@ -6,7 +6,6 @@ from parallax.integrations.model_execution.execution_gateway import AgentExecuti
 from parallax.integrations.model_execution.news_story_brief_agent_client import (
     LiteLLMNewsStoryBriefClient,
 )
-from parallax.platform.agent_execution import AgentRuntimePolicy
 from parallax.platform.config.settings import Settings
 
 
@@ -22,25 +21,14 @@ def litellm_news_story_brief_provider(
 def build_agent_execution_gateway(
     settings: Settings,
     *,
-    llm_gateway: object | None,
     telemetry: Any | None = None,
 ) -> AgentExecutionGateway:
-    gateway = _require_llm_gateway(llm_gateway)
-    policy = AgentRuntimePolicy.model_validate(settings.workers.agent_runtime.model_dump(mode="json"))
     return AgentExecutionGateway(
-        llm_gateway=gateway,
-        base_url=settings.llm_base_url,
-        trace_enabled=settings.llm_trace_enabled,
-        trace_include_sensitive_data=settings.llm_trace_include_sensitive_data,
-        policy=policy,
+        api_key=settings.llm.api_key or "",
+        base_url=settings.llm.base_url,
+        policy=settings.workers.agent_runtime,
         telemetry=telemetry,
     )
-
-
-def _require_llm_gateway(llm_gateway: object | None) -> object:
-    if llm_gateway is None:
-        raise RuntimeError("LLMGateway is required for configured LiteLLM providers")
-    return llm_gateway
 
 
 __all__ = [

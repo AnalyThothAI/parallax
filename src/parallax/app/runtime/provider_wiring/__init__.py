@@ -37,14 +37,7 @@ def wire_providers(
             if settings.news_agent_execution_enabled
             else None,
         ),
-        agent_execution_gateway=agent_execution_gateway,
     )
-
-
-def wire_asset_market_providers(settings: Settings) -> AssetMarketProviders:
-    from parallax.app.runtime.provider_wiring import asset_market
-
-    return asset_market.wire_asset_market_providers(settings)
 
 
 def _require_agent_execution_gateway(agent_execution_gateway: object | None) -> object:
@@ -58,6 +51,5 @@ __all__ = [
     "IngestionProviders",
     "NewsIntelProviders",
     "WiredProviders",
-    "wire_asset_market_providers",
     "wire_providers",
 ]

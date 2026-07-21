@@ -1,14 +1,30 @@
 from __future__ import annotations
 
 import math
+from collections.abc import Mapping
 from typing import Any
 
 from fastapi.encoders import jsonable_encoder
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 
 
 def _json(payload: dict[str, Any], *, status_code: int = 200) -> JSONResponse:
     return JSONResponse(_finite_json(jsonable_encoder(payload)), status_code=status_code)
+
+
+def _validated_json(
+    schema: type[BaseModel],
+    payload: Mapping[str, Any],
+    *,
+    status_code: int = 200,
+) -> JSONResponse:
+    """Validate an explicit API envelope before bypassing FastAPI serialization."""
+    validated = schema.model_validate(payload)
+    return _json(
+        validated.model_dump(mode="json", by_alias=True, exclude_unset=True),
+        status_code=status_code,
+    )
 
 
 def _finite_json(value: Any) -> Any:

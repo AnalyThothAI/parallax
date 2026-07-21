@@ -12,7 +12,6 @@ from parallax.domains.news_intel.types.news_story_brief import (
     NewsStoryBriefPayload,
 )
 from parallax.platform.agent_execution import AgentStageSpec
-from parallax.platform.agent_hashing import text_sha256
 from parallax.platform.agent_knowledge import render_agent_instructions
 
 _NEWS_STORY_BRIEF_KNOWLEDGE_REFS = ("market_research_harness",)
@@ -28,10 +27,6 @@ def news_story_brief_stage_instructions() -> str:
         news_story_brief_instructions(),
         knowledge_refs=_NEWS_STORY_BRIEF_KNOWLEDGE_REFS,
     )
-
-
-def news_story_brief_prompt_text_hash() -> str:
-    return text_sha256(news_story_brief_stage_instructions())
 
 
 def build_news_story_brief_stage(*, packet: NewsStoryBriefInputPacket, run_id: str) -> AgentStageSpec:
@@ -63,6 +58,5 @@ def build_news_story_brief_stage(*, packet: NewsStoryBriefInputPacket, run_id: s
 __all__ = [
     "build_news_story_brief_stage",
     "news_story_brief_instructions",
-    "news_story_brief_prompt_text_hash",
     "news_story_brief_stage_instructions",
 ]

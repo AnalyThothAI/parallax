@@ -87,7 +87,6 @@ class WiredProviders:
     ingestion: IngestionProviders
     asset_market: AssetMarketProviders
     news_intel: NewsIntelProviders
-    agent_execution_gateway: object | None = None
 
     async def aclose(self) -> None:
         errors: list[Exception] = []

@@ -399,7 +399,6 @@
 | `scenario_json` | `JSONB` | False | `'{}'::jsonb` |
 | `scorecard_json` | `JSONB` | False | `'{}'::jsonb` |
 | `payload_hash` | `TEXT` | False | `None` |
-| `assets_brief_json` | `JSONB` | False | `None` |
 | `module_views_json` | `JSONB` | False | `None` |
 
 ## `market_tick_current`
@@ -423,28 +422,8 @@
 | `open_interest_usd` | `NUMERIC` | True | `None` |
 | `market_cap_usd` | `NUMERIC` | True | `None` |
 | `holders` | `BIGINT` | True | `None` |
-| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
-| `payload_hash` | `TEXT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
-
-## `market_tick_current_dirty_targets`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `target_type` | `TEXT` | False | `None` |
-| `target_id` | `TEXT` | False | `None` |
-| `dirty_reason` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
-| `due_at_ms` | `BIGINT` | False | `None` |
-| `source_watermark_ms` | `BIGINT` | False | `0` |
-| `priority` | `INTEGER` | False | `0` |
-| `leased_until_ms` | `BIGINT` | True | `None` |
-| `lease_owner` | `TEXT` | True | `None` |
-| `attempt_count` | `INTEGER` | False | `0` |
-| `last_error` | `TEXT` | True | `None` |
-| `first_dirty_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
 
 ## `market_ticks`
 
@@ -918,35 +897,6 @@
 | `address` | `TEXT` | False | `None` |
 | `status` | `TEXT` | False | `None` |
 | `first_seen_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `token_capture_tier`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `target_type` | `TEXT` | False | `None` |
-| `target_id` | `TEXT` | False | `None` |
-| `tier` | `INTEGER` | False | `None` |
-| `reason` | `TEXT` | False | `None` |
-| `score` | `NUMERIC` | False | `0` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `token_capture_tier_dirty_targets`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `work_name` | `TEXT` | False | `None` |
-| `partition_key` | `TEXT` | False | `None` |
-| `dirty_reason` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
-| `source_watermark_ms` | `BIGINT` | False | `0` |
-| `priority` | `INTEGER` | False | `100` |
-| `due_at_ms` | `BIGINT` | False | `None` |
-| `leased_until_ms` | `BIGINT` | True | `None` |
-| `lease_owner` | `TEXT` | True | `None` |
-| `attempt_count` | `INTEGER` | False | `0` |
-| `last_error` | `TEXT` | True | `None` |
-| `first_dirty_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
 ## `token_discovery_dirty_lookup_keys`

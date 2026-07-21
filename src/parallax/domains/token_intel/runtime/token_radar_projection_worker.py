@@ -12,19 +12,18 @@ from parallax.domains.token_intel._constants import (
     TOKEN_RADAR_DEFAULT_VENUE,
     TOKEN_RADAR_PROJECTION_VERSION,
 )
-from parallax.domains.token_intel.services.token_radar_projector import TokenRadarProjector
+from parallax.domains.token_intel.services.token_radar_projector import (
+    TokenRadarProjector,
+    prune_token_radar_private_cache,
+)
 from parallax.domains.token_intel.services.token_radar_publisher import TokenRadarPublisher
 from parallax.platform.config.settings import TokenRadarProjectionWorkerSettings
 from parallax.platform.runtime.worker_base import WorkerBase
 from parallax.platform.runtime.worker_result import WorkerResult
 from parallax.platform.validation import require_positive_int
 
-ADVISORY_LOCK_KEY = 2026051501
-
 
 class TokenRadarProjectionWorker(WorkerBase):
-    SINGLE_WRITER_KEY = ADVISORY_LOCK_KEY
-
     def __init__(
         self,
         *,
@@ -32,7 +31,6 @@ class TokenRadarProjectionWorker(WorkerBase):
         settings: TokenRadarProjectionWorkerSettings,
         db: Any,
         telemetry: Any,
-        wake_waiter: Any | None = None,
     ) -> None:
         if db is None:
             raise RuntimeError("token_radar_projection_db_required")
@@ -41,7 +39,6 @@ class TokenRadarProjectionWorker(WorkerBase):
             settings=settings,
             db=db,
             telemetry=telemetry,
-            wake_waiter=wake_waiter,
         )
         self.windows = tuple(str(window).strip().lower() for window in settings.windows)
         self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)
@@ -52,7 +49,6 @@ class TokenRadarProjectionWorker(WorkerBase):
         self.lease_ms = settings.lease_ms
         self.retry_ms = settings.retry_ms
         self.max_attempts = settings.max_attempts
-        self.private_cache_retention_enabled = settings.private_cache_retention_enabled
         self.private_cache_retention_ms = settings.private_cache_retention_ms
         self.hot_interval_ms = int(self.interval_seconds * 1000)
         self.cold_interval_ms = int(settings.cold_interval_seconds * 1000)
@@ -138,7 +134,7 @@ class TokenRadarProjectionWorker(WorkerBase):
             has_claims = bool(target_claims)
             if publication_work_items or has_claims:
                 score_work_items = _dedupe_work_items(
-                    _configured_work_items(windows=self.windows, scopes=self.scopes, venues=self.venues)
+                    _configured_score_work_items(windows=self.windows, scopes=self.scopes)
                     if has_claims
                     else publication_work_items
                 )
@@ -162,9 +158,6 @@ class TokenRadarProjectionWorker(WorkerBase):
                     }
                     if has_claims:
                         rebuild_kwargs["score_work_items"] = _service_work_items(score_work_items)
-                    venues = tuple(dict.fromkeys(venue for _window, _scope, venue in metadata_work_items))
-                    if venues != (TOKEN_RADAR_DEFAULT_VENUE,):
-                        rebuild_kwargs["venues"] = venues
                     result = publisher.rebuild_dirty_targets(**rebuild_kwargs)
             else:
                 result = _idle_result(computed_at_ms=computed_at_ms)
@@ -203,9 +196,6 @@ class TokenRadarProjectionWorker(WorkerBase):
         return result
 
     def _attach_private_cache_retention(self, *, result: dict[str, Any], computed_at_ms: int) -> None:
-        if not self.private_cache_retention_enabled:
-            result["private_cache_retention"] = {"status": "disabled"}
-            return
         try:
             result["private_cache_retention"] = self._prune_private_cache(computed_at_ms=computed_at_ms)
             if (
@@ -224,15 +214,14 @@ class TokenRadarProjectionWorker(WorkerBase):
 
     def _prune_private_cache(self, *, computed_at_ms: int) -> dict[str, Any]:
         with self._worker_session() as repos:
-            projector = TokenRadarProjector(repos=repos)
-            retention_kwargs: dict[str, Any] = {
-                "windows": self.windows,
-                "scopes": self.scopes,
-                "now_ms": computed_at_ms,
-                "retention_ms": self.private_cache_retention_ms,
-                "limit": self.limit,
-            }
-            return projector.prune_private_cache(**retention_kwargs)
+            return prune_token_radar_private_cache(
+                repos=repos,
+                windows=self.windows,
+                scopes=self.scopes,
+                now_ms=computed_at_ms,
+                retention_ms=self.private_cache_retention_ms,
+                limit=self.limit,
+            )
 
     def _next_work_items(
         self,
@@ -443,13 +432,12 @@ def _dedupe_work_items(items: list[tuple[str, str, str]]) -> list[tuple[str, str
     return out
 
 
-def _configured_work_items(
+def _configured_score_work_items(
     *,
     windows: tuple[str, ...],
     scopes: tuple[str, ...],
-    venues: tuple[str, ...],
 ) -> list[tuple[str, str, str]]:
-    return [(window, scope, venue) for window in windows for scope in scopes for venue in venues]
+    return [(window, scope, TOKEN_RADAR_DEFAULT_VENUE) for window in windows for scope in scopes]
 
 
 def _service_work_items(items: list[tuple[str, str, str]]) -> tuple[tuple[str, ...], ...]:

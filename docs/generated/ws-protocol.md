@@ -10,7 +10,7 @@ Source: `src/parallax/app/surfaces/api/ws.py`
 |----------------------|----------------|
 | `auth` | `PublicWebSocketHub._authenticate` |
 | `error` | `PublicWebSocketHub._handle_client_message` |
-| `event` | `PublicWebSocketHub._payload_for_event`, `PublicWebSocketHub._payloads_for_events` |
+| `event` | `PublicWebSocketHub._payloads_for_events` |
 | `live_market_update` | `PublicWebSocketHub._payload_matches_subscription` |
 | `market_update` | `PublicWebSocketHub._payload_matches_subscription` |
 | `notification` | `PublicWebSocketHub._payload_matches_subscription` |

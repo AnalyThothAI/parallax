@@ -34,6 +34,7 @@ def test_insert_snapshot_returns_false_when_only_computed_at_ms_changes() -> Non
     assert "ON CONFLICT(projection_version) DO UPDATE" in queries
     assert "payload_hash IS DISTINCT FROM excluded.payload_hash" in queries
     assert "RETURNING true AS changed" in queries
+    assert "assets_brief_json" not in queries
     assert conn.payload_hashes[0] == conn.payload_hashes[1]
 
 
@@ -85,7 +86,6 @@ def test_insert_snapshot_requires_every_catalog_module_payload() -> None:
         "chain_json",
         "scenario_json",
         "scorecard_json",
-        "assets_brief_json",
         "module_views_json",
     ),
 )
@@ -111,7 +111,6 @@ def test_insert_snapshot_requires_formal_json_sections_before_payload_hash_and_s
         ("chain_json", []),
         ("scenario_json", []),
         ("scorecard_json", []),
-        ("assets_brief_json", []),
         ("module_views_json", []),
         ("triggers_json", {}),
         ("data_gaps_json", {}),
@@ -371,7 +370,6 @@ def _observation() -> dict[str, object]:
 
 def _snapshot(*, computed_at_ms: int) -> dict[str, object]:
     snapshot = build_macro_view_snapshot([_observation()], computed_at_ms=computed_at_ms)
-    snapshot["assets_brief_json"] = {}
     snapshot["module_views_json"] = build_macro_module_views(
         snapshot=snapshot,
         observations=[_observation()],

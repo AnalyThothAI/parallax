@@ -104,7 +104,7 @@ def test_registry_repository_writes_cex_token_asset_and_pricefeed_routes(tmp_pat
     assert preferred_feed["pricefeed_id"] == "pricefeed:cex:binance:swap:PEPEUSDT"
 
 
-def test_chain_asset_upserts_by_identity_index_when_address_case_differs(tmp_path):
+def test_solana_chain_asset_identity_preserves_case(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -135,9 +135,30 @@ def test_chain_asset_upserts_by_identity_index_when_address_case_differs(tmp_pat
     finally:
         conn.close()
 
+    assert len({first["asset_id"], second["asset_id"], third["asset_id"]}) == 3
+    assert count == 3
+
+
+def test_evm_chain_asset_identity_canonicalizes_address_case(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        registry = RegistryRepository(conn)
+        first = registry.upsert_chain_asset(
+            chain_id="ethereum",
+            address="0xAbCdEf0000000000000000000000000000000000",
+            observed_at_ms=1_778_145_000_000,
+        )
+        second = registry.upsert_chain_asset(
+            chain_id="eip155:1",
+            address="0xabcdef0000000000000000000000000000000000",
+            observed_at_ms=1_778_145_001_000,
+        )
+    finally:
+        conn.close()
+
     assert second["asset_id"] == first["asset_id"]
-    assert third["asset_id"] == first["asset_id"]
-    assert count == 1
+    assert second["address"] == "0xabcdef0000000000000000000000000000000000"
 
 
 def test_chain_asset_upsert_repairs_existing_asset_id_when_identity_index_misses(tmp_path):

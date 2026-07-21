@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from dataclasses import asdict
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -13,7 +14,6 @@ from parallax.domains.asset_market.providers import DexTokenQuote
 from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import (
     EventAnchorBackfillWorker,
     _attempt_count,
-    _emit_wake,
 )
 from parallax.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,
@@ -26,11 +26,9 @@ EVENT_MS = NOW_MS - 5_000
 
 def test_event_anchor_provider_not_called_without_claim() -> None:
     db = _FakeDB(pending_rows=[])
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_StubCaptureService(),
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -55,12 +53,6 @@ def test_event_anchor_provider_not_called_without_claim() -> None:
     assert db.ready_job_calls == []
     assert db.inserted_ticks == []
     assert db.attached_captures == []
-    assert wake.emitted == []
-
-
-def test_event_anchor_wake_emitter_contract_is_required_when_emitter_is_injected() -> None:
-    with pytest.raises(AttributeError, match="notify_market_tick_written"):
-        _emit_wake(object(), target_type="chain_token", target_id="solana:abc")
 
 
 def test_event_anchor_worker_requires_formal_db_bundle_contract() -> None:
@@ -83,11 +75,9 @@ def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
     row = _pending_row(event_id="evt-expired", target_type="chain_token", target_id="solana:OLD")
     row["active_until_ms"] = NOW_MS - 1
     db = _FakeDB(pending_rows=[], expired_rows=[row])
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_StubCaptureService(),
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -101,7 +91,6 @@ def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
     assert db.terminal_captures == [("evt-expired", "intent-evt-expired", "backfill_expired")]
     assert db.terminal_jobs == [("evt-expired", "intent-evt-expired", "expired", "backfill_expired")]
     assert db.provider_calls == 0
-    assert wake.emitted == []
 
 
 def test_run_once_requires_worker_session_transaction_before_expiring_stale_jobs() -> None:
@@ -111,7 +100,6 @@ def test_run_once_requires_worker_session_transaction_before_expiring_stale_jobs
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_StubCaptureService(),
-        wake_emitter=_RecordingWakeEmitter(),
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -127,11 +115,9 @@ def test_run_once_requires_worker_session_transaction_before_expiring_stale_jobs
 
 def test_run_once_with_no_due_rows_does_not_scan_ready_anchor_facts() -> None:
     db = _FakeDB(pending_rows=[], ready_jobs=6)
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_StubCaptureService(),
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -143,17 +129,14 @@ def test_run_once_with_no_due_rows_does_not_scan_ready_anchor_facts() -> None:
     assert "ready_jobs_reconciled" not in result.notes
     assert db.ready_job_calls == []
     assert db.provider_calls == 0
-    assert wake.emitted == []
 
 
 def test_run_once_reads_due_jobs_not_enriched_event_pending_rows() -> None:
     rows = [_pending_row(event_id="event-job", target_type="chain_token", target_id="solana:JOB")]
     db = _FakeDB(pending_rows=rows, forbid_enriched_event_queue_scan=True)
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_UnavailableService("provider_no_quote"),
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -174,7 +157,6 @@ def test_run_once_reads_due_jobs_not_enriched_event_pending_rows() -> None:
         }
     ]
     assert db.rescheduled_jobs == []
-    assert wake.emitted == []
 
 
 def test_concurrent_captures_use_isolated_workerspace_session_depth() -> None:
@@ -193,7 +175,6 @@ def test_concurrent_captures_use_isolated_workerspace_session_depth() -> None:
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_ReleasingUnavailableService("provider_no_quote", release_hold),
-        wake_emitter=_RecordingWakeEmitter(),
         clock=lambda: NOW_MS,
         settings=_settings(concurrency=2),
     )
@@ -216,11 +197,9 @@ def test_run_once_reschedules_rate_limited_jobs_inside_active_window() -> None:
     row["attempt_count"] = 0
     row["active_until_ms"] = NOW_MS + 60_000
     db = _FakeDB(pending_rows=[row])
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_UnavailableService("rate_limited"),
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(max_attempts=3),
     )
@@ -240,7 +219,6 @@ def test_run_once_reschedules_rate_limited_jobs_inside_active_window() -> None:
     ]
     assert db.terminal_captures == []
     assert db.terminal_jobs == []
-    assert wake.emitted == []
 
 
 def test_run_once_stale_reschedule_lease_has_no_other_side_effects() -> None:
@@ -248,11 +226,9 @@ def test_run_once_stale_reschedule_lease_has_no_other_side_effects() -> None:
     row["attempt_count"] = 0
     row["active_until_ms"] = NOW_MS + 60_000
     db = _FakeDB(pending_rows=[row], reschedule_results=[False])
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_UnavailableService("rate_limited"),
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(max_attempts=3),
     )
@@ -274,7 +250,6 @@ def test_run_once_stale_reschedule_lease_has_no_other_side_effects() -> None:
     assert db.terminal_jobs == []
     assert db.attached_captures == []
     assert db.inserted_ticks == []
-    assert wake.emitted == []
 
 
 def test_event_anchor_claim_attempt_helpers_require_claim_attempt_field_without_default() -> None:
@@ -293,7 +268,6 @@ def test_temporary_reschedule_requires_claim_attempt_field_without_default() -> 
     worker = EventAnchorBackfillWorker(
         pool_bundle=_FakeDB(pending_rows=[]),
         capture_service=_StubCaptureService(),
-        wake_emitter=_RecordingWakeEmitter(),
         clock=lambda: NOW_MS,
         settings=_settings(max_attempts=3),
     )
@@ -304,7 +278,7 @@ def test_temporary_reschedule_requires_claim_attempt_field_without_default() -> 
     assert isinstance(exc_info.value.__cause__, KeyError)
 
 
-def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_and_wakes() -> None:
+def test_run_once_dispatches_to_capture_service_then_persists_fact_and_current() -> None:
     rows = [_pending_row(event_id="event-1", target_type="chain_token", target_id="solana:AAA")]
     quote = DexTokenQuote(
         chain_id="solana",
@@ -319,11 +293,9 @@ def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_an
         providers=AssetMarketProviders(dex_quote_market=provider),
         now_ms=lambda: NOW_MS,
     )
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=service,
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(),
     )
@@ -363,11 +335,10 @@ def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_an
         }
     ]
 
-    assert wake.emitted == [("chain_token", "solana:AAA")]
     assert db.dirty_target_enqueues == [
         {
-            "rows": [("chain_token", "solana:AAA")],
-            "reason": "event_anchor_backfill_attached",
+            "rows": [("Asset", "asset:solana:AAA")],
+            "reason": "market_tick_current_changed",
             "now_ms": NOW_MS,
         }
     ]
@@ -421,11 +392,9 @@ def test_run_once_cex_target_dispatches_to_message_cex_provider() -> None:
             return CaptureResult(tick=tick, capture=capture)
 
     db = _FakeDB(pending_rows=rows)
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_Service(),
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(batch_size=5, concurrency=2, min_age_ms=0),
     )
@@ -434,17 +403,13 @@ def test_run_once_cex_target_dispatches_to_message_cex_provider() -> None:
 
     assert len(captured_calls) == 1
     call = captured_calls[0]
-    assert call["resolution"]["target_type"] == "cex_symbol"
-    assert call["resolution"]["target_id"] == "OKX:BTC-USDT"
-    assert call["resolution"]["exchange"] == "OKX"
-    assert call["resolution"]["instrument"] == "BTC-USDT"
+    assert call["resolution"] == {"target_type": "cex_symbol", "target_id": "OKX:BTC-USDT"}
 
     assert result.processed == 1
     assert db.attached_captures[0].capture_reason == "async_backfill"
-    assert wake.emitted == [("cex_symbol", "OKX:BTC-USDT")]
 
 
-def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None:
+def test_run_once_provider_no_quote_terminalizes_job_without_market_write() -> None:
     rows = [_pending_row(event_id="evt-unavailable", target_type="chain_token", target_id="solana:NOPE")]
 
     class _Service:
@@ -468,11 +433,9 @@ def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None
             return CaptureResult(tick=None, capture=capture)
 
     db = _FakeDB(pending_rows=rows)
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_Service(),
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(batch_size=5, concurrency=2, min_age_ms=0),
     )
@@ -498,17 +461,14 @@ def test_run_once_provider_no_quote_terminalizes_job_and_does_not_wake() -> None
             "attempt_count": 1,
         }
     ]
-    assert wake.emitted == []
 
 
 def test_run_once_stale_terminal_lease_does_not_mark_enriched_event_terminal() -> None:
     rows = [_pending_row(event_id="evt-stale", target_type="chain_token", target_id="solana:STALE")]
     db = _FakeDB(pending_rows=rows, terminal_results=[False])
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_UnavailableService("provider_no_quote"),
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(batch_size=5, concurrency=2, min_age_ms=0),
     )
@@ -527,10 +487,9 @@ def test_run_once_stale_terminal_lease_does_not_mark_enriched_event_terminal() -
     ]
     assert db.terminal_jobs == []
     assert db.terminal_captures == []
-    assert wake.emitted == []
 
 
-def test_run_once_wakes_only_targets_that_were_attached() -> None:
+def test_run_once_persists_only_targets_that_were_attached() -> None:
     rows = [
         _pending_row(event_id="evt-first", target_type="chain_token", target_id="solana:FIRST"),
         _pending_row(event_id="evt-second", target_type="chain_token", target_id="solana:SECOND"),
@@ -579,11 +538,9 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
             return CaptureResult(tick=tick, capture=capture)
 
     db = _FakeDB(pending_rows=rows, attach_results=[False, True])
-    wake = _RecordingWakeEmitter()
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_Service(),
-        wake_emitter=wake,
         clock=lambda: NOW_MS,
         settings=_settings(batch_size=5, concurrency=2, min_age_ms=0),
     )
@@ -594,11 +551,10 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
     assert len(db.inserted_ticks) == 1
     assert db.inserted_ticks[0].target_id == "solana:SECOND"
     assert [capture.target_id for capture in db.attached_captures] == ["solana:SECOND"]
-    assert wake.emitted == [("chain_token", "solana:SECOND")]
     assert db.dirty_target_enqueues == [
         {
-            "rows": [("chain_token", "solana:SECOND")],
-            "reason": "event_anchor_backfill_attached",
+            "rows": [("Asset", "asset:solana:SECOND")],
+            "reason": "market_tick_current_changed",
             "now_ms": NOW_MS,
         }
     ]
@@ -702,14 +658,6 @@ class _ReleasingUnavailableService(_UnavailableService):
         return super().capture_backfill_quote(**kwargs)
 
 
-class _RecordingWakeEmitter:
-    def __init__(self) -> None:
-        self.emitted: list[tuple[str, str]] = []
-
-    def notify_market_tick_written(self, *, target_type: str, target_id: str) -> None:
-        self.emitted.append((target_type, target_id))
-
-
 class _FakeDB:
     def __init__(
         self,
@@ -794,8 +742,10 @@ class _FakeRepos:
         self._db = db
         self.enriched_events = _FakeEnrichedEventRepo(db)
         self.event_anchor_jobs = _FakeEventAnchorJobRepo(db)
+        self.registry = _FakeRegistry()
         self.market_ticks = _FakeMarketTickRepo(db)
-        self.market_tick_current_dirty_targets = _FakeDirtyTargets(db)
+        self.market_tick_current = _FakeMarketTickCurrent()
+        self.token_radar_dirty_targets = _FakeRadarDirtyTargets(db)
 
     def transaction(self):
         return _FakeWorkerSession(self._db)
@@ -809,8 +759,10 @@ class _FakeReposWithoutTransaction:
         self._db = db
         self.enriched_events = _FakeEnrichedEventRepo(db)
         self.event_anchor_jobs = _FakeEventAnchorJobRepo(db)
+        self.registry = _FakeRegistry()
         self.market_ticks = _FakeMarketTickRepo(db)
-        self.market_tick_current_dirty_targets = _FakeDirtyTargets(db)
+        self.market_tick_current = _FakeMarketTickCurrent()
+        self.token_radar_dirty_targets = _FakeRadarDirtyTargets(db)
 
     def require_transaction(self, *, operation: str) -> None:
         return None
@@ -980,17 +932,30 @@ class _FakeMarketTickRepo:
             assert self._db.nearest_hold_started.wait(timeout=1.0)
         return None
 
-    def insert_ticks_returning_ids(self, ticks: Any) -> list[str]:
+    def insert_ticks_returning_rows(self, ticks: Any) -> list[dict[str, Any]]:
         materialized = list(ticks)
         self._db.inserted_ticks.extend(materialized)
-        return [str(tick.tick_id) for tick in materialized]
+        return [asdict(tick) for tick in materialized]
 
 
-class _FakeDirtyTargets:
+class _FakeRegistry:
+    def product_targets_for_market_targets(
+        self,
+        targets: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], tuple[str, str]]:
+        return {target: ("Asset", f"asset:{target[1]}") for target in targets if target[0] == "chain_token"}
+
+
+class _FakeMarketTickCurrent:
+    def upsert_current_from_tick(self, tick_row: dict[str, Any]) -> bool:
+        return True
+
+
+class _FakeRadarDirtyTargets:
     def __init__(self, db: _FakeDB) -> None:
         self._db = db
 
-    def enqueue_targets(self, rows: Any, *, reason: str, now_ms: int) -> int:
+    def enqueue_market_product_targets(self, rows: Any, *, reason: str, now_ms: int) -> int:
         materialized = list(rows)
         self._db.dirty_target_enqueues.append(
             {

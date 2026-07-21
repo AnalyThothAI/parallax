@@ -20,7 +20,7 @@ def _row(**overrides: object) -> dict[str, object]:
         "title_zh": "标题",
         "projected_title_zh": "投影标题",
         "summary_zh": "摘要",
-        "affected_entities": [{"symbol": "$btc"}, {"target_symbol": "BTC"}, {"label": "market"}],
+        "affected_entities": [{"symbol": "$btc"}, {"symbol": "BTC"}, {"label": "market"}],
         "token_impacts": [{"symbol": "xyz-eth"}],
         "external_push_ready": True,
         "external_push_basis": "agent_brief",
@@ -41,6 +41,14 @@ def test_repository_row_is_parsed_once_into_an_immutable_narrow_candidate() -> N
     assert not hasattr(candidate, "agent_brief")
     with pytest.raises(AttributeError):
         candidate.story_key = "changed"  # type: ignore[misc]
+
+
+def test_candidate_does_not_accept_the_retired_target_symbol_alias() -> None:
+    candidate = NewsNotificationCandidate.from_repository_row(
+        _row(affected_entities=[{"target_symbol": "BTC"}, {"symbol": "ETH"}])
+    )
+
+    assert candidate.affected_symbols == ("ETH",)
 
 
 @pytest.mark.parametrize(

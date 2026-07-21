@@ -326,7 +326,7 @@ describe("Macro rates workbench", () => {
   it("removes the rates primary visual when the backend has no chart series", () => {
     const module = {
       ...macroFedFundsModuleFixture(),
-      primary_chart: { id: "fed_funds_corridor", series: [] },
+      primary_chart: { id: "fed_funds_corridor", missing_concept_keys: [], series: [] },
     };
 
     renderRatesModule(module, "rates/fed-funds", "/macro/rates/fed-funds");
@@ -340,6 +340,7 @@ describe("Macro rates workbench", () => {
       ...macroFedFundsModuleFixture(),
       primary_chart: {
         id: "fed_funds_corridor",
+        missing_concept_keys: [],
         series: [{ concept_key: "rates:unknown_proxy", label: "未知代理" }],
       },
     };

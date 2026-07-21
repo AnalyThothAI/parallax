@@ -1,9 +1,13 @@
 from __future__ import annotations
 
 import ast
+from dataclasses import fields
 from pathlib import Path
 
+from parallax.app.runtime.provider_wiring.types import WiredProviders
 from parallax.app.runtime.worker_manifest import all_worker_manifests
+from parallax.platform.agent_execution import AGENT_RUNTIME_LANE, AgentRuntimePolicy
+from parallax.platform.config.settings import LlmConfig, WorkersSettings
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "parallax"
@@ -135,6 +139,16 @@ def test_repository_public_api_has_one_transaction_owner() -> None:
     assert violations == {}
 
 
+def test_market_fact_insert_primitive_has_one_application_service_owner() -> None:
+    callsites = {
+        _relative(path): _attribute_calls(_tree(path), "insert_ticks_returning_rows") for path in _python_files(SRC)
+    }
+    owned_callsites = {path: lines for path, lines in callsites.items() if lines}
+
+    assert set(owned_callsites) == {"src/parallax/domains/asset_market/services/market_tick_persistence.py"}
+    assert len(owned_callsites["src/parallax/domains/asset_market/services/market_tick_persistence.py"]) == 1
+
+
 def test_domain_workers_use_platform_runtime_kernel() -> None:
     violations = _forbidden_imports(
         SRC / "domains",
@@ -175,6 +189,12 @@ def test_worker_manifest_is_static_data() -> None:
     assert dynamic_calls == []
 
 
+def test_retired_database_wake_plane_is_absent() -> None:
+    runtime = SRC / "app" / "runtime"
+    assert not (runtime / "wake_bus.py").exists()
+    assert not (runtime / "wake_waiter.py").exists()
+
+
 def test_hot_status_path_does_not_sample_queues() -> None:
     path = SRC / "app" / "surfaces" / "api" / "app.py"
     tree = _tree(path)
@@ -187,3 +207,23 @@ def test_hot_status_path_does_not_sample_queues() -> None:
 
     assert forbidden_imports == []
     assert forbidden_attributes == []
+
+
+def test_agent_runtime_is_one_fixed_flat_policy() -> None:
+    assert AGENT_RUNTIME_LANE == "news.story_brief"
+    assert set(AgentRuntimePolicy.model_fields) == {
+        "model",
+        "provider_family",
+        "max_tokens",
+        "max_concurrency",
+        "rpm_limit",
+        "timeout_seconds",
+        "circuit_breaker",
+    }
+    assert WorkersSettings.model_fields["agent_runtime"].annotation is AgentRuntimePolicy
+
+
+def test_agent_execution_has_one_runtime_owner_and_minimal_llm_config() -> None:
+    assert set(LlmConfig.model_fields) == {"api_key", "base_url"}
+    assert [field.name for field in fields(WiredProviders)] == ["ingestion", "asset_market", "news_intel"]
+    assert not (SRC / "app" / "runtime" / "llm_gateway.py").exists()

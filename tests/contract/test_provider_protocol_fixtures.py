@@ -12,6 +12,7 @@ from parallax.app.runtime.provider_wiring.okx import (
     OkxDexDiscoveryProvider,
     _domain_dex_market_fact_update,
 )
+from parallax.domains.evidence.interfaces import materialize_event
 from parallax.domains.ingestion.interfaces import IngestedEvent
 from parallax.domains.ingestion.runtime.collector_service import CollectorService
 from parallax.domains.ingestion.services.normalizer import normalize_gmgn_payload, parse_gmgn_frame
@@ -194,8 +195,9 @@ class MemoryStore:
 
     def ingest_event(self, event: Any, *, is_watched: bool) -> IngestedEvent:
         self.twitter_events.append(event)
+        _row, event_read = materialize_event(event, is_watched=is_watched, now_ms=event.received_at_ms)
         return IngestedEvent(
-            event=event,
+            event=event_read,
             entities=[],
             alerts=[],
             token_intents=[],

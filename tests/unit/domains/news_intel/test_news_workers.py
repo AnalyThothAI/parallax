@@ -115,8 +115,7 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
             ],
         ),
     )
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, feed_client=feed, wake_bus=wake_bus, sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     result = worker.run_once_sync(now_ms=NOW_MS)
 
@@ -157,7 +156,6 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
     assert db.repo.finished_runs[0]["status"] == "success"
     assert db.repo.finished_runs[0]["fetched_count"] == 1
     assert db.repo.finished_runs[0]["inserted_count"] == 1
-    assert wake_bus.notifications == [{"source_id": "example-rss", "count": 1}]
 
 
 def test_news_fetch_worker_reads_formal_settings_for_session_claim_and_fetch_limit() -> None:
@@ -174,7 +172,6 @@ def test_news_fetch_worker_reads_formal_settings_for_session_claim_and_fetch_lim
     worker = _worker(
         db=db,
         feed_client=feed,
-        wake_bus=FakeWakeBus(),
         sources=[source],
         settings=_news_fetch_settings(batch_size=7, lease_ms=45_000, statement_timeout_seconds=17),
     )
@@ -193,7 +190,6 @@ def test_news_fetch_worker_prunes_successful_runs_at_most_once_per_hour() -> Non
     worker = _worker(
         db=db,
         feed_client=FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, observations=[])),
-        wake_bus=FakeWakeBus(),
         sources=[],
         settings=_news_fetch_settings(batch_size=7),
     )
@@ -229,7 +225,7 @@ def test_news_fetch_worker_metadata_dirty_uses_persisted_item_watermarks_not_wor
     }
     db = FakeDB(repo)
     feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, observations=[]))
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     result = worker.run_once_sync(now_ms=NOW_MS)
 
@@ -263,7 +259,7 @@ def test_news_fetch_worker_requires_repository_session_transaction_before_reconc
     repo = FakeNewsRepository([])
     db = FakeDB(repo, expose_transaction=False)
     feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, observations=[]))
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     with pytest.raises(AttributeError, match="transaction"):
         worker.run_once_sync(now_ms=NOW_MS)
@@ -308,8 +304,7 @@ def test_news_fetch_worker_skips_canonical_upsert_for_duplicate_provider_observa
             ],
         ),
     )
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, feed_client=feed, wake_bus=wake_bus, sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     result = worker.run_once_sync(now_ms=NOW_MS)
 
@@ -320,10 +315,9 @@ def test_news_fetch_worker_skips_canonical_upsert_for_duplicate_provider_observa
     assert repo.finished_runs[0]["inserted_count"] == 0
     assert repo.finished_runs[0]["updated_count"] == 0
     assert repo.finished_runs[0]["duplicate_count"] == 1
-    assert wake_bus.notifications == []
 
 
-def test_news_fetch_worker_treats_not_modified_as_success_without_wake() -> None:
+def test_news_fetch_worker_treats_not_modified_as_success() -> None:
     source = {
         "source_id": "example-rss",
         "provider_type": "rss",
@@ -333,8 +327,7 @@ def test_news_fetch_worker_treats_not_modified_as_success_without_wake() -> None
     }
     db = FakeDB(FakeNewsRepository([source]))
     feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, not_modified=True, observations=[]))
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, feed_client=feed, wake_bus=wake_bus, sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     result = worker.run_once_sync(now_ms=NOW_MS)
 
@@ -344,7 +337,6 @@ def test_news_fetch_worker_treats_not_modified_as_success_without_wake() -> None
     assert db.repo.news_items == []
     assert db.repo.finished_runs[0]["status"] == "success"
     assert db.repo.finished_runs[0]["fetched_count"] == 0
-    assert wake_bus.notifications == []
 
 
 def test_news_fetch_worker_terminal_http_error_disables_source_without_interval_retry() -> None:
@@ -358,7 +350,7 @@ def test_news_fetch_worker_terminal_http_error_disables_source_without_interval_
     repo = FakeNewsRepository([source])
     db = FakeDB(repo)
     feed = HttpErrorNewsSourceProvider(db, status_code=402)
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     first = worker.run_once_sync(now_ms=NOW_MS)
     second = worker.run_once_sync(now_ms=NOW_MS + 60_000)
@@ -391,13 +383,12 @@ def test_news_fetch_worker_terminal_source_survives_restart_until_config_hash_ch
     repo = FakeNewsRepository([source])
     db = FakeDB(repo)
     failing_feed = HttpErrorNewsSourceProvider(db, status_code=402)
-    _worker(db=db, feed_client=failing_feed, wake_bus=FakeWakeBus(), sources=[source]).run_once_sync(now_ms=NOW_MS)
+    _worker(db=db, feed_client=failing_feed, sources=[source]).run_once_sync(now_ms=NOW_MS)
 
     restarted_feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=200, observations=[]))
     restarted_result = _worker(
         db=db,
         feed_client=restarted_feed,
-        wake_bus=FakeWakeBus(),
         sources=[source],
     ).run_once_sync(now_ms=NOW_MS + 60_000)
 
@@ -410,7 +401,6 @@ def test_news_fetch_worker_terminal_source_survives_restart_until_config_hash_ch
     recovered_result = _worker(
         db=db,
         feed_client=recovered_feed,
-        wake_bus=FakeWakeBus(),
         sources=[changed_source],
     ).run_once_sync(now_ms=NOW_MS + 120_000)
 
@@ -458,7 +448,7 @@ def test_news_fetch_worker_passes_source_sync_cursor_and_updates_after_success()
             ],
         ),
     )
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     result = worker.run_once_sync(now_ms=NOW_MS)
 
@@ -485,7 +475,7 @@ def test_news_fetch_worker_does_not_bound_opennews_since_ms_to_brief_window_with
     }
     db = FakeDB(FakeNewsRepository([source]))
     feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=200, observations=[]))
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     result = worker.run_once_sync(now_ms=NOW_MS)
 
@@ -643,7 +633,7 @@ def test_news_fetch_worker_enqueues_dirty_targets_for_all_affected_news_items() 
             ],
         ),
     )
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     worker.run_once_sync(now_ms=NOW_MS)
 
@@ -674,7 +664,7 @@ def test_news_fetch_worker_on_close_requires_sync_feed_client_close_contract() -
     }
     db = FakeDB(FakeNewsRepository([source]))
     feed = AwaitableCloseNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, observations=[]))
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     with pytest.raises(RuntimeError, match="news_fetch_feed_client_close_must_be_sync"):
         asyncio.run(worker.on_close())
@@ -712,8 +702,7 @@ def test_news_fetch_worker_fails_when_canonical_upsert_omits_affected_news_item_
             ],
         ),
     )
-    wake_bus = FakeWakeBus()
-    worker = _worker(db=db, feed_client=feed, wake_bus=wake_bus, sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     result = worker.run_once_sync(now_ms=NOW_MS)
 
@@ -722,7 +711,6 @@ def test_news_fetch_worker_fails_when_canonical_upsert_omits_affected_news_item_
     assert "affected_news_item_ids" in str(repo.finished_runs[0]["error"])
     assert repo.finished_runs[0]["status"] == "failed"
     assert all(batch["reason"] != "news_item_written" for batch in db.dirty.enqueued)
-    assert wake_bus.notifications == []
 
 
 def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() -> None:
@@ -758,7 +746,7 @@ def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() ->
             ],
         ),
     )
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+    worker = _worker(db=db, feed_client=feed, sources=[source])
 
     result = worker.run_once_sync(now_ms=NOW_MS)
 
@@ -777,7 +765,7 @@ def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() ->
     assert db.repo.provider_items[0]["source_item_key"] == "cryptopanic:32675220"
 
 
-def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> None:
+def test_news_item_process_worker_extracts_mentions_and_candidates() -> None:
     item = {
         "news_item_id": "news-1",
         "source_id": "source-1",
@@ -796,14 +784,12 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
         "processing_lease_owner": "news_item_process",
     }
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
-    wake_bus = FakeItemProcessWakeBus()
     worker = NewsItemProcessWorker(
         name="news_item_process",
         settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=wake_bus,
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -848,7 +834,6 @@ def test_news_item_process_worker_extracts_mentions_candidates_and_wakes() -> No
     ]
     assert db.repo.retryable_items == []
     assert db.repo.terminal_failed_items == []
-    assert wake_bus.notifications == [{"count": 1}]
     assert "direct_commit" not in db.conn.events
     assert "tx:release_expired_processing_items" in db.conn.events
     assert "tx:claim_unprocessed_items" in db.conn.events
@@ -878,7 +863,6 @@ def test_news_item_process_worker_requires_repository_session_transaction_before
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -907,14 +891,12 @@ def test_news_item_process_worker_requires_claim_attempt_and_lease_owner_before_
         item.pop("processing_lease_owner")
         expected_error = "news_item_process_claim_lease_owner_required"
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
-    wake_bus = FakeItemProcessWakeBus()
     worker = NewsItemProcessWorker(
         name="news_item_process",
         settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=wake_bus,
     )
 
     with pytest.raises(ValueError, match=expected_error):
@@ -925,7 +907,6 @@ def test_news_item_process_worker_requires_claim_attempt_and_lease_owner_before_
     assert db.repo.processed_items == []
     assert db.repo.retryable_items == []
     assert db.repo.terminal_failed_items == []
-    assert wake_bus.notifications == []
 
 
 def test_news_item_process_worker_reads_formal_settings_for_claim_session_and_retry() -> None:
@@ -958,7 +939,6 @@ def test_news_item_process_worker_reads_formal_settings_for_claim_session_and_re
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("extract failed")),
-        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1007,7 +987,6 @@ def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() ->
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -1051,7 +1030,6 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_story_
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -1128,7 +1106,6 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_story_brief_wit
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -1228,7 +1205,6 @@ def test_news_item_process_similar_story_without_material_delta_enqueues_page_on
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -1305,7 +1281,6 @@ def test_news_item_process_material_story_delta_enqueues_one_story_brief_refresh
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -1361,7 +1336,6 @@ def test_news_item_process_worker_fails_when_agent_admission_context_missing() -
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -1417,7 +1391,6 @@ def test_news_item_process_worker_rejects_malformed_agent_admission_context_fiel
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -1449,7 +1422,6 @@ def test_news_item_process_worker_marks_retryable_failure_with_next_due_at_ms() 
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("extract failed")),
-        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1500,7 +1472,6 @@ def test_news_item_process_worker_uses_failure_time_for_retry_delay() -> None:
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("slow failure")),
-        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: failure_time_ms,
     )
 
@@ -1539,7 +1510,6 @@ def test_news_item_process_worker_marks_terminal_failure_on_last_allowed_attempt
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("final failure")),
-        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1567,7 +1537,6 @@ def test_news_item_process_worker_releases_expired_processing_before_skipping_em
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -1606,14 +1575,12 @@ def test_news_item_process_worker_treats_stale_processed_claim_as_no_op() -> Non
         "processing_lease_owner": "news_item_process",
     }
     db = FakeItemProcessDB(FakeItemProcessRepository([item], processed_rowcount=0))
-    wake_bus = FakeItemProcessWakeBus()
     worker = NewsItemProcessWorker(
         name="news_item_process",
         settings=_news_item_process_settings(),
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=wake_bus,
     )
 
     result = worker.run_once_sync(now_ms=NOW_MS)
@@ -1629,7 +1596,6 @@ def test_news_item_process_worker_treats_stale_processed_claim_as_no_op() -> Non
             "processing_attempts": 2,
         }
     ]
-    assert wake_bus.notifications == []
 
 
 def test_news_item_process_worker_treats_stale_retryable_claim_as_no_op() -> None:
@@ -1652,7 +1618,6 @@ def test_news_item_process_worker_treats_stale_retryable_claim_as_no_op() -> Non
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("late retry")),
-        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1693,7 +1658,6 @@ def test_news_item_process_worker_treats_stale_terminal_claim_as_no_op() -> None
         db=db,
         telemetry=object(),
         identity_lookup=ExplodingIdentityLookup(RuntimeError("late terminal")),
-        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1726,7 +1690,6 @@ def test_news_item_process_rejects_unsupported_market_scope_shape_before_persist
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1756,7 +1719,6 @@ def test_news_item_process_rejects_unsupported_story_identity_shape_before_persi
         db=db,
         telemetry=object(),
         identity_lookup=FakeItemProcessLookup(db),
-        wake_emitter=FakeItemProcessWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
 
@@ -1778,7 +1740,7 @@ def test_news_item_process_payload_helper_rejects_reflective_objects() -> None:
         _process_worker_object_payload(SimpleNamespace(news_item_id="news-1"))
 
 
-def test_news_page_projection_worker_replaces_rows_without_emitting_wake() -> None:
+def test_news_page_projection_worker_replaces_rows() -> None:
     repo = FakePageProjectionRepository()
     db = FakeProjectionDB("news_page_projection", repo)
     worker = NewsPageProjectionWorker(
@@ -1970,7 +1932,6 @@ def _worker(
     *,
     db: FakeDB,
     feed_client: FakeNewsSourceProvider,
-    wake_bus: FakeWakeBus,
     sources: list[dict[str, object] | NewsSourceConfig],
     settings: NewsFetchWorkerSettings | None = None,
 ) -> NewsFetchWorker:
@@ -1981,7 +1942,6 @@ def _worker(
         telemetry=object(),
         feed_client=feed_client,
         news_settings=SimpleNamespace(sources=tuple(_settings_source(source) for source in sources)),
-        wake_emitter=wake_bus,
     )
 
 
@@ -2366,26 +2326,6 @@ class AwaitableCloseNewsSourceProvider(FakeNewsSourceProvider):
     def close(self) -> AwaitableCloseResult:
         self.close_calls += 1
         return self.close_result
-
-
-class FakeWakeBus:
-    def __init__(self) -> None:
-        self.notifications: list[dict[str, int | str]] = []
-        self.page_notifications: list[dict[str, int | str]] = []
-
-    def notify_news_item_written(self, *, source_id: str, count: int) -> None:
-        self.notifications.append({"source_id": source_id, "count": count})
-
-    def notify_news_page_dirty(self, *, count: int, reason: str) -> None:
-        self.page_notifications.append({"count": count, "reason": reason})
-
-
-class FakeItemProcessWakeBus:
-    def __init__(self) -> None:
-        self.notifications: list[dict[str, int]] = []
-
-    def notify_news_item_processed(self, *, count: int) -> None:
-        self.notifications.append({"count": count})
 
 
 class FakeItemProcessLookup:

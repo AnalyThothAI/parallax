@@ -81,10 +81,14 @@ class FakeWatchlistQuery:
                     "count": 1,
                     "query": "$ALOY",
                     "kind": "candidate_mention",
+                    "target_type": None,
+                    "target_id": None,
+                    "symbol": None,
                     "source": "event_cashtags",
                 }
             ],
             "narrative_clusters": [],
+            "clusters_truncated": False,
             "risk_notes": ["candidate_mentions_unresolved"],
         }
 
@@ -113,6 +117,6 @@ def _app(watchlist, *, handles):
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
-    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
+    app.include_router(create_api_router(lambda _: {"ok": True}))
     app.state.service = FakeRuntime(watchlist, handles=handles)
     return app

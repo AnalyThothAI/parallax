@@ -19,7 +19,7 @@ from parallax.app.surfaces.api import (
 )
 
 
-def create_api_router(status_payload: Callable[[Any], tuple[dict[str, Any], int]]) -> APIRouter:
+def create_api_router(status_payload: Callable[[Any], dict[str, Any]]) -> APIRouter:
     router = APIRouter(prefix="/api", tags=["api"])
     router.include_router(routes_status.create_router(status_payload))
     router.include_router(routes_token_images.router)

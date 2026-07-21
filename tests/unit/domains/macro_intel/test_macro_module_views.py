@@ -4,6 +4,7 @@ from datetime import date, timedelta
 
 import pytest
 
+from parallax.domains.macro_intel.services.macro_assets_brief import build_macro_assets_brief
 from parallax.domains.macro_intel.services.macro_module_catalog import MACRO_MODULE_IDS
 from parallax.domains.macro_intel.services.macro_module_views import (
     build_macro_module_view,
@@ -24,7 +25,7 @@ def test_build_macro_module_views_projects_every_catalog_module() -> None:
     assert tuple(views) == MACRO_MODULE_IDS
     assert all(view["snapshot"]["module_id"] == module_id for module_id, view in views.items())
     assert views["rates/yield-curve"]["primary_chart"]["status"] == "ready"
-    assert views["assets"]["daily_brief"] == snapshot["assets_brief_json"]
+    assert views["assets"]["daily_brief"] == build_macro_assets_brief(snapshot=snapshot)
 
 
 def test_build_macro_module_view_uses_only_persisted_module_observations() -> None:
@@ -118,7 +119,6 @@ def _snapshot(*, computed_at_ms: int = 1_779_000_000_000) -> dict[str, object]:
         "chain_json": {},
         "scenario_json": {},
         "scorecard_json": {},
-        "assets_brief_json": {"asof_date": "2026-07-20", "status": "partial"},
         "computed_at_ms": computed_at_ms,
     }
 

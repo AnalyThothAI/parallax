@@ -34,7 +34,7 @@ def test_readyz_uses_sync_route_boundary() -> None:
     assert isinstance(readyz, ast.FunctionDef)
 
 
-def test_runtime_splits_db_pools_by_execution_role() -> None:
+def test_runtime_owns_split_db_bundle_and_single_status_snapshot() -> None:
     app_source = Path("src/parallax/app/surfaces/api/app.py").read_text(encoding="utf-8")
     source = Path("src/parallax/app/runtime/bootstrap.py").read_text(encoding="utf-8")
     tree = ast.parse(source)
@@ -45,7 +45,9 @@ def test_runtime_splits_db_pools_by_execution_role() -> None:
         if isinstance(statement, ast.AnnAssign) and isinstance(statement.target, ast.Name)
     }
 
-    assert {"settings", "db", "telemetry", "providers", "hub", "workers", "scheduler"} <= fields
+    assert {"settings", "db", "telemetry", "providers", "hub", "scheduler", "snapshot"} <= fields
+    assert "startup_db_status" not in fields
+    assert "news_provider_contract" not in fields
     assert "api_db_pool" not in fields
     assert "worker_db_pool" not in fields
     assert "wake_db_pool" not in fields

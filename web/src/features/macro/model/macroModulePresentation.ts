@@ -6,6 +6,7 @@ import type {
   MacroSemanticRecord,
 } from "@lib/types";
 
+import { requireMacroArray } from "./macroCurrentContract";
 import { formatMacroScalar, gapLabel } from "./macroPageViewModel";
 
 export type MacroMetricDisplay = {
@@ -91,18 +92,24 @@ export function buildMacroDataHealthBuckets(
     {
       key: "module_gaps",
       label: "模块缺口",
-      items: gapItems(dataHealth.module_gaps ?? []),
+      items: gapItems(requireMacroArray(dataHealth.module_gaps, "data_health.module_gaps")),
     },
     {
       key: "chart_gaps",
       label: "图表缺口",
-      items: gapItems(dataHealth.chart_gaps ?? []),
+      items: gapItems(requireMacroArray(dataHealth.chart_gaps, "data_health.chart_gaps")),
     },
     {
       key: "global_gaps",
       label: scope === "leaf" ? "全局缺口（总览级参考）" : "全局缺口",
-      items: scope === "overview" ? gapItems(dataHealth.global_gaps ?? []) : [],
-      referenceCount: scope === "leaf" ? (dataHealth.global_gaps ?? []).length : undefined,
+      items:
+        scope === "overview"
+          ? gapItems(requireMacroArray(dataHealth.global_gaps, "data_health.global_gaps"))
+          : [],
+      referenceCount:
+        scope === "leaf"
+          ? requireMacroArray(dataHealth.global_gaps, "data_health.global_gaps").length
+          : undefined,
     },
   ];
 }
@@ -137,10 +144,7 @@ function evidenceItemsForGroup(
   key: EvidenceGroupKey,
 ): Array<{ detail: string; key: string; label: string }> {
   const items = evidence[key];
-  if (!Array.isArray(items)) {
-    return [];
-  }
-  return items
+  return requireMacroArray<MacroSemanticRecord>(items, `module_evidence.${key}`)
     .map((item) => (item && typeof item === "object" ? evidenceItem(item) : null))
     .filter((item): item is { detail: string; key: string; label: string } => item !== null);
 }

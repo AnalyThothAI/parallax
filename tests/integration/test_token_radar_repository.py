@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
@@ -23,19 +24,20 @@ def test_publication_state_round_trips_ready_zero_rows(tmp_path):
     try:
         migrate(conn)
         repo = TokenRadarRepository(conn)
-        repo.publish_current_generation(
-            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-            window="5m",
-            scope="matched",
-            venue=TOKEN_RADAR_DEFAULT_VENUE,
-            generation_id="gen-5m-matched-1",
-            published_at_ms=1_778_000_000_000,
-            source_frontier_ms=1_777_999_999_000,
-            rows=[],
-            source_rows=17,
-            started_at_ms=1_777_999_990_000,
-            finished_at_ms=1_778_000_000_000,
-        )
+        with conn.transaction():
+            repo.publish_current_generation(
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                window="5m",
+                scope="matched",
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
+                generation_id="gen-5m-matched-1",
+                published_at_ms=1_778_000_000_000,
+                source_frontier_ms=1_777_999_999_000,
+                rows=[],
+                source_rows=17,
+                started_at_ms=1_777_999_990_000,
+                finished_at_ms=1_778_000_000_000,
+            )
 
         state = repo.latest_publication_state(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
@@ -70,16 +72,17 @@ def test_publication_state_round_trips_failed_state_without_rows(tmp_path):
     try:
         migrate(conn)
         repo = TokenRadarRepository(conn)
-        repo.mark_publication_failed(
-            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-            window="1h",
-            scope="all",
-            venue=TOKEN_RADAR_DEFAULT_VENUE,
-            generation_id="gen-1h-all-failed",
-            started_at_ms=1_777_999_990_000,
-            finished_at_ms=1_778_000_000_000,
-            error="statement timeout",
-        )
+        with conn.transaction():
+            repo.mark_publication_failed(
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                window="1h",
+                scope="all",
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
+                generation_id="gen-1h-all-failed",
+                started_at_ms=1_777_999_990_000,
+                finished_at_ms=1_778_000_000_000,
+                error="statement timeout",
+            )
 
         state = repo.latest_publication_state(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
@@ -97,6 +100,57 @@ def test_publication_state_round_trips_failed_state_without_rows(tmp_path):
     assert state[state_key]["latest_attempt_started_at_ms"] == 1_777_999_990_000
     assert state[state_key]["latest_attempt_finished_at_ms"] == 1_778_000_000_000
     assert isinstance(state[state_key]["updated_at_ms"], int)
+
+
+def test_failed_refresh_keeps_last_good_current_rows_readable(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    projection_version = "token-radar-v11-factor-alpha-gated"
+    try:
+        migrate(conn)
+        _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
+        _insert_pricefeed(conn, "feed-1")
+        repo = TokenRadarRepository(conn)
+        _publish_generation(
+            repo,
+            projection_version=projection_version,
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[_valid_factor_row()],
+        )
+        with conn.transaction():
+            repo.mark_publication_failed(
+                projection_version=projection_version,
+                window="1h",
+                scope="all",
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
+                generation_id="gen-failed",
+                started_at_ms=1_778_000_010_000,
+                finished_at_ms=1_778_000_020_000,
+                error="statement timeout",
+            )
+
+        current = repo.latest_current_rows(
+            window="1h",
+            scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            limit=10,
+            projection_version=projection_version,
+        )
+        target = repo.current_row_for_target(
+            projection_version=projection_version,
+            window="1h",
+            scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            target_type="Asset",
+            target_id="asset-1",
+        )
+    finally:
+        conn.close()
+
+    assert [row["row_id"] for row in current] == ["row-factor-1"]
+    assert target is not None
+    assert target["row_id"] == "row-factor-1"
 
 
 def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
@@ -315,20 +369,21 @@ def test_upsert_target_feature_unchanged_payload_does_not_advance_score_timestam
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        first_count = repo.upsert_target_feature(
-            projection_version="token-radar-v11-factor-alpha-gated",
-            window="1h",
-            scope="all",
-            row=row,
-            computed_at_ms=1_778_000_000_000,
-        )
-        second_count = repo.upsert_target_feature(
-            projection_version="token-radar-v11-factor-alpha-gated",
-            window="1h",
-            scope="all",
-            row=row,
-            computed_at_ms=1_778_000_060_000,
-        )
+        with conn.transaction():
+            first_count = repo.upsert_target_feature(
+                projection_version="token-radar-v11-factor-alpha-gated",
+                window="1h",
+                scope="all",
+                row=row,
+                computed_at_ms=1_778_000_000_000,
+            )
+            second_count = repo.upsert_target_feature(
+                projection_version="token-radar-v11-factor-alpha-gated",
+                window="1h",
+                scope="all",
+                row=row,
+                computed_at_ms=1_778_000_060_000,
+            )
         persisted = conn.execute(
             """
             SELECT last_scored_at_ms, updated_at_ms
@@ -345,31 +400,34 @@ def test_upsert_target_feature_unchanged_payload_does_not_advance_score_timestam
     assert persisted["updated_at_ms"] == 1_778_000_000_000
 
 
-def test_enqueue_market_targets_clears_previous_error_without_timestamp_churn(tmp_path):
+def test_enqueue_market_product_targets_clears_previous_error_without_timestamp_churn(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         _insert_registry_asset(conn)
         repo = TokenRadarDirtyTargetRepository(conn)
-        first_count = repo.enqueue_market_targets(
-            [("chain_token", "eip155:1:0xabc")],
-            reason="market_tick_current_changed",
-            now_ms=1_778_000_000_000,
-        )
-        conn.execute(
-            """
-            UPDATE token_radar_dirty_targets
-            SET last_error = 'projection failed',
-                updated_at_ms = 1
-            WHERE target_type_key = 'Asset'
-              AND identity_id = 'asset-1'
-            """
-        )
-        second_count = repo.enqueue_market_targets(
-            [("chain_token", "eip155:1:0xabc")],
-            reason="market_tick_current_changed",
-            now_ms=1_778_000_060_000,
-        )
+        with conn.transaction():
+            first_count = repo.enqueue_market_product_targets(
+                [("Asset", "asset-1")],
+                reason="market_tick_current_changed",
+                now_ms=1_778_000_000_000,
+            )
+        with conn.transaction():
+            conn.execute(
+                """
+                UPDATE token_radar_dirty_targets
+                SET last_error = 'projection failed',
+                    updated_at_ms = 1
+                WHERE target_type_key = 'Asset'
+                  AND identity_id = 'asset-1'
+                """
+            )
+        with conn.transaction():
+            second_count = repo.enqueue_market_product_targets(
+                [("Asset", "asset-1")],
+                reason="market_tick_current_changed",
+                now_ms=1_778_000_060_000,
+            )
         stored = conn.execute(
             """
             SELECT last_error, due_at_ms, updated_at_ms
@@ -388,57 +446,118 @@ def test_enqueue_market_targets_clears_previous_error_without_timestamp_churn(tm
     assert stored["updated_at_ms"] == 1_778_000_060_000
 
 
-def test_enqueue_market_targets_skips_when_target_feature_market_data_is_fresh(tmp_path):
+def test_market_product_enqueue_preserves_mixed_social_and_market_work(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        migrate(conn)
+        repo = TokenRadarDirtyTargetRepository(conn)
+        with conn.transaction():
+            repo.enqueue_targets(
+                [{"target_type_key": "Asset", "identity_id": "asset-1"}],
+                reason="ingest_resolution",
+                now_ms=1_778_000_000_000,
+            )
+            repo.enqueue_market_product_targets(
+                [("Asset", "asset-1")],
+                reason="market_tick_current_changed",
+                now_ms=1_778_000_001_000,
+            )
+        stored = conn.execute(
+            """
+            SELECT dirty_reason, market_dirty, repair_dirty
+            FROM token_radar_dirty_targets
+            WHERE target_type_key = 'Asset' AND identity_id = 'asset-1'
+            """
+        ).fetchone()
+    finally:
+        conn.close()
+
+    assert stored == {
+        "dirty_reason": "mixed",
+        "market_dirty": True,
+        "repair_dirty": False,
+    }
+
+
+def test_enqueue_market_product_targets_persists_future_due_when_feature_is_fresh(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         _insert_registry_asset(conn)
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
-        TokenRadarRepository(conn).upsert_target_feature(
-            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-            window="1h",
-            scope="all",
-            row=_valid_factor_row(),
-            computed_at_ms=1_778_000_000_000,
-        )
-        count = TokenRadarDirtyTargetRepository(conn).enqueue_market_targets(
-            [("chain_token", "eip155:1:0xabc")],
-            reason="market_tick_current_changed",
-            now_ms=1_778_000_030_000,
-        )
-        stored_count = conn.execute("SELECT count(*) AS count FROM token_radar_dirty_targets").fetchone()
+        with conn.transaction():
+            TokenRadarRepository(conn).upsert_target_feature(
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                window="1h",
+                scope="all",
+                row=_valid_factor_row(),
+                computed_at_ms=1_778_000_000_000,
+            )
+        with conn.transaction():
+            count = TokenRadarDirtyTargetRepository(conn).enqueue_market_product_targets(
+                [("Asset", "asset-1")],
+                reason="market_tick_current_changed",
+                now_ms=1_778_000_030_000,
+            )
+        with conn.transaction():
+            early_claim = TokenRadarDirtyTargetRepository(conn).claim_due(
+                limit=1,
+                lease_ms=30_000,
+                now_ms=1_778_000_030_000,
+                lease_owner="projection-early",
+            )
+        with conn.transaction():
+            due_claim = TokenRadarDirtyTargetRepository(conn).claim_due(
+                limit=1,
+                lease_ms=30_000,
+                now_ms=1_778_000_090_000,
+                lease_owner="projection-due",
+            )
+        stored = conn.execute(
+            """
+            SELECT due_at_ms
+            FROM token_radar_dirty_targets
+            WHERE target_type_key = 'Asset' AND identity_id = 'asset-1'
+            """
+        ).fetchone()
     finally:
         conn.close()
 
-    assert count == 0
-    assert stored_count["count"] == 0
+    assert count == 1
+    assert stored == {"due_at_ms": 1_778_000_090_000}
+    assert early_claim == []
+    assert len(due_claim) == 1
+    assert due_claim[0]["identity_id"] == "asset-1"
 
 
-def test_enqueue_market_targets_clears_stale_lease_without_claim_hash_suffix(tmp_path):
+def test_enqueue_market_product_targets_clears_stale_lease_without_claim_hash_suffix(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
         _insert_registry_asset(conn)
         repo = TokenRadarDirtyTargetRepository(conn)
-        repo.enqueue_market_targets(
-            [("chain_token", "eip155:1:0xabc")],
-            reason="market_tick_current_changed",
-            now_ms=1_778_000_000_000,
-        )
-        claimed = repo.claim_due(
-            limit=1,
-            lease_ms=120_000,
-            now_ms=1_778_000_001_000,
-            lease_owner="projection-a",
-        )
+        with conn.transaction():
+            repo.enqueue_market_product_targets(
+                [("Asset", "asset-1")],
+                reason="market_tick_current_changed",
+                now_ms=1_778_000_000_000,
+            )
+        with conn.transaction():
+            claimed = repo.claim_due(
+                limit=1,
+                lease_ms=120_000,
+                now_ms=1_778_000_001_000,
+                lease_owner="projection-a",
+            )
         old_claim = claimed[0]
 
-        reenqueue_count = repo.enqueue_market_targets(
-            [("chain_token", "eip155:1:0xabc")],
-            reason="market_tick_current_changed",
-            now_ms=1_778_000_002_000,
-        )
+        with conn.transaction():
+            reenqueue_count = repo.enqueue_market_product_targets(
+                [("Asset", "asset-1")],
+                reason="market_tick_current_changed",
+                now_ms=1_778_000_002_000,
+            )
         after_reenqueue = conn.execute(
             """
             SELECT payload_hash, leased_until_ms, lease_owner
@@ -447,7 +566,8 @@ def test_enqueue_market_targets_clears_stale_lease_without_claim_hash_suffix(tmp
               AND identity_id = 'asset-1'
             """
         ).fetchone()
-        old_done_count = repo.mark_done([old_claim], now_ms=1_778_000_003_000)
+        with conn.transaction():
+            old_done_count = repo.mark_done([old_claim], now_ms=1_778_000_003_000)
         remaining = conn.execute(
             """
             SELECT payload_hash, leased_until_ms, lease_owner
@@ -474,25 +594,29 @@ def test_mark_done_does_not_let_expired_claim_delete_successor_claim(tmp_path):
         migrate(conn)
         _insert_registry_asset(conn)
         repo = TokenRadarDirtyTargetRepository(conn)
-        repo.enqueue_market_targets(
-            [("chain_token", "eip155:1:0xabc")],
-            reason="market_tick_current_changed",
-            now_ms=1_778_000_000_000,
-        )
-        old_claim = repo.claim_due(
-            limit=1,
-            lease_ms=1_000,
-            now_ms=1_778_000_001_000,
-            lease_owner="projection-a",
-        )[0]
-        successor_claim = repo.claim_due(
-            limit=1,
-            lease_ms=120_000,
-            now_ms=1_778_000_003_000,
-            lease_owner="projection-b",
-        )[0]
+        with conn.transaction():
+            repo.enqueue_market_product_targets(
+                [("Asset", "asset-1")],
+                reason="market_tick_current_changed",
+                now_ms=1_778_000_000_000,
+            )
+        with conn.transaction():
+            old_claim = repo.claim_due(
+                limit=1,
+                lease_ms=1_000,
+                now_ms=1_778_000_001_000,
+                lease_owner="projection-a",
+            )[0]
+        with conn.transaction():
+            successor_claim = repo.claim_due(
+                limit=1,
+                lease_ms=120_000,
+                now_ms=1_778_000_003_000,
+                lease_owner="projection-b",
+            )[0]
 
-        old_done_count = repo.mark_done([old_claim], now_ms=1_778_000_004_000)
+        with conn.transaction():
+            old_done_count = repo.mark_done([old_claim], now_ms=1_778_000_004_000)
         remaining = conn.execute(
             """
             SELECT payload_hash, attempt_count, lease_owner
@@ -526,19 +650,22 @@ def test_empty_target_without_feature_has_no_target_projection_coverage_debounce
                 "token_radar_dirty_targets": TokenRadarDirtyTargetRepository(conn),
             },
         )()
-        first_count = repos.token_radar_dirty_targets.enqueue_market_targets(
-            [("chain_token", "eip155:1:0xabc")],
-            reason="market_tick_current_changed",
-            now_ms=1_778_000_000_000,
-        )
+        with conn.transaction():
+            first_count = repos.token_radar_dirty_targets.enqueue_market_product_targets(
+                [("Asset", "asset-1")],
+                reason="market_tick_current_changed",
+                now_ms=1_778_000_000_000,
+            )
 
-        claimed = repos.token_radar_dirty_targets.claim_due(
-            limit=1,
-            lease_ms=120_000,
-            now_ms=1_778_000_001_000,
-            lease_owner="projection-a",
-        )
-        repos.token_radar_dirty_targets.mark_done(claimed, now_ms=1_778_000_002_000)
+        with conn.transaction():
+            claimed = repos.token_radar_dirty_targets.claim_due(
+                limit=1,
+                lease_ms=120_000,
+                now_ms=1_778_000_001_000,
+                lease_owner="projection-a",
+            )
+        with conn.transaction():
+            repos.token_radar_dirty_targets.mark_done(claimed, now_ms=1_778_000_002_000)
         target_coverage_tables = conn.execute(
             """
             SELECT table_name
@@ -547,11 +674,12 @@ def test_empty_target_without_feature_has_no_target_projection_coverage_debounce
               AND table_name = 'token_radar_target_projection_coverage'
             """
         ).fetchall()
-        second_count = repos.token_radar_dirty_targets.enqueue_market_targets(
-            [("chain_token", "eip155:1:0xabc")],
-            reason="market_tick_current_changed",
-            now_ms=1_778_000_030_000,
-        )
+        with conn.transaction():
+            second_count = repos.token_radar_dirty_targets.enqueue_market_product_targets(
+                [("Asset", "asset-1")],
+                reason="market_tick_current_changed",
+                now_ms=1_778_000_030_000,
+            )
         dirty_count = conn.execute("SELECT count(*) AS count FROM token_radar_dirty_targets").fetchone()
     finally:
         conn.close()
@@ -577,34 +705,38 @@ def test_recent_resolved_catch_up_is_stable_and_skips_projected_targets(tmp_path
             target_id="asset-1",
         )
         dirty_repo = TokenRadarDirtyTargetRepository(conn)
-        first_count = dirty_repo.enqueue_recent_resolved_targets(
-            since_ms=1_777_999_000_000,
-            now_ms=1_778_000_060_000,
-            limit=10,
-            reason="projection_catch_up",
-        )
-        second_count = dirty_repo.enqueue_recent_resolved_targets(
-            since_ms=1_777_999_000_000,
-            now_ms=1_778_000_120_000,
-            limit=10,
-            reason="projection_catch_up",
-        )
+        with conn.transaction():
+            first_count = dirty_repo.enqueue_recent_resolved_targets(
+                since_ms=1_777_999_000_000,
+                now_ms=1_778_000_060_000,
+                limit=10,
+                reason="projection_catch_up",
+            )
+        with conn.transaction():
+            second_count = dirty_repo.enqueue_recent_resolved_targets(
+                since_ms=1_777_999_000_000,
+                now_ms=1_778_000_120_000,
+                limit=10,
+                reason="projection_catch_up",
+            )
         dirty_after_replay = conn.execute("SELECT count(*) AS count FROM token_radar_dirty_targets").fetchone()
 
-        conn.execute("DELETE FROM token_radar_dirty_targets")
-        TokenRadarRepository(conn).upsert_target_feature(
-            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-            window="1h",
-            scope="all",
-            row=_valid_factor_row(),
-            computed_at_ms=1_778_000_001_000,
-        )
-        covered_count = dirty_repo.enqueue_recent_resolved_targets(
-            since_ms=1_777_999_000_000,
-            now_ms=1_778_000_180_000,
-            limit=10,
-            reason="projection_catch_up",
-        )
+        with conn.transaction():
+            conn.execute("DELETE FROM token_radar_dirty_targets")
+            TokenRadarRepository(conn).upsert_target_feature(
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                window="1h",
+                scope="all",
+                row=_valid_factor_row(),
+                computed_at_ms=1_778_000_001_000,
+            )
+        with conn.transaction():
+            covered_count = dirty_repo.enqueue_recent_resolved_targets(
+                since_ms=1_777_999_000_000,
+                now_ms=1_778_000_180_000,
+                limit=10,
+                reason="projection_catch_up",
+            )
     finally:
         conn.close()
 
@@ -739,17 +871,18 @@ def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_genera
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
         _insert_pricefeed(conn, "feed-1")
         repo = TokenRadarRepository(conn)
-        repo.publish_current_generation(
-            projection_version="token-radar-v11-factor-alpha-gated",
-            window="1h",
-            scope="all",
-            venue=TOKEN_RADAR_DEFAULT_VENUE,
-            generation_id="newer-empty-generation",
-            published_at_ms=1_778_000_060_000,
-            source_frontier_ms=1_778_000_060_000,
-            rows=[],
-            source_rows=0,
-        )
+        with conn.transaction():
+            repo.publish_current_generation(
+                projection_version="token-radar-v11-factor-alpha-gated",
+                window="1h",
+                scope="all",
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
+                generation_id="newer-empty-generation",
+                published_at_ms=1_778_000_060_000,
+                source_frontier_ms=1_778_000_060_000,
+                rows=[],
+                source_rows=0,
+            )
 
         result = _publish_generation(
             repo,
@@ -774,6 +907,46 @@ def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_genera
     assert current == []
 
 
+def test_ranked_market_targets_reads_only_compact_route_fields(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    projection_version = "token-radar-v11-factor-alpha-gated"
+    try:
+        migrate(conn)
+        _insert_registry_asset(conn)
+        _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
+        _insert_pricefeed(conn, "feed-1")
+        _publish_generation(
+            TokenRadarRepository(conn),
+            projection_version=projection_version,
+            window="1h",
+            scope="all",
+            computed_at_ms=1_778_000_000_000,
+            rows=[_valid_factor_row()],
+        )
+
+        targets = RegistryRepository(conn).ranked_market_targets(
+            projection_version=projection_version,
+            since_ms=1_777_999_000_000,
+            target_types=("chain_token",),
+            limit=10,
+        )
+    finally:
+        conn.close()
+
+    assert targets == [
+        {
+            "target_type": "chain_token",
+            "target_id": "eip155:1:0xabc",
+            "chain_id": "eip155:1",
+            "address": "0xabc",
+            "native_market_id": None,
+            "quote_symbol": None,
+            "provider": "okx",
+            "pricefeed_id": "feed-1",
+        }
+    ]
+
+
 def _publish_generation(
     repo: TokenRadarRepository,
     *,
@@ -784,23 +957,24 @@ def _publish_generation(
     computed_at_ms: int,
     rows: list[dict[str, object]],
 ) -> dict[str, object]:
-    return repo.publish_current_generation(
-        projection_version=projection_version,
-        window=window,
-        scope=scope,
-        venue=venue,
-        generation_id=stable_generation_id(
+    with repo.conn.transaction():
+        return repo.publish_current_generation(
             projection_version=projection_version,
             window=window,
             scope=scope,
             venue=venue,
+            generation_id=stable_generation_id(
+                projection_version=projection_version,
+                window=window,
+                scope=scope,
+                venue=venue,
+                rows=rows,
+            ),
+            published_at_ms=computed_at_ms,
+            source_frontier_ms=max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0),
             rows=rows,
-        ),
-        published_at_ms=computed_at_ms,
-        source_frontier_ms=max((int(row.get("source_max_received_at_ms") or 0) for row in rows), default=0),
-        rows=rows,
-        source_rows=len(rows),
-    )
+            source_rows=len(rows),
+        )
 
 
 def _valid_factor_row() -> dict[str, object]:
@@ -926,9 +1100,11 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
         "subject": {
             "target_type": "Asset",
             "target_id": "asset-1",
-            "chain_id": "eip155:1",
-            "address": "0xabc",
             "symbol": "BOV",
+            "target_market_type": "dex",
+            "chain": "eip155:1",
+            "address": "0xabc",
+            "pricefeed_id": "feed-1",
         },
         "market": {
             "event_anchor": {
@@ -948,7 +1124,6 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
                 "holders": None,
                 "volume_24h_usd": None,
                 "open_interest_usd": None,
-                "raw_payload_hash": None,
             },
             "decision_latest": {
                 "target_type": "Asset",
@@ -967,7 +1142,6 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
                 "holders": 1000,
                 "volume_24h_usd": 12_000,
                 "open_interest_usd": None,
-                "raw_payload_hash": None,
             },
             "readiness": {
                 "anchor_status": "ready",
@@ -1022,10 +1196,16 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
             "status": "ranked",
             "cohort_status": "ready",
             "cohort": {},
-            "factor_ranks": {},
+            "factor_ranks": {
+                "social_heat": None,
+                "social_propagation": None,
+                "semantic_catalyst": None,
+                "timing_risk": None,
+            },
             "alpha_rank": None,
         },
         "composite": {
+            "raw_alpha_score": 80,
             "family_scores": {
                 "social_heat": 80,
                 "social_propagation": 80,

@@ -1,4 +1,5 @@
 from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
+from tests.notification_helpers import insert_notification_row
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -25,7 +26,7 @@ def repository(tmp_path) -> NotificationRepository:
 def test_insert_notification_aggregates_duplicate_dedup_key_without_returning_new_row(tmp_path):
     repo = repository(tmp_path)
 
-    first = repo.insert_notification(
+    first = repo.insert_notification_with_outcome(
         dedup_key="rule:event-1",
         rule_id="watched_account_activity",
         severity="info",
@@ -41,7 +42,7 @@ def test_insert_notification_aggregates_duplicate_dedup_key_without_returning_ne
         payload={"event_id": "event-1", "version": 1},
         channels=["in_app"],
     )
-    duplicate = repo.insert_notification(
+    duplicate = repo.insert_notification_with_outcome(
         dedup_key="rule:event-1",
         rule_id="watched_account_activity",
         severity="info",
@@ -60,10 +61,12 @@ def test_insert_notification_aggregates_duplicate_dedup_key_without_returning_ne
 
     rows = repo.list_notifications(limit=10)
 
-    assert first is not None
-    assert duplicate is None
+    assert first.created is True
+    assert first.row is not None
+    assert duplicate.created is False
+    assert duplicate.aggregated is True
     assert len(rows) == 1
-    assert rows[0]["notification_id"] == first["notification_id"]
+    assert rows[0]["notification_id"] == first.row["notification_id"]
     assert rows[0]["read_at_ms"] is None
     assert rows[0]["occurrence_count"] == 2
     assert rows[0]["first_seen_at_ms"] == 1_700_000_000_000
@@ -76,7 +79,7 @@ def test_insert_notification_aggregates_duplicate_dedup_key_without_returning_ne
 def test_insert_notification_does_not_recount_same_source_conflicts(tmp_path):
     repo = repository(tmp_path)
 
-    first = repo.insert_notification(
+    first = repo.insert_notification_with_outcome(
         dedup_key="activity:toly:post:bucket",
         rule_id="watched_account_activity",
         severity="info",
@@ -92,7 +95,7 @@ def test_insert_notification_does_not_recount_same_source_conflicts(tmp_path):
         payload={"event_id": "event-1", "version": 1},
         channels=["in_app"],
     )
-    duplicate_poll = repo.insert_notification(
+    duplicate_poll = repo.insert_notification_with_outcome(
         dedup_key="activity:toly:post:bucket",
         rule_id="watched_account_activity",
         severity="info",
@@ -111,8 +114,9 @@ def test_insert_notification_does_not_recount_same_source_conflicts(tmp_path):
 
     rows = repo.list_notifications(limit=10)
 
-    assert first is not None
-    assert duplicate_poll is None
+    assert first.created is True
+    assert duplicate_poll.created is False
+    assert duplicate_poll.aggregated is False
     assert len(rows) == 1
     assert rows[0]["occurrence_count"] == 1
     assert rows[0]["last_seen_at_ms"] == 1_700_000_000_000
@@ -122,7 +126,7 @@ def test_insert_notification_does_not_recount_same_source_conflicts(tmp_path):
 def test_insert_notification_aggregates_each_source_once_per_dedup_key(tmp_path):
     repo = repository(tmp_path)
 
-    repo.insert_notification(
+    repo.insert_notification_with_outcome(
         dedup_key="activity:toly:post:bucket",
         rule_id="watched_account_activity",
         severity="info",
@@ -138,7 +142,7 @@ def test_insert_notification_aggregates_each_source_once_per_dedup_key(tmp_path)
         payload={"event_id": "event-1", "version": 1},
         channels=["in_app"],
     )
-    repo.insert_notification(
+    repo.insert_notification_with_outcome(
         dedup_key="activity:toly:post:bucket",
         rule_id="watched_account_activity",
         severity="info",
@@ -154,7 +158,7 @@ def test_insert_notification_aggregates_each_source_once_per_dedup_key(tmp_path)
         payload={"event_id": "event-2", "version": 2},
         channels=["in_app"],
     )
-    repo.insert_notification(
+    repo.insert_notification_with_outcome(
         dedup_key="activity:toly:post:bucket",
         rule_id="watched_account_activity",
         severity="info",
@@ -179,10 +183,11 @@ def test_insert_notification_aggregates_each_source_once_per_dedup_key(tmp_path)
     assert rows[0]["payload_json"]["event_id"] == "event-2"
 
 
-def test_insert_notification_suppresses_same_news_semantic_signature_across_external_buckets(tmp_path):
+def test_insert_notification_allows_distinct_dedup_keys_with_the_same_semantic_payload(tmp_path):
     repo = repository(tmp_path)
 
-    first = repo.insert_notification(
+    first = insert_notification_row(
+        repo,
         dedup_key="news_high_signal:semantic:external",
         rule_id="news_high_signal",
         severity="critical",
@@ -202,7 +207,8 @@ def test_insert_notification_suppresses_same_news_semantic_signature_across_exte
         },
         channels=["in_app", "pushdeer"],
     )
-    duplicate = repo.insert_notification(
+    second = insert_notification_row(
+        repo,
         dedup_key="news_high_signal:semantic:external:new-row",
         rule_id="news_high_signal",
         severity="critical",
@@ -226,10 +232,13 @@ def test_insert_notification_suppresses_same_news_semantic_signature_across_exte
     rows = repo.list_notifications(limit=10, rule_id="news_high_signal")
 
     assert first is not None
-    assert duplicate is None
-    assert len(rows) == 1
-    assert rows[0]["occurrence_count"] == 2
-    assert rows[0]["payload_json"]["external_push_signature"] == "sha256:news-external-next-bucket"
+    assert second is not None
+    assert len(rows) == 2
+    assert {row["dedup_key"] for row in rows} == {
+        "news_high_signal:semantic:external",
+        "news_high_signal:semantic:external:new-row",
+    }
+    assert all(row["occurrence_count"] == 1 for row in rows)
 
 
 def test_insert_notification_with_outcome_reports_created_and_aggregated_rows(tmp_path):
@@ -255,7 +264,7 @@ def test_insert_notification_with_outcome_reports_created_and_aggregated_rows(tm
         channels=["in_app", "pushdeer"],
     )
     aggregated = repo.insert_notification_with_outcome(
-        dedup_key="news_high_signal:semantic:second",
+        dedup_key="news_high_signal:semantic:first",
         rule_id="news_high_signal",
         severity="critical",
         title="News high signal update",
@@ -273,8 +282,8 @@ def test_insert_notification_with_outcome_reports_created_and_aggregated_rows(tm
         },
         channels=["in_app", "pushdeer"],
     )
-    legacy_duplicate = repo.insert_notification(
-        dedup_key="news_high_signal:semantic:third",
+    canonical_duplicate = repo.insert_notification_with_outcome(
+        dedup_key="news_high_signal:semantic:first",
         rule_id="news_high_signal",
         severity="critical",
         title="News high signal legacy update",
@@ -301,7 +310,60 @@ def test_insert_notification_with_outcome_reports_created_and_aggregated_rows(tm
     assert aggregated.row is not None
     assert aggregated.row["notification_id"] == created.row["notification_id"]
     assert aggregated.row["occurrence_count"] == 2
-    assert legacy_duplicate is None
+    assert canonical_duplicate.created is False
+    assert canonical_duplicate.aggregated is True
+    rows = repo.list_notifications(limit=10, rule_id="news_high_signal")
+    assert len(rows) == 1
+    assert rows[0]["occurrence_count"] == 3
+    assert rows[0]["payload_json"]["external_push_eligible"] is True
+
+
+def test_external_push_cooldown_still_suppresses_a_distinct_dedup_key(tmp_path):
+    repo = repository(tmp_path)
+
+    first = repo.insert_notification_with_outcome(
+        dedup_key="news_high_signal:semantic:first",
+        rule_id="news_high_signal",
+        severity="critical",
+        title="First story",
+        body="First body",
+        entity_type="news_item",
+        entity_key="news_item:news-1",
+        source_table="news_page_rows",
+        source_id="news-1",
+        occurrence_at_ms=1_700_000_000_000,
+        payload={
+            "semantic_signature": "sha256:first",
+            "external_push_signature": "sha256:shared-external",
+            "external_push_eligible": True,
+        },
+        channels=["in_app", "pushdeer"],
+    )
+    second = repo.insert_notification_with_outcome(
+        dedup_key="news_high_signal:semantic:second",
+        rule_id="news_high_signal",
+        severity="critical",
+        title="Second story",
+        body="Second body",
+        entity_type="news_item",
+        entity_key="news_item:news-2",
+        source_table="news_page_rows",
+        source_id="news-2",
+        occurrence_at_ms=1_700_000_060_000,
+        payload={
+            "semantic_signature": "sha256:second",
+            "external_push_signature": "sha256:shared-external",
+            "external_push_eligible": True,
+        },
+        channels=["in_app", "pushdeer"],
+    )
+
+    assert first.created is True
+    assert second.created is True
+    assert second.row is not None
+    assert second.row["channels_json"] == ["in_app"]
+    assert second.row["payload_json"]["external_push_eligible"] is False
+    assert second.row["payload_json"]["external_push_suppression_reason"] == "external_cooldown_duplicate"
 
 
 def test_insert_notification_creates_new_news_row_when_semantic_signature_changes(tmp_path):
@@ -362,7 +424,8 @@ def test_insert_notification_creates_new_news_row_when_semantic_signature_change
 def test_insert_notification_suppresses_same_semantic_signature_only(tmp_path):
     repo = repository(tmp_path)
 
-    first = repo.insert_notification(
+    first = insert_notification_row(
+        repo,
         dedup_key="watched_account_token_alert:alert-1:sha256:first",
         rule_id="watched_account_token_alert",
         severity="high",
@@ -382,7 +445,7 @@ def test_insert_notification_suppresses_same_semantic_signature_only(tmp_path):
         },
         channels=["in_app", "pushdeer"],
     )
-    same_signature = repo.insert_notification(
+    same_signature = repo.insert_notification_with_outcome(
         dedup_key="watched_account_token_alert:alert-1:sha256:first",
         rule_id="watched_account_token_alert",
         severity="high",
@@ -402,7 +465,8 @@ def test_insert_notification_suppresses_same_semantic_signature_only(tmp_path):
         },
         channels=["in_app", "pushdeer"],
     )
-    changed_signature = repo.insert_notification(
+    changed_signature = insert_notification_row(
+        repo,
         dedup_key="watched_account_token_alert:alert-1:sha256:second",
         rule_id="watched_account_token_alert",
         severity="high",
@@ -426,7 +490,8 @@ def test_insert_notification_suppresses_same_semantic_signature_only(tmp_path):
     rows = repo.list_notifications(limit=10, rule_id="watched_account_token_alert")
 
     assert first is not None
-    assert same_signature is None
+    assert same_signature.created is False
+    assert same_signature.aggregated is False
     assert changed_signature is not None
     assert len(rows) == 2
     assert rows[0]["dedup_key"] == "watched_account_token_alert:alert-1:sha256:second"
@@ -436,7 +501,8 @@ def test_insert_notification_suppresses_same_semantic_signature_only(tmp_path):
 
 def test_summary_and_mark_read_use_subscriber_read_state(tmp_path):
     repo = repository(tmp_path)
-    info = repo.insert_notification(
+    info = insert_notification_row(
+        repo,
         dedup_key="activity:event-1",
         rule_id="watched_account_activity",
         severity="info",
@@ -452,7 +518,8 @@ def test_summary_and_mark_read_use_subscriber_read_state(tmp_path):
         payload={},
         channels=["in_app"],
     )
-    high = repo.insert_notification(
+    high = insert_notification_row(
+        repo,
         dedup_key="news:pepe",
         rule_id="news_high_signal",
         severity="high",
@@ -492,7 +559,8 @@ def test_summary_uses_sql_aggregates_without_materializing_unread_rows(tmp_path)
     high_indices = {1, 2, 3, 5}
     rows = []
     for index in range(25):
-        row = repo.insert_notification(
+        row = insert_notification_row(
+            repo,
             dedup_key=f"activity:event-{index}",
             rule_id="watched_account_activity",
             severity="high" if index in high_indices else "info",
@@ -536,7 +604,8 @@ def test_summary_uses_sql_aggregates_without_materializing_unread_rows(tmp_path)
 
 def test_mark_all_read_only_affects_selected_subscriber(tmp_path):
     repo = repository(tmp_path)
-    row = repo.insert_notification(
+    row = insert_notification_row(
+        repo,
         dedup_key="activity:event-1",
         rule_id="watched_account_activity",
         severity="info",
@@ -567,7 +636,8 @@ def test_claim_next_delivery_skips_row_locked_by_another_worker(tmp_path):
     second_conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         repo = NotificationRepository(conn, running_timeout_ms=300_000, stale_running_terminalization_batch_size=100)
-        locked_notification = repo.insert_notification(
+        locked_notification = insert_notification_row(
+            repo,
             dedup_key="delivery:locked",
             rule_id="news_high_signal",
             severity="high",
@@ -581,7 +651,8 @@ def test_claim_next_delivery_skips_row_locked_by_another_worker(tmp_path):
             payload={},
             channels=["pushdeer"],
         )
-        available_notification = repo.insert_notification(
+        available_notification = insert_notification_row(
+            repo,
             dedup_key="delivery:available",
             rule_id="news_high_signal",
             severity="high",
@@ -652,7 +723,8 @@ def test_claim_next_delivery_skips_row_locked_by_another_worker(tmp_path):
 
 def test_claim_next_delivery_reclaims_stale_running_delivery(tmp_path):
     repo = repository(tmp_path)
-    notification = repo.insert_notification(
+    notification = insert_notification_row(
+        repo,
         dedup_key="delivery:stale",
         rule_id="news_high_signal",
         severity="high",
@@ -697,7 +769,8 @@ def test_claim_next_delivery_reclaims_stale_running_delivery(tmp_path):
 
 def test_complete_and_fail_delivery_ignore_stale_claim_after_reclaim(tmp_path):
     repo = repository(tmp_path)
-    notification = repo.insert_notification(
+    notification = insert_notification_row(
+        repo,
         dedup_key="delivery:stale-claim-cas",
         rule_id="news_high_signal",
         severity="high",
@@ -823,7 +896,8 @@ def test_enqueue_or_requeue_delivery_only_reactivates_failed_or_dead_rows(tmp_pa
     repo = repository(tmp_path)
     rows_by_status = {}
     for index, status in enumerate(("pending", "running", "delivered", "failed", "dead"), start=1):
-        notification = repo.insert_notification(
+        notification = insert_notification_row(
+            repo,
             dedup_key=f"delivery:reactivate:{status}",
             rule_id="news_high_signal",
             severity="critical",

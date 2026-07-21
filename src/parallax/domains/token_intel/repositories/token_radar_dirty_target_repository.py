@@ -61,27 +61,25 @@ class TokenRadarDirtyTargetRepository:
         )
         return mutation_count(cursor, error_code="token_radar_dirty_target_rowcount_invalid")
 
-    def enqueue_market_targets(
+    def enqueue_market_product_targets(
         self,
         rows: Iterable[Mapping[str, Any] | tuple[str, str]],
         *,
         reason: str,
         now_ms: int,
-        due_at_ms: int | None = None,
     ) -> int:
         require_transaction(self.conn, operation="enqueue_token_radar_market_dirty_targets")
-        records = _market_target_records(rows)
+        records = _market_product_target_records(rows)
         if not records:
             return 0
         cursor = self.conn.execute(
             _MARKET_TARGET_INSERT_SQL,
             {
-                "target_types": [record["target_type"] for record in records],
-                "target_ids": [record["target_id"] for record in records],
+                "target_type_keys": [record["target_type_key"] for record in records],
+                "identity_ids": [record["identity_id"] for record in records],
                 "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
                 "dirty_reason": str(reason),
                 **dirty_kind_flags(reason),
-                "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
                 "now_ms": int(now_ms),
                 "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
             },
@@ -525,27 +523,9 @@ WHERE token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_h
 
 
 _MARKET_TARGET_INSERT_SQL = """
-WITH incoming(target_type, target_id) AS (
+WITH incoming(target_type_key, identity_id) AS (
   SELECT *
-  FROM unnest(%(target_types)s::text[], %(target_ids)s::text[])
-),
-mapped AS (
-  SELECT DISTINCT
-    'Asset'::text AS target_type_key,
-    registry_assets.asset_id AS identity_id
-  FROM incoming
-  JOIN registry_assets
-    ON incoming.target_type = 'chain_token'
-   AND lower(registry_assets.chain_id || ':' || registry_assets.address) = lower(incoming.target_id)
-  UNION
-  SELECT DISTINCT
-    'CexToken'::text AS target_type_key,
-    price_feeds.subject_id AS identity_id
-  FROM incoming
-  JOIN price_feeds
-    ON incoming.target_type = 'cex_symbol'
-   AND price_feeds.subject_type = 'CexToken'
-   AND lower(price_feeds.provider || ':' || price_feeds.native_market_id) = lower(incoming.target_id)
+  FROM unnest(%(target_type_keys)s::text[], %(identity_ids)s::text[])
 ),
 latest_feature AS (
   SELECT
@@ -553,23 +533,24 @@ latest_feature AS (
     features.identity_id,
     MAX(features.latest_market_observed_at_ms) AS latest_market_observed_at_ms
   FROM token_radar_target_features features
-  JOIN mapped
-    ON mapped.target_type_key = features.target_type_key
-   AND mapped.identity_id = features.identity_id
+  JOIN incoming
+    ON incoming.target_type_key = features.target_type_key
+   AND incoming.identity_id = features.identity_id
   WHERE features.projection_version = %(projection_version)s
   GROUP BY features.target_type_key, features.identity_id
 ),
-eligible AS (
-  SELECT mapped.*
-  FROM mapped
+scheduled AS (
+  SELECT
+    incoming.*,
+    CASE
+      WHEN latest_feature.latest_market_observed_at_ms > %(now_ms)s - %(market_dirty_min_interval_ms)s
+      THEN latest_feature.latest_market_observed_at_ms + %(market_dirty_min_interval_ms)s
+      ELSE %(now_ms)s
+    END AS due_at_ms
+  FROM incoming
   LEFT JOIN latest_feature
-    ON latest_feature.target_type_key = mapped.target_type_key
-   AND latest_feature.identity_id = mapped.identity_id
-  WHERE mapped.identity_id IS NOT NULL
-    AND (
-      latest_feature.latest_market_observed_at_ms IS NULL
-      OR latest_feature.latest_market_observed_at_ms <= %(now_ms)s - %(market_dirty_min_interval_ms)s
-    )
+    ON latest_feature.target_type_key = incoming.target_type_key
+   AND latest_feature.identity_id = incoming.identity_id
 )
 INSERT INTO token_radar_dirty_targets(
   target_type_key,
@@ -587,23 +568,23 @@ INSERT INTO token_radar_dirty_targets(
   updated_at_ms
 )
 SELECT
-  eligible.target_type_key,
-  eligible.identity_id,
+  scheduled.target_type_key,
+  scheduled.identity_id,
   %(dirty_reason)s,
   %(market_dirty)s,
   %(repair_dirty)s,
   encode(
-    sha256(convert_to(eligible.target_type_key || ':' || eligible.identity_id || ':' || %(dirty_reason)s, 'UTF8')),
+    sha256(convert_to(scheduled.target_type_key || ':' || scheduled.identity_id || ':' || %(dirty_reason)s, 'UTF8')),
     'hex'
   ),
-  %(due_at_ms)s,
+  scheduled.due_at_ms,
   NULL,
   NULL,
   0,
   NULL,
   %(now_ms)s,
   %(now_ms)s
-FROM eligible
+FROM scheduled
 ON CONFLICT(target_type_key, identity_id) DO UPDATE SET
   dirty_reason = CASE
     WHEN token_radar_dirty_targets.dirty_reason = EXCLUDED.dirty_reason
@@ -774,7 +755,8 @@ mapped AS (
   FROM market_current_candidates
   JOIN registry_assets
     ON market_current_candidates.target_type = 'chain_token'
-   AND lower(registry_assets.chain_id || ':' || registry_assets.address) = lower(market_current_candidates.target_id)
+   AND registry_assets.chain_id || ':' || registry_assets.address = market_current_candidates.target_id
+   AND registry_assets.status IN ('candidate', 'canonical')
   GROUP BY registry_assets.asset_id
   UNION
   SELECT DISTINCT
@@ -785,7 +767,11 @@ mapped AS (
   JOIN price_feeds
     ON market_current_candidates.target_type = 'cex_symbol'
    AND price_feeds.subject_type = 'CexToken'
-   AND lower(price_feeds.provider || ':' || price_feeds.native_market_id) = lower(market_current_candidates.target_id)
+   AND price_feeds.provider || ':' || price_feeds.native_market_id = market_current_candidates.target_id
+   AND price_feeds.provider = 'binance'
+   AND price_feeds.feed_type = 'cex_swap'
+   AND price_feeds.quote_symbol = 'USDT'
+   AND price_feeds.status = 'canonical'
   GROUP BY price_feeds.subject_id
 ),
 latest_feature AS (
@@ -801,17 +787,19 @@ latest_feature AS (
   GROUP BY features.target_type_key, features.identity_id
 ),
 eligible AS (
-  SELECT mapped.*
+  SELECT
+    mapped.*,
+    CASE
+      WHEN latest_feature.latest_market_observed_at_ms > %(now_ms)s - %(market_dirty_min_interval_ms)s
+      THEN latest_feature.latest_market_observed_at_ms + %(market_dirty_min_interval_ms)s
+      ELSE %(now_ms)s
+    END AS due_at_ms
   FROM mapped
   LEFT JOIN latest_feature
     ON latest_feature.target_type_key = mapped.target_type_key
    AND latest_feature.identity_id = mapped.identity_id
   WHERE mapped.identity_id IS NOT NULL
     AND mapped.market_current_watermark_ms >= %(since_ms)s
-    AND (
-      latest_feature.latest_market_observed_at_ms IS NULL
-      OR latest_feature.latest_market_observed_at_ms <= %(now_ms)s - %(market_dirty_min_interval_ms)s
-    )
 )
 """
 
@@ -852,7 +840,7 @@ SELECT
     ),
     'hex'
   ),
-  %(now_ms)s,
+  eligible.due_at_ms,
   NULL,
   NULL,
   0,
@@ -1024,20 +1012,22 @@ def _key_params(records: list[dict[str, str | int]]) -> dict[str, Any]:
     }
 
 
-def _market_target_records(rows: Iterable[Mapping[str, Any] | tuple[str, str]]) -> list[dict[str, str]]:
+def _market_product_target_records(
+    rows: Iterable[Mapping[str, Any] | tuple[str, str]],
+) -> list[dict[str, str]]:
     records: list[dict[str, str]] = []
     seen: set[tuple[str, str]] = set()
     for row in rows:
         if isinstance(row, tuple):
-            target_type, target_id = row
+            target_type_key, identity_id = row
         else:
-            target_type = str(row.get("target_type") or "")
-            target_id = str(row.get("target_id") or "")
-        key = (str(target_type or ""), str(target_id or ""))
+            target_type_key = str(row.get("target_type_key") or "")
+            identity_id = str(row.get("identity_id") or "")
+        key = (str(target_type_key or ""), str(identity_id or ""))
         if not key[0] or not key[1] or key in seen:
             continue
         seen.add(key)
-        records.append({"target_type": key[0], "target_id": key[1]})
+        records.append({"target_type_key": key[0], "identity_id": key[1]})
     return records
 
 

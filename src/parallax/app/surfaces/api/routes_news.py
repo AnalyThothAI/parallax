@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime
 from parallax.app.surfaces.api.exceptions import ApiBadRequest
-from parallax.app.surfaces.api.responses import _json
+from parallax.app.surfaces.api.responses import _validated_json
 from parallax.app.surfaces.api.validators import _limit
 from parallax.domains.news_intel.queries.news_page_query import NewsPageQuery
 from parallax.platform.config.news_provider_types import RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES
@@ -36,7 +36,10 @@ def list_news(
             signal=_signal(signal),
             q=q.strip() or None,
         )
-    return _json({"ok": True, "data": data})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.NewsData],
+        {"ok": True, "data": data},
+    )
 
 
 @router.get("/news/items/{news_item_id}", response_model=api_schemas.ApiEnvelope[api_schemas.NewsObjectData])
@@ -45,8 +48,15 @@ def get_news_item(request: Request, news_item_id: str) -> JSONResponse:
     with runtime.repositories() as repos:
         row = _news_read_model(repos).get_item(news_item_id=news_item_id)
     if row is None:
-        return JSONResponse({"ok": False, "error": "news_item_not_found"}, status_code=404)
-    return _json({"ok": True, "data": row})
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.NewsObjectData],
+            {"ok": False, "error": "news_item_not_found"},
+            status_code=404,
+        )
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.NewsObjectData],
+        {"ok": True, "data": row},
+    )
 
 
 @router.get(
@@ -58,8 +68,15 @@ def get_news_fact(request: Request, fact_candidate_id: str) -> JSONResponse:
     with runtime.repositories() as repos:
         row = _news_read_model(repos).get_fact(fact_candidate_id=fact_candidate_id)
     if row is None:
-        return JSONResponse({"ok": False, "error": "news_fact_not_found"}, status_code=404)
-    return _json({"ok": True, "data": row})
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.NewsFactDetailData],
+            {"ok": False, "error": "news_fact_not_found"},
+            status_code=404,
+        )
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.NewsFactDetailData],
+        {"ok": True, "data": row},
+    )
 
 
 @router.get("/news/sources/status", response_model=api_schemas.ApiEnvelope[api_schemas.NewsSourceStatusData])
@@ -78,7 +95,10 @@ def get_news_source_status(request: Request) -> JSONResponse:
             ),
             "sources": sources,
         }
-    return _json({"ok": True, "data": data})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.NewsSourceStatusData],
+        {"ok": True, "data": data},
+    )
 
 
 def _news_read_model(repos: Any) -> NewsPageQuery:

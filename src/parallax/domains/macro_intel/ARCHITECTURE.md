@@ -26,9 +26,11 @@ series, provider errors, reason codes, fact write counts, watermarks, timing,
 and redacted diagnostics live on that one attempt row. Attempt rows are audit
 metadata, not product truth.
 
-There is also no separate daily-brief table or worker. The assets brief and
-every catalog module payload are deterministic sections of the stable
-`macro_view_snapshots` row and are built in the same projection transaction.
+There is also no separate daily-brief table, column, or worker. The assets
+daily brief is embedded only in the `assets` entry of `module_views_json`.
+Every catalog module payload is built in the same projection transaction.
+Schema revision `20260722_0186` drops the retired top-level
+`macro_view_snapshots.assets_brief_json` column.
 
 ## Data flow
 
@@ -40,13 +42,18 @@ macro_sync_windows
   -> changed concept dirty targets
   -> MacroViewProjectionWorker bounded catch-up
   -> macro_observation_series_rows
-  -> macro_regime_v4 + assets_brief_json + module_views_json in macro_view_snapshots
+  -> macro_regime_v4 + module_views_json in macro_view_snapshots
   -> /api/macro, /api/macro/series, /api/macro/modules/{module_id}
 ```
 
-`NOTIFY` only shortens wake latency. The projection worker also polls on its
-configured interval, claims a bounded batch, and re-reads PostgreSQL. Provider
-raw frames and child-process output are inputs, never serving facts.
+The projection worker runs on its configured interval, claims a bounded batch,
+and re-reads PostgreSQL. Provider raw frames and child-process output are
+inputs, never serving facts.
+
+The provider boundary returns one exact `MacrodataBundleRunResult` containing
+an envelope and redacted diagnostics. Runtime invokes only the installed
+package entrypoint through the current Python interpreter; there is no
+console-script, `PATH`, legacy catalog, or result-shape fallback.
 
 ## Fact identity and ingest
 
@@ -115,8 +122,9 @@ before retry state is recorded.
 contract is `macro_regime_v4`; runtime code does not fall back to older
 projection or module versions. The snapshot stores deterministic panels,
 indicators, triggers, gaps, feature history, source coverage, transmission
-chain, scenarios, scorecard, the embedded assets brief, and one
-`module_views_json` entry for every stable `MACRO_MODULE_IDS` key. Missing JSON
+chain, scenarios, scorecard, and one
+`module_views_json` entry for every stable `MACRO_MODULE_IDS` key. The assets
+brief exists only as `module_views_json.assets.daily_brief`. Missing JSON
 sections or module keys are malformed rows, not values to repair with empty
 compatibility defaults.
 

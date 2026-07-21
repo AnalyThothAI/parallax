@@ -82,7 +82,7 @@ export function tokenRadarRowToTokenItem(
     string,
     unknown
   >;
-  const marketContext = requiredMarketContext(row.market);
+  const marketContext = requiredMarketContext(snapshot.market);
   const eventAnchor = marketContext.event_anchor;
   const decisionLatest = marketContext.decision_latest;
   const readiness = marketContext.readiness;
@@ -160,42 +160,22 @@ export function tokenRadarRowToTokenItem(
     optionalString(attention.baseline_status) ?? String(attentionFamily.data_health ?? "snapshot");
   const baselineSampleCount = optionalNumber(attention.baseline_sample_count) ?? 0;
   const sourceEventIds = requiredStringArray(
-    Array.isArray(row.source_event_ids) ? row.source_event_ids : provenance.source_event_ids,
+    provenance.source_event_ids,
     "factor_snapshot.provenance.source_event_ids",
   );
-  const target = row.target ?? {};
-  const isChainAsset = target.target_type === "Asset";
-  const isSnapshotAsset = subject.target_type === "Asset";
-  const isCexToken = subject.target_type === "CexToken" || target.target_type === "CexToken";
-  const displaySymbol =
-    isChainAsset || isCexToken
-      ? (stringValue(subject.symbol) ?? target.symbol ?? null)
-      : (row.intent?.display_symbol ?? stringValue(subject.symbol) ?? target.symbol ?? null);
-  const targetId =
-    stringValue(subject.target_id) ?? target.target_id ?? row.resolution?.target_id ?? null;
-  const address = isSnapshotAsset ? (stringValue(subject.address) ?? target.address ?? null) : null;
-  const cexPricefeedId = isCexToken ? firstString(target.pricefeed_id, subject.pricefeed_id) : null;
+  const isChainAsset = subject.target_type === "Asset";
+  const isCexToken = subject.target_type === "CexToken";
+  const displaySymbol = stringValue(subject.symbol);
+  const targetId = requiredString(subject.target_id, "factor_snapshot.subject.target_id");
+  const address = isChainAsset ? stringValue(subject.address) : null;
+  const cexPricefeedId = isCexToken ? stringValue(subject.pricefeed_id) : null;
   const parsedCexPricefeed = parseCexPricefeedId(cexPricefeedId);
-  const nativeMarketId = isCexToken
-    ? firstString(
-        target.native_market_id,
-        parsedCexPricefeed?.instId,
-        target.pricefeed_id,
-        subject.pricefeed_id,
-      )
-    : (target.native_market_id ?? stringValue(subject.pricefeed_id) ?? target.pricefeed_id ?? null);
-  const identityKey =
-    targetId ??
-    row.intent?.intent_id ??
-    address ??
-    nativeMarketId ??
-    displaySymbol ??
-    "unknown-token-intent";
+  const nativeMarketId = isCexToken ? (parsedCexPricefeed?.instId ?? null) : null;
+  const identityKey = targetId;
   const resolved = Boolean(targetId && subject.target_type);
-  const resolutionReasons = row.resolution?.reason_codes ?? row.resolution?.reasons ?? [];
-  const candidateCount =
-    row.resolution?.candidate_ids?.length ?? row.resolution?.candidates?.length ?? 0;
-  const discoveryStatus = discoveryStatusSummary(row.resolution?.discovery);
+  const resolutionReasons = row.resolution.reason_codes;
+  const candidateCount = row.resolution.candidate_ids.length;
+  const discoveryStatus = discoveryStatusSummary(row.resolution.discovery);
   const marketObservationStatus = marketStatus;
   const marketHasUsableSnapshot = liveMarketHasPrice || readiness.anchor_status === "ready";
   const heat = scoreBlockFromFamily(attentionFamily, "social_heat", "social_heat");
@@ -237,9 +217,9 @@ export function tokenRadarRowToTokenItem(
     timing.risks.includes("chase_risk") || timing.risks.includes("timing_chase_risk");
   const marketPrice = displayPrice;
   const marketProvider = firstString(decisionLatest?.provider, eventAnchor?.provider);
-  const chain = isSnapshotAsset ? (stringValue(subject.chain) ?? target.chain_id ?? null) : null;
+  const chain = isChainAsset ? stringValue(subject.chain) : null;
   const blockedReasons = requiredStringArray(
-    gates.blocked_reasons ?? [],
+    gates.blocked_reasons,
     "factor_snapshot.gates.blocked_reasons",
   );
   const opportunityScore = requiredNumber(
@@ -262,24 +242,22 @@ export function tokenRadarRowToTokenItem(
   return {
     identity: {
       identity_key: identityKey,
-      identity_status: row.resolution?.status ?? (resolved ? "EXACT" : "NIL"),
-      target_type: stringValue(subject.target_type) ?? target.target_type ?? null,
+      identity_status: row.resolution.status,
+      target_type: stringValue(subject.target_type),
       target_id: targetId,
       asset_id: isChainAsset ? (targetId ?? undefined) : undefined,
-      asset_type: stringValue(subject.target_type) ?? target.target_type ?? null,
-      venue_type: isCexToken ? "cex" : isSnapshotAsset || isChainAsset ? "dex" : null,
+      asset_type: stringValue(subject.target_type),
+      venue_type: isCexToken ? "cex" : isChainAsset ? "dex" : null,
       exchange: isCexToken
-        ? exchangeFromCexFields(target.provider, marketProvider, cexPricefeedId, nativeMarketId)
+        ? (parsedCexPricefeed?.exchange ?? normalizeCexExchange(marketProvider))
         : null,
       inst_id: isCexToken ? nativeMarketId : null,
-      inst_type: isCexToken
-        ? instTypeFromCexFields(target.feed_type, cexPricefeedId, nativeMarketId)
-        : null,
+      inst_type: isCexToken ? (parsedCexPricefeed?.instType ?? null) : null,
       chain,
       address,
       symbol: displaySymbol,
       resolution_reasons: resolutionReasons,
-      lookup_keys: row.resolution?.lookup_keys ?? [],
+      lookup_keys: row.resolution.lookup_keys,
       candidate_count: candidateCount,
       discovery_status: discoveryStatus,
     },
@@ -331,7 +309,7 @@ export function tokenRadarRowToTokenItem(
       direct_mentions: resolved ? mentions : 0,
       symbol_mentions: mentions,
       weighted_mentions: mentions,
-      avg_attribution_confidence: row.resolution?.confidence ?? undefined,
+      avg_attribution_confidence: undefined,
       watched_mentions: watched,
       previous_mentions: previousMentions,
       mention_delta: mentionDelta,
@@ -364,7 +342,7 @@ export function tokenRadarRowToTokenItem(
       ...quality,
       evidence_specificity: 0,
       avg_post_quality: quality.score,
-      avg_attribution_confidence: row.resolution?.confidence ?? 0,
+      avg_attribution_confidence: 0,
       duplicate_text_share: optionalNumber(diffusionFacts.duplicate_text_share) ?? 0,
       informative_post_count:
         optionalNumber(diffusionFacts.informative_post_count) ??
@@ -428,14 +406,14 @@ export function tokenRadarRowToTokenItem(
     radar: hasRadarMeta ? radarMeta : undefined,
     evidence_total_count: sourceEventIds.length,
     posts_query: {
-      target_type: stringValue(subject.target_type) ?? target.target_type ?? null,
+      target_type: stringValue(subject.target_type),
       target_id: targetId,
       window,
       scope,
       range: "current_window",
     },
     timeline_query: {
-      target_type: stringValue(subject.target_type) ?? target.target_type ?? null,
+      target_type: stringValue(subject.target_type),
       target_id: targetId,
       window,
       scope,
@@ -588,7 +566,7 @@ function tradeabilityFromGatesAndHealth(
   marketFacts: MarketObservationSnapshot,
 ): TradeabilityBlock {
   const blockedReasons = requiredStringArray(
-    gates.blocked_reasons ?? [],
+    gates.blocked_reasons,
     "factor_snapshot.gates.blocked_reasons",
   );
   const riskReasons = stringArray(gates.risk_reasons);
@@ -654,16 +632,10 @@ function scoreFromFamilyScores(
 }
 
 function decisionFromRecommendation(value: string | null | undefined): Decision {
-  if (
-    value === "driver" ||
-    value === "high_alert" ||
-    value === "alert" ||
-    value === "trade_candidate"
-  )
-    return "driver";
-  if (value === "watch" || value === "token_watch") return "watch";
-  if (value === "discard" || value === "ignore") return "discard";
-  return "investigate";
+  if (value === "high_alert") return "driver";
+  if (value === "watch") return "watch";
+  if (value === "discard") return "discard";
+  throw new Error("token_radar_contract:factor_snapshot.composite.recommended_decision");
 }
 
 function heatStatusFromScore(score: number, dataHealth: unknown): string {
@@ -766,51 +738,6 @@ function firstString(...values: unknown[]): string | null {
     }
   }
   return null;
-}
-
-function exchangeFromMarketId(marketId: string | null): string | null {
-  const parts = marketId?.trim().split(":") ?? [];
-  if (parts.length >= 4 && parts[0] === "pricefeed" && parts[1] === "cex") {
-    return parts[2].toLowerCase();
-  }
-  return marketId ? "okx" : null;
-}
-
-function exchangeFromCexFields(
-  provider: unknown,
-  marketProvider: string | null,
-  pricefeedId: string | null,
-  marketId: string | null,
-): string | null {
-  return (
-    normalizeCexExchange(provider) ??
-    normalizeCexExchange(marketProvider) ??
-    parseCexPricefeedId(pricefeedId)?.exchange ??
-    exchangeFromMarketId(marketId)
-  );
-}
-
-function instTypeFromMarketId(marketId: string | null): string | null {
-  const parts = marketId?.trim().split(":") ?? [];
-  if (parts.length >= 5 && parts[0] === "pricefeed" && parts[1] === "cex") {
-    return parts[3].toUpperCase();
-  }
-  if (marketId?.toUpperCase().endsWith("-SWAP")) {
-    return "SWAP";
-  }
-  return marketId ? "SPOT" : null;
-}
-
-function instTypeFromCexFields(
-  feedType: unknown,
-  pricefeedId: string | null,
-  marketId: string | null,
-): string | null {
-  return (
-    normalizeCexInstType(feedType) ??
-    parseCexPricefeedId(pricefeedId)?.instType ??
-    instTypeFromMarketId(marketId)
-  );
 }
 
 function parseCexPricefeedId(

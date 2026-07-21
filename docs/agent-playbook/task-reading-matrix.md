@@ -48,8 +48,10 @@ Required reading:
 Diagnostic commands:
 
 - `uv run parallax token-radar --help`
-- `uv run parallax ops audit-token-radar --help`
-- `uv run pytest tests/architecture/test_token_radar_publication_state_hard_cut.py`
+- `uv run parallax ops projection-status`
+- `uv run parallax ops validate-projections --sample 100`
+- `uv run parallax ops factor-diagnostics --window 5m --scope all --limit 100`
+- `uv run pytest tests/architecture/test_kiss_runtime_invariants.py`
 
 Answer must separate:
 
@@ -60,7 +62,7 @@ Answer must separate:
 
 ## Worker Backlog Or Stuck Worker
 
-Use for workers that do not wake, queues that grow, stale read models, timeout loops, or scheduler status gaps.
+Use for workers that do not catch up, queues that grow, stale read models, timeout loops, or scheduler status gaps.
 
 Required reading:
 
@@ -73,13 +75,12 @@ Required reading:
 Diagnostic commands:
 
 - `uv run parallax ops queue-inspect --help`
-- `uv run pytest tests/architecture/test_worker_inventory_contract.py`
-- `uv run pytest tests/architecture/test_worker_runtime_contracts.py`
+- `uv run pytest tests/architecture/test_kiss_runtime_invariants.py`
 
 Answer must separate:
 
 - Durable facts from dirty targets and job rows.
-- Wake hints from bounded `interval_seconds` catch-up.
+- Durable interval catch-up from public route symptoms.
 - Worker status contracts from diagnostics-only logs.
 - Runtime repair commands from public route behavior.
 
@@ -98,7 +99,7 @@ Required reading:
 
 Diagnostic commands:
 
-- `uv run pytest tests/architecture/test_agent_execution_plane_contracts.py`
+- `uv run pytest tests/architecture/test_kiss_runtime_invariants.py`
 - `uv run pytest tests/unit/integrations/model_execution/test_agent_execution_gateway.py`
 - Domain-specific unit tests for the affected agent client or worker
 
@@ -136,7 +137,7 @@ Use the repo-scoped `parallax-frontend-verification` skill when a UI task needs 
 
 ## Read Model Change Review
 
-Use for any change that adds a derived read model, changes current-row identity, changes a projection writer, changes projection wake/catch-up behavior, or reviews read-model correctness.
+Use for any change that adds a derived read model, changes current-row identity, changes a projection writer, changes projection catch-up behavior, or reviews read-model correctness.
 
 Required reading:
 
@@ -149,7 +150,7 @@ Required reading:
 
 Diagnostic commands:
 
-- `uv run pytest tests/architecture/test_runtime_worker_constraint_hard_cut.py`
+- `uv run pytest tests/architecture/test_kiss_runtime_invariants.py`
 - The smallest domain-specific architecture or integration test covering the changed projection.
 - A targeted idempotency/current-row test when the read model writes serving rows.
 
@@ -158,7 +159,7 @@ Answer must separate:
 - Material fact writes from derived read-model writes.
 - Runtime writer ownership from API/query consumers.
 - Stable product/window keys from run/generation/attempt/timestamp identifiers.
-- Wake hints from bounded catch-up.
+- Durable interval catch-up from public route symptoms.
 - Provider raw inputs from persisted facts.
 
 ## Macro Freshness Or Regime Readiness
@@ -176,7 +177,7 @@ Diagnostic commands:
 
 - `uv run parallax macro --help`
 - `uv run parallax ops queue-inspect --help`
-- `uv run pytest tests/architecture/test_macro_no_compatibility_contract.py`
+- `uv run pytest tests/architecture/test_kiss_runtime_invariants.py`
 
 Answer must separate:
 
@@ -203,8 +204,6 @@ Diagnostic commands:
 - `uv run python scripts/regen_sdd_work_index.py --check`
 - `uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode read-only`
 - `uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode read-only`
-- `uv run pytest tests/architecture/test_agent_playbook_contracts.py`
-- `uv run pytest tests/architecture/test_harness_structure.py tests/architecture/test_completion_gates.py`
 
 Answer must separate:
 

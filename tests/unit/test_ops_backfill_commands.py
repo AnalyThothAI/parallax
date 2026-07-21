@@ -28,6 +28,63 @@ def test_retired_backfill_watchlist_signal_stats_command_is_not_registered() -> 
     )
 
 
+def test_rebuild_market_current_calls_application_operation(monkeypatch) -> None:
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    settings = SimpleNamespace()
+    calls: list[dict[str, Any]] = []
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: settings)
+    monkeypatch.setattr(
+        ops_module,
+        "rebuild_market_tick_current_batch",
+        lambda current_settings, **kwargs: (
+            calls.append({"settings": current_settings, **kwargs})
+            or {"scanned_targets": 25, "changed_targets": 7, "next_cursor": None, "batch_full": False}
+        ),
+    )
+    stdout = io.StringIO()
+
+    code = main(
+        [
+            "ops",
+            "rebuild-market-current",
+            "--after-target-type",
+            "Asset",
+            "--after-target-id",
+            "asset:sol",
+            "--limit",
+            "25",
+            "--execute",
+        ],
+        stdout=stdout,
+    )
+
+    assert code == 0
+    assert calls == [{"settings": settings, "after": ("Asset", "asset:sol"), "limit": 25}]
+    assert json.loads(stdout.getvalue())["data"]["changed_targets"] == 7
+
+
+def test_rebuild_market_current_rejects_partial_cursor_before_application_call(monkeypatch) -> None:
+    from parallax.app.surfaces.cli.commands import ops as ops_module
+
+    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
+    monkeypatch.setattr(
+        ops_module,
+        "rebuild_market_tick_current_batch",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(AssertionError("application operation must not run")),
+    )
+    stdout = io.StringIO()
+
+    code = main(
+        ["ops", "rebuild-market-current", "--after-target-type", "Asset", "--execute"],
+        stdout=stdout,
+    )
+
+    assert code == 2
+    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "market_current_rebuild_cursor_pair_required"}
+
+
 def test_removed_token_radar_partition_ops_commands_are_not_registered() -> None:
     assert main(["ops", "ensure-postgres-partitions", "--execute"], stdout=io.StringIO()) == 2
     assert main(["ops", "drop-expired-postgres-partitions", "--execute"], stdout=io.StringIO()) == 2
@@ -247,187 +304,12 @@ def test_enqueue_token_radar_dirty_targets_rejects_malformed_boundaries_before_r
         )
 
 
-def test_enqueue_token_capture_tier_rank_set_dry_run_reads_bounded_current_rows(monkeypatch) -> None:
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    registry = _FakeCaptureTierRegistry()
-    dirty_targets = _FakeCaptureTierDirtyTargets()
-
-    @contextmanager
-    def fake_repositories(_settings: object):
-        yield SimpleNamespace(registry=registry, token_capture_tier_dirty_targets=dirty_targets)
-
-    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
+def test_retired_token_capture_tier_backfill_command_is_not_registered() -> None:
     stdout = io.StringIO()
 
-    code = main(
-        ["ops", "enqueue-token-capture-tier-rank-set", "--window", "24h", "--limit", "25", "--dry-run"],
-        stdout=stdout,
-    )
+    code = main(["ops", "enqueue-token-capture-tier-rank-set", "--dry-run"], stdout=stdout)
 
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert payload["data"]["window"] == "24h"
-    assert payload["data"]["since_ms"] == 1_700_000_100_000 - 24 * 60 * 60 * 1000
-    assert payload["data"]["target_count"] == 2
-    assert payload["data"]["would_enqueue"] == 1
-    assert payload["data"]["enqueued"] == 0
-    assert dirty_targets.calls == []
-    assert registry.calls == [("token-radar-v13-social-attention", 1_700_000_100_000 - 24 * 60 * 60 * 1000, 25)]
-    assert registry.read_depths == [0]
-
-
-@pytest.mark.parametrize(
-    "limit",
-    [
-        pytest.param(0, id="zero"),
-        pytest.param(-1, id="negative"),
-        pytest.param(True, id="bool"),
-        pytest.param("25", id="string"),
-    ],
-)
-def test_enqueue_token_capture_tier_rank_set_rejects_malformed_limit_before_repository_call(
-    limit: object,
-) -> None:
-    from parallax.app.surfaces.cli.commands.ops import _enqueue_token_capture_tier_rank_set
-
-    with pytest.raises(ValueError, match="ops_capture_tier_rank_set_limit_required"):
-        _enqueue_token_capture_tier_rank_set(
-            object(),
-            window="24h",
-            limit=limit,  # type: ignore[arg-type]
-            dry_run=True,
-            execute=False,
-            now_ms=1_700_000_100_000,
-        )
-
-
-def test_enqueue_token_capture_tier_rank_set_rejects_invalid_window_without_24h_fallback() -> None:
-    from parallax.app.surfaces.cli.commands.ops import _enqueue_token_capture_tier_rank_set
-
-    with pytest.raises(ValueError, match="invalid ops window"):
-        _enqueue_token_capture_tier_rank_set(
-            object(),
-            window="bad",
-            limit=25,
-            dry_run=True,
-            execute=False,
-            now_ms=1_700_000_100_000,
-        )
-
-
-def test_enqueue_token_capture_tier_rank_set_rejects_missing_source_watermark_without_runtime_fallback() -> None:
-    from parallax.app.surfaces.cli.commands.ops import _enqueue_token_capture_tier_rank_set
-
-    registry = _FakeCaptureTierRegistry()
-    registry.rows = [
-        {key: value for key, value in registry.rows[0].items() if key != "source_max_received_at_ms"},
-    ]
-
-    with pytest.raises(ValueError, match="ops_capture_tier_rank_set_source_watermark_required"):
-        _enqueue_token_capture_tier_rank_set(
-            SimpleNamespace(registry=registry),
-            window="1h",
-            limit=25,
-            dry_run=True,
-            execute=False,
-            now_ms=1_700_000_100_000,
-        )
-
-
-def test_enqueue_token_capture_tier_rank_set_execute_writes_rank_set_dirty_target(monkeypatch) -> None:
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    conn = _FakeOpsConn()
-    registry = _FakeCaptureTierRegistry(conn)
-    dirty_targets = _FakeCaptureTierDirtyTargets(conn)
-
-    @contextmanager
-    def fake_repositories(_settings: object):
-        yield SimpleNamespace(
-            conn=conn,
-            transaction=conn.transaction,
-            registry=registry,
-            token_capture_tier_dirty_targets=dirty_targets,
-        )
-
-    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
-    stdout = io.StringIO()
-
-    code = main(
-        ["ops", "enqueue-token-capture-tier-rank-set", "--window", "1h", "--limit", "25", "--execute"],
-        stdout=stdout,
-    )
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert payload["data"]["window"] == "1h"
-    assert payload["data"]["since_ms"] == 1_700_000_100_000 - 60 * 60 * 1000
-    assert payload["data"]["target_count"] == 2
-    assert payload["data"]["enqueued"] == 1
-    assert payload["data"]["skipped"] == 0
-    assert dirty_targets.calls == [
-        {
-            "reason": "ops_capture_tier_repair:1h",
-            "rows": registry.rows,
-            "exited_rows": [],
-            "source_watermark_ms": 1_700_000_099_000,
-            "now_ms": 1_700_000_100_000,
-        }
-    ]
-    assert registry.read_depths == [1]
-    assert dirty_targets.enqueue_depths == [1]
-    assert conn.events == ["enter", "exit"]
-
-
-def test_rebuild_news_canonical_items_execute_reads_and_writes_inside_transaction() -> None:
-    from parallax.app.surfaces.cli.commands.ops import _rebuild_news_canonical_items
-
-    conn = _FakeOpsConn()
-    news = _FakeNewsRepository(conn)
-    dirty_targets = _FakeNewsProjectionDirtyTargets(conn)
-    repos = SimpleNamespace(
-        conn=conn,
-        transaction=conn.transaction,
-        news_items=news,
-        news_pages=news,
-        news_projection_dirty_targets=dirty_targets,
-    )
-
-    result = _rebuild_news_canonical_items(repos, limit=25, dry_run=False, execute=True, now_ms=1_700_000_100_000)
-
-    assert result == {
-        "mode": "execute",
-        "dry_run": False,
-        "execute": True,
-        "matched_canonical_items": 2,
-        "would_enqueue": 3,
-        "enqueued": 3,
-        "deleted_disabled_rows": 3,
-    }
-    assert news.list_depths == [1]
-    assert news.delete_depths == [1]
-    assert dirty_targets.enqueue_depths == [1]
-    assert conn.events == ["enter", "exit"]
-
-
-def test_rebuild_news_canonical_targets_require_story_key() -> None:
-    from parallax.app.surfaces.cli.commands.ops import _news_canonical_rebuild_targets
-
-    with pytest.raises(ValueError, match="ops_news_canonical_rebuild_story_key_required"):
-        _news_canonical_rebuild_targets(
-            [
-                {
-                    "news_item_id": "news-1",
-                    "story_key": "",
-                    "source_watermark_ms": 1_700_000_090_000,
-                }
-            ]
-        )
+    assert code == 2
 
 
 def test_rebuild_token_radar_rank_inputs_command_is_not_registered() -> None:
@@ -490,125 +372,6 @@ class _FakeDirtyTargetsRepository:
         self.calls.append(("enqueue_market_current_targets", since_ms, now_ms, limit, reason))
         self.enqueue_depths.append(self.conn.transaction_depth if self.conn is not None else 0)
         return 4
-
-
-class _FakeCaptureTierRegistry:
-    def __init__(self, conn: _FakeOpsConn | None = None) -> None:
-        self.conn = conn
-        self.rows = [
-            {
-                "target_type": "Asset",
-                "target_id": "asset-1",
-                "target_type_key": "Asset",
-                "identity_id": "asset-1",
-                "rank_score": 88,
-                "source_max_received_at_ms": 1_700_000_099_000,
-                "payload_hash": "hash-1",
-            },
-            {
-                "target_type": "CexToken",
-                "target_id": "cex-1",
-                "target_type_key": "CexToken",
-                "identity_id": "cex-1",
-                "rank_score": 77,
-                "source_max_received_at_ms": 1_700_000_098_000,
-                "payload_hash": "hash-2",
-            },
-        ]
-        self.calls: list[tuple[Any, ...]] = []
-        self.read_depths: list[int] = []
-
-    def ranked_live_market_targets(self, *, projection_version: str, since_ms: int, limit: int) -> list[dict[str, Any]]:
-        self.calls.append((projection_version, since_ms, limit))
-        self.read_depths.append(self.conn.transaction_depth if self.conn is not None else 0)
-        return self.rows[:limit]
-
-
-class _FakeCaptureTierDirtyTargets:
-    def __init__(self, conn: _FakeOpsConn | None = None) -> None:
-        self.conn = conn
-        self.calls: list[dict[str, Any]] = []
-        self.enqueue_depths: list[int] = []
-
-    def enqueue_rank_set(
-        self,
-        *,
-        reason: str,
-        rows: list[dict[str, Any]],
-        exited_rows: list[dict[str, Any]],
-        source_watermark_ms: int,
-        now_ms: int,
-    ) -> dict[str, Any]:
-        self.enqueue_depths.append(self.conn.transaction_depth if self.conn is not None else 0)
-        self.calls.append(
-            {
-                "reason": reason,
-                "rows": list(rows),
-                "exited_rows": list(exited_rows),
-                "source_watermark_ms": source_watermark_ms,
-                "now_ms": now_ms,
-            }
-        )
-        return {"targets": 1, "payload_hash": "fingerprint"}
-
-
-class _FakeNewsRepository:
-    def __init__(self, conn: _FakeOpsConn) -> None:
-        self.conn = conn
-        self.list_depths: list[int] = []
-        self.delete_depths: list[int] = []
-
-    def list_news_items_for_canonical_rebuild(self, *, limit: int) -> list[dict[str, Any]]:
-        assert limit == 25
-        self.list_depths.append(self.conn.transaction_depth)
-        return [
-            {
-                "news_item_id": "news-1",
-                "story_key": "story-sol",
-                "source_watermark_ms": 1_700_000_090_000,
-            },
-            {
-                "news_item_id": "news-2",
-                "story_key": "story-sol",
-                "source_watermark_ms": 1_700_000_099_000,
-            },
-        ]
-
-    def delete_page_rows_without_enabled_observation_edges(self) -> int:
-        self.delete_depths.append(self.conn.transaction_depth)
-        return 3
-
-
-class _FakeNewsProjectionDirtyTargets:
-    def __init__(self, conn: _FakeOpsConn) -> None:
-        self.conn = conn
-        self.enqueue_depths: list[int] = []
-
-    def enqueue_targets(self, targets: list[dict[str, Any]], *, reason: str, now_ms: int) -> int:
-        self.enqueue_depths.append(self.conn.transaction_depth)
-        assert targets == [
-            {
-                "projection_name": "page",
-                "target_kind": "news_item",
-                "target_id": "news-1",
-                "source_watermark_ms": 1_700_000_090_000,
-            },
-            {
-                "projection_name": "page",
-                "target_kind": "news_item",
-                "target_id": "news-2",
-                "source_watermark_ms": 1_700_000_099_000,
-            },
-            {
-                "projection_name": "story_brief",
-                "target_kind": "story",
-                "target_id": "story-sol",
-                "source_watermark_ms": 1_700_000_099_000,
-            },
-        ]
-        assert reason == "ops_news_canonical_rebuild"
-        assert now_ms == 1_700_000_100_000
-        return len(targets)
 
 
 class _FakeOpsConn:

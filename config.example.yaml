@@ -30,13 +30,8 @@ storage:
     connect_timeout_seconds: 5
 
 llm:
-  provider: "litellm"
   api_key:
   base_url: ""
-  timeout_seconds: 120
-  trace_enabled: true
-  trace_api_key:
-  trace_include_sensitive_data: false
 
 gmgn:
   api_key:
@@ -67,8 +62,7 @@ providers:
 
 news_intel:
   enabled: true
-  # Worker runtime knobs live in workers.yaml, not config.yaml. Ensure
-  # news_page_projection.wakes_on there includes news_item_brief_updated.
+  # Worker runtime knobs and bounded catch-up intervals live in workers.yaml.
   sources:
     - source_id: coindesk
       provider_type: rss

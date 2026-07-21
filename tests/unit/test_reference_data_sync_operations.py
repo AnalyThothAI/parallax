@@ -158,8 +158,12 @@ def test_reference_sync_cli_is_only_an_operation_adapter(monkeypatch) -> None:
 
 def _settings() -> SimpleNamespace:
     return SimpleNamespace(
-        binance_usdm_futures_base_url="https://binance.invalid",
-        binance_cex_profile_base_url="https://binance.invalid",
-        binance_timeout_seconds=1.0,
-        okx_timeout_seconds=1.0,
+        providers=SimpleNamespace(
+            binance=SimpleNamespace(
+                usdm_futures_base_url="https://binance.invalid",
+                cex_profile_base_url="https://binance.invalid",
+                timeout_seconds=1.0,
+            ),
+            okx=SimpleNamespace(timeout_seconds=1.0),
+        )
     )

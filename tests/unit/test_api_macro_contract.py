@@ -3,6 +3,7 @@ from __future__ import annotations
 import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
 from parallax.app.surfaces.api.exceptions import (
     ApiBadRequest,
@@ -432,6 +433,44 @@ def test_macro_module_api_reads_precomputed_payload_without_observation_query() 
     assert repo.observations_for_concepts_call is None
 
 
+def test_macro_module_api_fails_closed_when_persisted_payload_is_incomplete() -> None:
+    module_view = _module_view("rates/yield-curve")
+    del module_view["snapshot"]["status_label"]
+    app = _app(
+        FakeMacroIntelRepository(
+            snapshot={"module_views_json": {"rates/yield-curve": module_view}},
+        )
+    )
+
+    with TestClient(app) as client, pytest.raises(ValidationError, match="status_label"):
+        client.get("/api/macro/modules/rates/yield-curve", headers={"Authorization": "Bearer secret"})
+
+
+@pytest.mark.parametrize(
+    ("section", "field_name"),
+    (
+        ("primary_chart", "series"),
+        ("primary_chart", "min_points"),
+        ("table", "rows"),
+        ("data_health", "module_gaps"),
+    ),
+)
+def test_macro_module_api_fails_closed_on_missing_chart_table_or_health_contract(
+    section: str,
+    field_name: str,
+) -> None:
+    module_view = _module_view("rates/yield-curve")
+    _remove_module_view_field(module_view, section=section, field_name=field_name)
+    app = _app(
+        FakeMacroIntelRepository(
+            snapshot={"module_views_json": {"rates/yield-curve": module_view}},
+        )
+    )
+
+    with TestClient(app) as client, pytest.raises(ValidationError, match=field_name):
+        client.get("/api/macro/modules/rates/yield-curve", headers={"Authorization": "Bearer secret"})
+
+
 def test_macro_module_api_surfaces_missing_projection_without_inline_build() -> None:
     repo = FakeMacroIntelRepository(snapshot=None)
     app = _app(repo)
@@ -621,7 +660,7 @@ def _app(macro_intel: FakeMacroIntelRepository) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
-    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
+    app.include_router(create_api_router(lambda _: {"ok": True}))
     app.state.service = FakeRuntime(macro_intel)
     return app
 
@@ -642,17 +681,58 @@ def _macro_observation(concept_key: str, observed_at: str, value: float) -> dict
 
 def _module_view(module_id: str) -> dict[str, object]:
     route_path = "/macro" if module_id == "overview" else f"/macro/{module_id}"
-    return {
+    payload: dict[str, object] = {
         "snapshot": {
             "module_id": module_id,
             "route_path": route_path,
             "title": module_id,
+            "subtitle": "persisted macro module",
+            "question": "what changed",
+            "section": "rates",
             "projection_version": "macro_module_view_v3",
             "status": "ready",
+            "status_label": "就绪",
+            "asof_date": "2026-05-20",
+            "asof_label": "截至 2026-05-20",
+            "computed_at_ms": 1_779_000_000_000,
+            "computed_at_label": "计算于 2026-05-20T00:00+00:00",
+            "source_projection_version": "macro_regime_v4",
         },
         "tiles": [],
-        "primary_chart": {"id": "current", "status": "ready"},
-        "tables": [],
+        "primary_chart": {
+            "id": "current",
+            "kind": "time_series",
+            "title": "Current",
+            "subtitle": "persisted observations",
+            "status": "ready",
+            "status_label": "就绪",
+            "min_points": 2,
+            "missing_concept_keys": [],
+            "series": [
+                {
+                    "concept_key": "rates:dgs10",
+                    "label": "10Y",
+                    "unit_label": "%",
+                    "points": [{"observed_at": "2026-05-20", "value": 4.7}],
+                }
+            ],
+        },
+        "tables": [
+            {
+                "id": "current_values",
+                "title": "Current values",
+                "status": "ready",
+                "missing_concept_keys": [],
+                "columns": [{"key": "label", "label": "指标"}],
+                "rows": [],
+            },
+            {
+                "id": "availability_proxy_notes",
+                "title": "数据可用性 / 代理说明",
+                "status": "ready",
+                "rows": [],
+            },
+        ],
         "module_read": {},
         "module_evidence": {
             "confirmations": [],
@@ -661,10 +741,43 @@ def _module_view(module_id: str) -> dict[str, object]:
             "invalidations": [],
         },
         "transmission": [],
-        "data_health": {"summary_status": "ready", "module_gaps": [], "chart_gaps": [], "global_gaps": []},
-        "provenance": {"rows": []},
+        "data_health": {
+            "summary_status": "ready",
+            "summary_label": "就绪",
+            "module_gaps": [],
+            "chart_gaps": [],
+            "global_gaps": [],
+        },
+        "provenance": {
+            "projection_version": "macro_regime_v4",
+            "currentness": {
+                "facts_max_observed_at": "2026-05-20",
+                "projection_lag_days": 0,
+                "projection_behind_facts": False,
+            },
+            "rows": [],
+        },
         "related_routes": [],
     }
+    if module_id == "assets":
+        payload["daily_brief"] = None
+    return payload
+
+
+def _remove_module_view_field(
+    module_view: dict[str, object],
+    *,
+    section: str,
+    field_name: str,
+) -> None:
+    if section == "table":
+        tables = module_view["tables"]
+        assert isinstance(tables, list) and isinstance(tables[0], dict)
+        del tables[0][field_name]
+        return
+    payload = module_view[section]
+    assert isinstance(payload, dict)
+    del payload[field_name]
 
 
 def _macro_snapshot() -> dict[str, object]:

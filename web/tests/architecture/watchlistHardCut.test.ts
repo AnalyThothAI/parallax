@@ -32,6 +32,38 @@ describe("watchlist hard cut", () => {
 
     expect(offenders).toEqual([]);
   });
+
+  it("keeps producer-owned overview and timeline fields required", () => {
+    const contracts = readFileSync(join(srcRoot, "lib/types/frontend-contracts.ts"), "utf8");
+    const watchlistContracts = contracts.slice(
+      contracts.indexOf("export type WatchlistHandleRowOverview"),
+      contracts.indexOf("export type SearchItem"),
+    );
+    const requiredFields = [
+      "last_source_event_at_ms: number | null;",
+      "recent_source_event_count: number;",
+      "count: number;",
+      "symbol: string | null;",
+      "target_id: string | null;",
+      "target_type: string | null;",
+      "clusters_truncated: boolean;",
+      "author_handle: string | null;",
+      "action: string | null;",
+      "text_clean: string | null;",
+      "canonical_url: string | null;",
+      "cashtags: string[];",
+      "hashtags: string[];",
+      "mentions: string[];",
+      "event: EventRecord;",
+      "token_resolutions: TokenResolutionRecord[];",
+      "next_cursor: string | null;",
+    ];
+
+    for (const field of requiredFields) {
+      expect(watchlistContracts).toContain(field);
+    }
+    expect(watchlistContracts).not.toContain("?:");
+  });
 });
 
 function collectFiles(root: string): string[] {

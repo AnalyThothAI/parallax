@@ -310,6 +310,8 @@ def _news_page_row_filter_sql(
 
 def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(row)
+    if "market_scope" in payload:
+        raise ValueError("news_page_row_payload_retired:market_scope")
     payload["latest_at_ms"] = _required_page_positive_int(payload, "latest_at_ms")
     payload["computed_at_ms"] = _required_page_positive_int(payload, "computed_at_ms")
     payload["headline"] = _required_page_string(payload, "headline")
@@ -335,12 +337,21 @@ def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
         _required_page_nested_text(agent_brief, "agent_brief", "direction")
         _required_page_nested_text(agent_brief, "agent_brief", "decision_class")
     signal = _required_page_mapping(payload, "signal")
+    alert_eligibility = _required_page_nested_mapping(signal, "signal", "alert_eligibility")
+    for retired_field in ("agent_admission_status", "agent_admission_reason"):
+        if retired_field in alert_eligibility:
+            raise ValueError(f"news_page_row_payload_retired:signal.alert_eligibility.{retired_field}")
+    market_scope = _required_page_nested_mapping(
+        alert_eligibility,
+        "signal.alert_eligibility",
+        "market_scope",
+    )
     payload["signal_json"] = _json(signal)
     payload["provider_rating_json"] = _json(_required_page_mapping(payload, "provider_rating"))
     payload["agent_brief_json"] = _json(agent_brief)
     payload["agent_status"] = agent_status
     payload["agent_brief_computed_at_ms"] = _optional_page_positive_int(payload, "agent_brief_computed_at_ms")
-    payload["market_scope_json"] = _json(_required_page_mapping(payload, "market_scope"))
+    payload["market_scope_json"] = _json(market_scope)
     macro_event_flow = _required_page_optional_macro_event_flow(payload)
     payload["macro_event_flow_json"] = _json(macro_event_flow) if macro_event_flow is not None else None
     agent_admission = _agent_admission_mapping_payload(_required_page_mapping(payload, "agent_admission"))
@@ -585,7 +596,6 @@ def _projected_news_page_row_payload(
         "signal",
         "provider_rating",
         "source",
-        "market_scope",
         "agent_admission",
     ):
         payload[field_name] = _required_news_page_row_mapping(payload, field_name)

@@ -70,6 +70,7 @@ def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path):
             assert "token_intents" in replay
             assert "token_resolutions" in replay
             assert "harness" not in replay
+            replay_event_fields = set(replay["event"])
 
             ignored = _ingest_payload(client, make_event("event-2", "elonmusk"), is_watched=True)
             matched = _ingest_payload(client, make_event("event-3", "toly"), is_watched=True)
@@ -77,6 +78,7 @@ def test_websocket_auth_subscribe_replay_and_live_filtering(tmp_path):
             client.portal.call(client.app.state.service.hub.publish, matched)
             live = ws.receive_json()
             assert live["event"]["event_id"] == "event-3"
+            assert set(live["event"]) == replay_event_fields
 
 
 def test_websocket_can_subscribe_by_ca_for_replay_and_live_events(tmp_path):
@@ -90,7 +92,7 @@ def test_websocket_can_subscribe_by_ca_for_replay_and_live_events(tmp_path):
             ws.send_json({"type": "auth", "token": "secret"})
             assert ws.receive_json()["type"] == "ready"
 
-            ws.send_json({"type": "subscribe", "cas": [PEPE], "replay": 5})
+            ws.send_json({"type": "subscribe", "cas": [{"ca": PEPE}], "replay": 5})
             replay = ws.receive_json()
             assert replay["type"] == "event"
             assert replay["event"]["event_id"] == "event-ca-replay"
@@ -106,12 +108,43 @@ def test_websocket_can_subscribe_by_ca_for_replay_and_live_events(tmp_path):
             assert live["event"]["event_id"] == "event-ca-live"
 
 
+def test_websocket_rejects_retired_subscription_aliases_and_malformed_shapes():
+    invalid_messages = [
+        {"type": "subscribe", "ca": [{"ca": PEPE}], "replay": 0},
+        {"type": "subscribe", "tokens": ["PEPE"], "replay": 0},
+        {"type": "subscribe", "cas": [PEPE], "replay": 0},
+        {"type": "subscribe", "cas": [{"address": PEPE}], "replay": 0},
+        {"type": "subscribe", "symbols": "PEPE", "replay": 0},
+        {
+            "type": "subscribe",
+            "market_targets": [{"target_type": "Asset", "target_id": "asset:one", "legacy": True}],
+            "replay": 0,
+        },
+        {"type": "subscribe", "replay": "5"},
+        {"type": "subscribe", "notifications": 1, "replay": 0},
+    ]
+
+    for message in invalid_messages:
+        socket = _DummyWebSocket()
+        client = ClientSubscription(websocket=socket)
+        hub = PublicWebSocketHub(token="secret", repository_session=_empty_repository_session)
+
+        asyncio.run(hub._handle_client_message(client, json.dumps(message)))
+
+        assert json.loads(socket.messages[-1]) == {"type": "error", "code": "invalid_subscription"}
+        assert client.handles == set()
+        assert client.cas == set()
+        assert client.symbols == set()
+        assert client.market_targets == set()
+        assert client.notifications is False
+
+
 def test_websocket_routes_social_event_enrichment_updates_by_event_handle(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         event = make_event("seed-event", "toly", text="Grok is getting scary good")
-        client.app.state.service.ingest.ingest_event(event, is_watched=True)
+        ingested = client.app.state.service.ingest.ingest_event(event, is_watched=True)
 
         with client.websocket_connect("/ws") as ws:
             ws.send_json({"type": "auth", "token": "secret"})
@@ -122,7 +155,7 @@ def test_websocket_routes_social_event_enrichment_updates_by_event_handle(tmp_pa
                 client.app.state.service.hub.publish,
                 {
                     "type": "social_event_enrichment_update",
-                    "event": event.to_dict(),
+                    "event": ingested.event,
                     "social_event": {"event_id": "seed-event", "event_type": "meme_phrase_seed"},
                 },
             )
@@ -138,7 +171,7 @@ def test_websocket_routes_live_notifications_when_subscribed(tmp_path):
     with TestClient(app) as client:
         runtime = client.app.state.service
         with runtime.repositories() as repos, repos.transaction():
-            notification = repos.notifications.insert_notification(
+            notification = repos.notifications.insert_notification_with_outcome(
                 dedup_key="activity:event-1",
                 rule_id="watched_account_activity",
                 severity="info",
@@ -153,7 +186,7 @@ def test_websocket_routes_live_notifications_when_subscribed(tmp_path):
                 occurrence_at_ms=1_700_000_000_000,
                 payload={"event_id": "event-1"},
                 channels=["in_app"],
-            )
+            ).row
         assert notification is not None
 
         with client.websocket_connect("/ws") as ws:
@@ -374,7 +407,7 @@ def _ingest_payload(client, event: TwitterEvent, *, is_watched: bool) -> dict:
         token_resolutions = repos.event_tokens.for_event(event.event_id)
     return {
         "type": "event",
-        "event": event.to_dict(),
+        "event": result.event,
         "entities": result.entities,
         "alerts": result.alerts,
         "token_intents": result.token_intents,

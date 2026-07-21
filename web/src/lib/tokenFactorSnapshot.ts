@@ -18,8 +18,38 @@ const ALPHA_FAMILIES: TokenFactorFamilyKey[] = [
   "semantic_catalyst",
   "timing_risk",
 ];
+const FACTOR_VALUE_KEYS = new Set<string>(ALPHA_FAMILIES);
 const FAMILY_KEYS = new Set(["raw_score", "score", "weight", "data_health", "facts", "factors"]);
 const PROVENANCE_KEYS = new Set(["source_event_ids", "computed_at_ms"]);
+const GATES_KEYS = new Set([
+  "eligible_for_high_alert",
+  "max_decision",
+  "blocked_reasons",
+  "risk_reasons",
+]);
+const NORMALIZATION_KEYS = new Set([
+  "status",
+  "cohort_status",
+  "cohort",
+  "factor_ranks",
+  "alpha_rank",
+]);
+const COMPOSITE_KEYS = new Set([
+  "raw_alpha_score",
+  "rank_score",
+  "family_scores",
+  "recommended_decision",
+]);
+const SUBJECT_KEYS = new Set([
+  "target_type",
+  "target_id",
+  "symbol",
+  "target_market_type",
+  "chain",
+  "address",
+  "pricefeed_id",
+]);
+const TOKEN_RADAR_DECISIONS = new Set(["discard", "watch", "high_alert"]);
 const MARKET_REQUIRED_KEYS = new Set(["event_anchor", "decision_latest", "readiness"]);
 const MARKET_OPTIONAL_KEYS = new Set(["capture_method", "capture_reason", "tick_lag_ms"]);
 const MARKET_KEYS = new Set([...MARKET_REQUIRED_KEYS, ...MARKET_OPTIONAL_KEYS]);
@@ -30,8 +60,6 @@ const MARKET_READINESS_KEYS = new Set([
   "missing_fields",
   "stale_fields",
 ]);
-const LEGACY_GATE_KEY = ["hard", "gates"].join("_");
-
 export function requireTokenFactorSnapshot(
   value: unknown,
   fieldName = "factor_snapshot",
@@ -42,10 +70,6 @@ export function requireTokenFactorSnapshot(
   if (value.schema_version !== TOKEN_FACTOR_SNAPSHOT_SCHEMA) {
     throw new Error(`token_factor_snapshot_contract:${fieldName}.schema_version`);
   }
-  if (LEGACY_GATE_KEY in value) {
-    throw new Error(`token_factor_snapshot_contract:${fieldName}.${LEGACY_GATE_KEY}`);
-  }
-
   const keys = Object.keys(value);
   const missing = [...TOP_LEVEL_KEYS].find((key) => !keys.includes(key));
   if (missing) {
@@ -69,6 +93,20 @@ export function requireTokenFactorSnapshot(
     if (!isRecord(value[key])) {
       throw new Error(`token_factor_snapshot_contract:${fieldName}.${key}`);
     }
+  }
+
+  const subject = value.subject as Record<string, unknown>;
+  requireExactKeys(subject, SUBJECT_KEYS, `${fieldName}.subject`);
+  const gates = value.gates as Record<string, unknown>;
+  requireExactKeys(gates, GATES_KEYS, `${fieldName}.gates`);
+  if (typeof gates.eligible_for_high_alert !== "boolean") {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.gates.eligible_for_high_alert`);
+  }
+  if (!TOKEN_RADAR_DECISIONS.has(String(gates.max_decision))) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.gates.max_decision`);
+  }
+  for (const key of ["blocked_reasons", "risk_reasons"] as const) {
+    requireStringArray(gates[key], `${fieldName}.gates.${key}`, false);
   }
 
   const market = value.market as Record<string, unknown>;
@@ -134,19 +172,64 @@ export function requireTokenFactorSnapshot(
     }
   }
 
+  const normalization = value.normalization as Record<string, unknown>;
+  requireExactKeys(normalization, NORMALIZATION_KEYS, `${fieldName}.normalization`);
+  for (const key of ["status", "cohort_status"] as const) {
+    if (typeof normalization[key] !== "string" || !normalization[key]) {
+      throw new Error(`token_factor_snapshot_contract:${fieldName}.normalization.${key}`);
+    }
+  }
+  if (!isRecord(normalization.cohort)) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.normalization.cohort`);
+  }
+  if (!isRecord(normalization.factor_ranks)) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.normalization.factor_ranks`);
+  }
+  requireExactKeys(
+    normalization.factor_ranks,
+    FACTOR_VALUE_KEYS,
+    `${fieldName}.normalization.factor_ranks`,
+  );
+  for (const family of ALPHA_FAMILIES) {
+    const rank = normalization.factor_ranks[family];
+    if (rank !== null && !isFiniteNumber(rank)) {
+      throw new Error(
+        `token_factor_snapshot_contract:${fieldName}.normalization.factor_ranks.${family}`,
+      );
+    }
+  }
+  if (normalization.alpha_rank !== null && !isFiniteNumber(normalization.alpha_rank)) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.normalization.alpha_rank`);
+  }
+
   const composite = value.composite as Record<string, unknown>;
-  if (typeof composite.recommended_decision !== "string" || !composite.recommended_decision) {
+  requireExactKeys(composite, COMPOSITE_KEYS, `${fieldName}.composite`);
+  for (const key of ["raw_alpha_score", "rank_score"] as const) {
+    if (!isFiniteNumber(composite[key])) {
+      throw new Error(`token_factor_snapshot_contract:${fieldName}.composite.${key}`);
+    }
+  }
+  if (!isRecord(composite.family_scores)) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}.composite.family_scores`);
+  }
+  requireExactKeys(
+    composite.family_scores,
+    FACTOR_VALUE_KEYS,
+    `${fieldName}.composite.family_scores`,
+  );
+  for (const family of ALPHA_FAMILIES) {
+    if (!isFiniteNumber(composite.family_scores[family])) {
+      throw new Error(
+        `token_factor_snapshot_contract:${fieldName}.composite.family_scores.${family}`,
+      );
+    }
+  }
+  if (!TOKEN_RADAR_DECISIONS.has(String(composite.recommended_decision))) {
     throw new Error(`token_factor_snapshot_contract:${fieldName}.composite.recommended_decision`);
   }
   const provenance = value.provenance as Record<string, unknown>;
   requireExactKeys(provenance, PROVENANCE_KEYS, `${fieldName}.provenance`);
-  if (
-    !Array.isArray(provenance.source_event_ids) ||
-    provenance.source_event_ids.length === 0 ||
-    provenance.source_event_ids.some((item) => typeof item !== "string" || !item)
-  ) {
-    throw new Error(`token_factor_snapshot_contract:${fieldName}.provenance.source_event_ids`);
-  }
+  requireStringArray(provenance.source_event_ids, `${fieldName}.provenance.source_event_ids`, true);
   if (
     typeof provenance.computed_at_ms !== "number" ||
     !Number.isFinite(provenance.computed_at_ms)
@@ -159,6 +242,20 @@ export function requireTokenFactorSnapshot(
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return Boolean(value) && typeof value === "object" && !Array.isArray(value);
+}
+
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function requireStringArray(value: unknown, fieldName: string, requireNonEmpty: boolean): void {
+  if (
+    !Array.isArray(value) ||
+    (requireNonEmpty && value.length === 0) ||
+    value.some((item) => typeof item !== "string" || !item)
+  ) {
+    throw new Error(`token_factor_snapshot_contract:${fieldName}`);
+  }
 }
 
 function requireExactKeys(

@@ -185,7 +185,6 @@ class NewsPageRepository:
               agent_brief_json AS agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
-              market_scope_json AS market_scope,
               macro_event_flow_json AS macro_event_flow,
               agent_admission_status,
               agent_admission_reason,
@@ -545,7 +544,6 @@ class NewsPageRepository:
               agent_brief_json AS page_agent_brief,
               agent_status,
               agent_brief_computed_at_ms,
-              market_scope_json AS market_scope,
               agent_admission_status,
               agent_admission_reason,
               agent_admission_json AS agent_admission,
@@ -606,7 +604,6 @@ class NewsPageRepository:
         content_classification = _required_projected_page_mapping(projected, "content_classification")
         _required_projected_page_mapping(projected, "page_source")
         agent_brief = _public_agent_brief_payload(_required_projected_page_mapping(projected, "page_agent_brief"))
-        market_scope = _required_projected_page_mapping(projected, "market_scope")
         agent_admission_status = _required_projected_page_text(projected, "agent_admission_status")
         agent_admission_reason = _required_projected_page_text(projected, "agent_admission_reason")
         agent_admission = _required_projected_page_mapping(projected, "agent_admission")
@@ -623,7 +620,6 @@ class NewsPageRepository:
             "representative_news_item_id": representative_news_item_id,
             "story_key": story_key,
             "story": story,
-            "market_scope": market_scope,
             "agent_admission_status": agent_admission_status,
             "agent_admission_reason": agent_admission_reason,
             "agent_admission": agent_admission,
@@ -1343,20 +1339,5 @@ class NewsPageRepository:
              WHERE rows.news_item_id = deletable_items.news_item_id
             """,
             (normalized_source_ids, normalized_source_ids, normalized_domains, normalized_domains),
-        )
-        return mutation_count(cursor, error_code="news_repository_rowcount_invalid")
-
-    def delete_page_rows_without_enabled_observation_edges(self) -> int:
-        cursor = self.conn.execute(
-            """
-            DELETE FROM news_page_rows AS rows
-             WHERE NOT EXISTS (
-               SELECT 1
-                 FROM news_item_observation_edges AS edges
-                 JOIN news_sources AS sources ON sources.source_id = edges.source_id
-                WHERE edges.news_item_id = rows.news_item_id
-                  AND sources.enabled = true
-             )
-            """
         )
         return mutation_count(cursor, error_code="news_repository_rowcount_invalid")

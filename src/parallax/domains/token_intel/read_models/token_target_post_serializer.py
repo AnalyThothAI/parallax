@@ -32,7 +32,6 @@ def token_target_post_payload(
         "target_type": row.get("target_type"),
         "target_id": row.get("target_id"),
         "symbol": row.get("symbol"),
-        "handle": row.get("author_handle"),
         "author_handle": row.get("author_handle"),
         "text": text,
         "url": row.get("canonical_url"),
@@ -66,6 +65,6 @@ def _reference(value: Any) -> dict[str, Any] | None:
         return None
     return {
         "tweet_id": value.get("tweet_id"),
-        "author_handle": value.get("author_handle") or value.get("handle"),
+        "author_handle": value.get("author_handle"),
         "type": value.get("type"),
     }

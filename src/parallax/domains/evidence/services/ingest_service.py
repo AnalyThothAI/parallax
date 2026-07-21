@@ -20,16 +20,17 @@ from parallax.domains.asset_market.interfaces import (
     EventAnchorBackfillJobRepository,
     IdentityEvidenceRepository,
     MarketTick,
-    MarketTickCurrentDirtyTargetRepository,
+    MarketTickCurrentRepository,
     MarketTickPersistenceService,
     MarketTickRepository,
     RegistryRepository,
 )
 from parallax.domains.evidence.interfaces import (
+    EventRead,
     TextSurface,
     TwitterEvent,
-    event_to_row,
     extract_entities_from_surfaces,
+    materialize_event,
 )
 from parallax.domains.evidence.repositories.entity_repository import EntityRepository
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
@@ -53,6 +54,7 @@ from parallax.domains.token_intel.interfaces import (
 @dataclass(frozen=True, slots=True)
 class PreparedIngest:
     raw_event: TwitterEvent
+    event_read: EventRead
     event_id: str
     event_ms: int
     event_row: dict[str, Any]
@@ -80,7 +82,7 @@ class IngestService:
         intent_resolutions: IntentResolutionRepository,
         discovery: DiscoveryRepository,
         market_ticks: MarketTickRepository,
-        market_tick_current_dirty_targets: MarketTickCurrentDirtyTargetRepository,
+        market_tick_current: MarketTickCurrentRepository,
         enriched_events: EnrichedEventRepository,
         event_anchor_jobs: EventAnchorBackfillJobRepository,
         token_radar_dirty_targets: TokenRadarDirtyTargetRepository,
@@ -99,7 +101,7 @@ class IngestService:
         self.intent_resolutions = intent_resolutions
         self.discovery = discovery
         self.market_ticks = market_ticks
-        self.market_tick_current_dirty_targets = market_tick_current_dirty_targets
+        self.market_tick_current = market_tick_current
         self.enriched_events = enriched_events
         self.event_anchor_jobs = event_anchor_jobs
         self.token_radar_dirty_targets = token_radar_dirty_targets
@@ -144,11 +146,13 @@ class IngestService:
             evidence=evidence_inputs,
             created_at_ms=event.received_at_ms,
         )
+        event_row, event_read = materialize_event(event, is_watched=is_watched, now_ms=_now_ms())
         return PreparedIngest(
             raw_event=event,
+            event_read=event_read,
             event_id=event.event_id,
             event_ms=event.received_at_ms,
-            event_row=event_to_row(event, is_watched=is_watched, now_ms=_now_ms()),
+            event_row=event_row,
             entities=extracted,
             evidence_inputs=evidence_inputs,
             intents=intent_inputs,
@@ -163,7 +167,7 @@ class IngestService:
 
     def duplicate_result(self, prepared: PreparedIngest) -> IngestedEvent:
         return IngestedEvent(
-            event=prepared.raw_event,
+            event=prepared.event_read,
             entities=[],
             alerts=[],
             token_intents=[],
@@ -244,9 +248,8 @@ class IngestService:
             )
         capture_ticks = [item.tick for item in capture_results if item.tick is not None]
         if capture_ticks:
-            MarketTickPersistenceService(self).insert_ticks_and_enqueue_current_dirty(
+            MarketTickPersistenceService(self).persist_ticks(
                 capture_ticks,
-                reason="event_capture_tick_inserted",
                 now_ms=prepared.event_ms,
             )
         for item in capture_results:
@@ -264,7 +267,7 @@ class IngestService:
             is_watched=prepared.is_watched,
         )
         return IngestedEvent(
-            event=prepared.raw_event,
+            event=prepared.event_read,
             entities=[_entity_payload(entity) for entity in prepared.entities],
             alerts=alerts,
             token_intents=token_intents,
@@ -303,10 +306,6 @@ class IngestService:
                 "resolution_id": resolution_id,
                 "target_type": "cex_symbol",
                 "target_id": f"{provider}:{native_market_id}",
-                "exchange": provider,
-                "provider": provider,
-                "instrument": native_market_id,
-                "native_market_id": native_market_id,
                 "pricefeed_id": pricefeed.get("pricefeed_id"),
             }
         return None

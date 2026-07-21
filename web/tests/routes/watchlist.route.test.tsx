@@ -1,5 +1,9 @@
 import { screen, waitFor } from "@testing-library/react";
-import { appStatusFixture } from "@tests/fixtures/appRouteFixtures";
+import {
+  appStatusFixture,
+  notificationSummaryFixture,
+  tokenRadarFixture,
+} from "@tests/fixtures/appRouteFixtures";
 import { ok } from "@tests/msw/fixtures";
 import { renderAppRoute } from "@tests/render/renderRoute";
 import { beforeEach, describe, expect, it } from "vitest";
@@ -34,13 +38,10 @@ describe("watchlist navigation", () => {
         });
       }
       if (path === "/api/token-radar") {
-        return ok({ targets: [], attention: [], projection: {} });
-      }
-      if (path === "/api/notification-summary") {
-        return ok({});
+        return ok(tokenRadarFixture());
       }
       if (path === "/api/notifications") {
-        return ok({ items: [], summary: {} });
+        return ok({ items: [], summary: notificationSummaryFixture() });
       }
       return ok({});
     };
@@ -92,9 +93,13 @@ describe("watchlist navigation", () => {
               query: "$ALOY",
               kind: "candidate_mention",
               source: "event_cashtags",
+              symbol: null,
+              target_id: null,
+              target_type: null,
             },
           ],
           narrative_clusters: [],
+          clusters_truncated: false,
           risk_notes: ["candidate_mentions_unresolved"],
         });
       }
@@ -107,13 +112,10 @@ describe("watchlist navigation", () => {
         });
       }
       if (path === "/api/token-radar") {
-        return ok({ targets: [], attention: [], projection: {} });
-      }
-      if (path === "/api/notification-summary") {
-        return ok({});
+        return ok(tokenRadarFixture());
       }
       if (path === "/api/notifications") {
-        return ok({ items: [], summary: {} });
+        return ok({ items: [], summary: notificationSummaryFixture() });
       }
       return ok({});
     };

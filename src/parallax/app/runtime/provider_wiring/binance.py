@@ -89,8 +89,8 @@ class BinanceUsdmFuturesMarketProvider:
 def binance_web3_profile_market(settings: Settings) -> BinanceWeb3DexProfileProvider:
     return BinanceWeb3DexProfileProvider(
         BinanceWeb3TokenClient(
-            base_url=settings.binance_web3_base_url,
-            timeout_seconds=settings.binance_timeout_seconds,
+            base_url=settings.providers.binance.web3_base_url,
+            timeout_seconds=settings.providers.binance.timeout_seconds,
         )
     )
 
@@ -98,8 +98,8 @@ def binance_web3_profile_market(settings: Settings) -> BinanceWeb3DexProfileProv
 def binance_usdm_futures_market(settings: Settings) -> BinanceUsdmFuturesMarketProvider:
     return BinanceUsdmFuturesMarketProvider(
         BinanceUsdmFuturesClient(
-            base_url=settings.binance_usdm_futures_base_url,
-            timeout_seconds=settings.binance_timeout_seconds,
+            base_url=settings.providers.binance.usdm_futures_base_url,
+            timeout_seconds=settings.providers.binance.timeout_seconds,
         )
     )
 
@@ -107,10 +107,14 @@ def binance_usdm_futures_market(settings: Settings) -> BinanceUsdmFuturesMarketP
 def binance_provider_health(settings: Settings) -> ProviderHealth:
     capabilities = (
         frozenset({MarketCapability.PROFILE_CEX, MarketCapability.PROFILE_DEX_EXACT, MarketCapability.QUOTE_CEX})
-        if settings.binance_enabled
+        if settings.providers.binance.enabled
         else frozenset()
     )
-    return ProviderHealth(provider="binance", capabilities=capabilities, configured=settings.binance_enabled)
+    return ProviderHealth(
+        provider="binance",
+        capabilities=capabilities,
+        configured=settings.providers.binance.enabled,
+    )
 
 
 def _normalize_address(address: Any) -> str:

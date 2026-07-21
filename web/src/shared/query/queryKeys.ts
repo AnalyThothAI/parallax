@@ -1,9 +1,4 @@
-import type {
-  ScopeKey,
-  TokenPostRange,
-  TokenPostServerSort,
-  WindowKey,
-} from "@lib/types";
+import type { ScopeKey, TokenPostRange, TokenPostServerSort, WindowKey } from "@lib/types";
 import type { TokenRadarVenueFilter } from "@lib/venue";
 import type { TokenCaseScope } from "@shared/model/tokenCaseViewModel";
 
@@ -65,7 +60,6 @@ export const queryKeys = {
     limit: number,
   ) => ["target-posts", targetKey, window, scope, range, sort, limit] as const,
   notifications: () => ["notifications"] as const,
-  notificationSummary: () => ["notification-summary"] as const,
   opsDiagnostics: () => ["ops-diagnostics"] as const,
   opsQueue: (queueName: string | null, status: string | null, limit: number) =>
     ["ops-queue", queueName ?? "", status ?? "", limit] as const,

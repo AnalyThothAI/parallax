@@ -4,6 +4,7 @@ import json
 import re
 from typing import Any
 
+from parallax.domains.asset_market.chain_identity import canonical_chain_address
 from parallax.domains.evidence.interfaces import decode_event_row
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from parallax.platform.validation import require_nonnegative_int
@@ -205,9 +206,9 @@ class SearchEventsQuery:
         return [_candidate(row) for row in rows]
 
     def _resolve_ca(self, *, address: str, chain: str | None) -> list[dict[str, Any]]:
-        normalized_address = address.strip().lower()
         registry_chain = _registry_chain(chain)
-        clauses = ["lower(registry_assets.address) = %s", "registry_assets.status IN ('candidate', 'canonical')"]
+        normalized_address = canonical_chain_address(registry_chain, address)
+        clauses = ["registry_assets.address = %s", "registry_assets.status IN ('candidate', 'canonical')"]
         params: list[Any] = [normalized_address]
         if registry_chain:
             clauses.append("registry_assets.chain_id = %s")

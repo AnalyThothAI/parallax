@@ -8,14 +8,14 @@ import {
   tokenPricePill,
 } from "@shared/model/tokenPostEvent";
 
-type TokenResolution = NonNullable<WatchlistTimelineItem["token_resolutions"]>[number];
+type TokenResolution = WatchlistTimelineItem["token_resolutions"][number];
 
 export function buildWatchlistTimelineEvent(item: WatchlistTimelineItem): TokenCasePostEvent {
   const resolution = primaryResolution(item.token_resolutions);
   const price = resolution?.price;
   const sourceText = cleanText(item.text_clean);
   const text = sourceText ?? "(empty source event)";
-  const tokenSymbols = uniqueStrings([resolutionSymbol(resolution), ...(item.cashtags ?? [])]);
+  const tokenSymbols = uniqueStrings([resolutionSymbol(resolution), ...item.cashtags]);
 
   return {
     id: item.event_id,
@@ -65,7 +65,7 @@ function watchlistPills({
     resolution?.resolution_status
       ? { label: resolution.resolution_status.replaceAll("_", " "), tone: "info" as const }
       : null,
-    ...(item.hashtags ?? []).map((value) => ({
+    ...item.hashtags.map((value) => ({
       label: `#${value.replace(/^#+/, "")}`,
       tone: "neutral" as const,
     })),
@@ -76,9 +76,7 @@ function primaryResolution(
   resolutions: WatchlistTimelineItem["token_resolutions"],
 ): TokenResolution | null {
   return (
-    (resolutions ?? []).find((resolution) => resolution.price?.price_usd != null) ??
-    (resolutions ?? [])[0] ??
-    null
+    resolutions.find((resolution) => resolution.price?.price_usd != null) ?? resolutions[0] ?? null
   );
 }
 

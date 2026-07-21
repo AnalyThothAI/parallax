@@ -3,7 +3,7 @@
 News Intel ingests configured sources, preserves provider observations,
 canonicalizes news items, derives deterministic evidence, produces one current
 story brief, and projects the News page. PostgreSQL facts are the business
-truth; provider frames are inputs and `NOTIFY` is only a wake hint.
+truth; provider frames are inputs and workers catch up on bounded intervals.
 
 ## Material facts and read models
 
@@ -103,7 +103,13 @@ operator correction resumes ingestion.
 
 The News API reads `news_page_rows`. Item detail first requires a current page
 row, then hydrates provider observations and deterministic evidence. Public
-story, signal, scope, admission, and brief fields come from the projected row.
+story, signal, admission, and brief fields come from the projected row. Market
+scope has one public location, `signal.alert_eligibility.market_scope`; the
+physical `market_scope_json` column is derived from that nested value at the
+single writer boundary and is not a second public field. Admission status and
+reason remain top-level row fields and have no alert-eligibility aliases.
+Signal, token/fact lane arrays with explicit lane/status values, and brief
+status are required current sections; readers fail closed on malformed rows.
 
 Runtime source types are `rss`, `atom`, `json_feed`, `cryptopanic`, and
 `opennews`. Provider capability is a static application/schema contract. The

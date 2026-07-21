@@ -18,23 +18,27 @@ describe("useHandleOverviewQuery", () => {
         ok: true,
         data: {
           query: { handle: "marionawfal", window: "7d" },
-          metrics: {},
+          metrics: {
+            source_event_count: 0,
+            resolved_token_count: 0,
+            candidate_mention_count: 0,
+            narrative_count: 0,
+            last_source_event_at_ms: null,
+          },
           resolved_token_clusters: [],
           candidate_mention_clusters: [],
           narrative_clusters: [],
+          clusters_truncated: false,
           risk_notes: [],
         },
       });
     });
 
-    renderHook(
-      () => useHandleOverviewQuery({ handle: "marionawfal", token: "secret" }),
-      { wrapper: wrapper() },
-    );
+    renderHook(() => useHandleOverviewQuery({ handle: "marionawfal", token: "secret" }), {
+      wrapper: wrapper(),
+    });
 
-    await waitFor(() =>
-      expect(requests).toEqual(["/api/watchlist/handle/marionawfal/overview?"]),
-    );
+    await waitFor(() => expect(requests).toEqual(["/api/watchlist/handle/marionawfal/overview?"]));
   });
 });
 

@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Sequence
 from typing import Any
 
@@ -186,19 +185,17 @@ class WatchlistQuery:
 
 
 def _decode_timeline_row(row: dict[str, Any]) -> dict[str, Any]:
-    event_id = _required_event_id(row)
-    received_at_ms = _required_event_received_at_ms(row)
     event = decode_event_row(row)
     return {
-        "event_id": event_id,
-        "received_at_ms": received_at_ms,
-        "author_handle": row.get("author_handle"),
-        "action": row.get("action"),
-        "text_clean": row.get("text_clean") or row.get("text"),
-        "canonical_url": row.get("canonical_url"),
-        "cashtags": _required_json_list(row, "cashtags_json"),
-        "hashtags": _required_json_list(row, "hashtags_json"),
-        "mentions": _required_json_list(row, "mentions_json"),
+        "event_id": event["event_id"],
+        "received_at_ms": event["received_at_ms"],
+        "author_handle": event["author_handle"],
+        "action": event["action"],
+        "text_clean": event["text_clean"],
+        "canonical_url": event["canonical_url"],
+        "cashtags": event["cashtags"],
+        "hashtags": event["hashtags"],
+        "mentions": event["mentions"],
         "event": event,
     }
 
@@ -291,6 +288,9 @@ def _increment_cluster(
             "count": 0,
             "query": query,
             "kind": kind,
+            "target_type": None,
+            "target_id": None,
+            "symbol": None,
             "source": source,
         },
     )
@@ -358,34 +358,6 @@ def _list(value: Any) -> list[Any]:
 
 def _optional_int(value: Any) -> int | None:
     return int(value) if value is not None else None
-
-
-def _required_event_id(row: dict[str, Any]) -> str:
-    value = row.get("event_id")
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError("watchlist_event_id_required")
-    return value.strip()
-
-
-def _required_event_received_at_ms(row: dict[str, Any]) -> int:
-    value = row.get("received_at_ms")
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError("watchlist_event_received_at_ms_required")
-    return int(value)
-
-
-def _required_json_list(row: dict[str, Any], field_name: str) -> list[Any]:
-    if field_name not in row or row.get(field_name) is None:
-        raise ValueError(f"watchlist_event_{field_name}_required")
-    value = row[field_name]
-    if isinstance(value, str):
-        try:
-            value = json.loads(value)
-        except json.JSONDecodeError as exc:
-            raise ValueError(f"watchlist_event_{field_name}_required") from exc
-    if not isinstance(value, list):
-        raise ValueError(f"watchlist_event_{field_name}_required")
-    return value
 
 
 __all__ = ["WatchlistQuery"]

@@ -8,19 +8,10 @@ from typing import Any
 
 from loguru import logger as default_logger
 
-from parallax.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
 from parallax.platform.runtime.worker_result import WorkerResult
 
 _MIN_WAIT_SECONDS = 0.001
 _MAX_DURATION_SAMPLES = 256
-_TIMING_SETTING_ERRORS = {
-    "interval_seconds": "worker_interval_seconds_required",
-    "hard_timeout_seconds": "worker_hard_timeout_seconds_required",
-}
-_BACKOFF_SETTING_ERRORS = {
-    "backoff_base_ms": "worker_backoff_base_ms_required",
-    "backoff_max_ms": "worker_backoff_max_ms_required",
-}
 
 
 @dataclass(slots=True)
@@ -34,23 +25,12 @@ class WorkerStatus:
     last_result: dict[str, Any] | None
     last_error: str | None
     iteration_duration_p99_ms: float | None
-    pool_wait_ms_p99: float | None
-    active_run_once_started_at_ms: int | None
-    active_run_once_age_ms: int | None
-    active_run_once_hard_timed_out_at_ms: int | None
-    active_run_once_count: int
 
     def payload(self) -> dict[str, Any]:
         return asdict(self)
 
 
-class WorkerRunHardTimeout(TimeoutError):
-    pass
-
-
 class WorkerBase(ABC):
-    SINGLE_WRITER_KEY: int | None = None
-
     def __init__(
         self,
         *,
@@ -58,16 +38,12 @@ class WorkerBase(ABC):
         settings: Any,
         db: Any,
         telemetry: Any,
-        llm: Any | None = None,
-        wake_waiter: Any | None = None,
         logger: Any | None = None,
     ) -> None:
         self.name = str(name)
         self.settings = settings
         self.db = db
         self.telemetry = telemetry
-        self.llm = llm
-        self.wake_waiter = wake_waiter
         self.logger = logger or default_logger.bind(worker=self.name)
 
         self.last_started_at_ms: int | None = None
@@ -75,17 +51,11 @@ class WorkerBase(ABC):
         self.last_result: WorkerResult | None = None
         self.last_error: str | None = None
         self.running = False
-        self.active_run_once_started_at_ms: int | None = None
-        self.active_run_once_hard_timed_out_at_ms: int | None = None
 
         self._stop_event = asyncio.Event()
-        self._advisory_lock_connection: Any | None = None
         self._iteration_duration_ms: list[float] = []
-        self._pool_wait_ms: list[float] = []
         self._consecutive_failures = 0
         self._closed = False
-        self._run_once_tasks: set[asyncio.Task[WorkerResult | None]] = set()
-        self._run_once_started_at_ms_by_id: dict[int, int] = {}
         self._active_run_loops = 0
 
     async def on_start(self) -> None:
@@ -117,13 +87,8 @@ class WorkerBase(ABC):
         try:
             await self.on_start()
             started_hook_completed = True
-            if not await self._ensure_advisory_lock():
-                if self.last_result is None:
-                    raise RuntimeError(f"worker:{self.name}:advisory_lock_result_required")
-                return self.last_result
-            result, pending = await self._run_once_with_timeout(None)
-            if pending is not None:
-                raise RuntimeError(f"worker:{self.name}:one_iteration_left_pending_task")
+            self.last_started_at_ms = _now_ms()
+            result = _require_worker_result(self.name, await self.run_once())
             self._consecutive_failures = 0
             self.last_error = None
             self.last_result = result
@@ -138,39 +103,24 @@ class WorkerBase(ABC):
         finally:
             self._active_run_loops = 0
             self.running = False
-            try:
-                if started_hook_completed:
-                    await self.on_stop()
-            finally:
-                self._release_advisory_lock()
+            if started_hook_completed:
+                await self.on_stop()
 
     async def run(self) -> None:
         if not self.enabled:
             return
         if self._active_run_loops > 0:
             raise RuntimeError(f"worker:{self.name}:already_running")
-        run_once_task: asyncio.Task[WorkerResult | None] | None = None
         self._active_run_loops = 1
         self.running = True
         try:
             await self.on_start()
-            while not self._stop_event.is_set() or run_once_task is not None:
-                if not await self._ensure_advisory_lock():
-                    await self._wait_for_next_iteration(self.interval_seconds)
-                    continue
+            while not self._stop_event.is_set():
                 started = time.perf_counter()
-                if run_once_task is None:
-                    run_once_task = self._create_run_once_task()
+                self.last_started_at_ms = _now_ms()
                 try:
-                    result, run_once_task = await self._run_once_with_timeout(run_once_task)
-                except asyncio.CancelledError:
-                    await self._cancel_run_once_task(run_once_task)
-                    run_once_task = None
-                    raise
+                    result = _require_worker_result(self.name, await self.run_once())
                 except Exception as exc:
-                    if run_once_task is not None and run_once_task.done():
-                        self._discard_run_once_task(run_once_task)
-                        run_once_task = None
                     self._consecutive_failures += 1
                     self.last_error = _error_text(exc)
                     self.last_result = None
@@ -186,26 +136,18 @@ class WorkerBase(ABC):
                     break
                 await self._wait_for_next_iteration(self.interval_seconds)
         finally:
-            await self._cancel_run_once_task(run_once_task)
             self._active_run_loops = 0
             self.running = False
             await self.on_stop()
 
     async def stop(self) -> None:
         self._stop_event.set()
-        if self.wake_waiter is not None:
-            self.wake_waiter.wake()
 
     async def aclose(self) -> None:
         if self._closed:
             return
         self._closed = True
-        try:
-            await self._cancel_all_run_once_tasks()
-            await self.on_close()
-        finally:
-            self._release_advisory_lock()
-            await self._close_wake_waiter()
+        await self.on_close()
 
     def status_payload(self) -> dict[str, Any]:
         return WorkerStatus(
@@ -218,11 +160,6 @@ class WorkerBase(ABC):
             last_result=_worker_result_payload(self.last_result),
             last_error=self.last_error,
             iteration_duration_p99_ms=_p99(self._iteration_duration_ms),
-            pool_wait_ms_p99=self._pool_wait_ms_p99(),
-            active_run_once_started_at_ms=self.active_run_once_started_at_ms,
-            active_run_once_age_ms=self._active_run_once_age_ms(),
-            active_run_once_hard_timed_out_at_ms=self.active_run_once_hard_timed_out_at_ms,
-            active_run_once_count=len(self._run_once_tasks),
         ).payload()
 
     @property
@@ -231,9 +168,6 @@ class WorkerBase(ABC):
 
     @property
     def effective_status(self) -> str:
-        explicit = getattr(self, "_effective_status", None)
-        if explicit is not None:
-            return str(explicit)
         if not self.enabled:
             return "disabled"
         if self.last_error or _worker_result_failed(self.last_result):
@@ -246,167 +180,16 @@ class WorkerBase(ABC):
 
     @property
     def unavailable_reason(self) -> str | None:
-        reason = getattr(self, "_unavailable_reason", None)
-        return str(reason) if reason else None
+        return None
 
     @property
     def interval_seconds(self) -> float:
-        return _nonnegative_setting_seconds(
-            self.settings.interval_seconds,
-            field="interval_seconds",
-            worker_name=self.name,
-        )
+        return float(self.settings.interval_seconds)
 
-    @property
-    def hard_timeout_seconds(self) -> float:
-        return _nonnegative_setting_seconds(
-            self.settings.hard_timeout_seconds,
-            field="hard_timeout_seconds",
-            worker_name=self.name,
-        )
-
-    async def _run_once_with_timeout(
-        self,
-        task: asyncio.Task[WorkerResult | None] | None,
-    ) -> tuple[WorkerResult, asyncio.Task[WorkerResult | None] | None]:
-        if task is None:
-            task = self._create_run_once_task()
-        await self._cancel_if_hard_timed_out(task)
-        timeout = self._next_run_once_wait_seconds(task)
-        if timeout is None:
-            try:
-                result = await task
-            except BaseException:
-                self._discard_run_once_task(task)
-                raise
-        else:
-            try:
-                result = await asyncio.wait_for(asyncio.shield(task), timeout=timeout)
-            except TimeoutError as exc:
-                raise await self._hard_timeout_for_task(task) from exc
-            except asyncio.CancelledError:
-                raise
-            except BaseException:
-                self._discard_run_once_task(task)
-                raise
-        self._discard_run_once_task(task)
-        if result is None:
-            return WorkerResult(processed=1), None
-        if not isinstance(result, WorkerResult):
-            raise TypeError(f"worker:{self.name}:run_once returned {type(result).__name__}")
-        return result, None
-
-    def _create_run_once_task(self) -> asyncio.Task[WorkerResult | None]:
-        started_at_ms = _now_ms()
-        self.last_started_at_ms = started_at_ms
-        self.active_run_once_started_at_ms = started_at_ms
-        self.active_run_once_hard_timed_out_at_ms = None
-        task = asyncio.create_task(self.run_once(), name=f"worker:{self.name}:run_once")
-        self._run_once_tasks.add(task)
-        self._run_once_started_at_ms_by_id[id(task)] = started_at_ms
-        self._set_in_flight(len(self._run_once_tasks))
-        return task
-
-    async def _cancel_run_once_task(
-        self,
-        task: asyncio.Task[WorkerResult | None] | None,
-        *,
-        cancel_reason: str | None = None,
-    ) -> None:
-        if task is None:
-            return
-        if not task.done():
-            task.cancel(cancel_reason)
-        await asyncio.gather(task, return_exceptions=True)
-        self._discard_run_once_task(task)
-
-    async def _cancel_all_run_once_tasks(self) -> None:
-        tasks = list(self._run_once_tasks)
-        if not tasks:
-            return
-        for task in tasks:
-            if not task.done():
-                task.cancel()
-        await asyncio.gather(*tasks, return_exceptions=True)
-        for task in tasks:
-            self._discard_run_once_task(task)
-
-    def _discard_run_once_task(self, task: asyncio.Task[WorkerResult | None]) -> None:
-        self._run_once_tasks.discard(task)
-        task_id = id(task)
-        self._run_once_started_at_ms_by_id.pop(task_id, None)
-        if not self._run_once_tasks:
-            self.active_run_once_started_at_ms = None
-            self.active_run_once_hard_timed_out_at_ms = None
-        elif self._run_once_started_at_ms_by_id:
-            self.active_run_once_started_at_ms = min(self._run_once_started_at_ms_by_id.values())
-        self._set_in_flight(len(self._run_once_tasks))
-
-    async def _cancel_if_hard_timed_out(self, task: asyncio.Task[WorkerResult | None]) -> None:
-        hard_timeout = self.hard_timeout_seconds
-        if hard_timeout <= 0:
-            return
-        started_at_ms = self._run_once_started_at_ms_by_id.get(id(task), self.active_run_once_started_at_ms)
-        if started_at_ms is None:
-            return
-        age_seconds = max(0.0, (_now_ms() - started_at_ms) / 1000)
-        if age_seconds < hard_timeout:
-            return
-        raise await self._hard_timeout_for_task(task)
-
-    def _next_run_once_wait_seconds(self, task: asyncio.Task[WorkerResult | None]) -> float | None:
-        started_at_ms = self._run_once_started_at_ms_by_id.get(id(task), self.active_run_once_started_at_ms)
-        if started_at_ms is None:
-            return self.hard_timeout_seconds or None
-        age_seconds = max(0.0, (_now_ms() - started_at_ms) / 1000)
-        hard_timeout = self.hard_timeout_seconds
-        if hard_timeout <= 0:
-            return None
-        return max(_MIN_WAIT_SECONDS, hard_timeout - age_seconds)
-
-    async def _hard_timeout_for_task(self, task: asyncio.Task[WorkerResult | None]) -> WorkerRunHardTimeout:
-        hard_timeout = self.hard_timeout_seconds
-        self.active_run_once_hard_timed_out_at_ms = _now_ms()
-        await self._cancel_run_once_task(task, cancel_reason=WORKER_HARD_TIMEOUT_CANCEL_REASON)
-        return WorkerRunHardTimeout(f"worker:{self.name}:run_once hard timeout after {hard_timeout:g}s")
-
-    async def _ensure_advisory_lock(self) -> bool:
-        key = self._advisory_lock_key()
-        if key is None or self._advisory_lock_connection is not None:
-            return True
-        try:
-            self._advisory_lock_connection = self.db.acquire_advisory_lock_connection(self.name, int(key))
-        except Exception as exc:
-            if "advisory_lock_unavailable" not in str(exc):
-                raise
-            self.last_error = None
-            self.last_result = WorkerResult(skipped=1, notes={"reason": "advisory_lock_unavailable"})
-            self.last_started_at_ms = _now_ms()
-            self.last_finished_at_ms = self.last_started_at_ms
-            self._record_result_metrics(self.last_result)
-            return False
-        return True
-
-    def _advisory_lock_key(self) -> int | None:
-        try:
-            settings_key = self.settings.advisory_lock_key
-        except AttributeError as exc:
-            if self.SINGLE_WRITER_KEY is None:
-                return None
-            raise RuntimeError("worker_advisory_lock_key_required") from exc
-        if settings_key is not None:
-            return int(settings_key)
-        if self.SINGLE_WRITER_KEY is not None:
-            raise RuntimeError("worker_advisory_lock_key_required")
-        return None
-
-    async def _wait_for_next_iteration(self, timeout: float) -> None:  # noqa: ASYNC109 - worker waits use wake hints.
+    async def _wait_for_next_iteration(self, delay_seconds: float) -> None:
         if self._stop_event.is_set():
             return
-        timeout = _loop_wait_seconds(timeout)
-        if self.wake_waiter is not None:
-            await self.wake_waiter.async_wait(timeout)
-            return
+        timeout = _loop_wait_seconds(delay_seconds)
         try:
             await asyncio.wait_for(self._stop_event.wait(), timeout=timeout)
         except TimeoutError:
@@ -441,9 +224,6 @@ class WorkerBase(ABC):
             if count:
                 self._call_telemetry("record_job", self.name, status, count)
 
-    def _set_in_flight(self, count: int) -> None:
-        self._call_telemetry("set_jobs_in_flight", self.name, count)
-
     def _call_telemetry(self, method_name: str, *args: Any, **kwargs: Any) -> None:
         method = getattr(self.telemetry, method_name, None)
         if method is not None:
@@ -455,43 +235,10 @@ class WorkerBase(ABC):
 
     def _backoff_seconds(self) -> float:
         backoff = self.settings.backoff
-        base_ms = _nonnegative_setting_int(backoff.base_ms, field="backoff_base_ms", worker_name=self.name)
-        max_ms = _nonnegative_setting_int(backoff.max_ms, field="backoff_max_ms", worker_name=self.name)
+        base_ms = int(backoff.base_ms)
+        max_ms = int(backoff.max_ms)
         delay_ms = min(max_ms, base_ms * max(1, self._consecutive_failures))
         return _loop_wait_seconds(delay_ms / 1000)
-
-    def _pool_wait_ms_p99(self) -> float | None:
-        pool_wait_p99_ms = getattr(self.telemetry, "pool_wait_p99_ms", None)
-        if pool_wait_p99_ms is not None:
-            return pool_wait_p99_ms("worker")
-        return _p99(self._pool_wait_ms)
-
-    def _active_run_once_age_ms(self) -> int | None:
-        if self.active_run_once_started_at_ms is None:
-            return None
-        return max(0, _now_ms() - self.active_run_once_started_at_ms)
-
-    def _release_advisory_lock(self) -> None:
-        if self._advisory_lock_connection is None:
-            return
-        lock_connection = self._advisory_lock_connection
-        try:
-            try:
-                release = lock_connection.release
-            except AttributeError as exc:
-                raise RuntimeError("worker_advisory_lock_release_required") from exc
-            if not callable(release):
-                raise RuntimeError("worker_advisory_lock_release_required")
-            release()
-        finally:
-            self._advisory_lock_connection = None
-
-    async def _close_wake_waiter(self) -> None:
-        if self.wake_waiter is None:
-            return
-        result = self.wake_waiter.close()
-        if result is not None:
-            raise RuntimeError("worker_wake_waiter_close_must_be_sync")
 
 
 def _worker_result_payload(result: WorkerResult | None) -> dict[str, Any] | None:
@@ -517,6 +264,12 @@ def _worker_result_degraded(result: WorkerResult | None) -> bool:
     if notes.get("degraded") is True:
         return True
     return str(notes.get("status") or "").strip().lower() == "degraded"
+
+
+def _require_worker_result(worker_name: str, result: Any) -> WorkerResult:
+    if not isinstance(result, WorkerResult):
+        raise TypeError(f"worker:{worker_name}:run_once returned {type(result).__name__}")
+    return result
 
 
 def _compact_status_notes(notes: dict[str, Any]) -> dict[str, Any]:
@@ -563,20 +316,6 @@ def _now_ms() -> int:
 
 def _loop_wait_seconds(seconds: float) -> float:
     return max(_MIN_WAIT_SECONDS, float(seconds))
-
-
-def _nonnegative_setting_seconds(value: Any, *, field: str, worker_name: str) -> float:
-    error_code = _TIMING_SETTING_ERRORS[field]
-    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
-        raise ValueError(f"{error_code}:{worker_name}")
-    return float(value)
-
-
-def _nonnegative_setting_int(value: Any, *, field: str, worker_name: str) -> int:
-    error_code = _BACKOFF_SETTING_ERRORS[field]
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(f"{error_code}:{worker_name}")
-    return int(value)
 
 
 def _error_text(exc: BaseException) -> str:

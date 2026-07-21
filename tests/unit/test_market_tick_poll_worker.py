@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import threading
+from dataclasses import asdict
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -11,7 +12,6 @@ import pytest
 from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote
 from parallax.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
 from parallax.domains.asset_market.types import market_tick_id
-from parallax.platform.runtime.worker_base import WorkerBase
 from parallax.platform.runtime.worker_result import WorkerResult
 
 
@@ -24,7 +24,6 @@ def _settings(
     return SimpleNamespace(
         enabled=True,
         interval_seconds=interval_seconds,
-        hard_timeout_seconds=180.0,
         batch_size=batch_size,
         concurrency=concurrency,
     )
@@ -59,20 +58,7 @@ def test_market_tick_poll_worker_requires_formal_provider_bundle_fields() -> Non
         )
 
 
-def test_market_tick_poll_worker_is_append_only_without_single_writer_lock() -> None:
-    state = FakeSessionState()
-    worker = MarketTickPollWorker(
-        pool_bundle=FakeDB(state, FakeRepos(state, [])),
-        providers=FakeProviders(dex_quote_market=None, cex_market=None),
-        settings=_settings(),
-    )
-
-    assert isinstance(worker, WorkerBase)
-    assert worker.SINGLE_WRITER_KEY is None
-    assert worker._advisory_lock_key() is None
-
-
-def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and_notifies() -> None:
+def test_market_tick_poll_worker_queries_ranked_targets_persists_current_and_publishes() -> None:
     state = FakeSessionState()
     repos = FakeRepos(
         state,
@@ -110,11 +96,11 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
             )
         },
     )
-    wake = FakeWakeEmitter()
+    publisher = FakeLiveMarketPublisher()
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=dex_provider, cex_market=cex_provider),
-        wake_emitter=wake,
+        on_live_market_update=publisher.publish,
         settings=_settings(batch_size=10),
         clock=lambda: 1_800_000_000_100,
     )
@@ -126,20 +112,28 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
     assert result.skipped == 0
     assert result.notes["targets_selected"] == 2
     assert result.notes["ticks_attempted"] == 2
-    assert repos.token_capture_tiers.calls == [{"tier": 2, "limit": 10}]
+    assert repos.registry.calls == [
+        {
+            "projection_version": "token-radar-v13-social-attention",
+            "since_ms": 1_799_913_600_100,
+            "target_types": ("chain_token", "cex_symbol"),
+            "limit": 10,
+            "exclude_keys": (),
+        }
+    ]
     assert dex_provider.saw_in_session == [False]
     assert dex_provider.requests == [("eip155:1", "0xAbC")]
     assert cex_provider.saw_in_session == [False]
     assert cex_provider.requests == ["BTCUSDT"]
     assert repos.conn.commit_count == 1
     assert len(repos.market_ticks.inserted) == 2
-    assert repos.market_tick_current_dirty_targets.enqueues == [
+    assert repos.token_radar_dirty_targets.enqueues == [
         {
             "rows": [
-                ("chain_token", "eip155:1:0xAbC"),
-                ("cex_symbol", "binance:BTCUSDT"),
+                ("Asset", "asset:eip155:1:0xAbC"),
+                ("CexToken", "cex_token:BTC"),
             ],
-            "reason": "market_tick_written",
+            "reason": "market_tick_current_changed",
             "now_ms": 1_800_000_000_100,
         }
     ]
@@ -189,10 +183,9 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
         "provider": "cex",
         "openInterestUsd": "333.2",
     }
-    assert wake.channels == ["market_tick_written", "market_tick_written"]
-    assert wake.market_tick_notifications == [
-        {"target_type": "chain_token", "target_id": "eip155:1:0xAbC"},
-        {"target_type": "cex_symbol", "target_id": "binance:BTCUSDT"},
+    assert [row["target_id"] for row in publisher.updates] == [
+        "asset:eip155:1:0xAbC",
+        "cex_token:BTC",
     ]
 
 
@@ -257,11 +250,11 @@ def test_market_tick_poll_worker_skips_bad_targets_unavailable_quotes_and_provid
         state,
         {"FAILUSDT": RuntimeError("cex unavailable")},
     )
-    wake = FakeWakeEmitter()
+    publisher = FakeLiveMarketPublisher()
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=dex_provider, cex_market=cex_provider),
-        wake_emitter=wake,
+        on_live_market_update=publisher.publish,
         settings=_settings(batch_size=20),
     )
 
@@ -273,7 +266,7 @@ def test_market_tick_poll_worker_skips_bad_targets_unavailable_quotes_and_provid
     assert result.notes["ticks_attempted"] == 0
     assert repos.market_ticks.inserted == []
     assert repos.conn.commit_count == 0
-    assert wake.market_tick_notifications == []
+    assert publisher.updates == []
     assert dex_provider.saw_in_session == [False, False, False]
     # Batch records both in order; individual fallback runs the two retries
     # via asyncio.gather so their relative order is non-deterministic.
@@ -306,11 +299,11 @@ def test_market_tick_poll_worker_retries_dex_batch_individually_to_preserve_vali
         ],
         failures={("solana", "Failing"): RuntimeError("dex unavailable")},
     )
-    wake = FakeWakeEmitter()
+    publisher = FakeLiveMarketPublisher()
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=dex_provider, cex_market=None),
-        wake_emitter=wake,
+        on_live_market_update=publisher.publish,
         settings=_settings(),
         clock=lambda: 1_800_000_000_100,
     )
@@ -323,7 +316,7 @@ def test_market_tick_poll_worker_retries_dex_batch_individually_to_preserve_vali
     assert len(repos.market_ticks.inserted) == 1
     assert repos.market_ticks.inserted[0].target_id == "solana:Good"
     assert repos.market_ticks.inserted[0].source_provider == "okx_dex_rest"
-    assert wake.market_tick_notifications == [{"target_type": "chain_token", "target_id": "solana:Good"}]
+    assert [row["target_id"] for row in publisher.updates] == ["asset:solana:Good"]
     assert dex_provider.saw_in_session == [False, False, False]
     # Batch records both targets in order; the individual fallback runs the two
     # retries via asyncio.gather so their relative order is non-deterministic.
@@ -368,11 +361,11 @@ def test_market_tick_poll_worker_rejects_invalid_non_finite_and_non_positive_pri
             )
         },
     )
-    wake = FakeWakeEmitter()
+    publisher = FakeLiveMarketPublisher()
     worker = MarketTickPollWorker(
         pool_bundle=FakeDB(state, repos),
         providers=FakeProviders(dex_quote_market=dex_provider, cex_market=cex_provider),
-        wake_emitter=wake,
+        on_live_market_update=publisher.publish,
         settings=_settings(),
     )
 
@@ -382,7 +375,7 @@ def test_market_tick_poll_worker_rejects_invalid_non_finite_and_non_positive_pri
     assert result.skipped == 2
     assert repos.market_ticks.inserted == []
     assert repos.conn.commit_count == 0
-    assert wake.market_tick_notifications == []
+    assert publisher.updates == []
 
 
 def test_market_tick_poll_worker_reselects_from_freshness_order_each_run() -> None:
@@ -415,16 +408,12 @@ def test_market_tick_poll_worker_reselects_from_freshness_order_each_run() -> No
     asyncio.run(worker.run_once())
     asyncio.run(worker.run_once())
 
-    assert repos.token_capture_tiers.calls == [
-        {"tier": 2, "limit": 2},
-        {
-            "tier": 2,
-            "limit": 2,
-            "exclude_keys": [
-                {"target_type": "cex_symbol", "target_id": "binance:SYM0USDT"},
-                {"target_type": "cex_symbol", "target_id": "binance:SYM1USDT"},
-            ],
-        },
+    assert _registry_exclusions(repos) == [
+        (),
+        (
+            ("cex_symbol", "binance:SYM0USDT"),
+            ("cex_symbol", "binance:SYM1USDT"),
+        ),
     ]
     assert set(provider.requests[:2]) == {"SYM0USDT", "SYM1USDT"}
     assert set(provider.requests[2:]) == {"SYM2USDT", "SYM3USDT"}
@@ -445,16 +434,12 @@ def test_market_tick_poll_worker_uses_stable_freshness_order_without_empty_page_
     asyncio.run(worker.run_once())
     asyncio.run(worker.run_once())  # same freshness-ordered query, no cursor state
 
-    assert repos.token_capture_tiers.calls == [
-        {"tier": 2, "limit": 2},
-        {
-            "tier": 2,
-            "limit": 2,
-            "exclude_keys": [
-                {"target_type": "cex_symbol", "target_id": "binance:SYM0USDT"},
-                {"target_type": "cex_symbol", "target_id": "binance:SYM1USDT"},
-            ],
-        },
+    assert _registry_exclusions(repos) == [
+        (),
+        (
+            ("cex_symbol", "binance:SYM0USDT"),
+            ("cex_symbol", "binance:SYM1USDT"),
+        ),
     ]
 
 
@@ -476,16 +461,12 @@ def test_market_tick_poll_worker_rotates_recently_attempted_no_quote_targets_wit
 
     assert set(provider.requests[:2]) == {"SYM0USDT", "SYM1USDT"}
     assert set(provider.requests[2:]) == {"SYM2USDT", "SYM3USDT"}
-    assert repos.token_capture_tiers.calls == [
-        {"tier": 2, "limit": 2},
-        {
-            "tier": 2,
-            "limit": 2,
-            "exclude_keys": [
-                {"target_type": "cex_symbol", "target_id": "binance:SYM0USDT"},
-                {"target_type": "cex_symbol", "target_id": "binance:SYM1USDT"},
-            ],
-        },
+    assert _registry_exclusions(repos) == [
+        (),
+        (
+            ("cex_symbol", "binance:SYM0USDT"),
+            ("cex_symbol", "binance:SYM1USDT"),
+        ),
     ]
 
 
@@ -529,6 +510,10 @@ def tier_row(*, target_type: str, target_id: str) -> dict[str, object]:
     }
 
 
+def _registry_exclusions(repos: FakeRepos) -> list[tuple[tuple[str, str], ...]]:
+    return [tuple(call.get("exclude_keys", ())) for call in repos.registry.calls]
+
+
 class FakeSessionState:
     def __init__(self) -> None:
         self.in_session = False
@@ -543,8 +528,9 @@ class FakeRepos:
         sort_fresh_targets_last: bool = False,
     ) -> None:
         self.market_ticks = FakeMarketTicks(state)
-        self.market_tick_current_dirty_targets = FakeDirtyTargets()
-        self.token_capture_tiers = FakeTokenCaptureTiers(
+        self.market_tick_current = FakeMarketTickCurrent()
+        self.token_radar_dirty_targets = FakeRadarDirtyTargets()
+        self.registry = FakeRegistry(
             tier_rows,
             market_ticks=self.market_ticks,
             sort_fresh_targets_last=sort_fresh_targets_last,
@@ -558,7 +544,7 @@ class FakeRepos:
         return None
 
 
-class FakeTokenCaptureTiers:
+class FakeRegistry:
     def __init__(
         self,
         rows: list[dict[str, object]],
@@ -571,25 +557,32 @@ class FakeTokenCaptureTiers:
         self.sort_fresh_targets_last = sort_fresh_targets_last
         self.calls: list[dict[str, Any]] = []
 
-    def list_by_tier(
-        self,
-        tier: int,
-        limit: int,
-        *,
-        exclude_keys: list[dict[str, str]] | None = None,
-    ) -> list[dict[str, object]]:
-        call = {"tier": tier, "limit": limit}
-        if exclude_keys is not None:
-            call["exclude_keys"] = list(exclude_keys)
-        self.calls.append(call)
+    def ranked_market_targets(self, **kwargs: Any) -> list[dict[str, object]]:
+        limit = int(kwargs["limit"])
+        exclude_keys = tuple(kwargs.get("exclude_keys", ()))
+        self.calls.append(dict(kwargs))
         rows = list(self.rows)
         if exclude_keys:
-            excluded = {(item["target_type"], item["target_id"]) for item in exclude_keys}
+            excluded = set(exclude_keys)
             rows = [row for row in rows if (str(row["target_type"]), str(row["target_id"])) not in excluded]
         if self.sort_fresh_targets_last:
             fresh = self.market_ticks.inserted_target_ids
             rows.sort(key=lambda row: (str(row["target_id"]) in fresh, str(row["target_id"])))
         return rows[:limit]
+
+    def product_targets_for_market_targets(
+        self,
+        targets: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], tuple[str, str]]:
+        resolved: dict[tuple[str, str], tuple[str, str]] = {}
+        for target in targets:
+            target_type, target_id = target
+            if target_type == "chain_token":
+                resolved[target] = ("Asset", f"asset:{target_id}")
+            elif target_type == "cex_symbol":
+                symbol = target_id.split(":", 1)[-1].removesuffix("USDT")
+                resolved[target] = ("CexToken", f"cex_token:{symbol}")
+        return resolved
 
 
 class FakeMarketTicks:
@@ -598,21 +591,23 @@ class FakeMarketTicks:
         self.inserted = []
         self.inserted_target_ids: set[str] = set()
 
-    def insert_ticks(self, ticks) -> int:
-        return len(self.insert_ticks_returning_ids(ticks))
-
-    def insert_ticks_returning_ids(self, ticks) -> list[str]:
+    def insert_ticks_returning_rows(self, ticks) -> list[dict[str, object]]:
         assert self.state.in_session is True
         self.inserted.extend(ticks)
         self.inserted_target_ids.update(str(tick.target_id) for tick in ticks)
-        return [str(tick.tick_id) for tick in ticks]
+        return [asdict(tick) for tick in ticks]
 
 
-class FakeDirtyTargets:
+class FakeMarketTickCurrent:
+    def upsert_current_from_tick(self, tick_row: dict[str, object]) -> bool:
+        return True
+
+
+class FakeRadarDirtyTargets:
     def __init__(self) -> None:
         self.enqueues: list[dict[str, object]] = []
 
-    def enqueue_targets(self, rows, *, reason, now_ms) -> int:
+    def enqueue_market_product_targets(self, rows, *, reason, now_ms) -> int:
         self.enqueues.append({"rows": list(rows), "reason": reason, "now_ms": now_ms})
         return len(self.enqueues[-1]["rows"])
 
@@ -756,16 +751,9 @@ class BlockingCexProvider:
                 self._active -= 1
 
 
-class FakeWakeEmitter:
+class FakeLiveMarketPublisher:
     def __init__(self) -> None:
-        self.channels: list[str] = []
-        self.market_tick_notifications: list[dict[str, str]] = []
+        self.updates: list[dict[str, object]] = []
 
-    def notify_market_tick_written(self, *, target_type: str, target_id: str) -> None:
-        self.channels.append("market_tick_written")
-        self.market_tick_notifications.append({"target_type": target_type, "target_id": target_id})
-
-    def __getattr__(self, name: str):
-        if name == f"notify_{'_'.join(('market', 'observation', 'written'))}":
-            raise AssertionError("market_tick_poll must not emit legacy market wakes")
-        raise AttributeError(name)
+    async def publish(self, payload: dict[str, object]) -> None:
+        self.updates.append(payload)

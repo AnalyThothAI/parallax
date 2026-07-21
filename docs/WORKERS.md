@@ -1,12 +1,16 @@
 # Workers
 
-`src/parallax/app/runtime/worker_manifest.py` is the minimal scheduling/status inventory: worker name, lane, start priority, wake inputs, queue tables, and stable current-model identities. `workers.yaml` contains runtime knobs; it cannot create workers, aliases, ownership, or wake topology.
+`src/parallax/app/runtime/worker_manifest.py` is the minimal scheduling/status inventory: worker name, start priority, queue tables, and stable current-model identities. `workers.yaml` contains runtime knobs; it cannot create workers, aliases, or ownership.
 
-`worker_factories()` is the only callable composition registry. Its tuple groups factories by domain because those modules import the shared factory context; it is not a second per-worker descriptor. Every domain factory must return its complete formal key set, including an explicit `DisabledWorker`, `IntentionallyNotStartedWorker`, or `UnavailableWorker` when configuration or provider state prevents a real worker. Composition fails immediately when the final key set differs from the manifest or when two factories return the same key.
+`worker_factories()` is the only callable composition registry. Its tuple groups factories by domain because those modules import the shared factory context; it is not a second per-worker descriptor. Every domain factory must return its complete formal key set, using the single `InactiveWorker` implementation when configuration, operator intent, or provider state prevents a real worker. Composition fails immediately when the final key set differs from the manifest or when two factories return the same key.
 
 ## Inventory
 
-`all_worker_manifests()` is the executable inventory consumed by scheduling and status code. This document intentionally does not copy that list into a second hand-maintained table. The manifest declares stable identity columns for every current read model; run IDs, attempts, generations, timestamps, and UUID snapshots are forbidden serving identities. Domain architecture maps describe each worker's facts and provider boundaries.
+`all_worker_manifests()` is the executable inventory consumed by scheduling and status code. This document intentionally does not copy that list into a second hand-maintained table. The manifest declares stable identity columns for every worker-owned current read model; transactionally maintained current tables such as `market_tick_current` are documented by their owning domain. Run IDs, attempts, generations, timestamps, and UUID snapshots are forbidden serving identities. Domain architecture maps describe each worker's facts and provider boundaries.
+
+Transactionally maintained does not mean unrebuildable: `market_tick_current`
+has a bounded explicit fact-replay application operation, not a hidden eighteenth
+worker or a second dirty queue.
 
 ## Runtime lifecycle
 
@@ -14,14 +18,13 @@ Every long-running worker is a `platform.runtime.WorkerBase` subclass:
 
 ```text
 WorkerScheduler
-  -> optional advisory single-writer lock
   -> run_once()
   -> WorkerResult + duration telemetry
-  -> wake hint or interval catch-up
+  -> interval catch-up
   -> bounded backoff after failure
 ```
 
-The scheduler is the only owner of task start, stop, and status. Workers do not implement nested restart loops or soft-timeout state machines. Provider-specific timeouts plus the WorkerBase hard timeout are the timing boundary.
+The scheduler is the only owner of task start, stop, and status. `WorkerBase` awaits one `run_once()` at a time and never spawns or force-cancels an iteration task. Provider, database, model, and subprocess boundaries own their explicit timeouts; scheduler shutdown waits for the current iteration to finish before closing resources.
 
 ## Queue rules
 
@@ -31,7 +34,7 @@ The scheduler is the only owner of task start, stop, and status. Workers do not 
 - Success acknowledges the exact claimed identity/payload inside the same application-owned transaction as its read-model write.
 - Retry clears the lease and sets a bounded future due time.
 - Exhaustion moves the source snapshot to `worker_queue_terminal_events`; it is not silently deleted.
-- A wake listener always has an interval catch-up, so missed `NOTIFY` messages do not lose work.
+- Every worker re-reads durable PostgreSQL work on a bounded interval; correctness has no wake-message dependency.
 
 News page and story workers share one physical table but have disjoint `projection_name` discriminators. No other worker may claim their rows.
 
@@ -44,10 +47,10 @@ External notification delivery uses a ledger and compare-and-set completion/fail
 ## Status surfaces
 
 - `/healthz`: process liveness only.
-- `/readyz`: database liveness, startup schema compatibility, core composition.
-- `/api/status`: in-memory worker/provider snapshot; no queue SQL.
+- `/readyz`: database liveness plus cached startup schema/composition.
+- `/api/status`: the single typed in-memory runtime snapshot; no SQL.
 - `parallax ops queue-inspect`: authenticated, on-demand queue SQL.
-- `/api/ops/diagnostics`: authenticated diagnostics for the running service.
+- `/api/ops/diagnostics`: the same runtime snapshot plus authenticated, on-demand database/domain/queue SQL.
 
 Queue backlog or one degraded provider does not make the HTTP process unready.
 
@@ -64,7 +67,7 @@ Use `uv run parallax config` to confirm the active paths. Never infer live setti
 
 When a worker changes:
 
-1. Update the minimal manifest only if inventory, lane, start order, wake input, queue ownership, or current-model identity changes.
+1. Update the minimal manifest only if inventory, start order, queue ownership, or current-model identity changes.
 2. Keep stable-key and single-writer architecture tests green.
 3. Verify the queue's claim/success/retry/terminal state machine with targeted tests.
 4. Verify unchanged projections write zero serving rows.

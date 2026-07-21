@@ -456,7 +456,8 @@ def test_build_news_page_row_includes_token_and_fact_lanes() -> None:
         "member_count": 1,
         "source_domains": ["example.test"],
     }
-    assert row["market_scope"]["primary"] == "crypto"
+    assert row["signal"]["alert_eligibility"]["market_scope"]["primary"] == "crypto"
+    assert "market_scope" not in row
     assert "analysis_admission_status" not in row
     assert "analysis_admission_reason" not in row
     assert "analysis_admission" not in row
@@ -1352,7 +1353,7 @@ def test_ready_market_watch_brief_sets_in_app_eligible_without_crypto_admission(
 
     assert "provider_signal" not in row["signal"]
     assert row["token_impacts"] == []
-    assert row["market_scope"] == {
+    assert row["signal"]["alert_eligibility"]["market_scope"] == {
         "scope": ["us_equity"],
         "primary": "us_equity",
         "status": "classified",
@@ -1360,6 +1361,7 @@ def test_ready_market_watch_brief_sets_in_app_eligible_without_crypto_admission(
         "basis": {"subject": "private_company_equity_context"},
         "version": "test_news_market_scope_v1",
     }
+    assert "market_scope" not in row
     assert row["signal"]["alert_eligibility"]["in_app_eligible"] is True
     assert row["signal"]["alert_eligibility"]["external_push_ready"] is True
     assert row["signal"]["alert_eligibility"]["market_scope"]["primary"] == "us_equity"

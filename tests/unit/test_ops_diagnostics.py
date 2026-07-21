@@ -1,22 +1,26 @@
 from __future__ import annotations
 
 from collections.abc import Iterable
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
 from parallax.app.runtime.ops_diagnostics import (
     INVALID_QUEUE,
     _asset_market_provider_health,
-    _collector_payload,
     _config_payload,
     _queues_payload,
+    _section,
     _watchlist_domain,
     _worker_group,
     ops_diagnostics_payload,
     ops_queue_payload,
     redact_diagnostics,
 )
+from parallax.app.runtime.runtime_snapshot import RuntimeSnapshot, capture_runtime_snapshot
+from parallax.app.runtime.worker_manifest import worker_names
 from parallax.domains.asset_market.providers import MarketCapability, ProviderHealth
+from parallax.platform.config.settings import Settings
 from parallax.platform.db.postgres_migrations import latest_migration_version
 
 
@@ -64,8 +68,7 @@ def test_ops_diagnostics_survives_news_section_failure() -> None:
     assert payload["domains"]["token_radar"]["publication"]["status"] == "ready"
     assert "projection" not in payload["domains"]["token_radar"]
     assert payload["workers"]
-    assert set(payload["worker_lanes"]) >= {"ingest", "projection", "agent"}
-    assert payload["worker_lanes"]["projection"]["running_workers"] >= 1
+    assert "worker_lanes" not in payload
     assert payload["providers"]
     assert payload["queues"]
 
@@ -113,7 +116,7 @@ def test_ops_diagnostics_collector_status_contract_failure_is_unknown_section() 
     runtime.collector = SimpleNamespace(upstream_client=runtime.collector.upstream_client)
 
     try:
-        _collector_payload(runtime)
+        runtime.current_snapshot()
     except AttributeError as exc:
         assert "status" in str(exc)
     else:  # pragma: no cover - RED guard expectation
@@ -130,6 +133,27 @@ def test_ops_diagnostics_config_requires_runtime_settings_contract() -> None:
         assert "settings" in str(exc)
     else:  # pragma: no cover - RED guard expectation
         raise AssertionError("ops diagnostics config must not hide missing runtime.settings as empty config")
+
+
+def test_ops_diagnostics_config_uses_canonical_nested_settings(tmp_path) -> None:
+    settings = Settings(news_intel={"enabled": False}, notifications={"enabled": False})
+    settings.set_config_dir(tmp_path)
+
+    payload = _config_payload(SimpleNamespace(settings=settings))
+
+    assert payload["app_home"] == str(tmp_path)
+    assert payload["config_path"] == str(tmp_path / "config.yaml")
+    assert payload["workers_config_path"] == str(tmp_path / "workers.yaml")
+    assert payload["news_enabled"] is False
+    assert payload["notifications_enabled"] is False
+
+
+def test_ops_diagnostics_section_missing_status_fails_closed() -> None:
+    payload = _section("probe", lambda: {"value": 1})
+
+    assert payload["status"] == "unknown"
+    assert payload["error_type"] == "ValueError"
+    assert payload["reason"].endswith("diagnostic_section_status_invalid:probe")
 
 
 def test_ops_diagnostics_watchlist_requires_runtime_settings_contract() -> None:
@@ -156,98 +180,46 @@ def test_ops_diagnostics_queues_require_api_pool_connection_contract() -> None:
         raise AssertionError("ops diagnostics queues must not hide missing db.api_pool as an empty queue list")
 
 
-def test_ops_diagnostics_reuses_effective_worker_lane_counts() -> None:
+def test_ops_diagnostics_exposes_flat_effective_worker_statuses() -> None:
     runtime = FakeRuntime()
-    runtime.scheduler.status_payload = lambda: {
-        "collector": {
-            "enabled": False,
-            "running": False,
-            "effective_status": "intentionally_not_started",
-            "unavailable_reason": None,
-        },
-        "market_tick_stream": {
-            "enabled": True,
-            "running": True,
-            "effective_status": "running",
-            "unavailable_reason": None,
-        },
-        "market_tick_poll": {
-            "enabled": True,
-            "running": False,
-            "effective_status": "stopped",
-            "unavailable_reason": None,
-        },
-        "token_radar_projection": {
-            "enabled": True,
-            "running": False,
-            "effective_status": "unavailable",
-            "unavailable_reason": "missing_projection_dependency",
-        },
-        "token_profile_current": {
-            "enabled": True,
-            "running": True,
-            "effective_status": "degraded",
-            "unavailable_reason": "optional_profile_source_missing",
-        },
-        "news_story_brief": {
-            "enabled": True,
-            "running": False,
-            "last_error": "agent lane failed",
-            "effective_status": "failed",
-            "unavailable_reason": None,
-        },
-    }
+    statuses = _all_worker_statuses()
+    statuses["collector"].update({"enabled": False, "effective_status": "intentionally_not_started"})
+    statuses["market_tick_stream"].update({"running": True, "effective_status": "running"})
+    statuses["token_radar_projection"].update(
+        {"effective_status": "unavailable", "unavailable_reason": "missing_projection_dependency"}
+    )
+    statuses["token_profile_current"].update({"running": True, "effective_status": "degraded"})
+    statuses["news_story_brief"].update({"last_error": "agent lane failed", "effective_status": "failed"})
+    runtime.scheduler.status_payload = lambda: statuses
 
     payload = ops_diagnostics_payload(runtime, now_ms=10_000)
 
-    lane_totals = {
-        key: sum(int(lane.get(key, 0)) for lane in payload["worker_lanes"].values())
-        for key in (
-            "disabled_workers",
-            "intentionally_not_started_workers",
-            "unavailable_workers",
-            "degraded_workers",
-            "running_workers",
-            "stopped_workers",
-            "failed_workers",
-        )
-    }
-    assert lane_totals["disabled_workers"] >= 1
-    assert lane_totals["intentionally_not_started_workers"] == 1
-    assert lane_totals["unavailable_workers"] == 1
-    assert lane_totals["degraded_workers"] == 1
-    assert lane_totals["running_workers"] >= 1
-    assert lane_totals["stopped_workers"] >= 1
-    assert lane_totals["failed_workers"] == 1
+    assert "worker_lanes" not in payload
+    statuses = {row["name"]: row["effective_status"] for row in payload["workers"]}
+    assert statuses["collector"] == "intentionally_not_started"
+    assert statuses["market_tick_stream"] == "running"
+    assert statuses["market_tick_poll"] == "stopped"
+    assert statuses["token_radar_projection"] == "unavailable"
+    assert statuses["token_profile_current"] == "degraded"
+    assert statuses["news_story_brief"] == "failed"
 
 
 def test_ops_diagnostics_worker_rows_and_overall_counts_use_effective_status() -> None:
     runtime = FakeRuntime()
-    runtime.scheduler.status_payload = lambda: {
-        "market_tick_stream": {
-            "enabled": True,
-            "running": False,
+    statuses = _all_worker_statuses()
+    statuses["market_tick_stream"].update(
+        {
             "effective_status": "unavailable",
             "unavailable_reason": "missing_asset_market_stream_provider",
-            "last_error": None,
-        },
-        "token_radar_projection": {
-            "enabled": True,
-            "running": True,
-            "effective_status": "failed",
-            "unavailable_reason": None,
-            "last_error": None,
-            "last_result": {"ok": False},
-        },
-        "token_profile_current": {
-            "enabled": True,
-            "running": True,
-            "effective_status": "degraded",
-            "unavailable_reason": None,
-            "last_error": None,
-            "last_result": {"notes": {"degraded": True}},
-        },
-    }
+        }
+    )
+    statuses["token_radar_projection"].update(
+        {"running": True, "effective_status": "failed", "last_result": {"ok": False}}
+    )
+    statuses["token_profile_current"].update(
+        {"running": True, "effective_status": "degraded", "last_result": {"notes": {"degraded": True}}}
+    )
+    runtime.scheduler.status_payload = lambda: statuses
 
     payload = ops_diagnostics_payload(runtime, now_ms=10_000)
 
@@ -308,36 +280,60 @@ def test_ops_queue_payload_uses_notification_delivery_queue_contract() -> None:
     assert old_payload == INVALID_QUEUE
 
 
-def test_ops_diagnostics_agent_execution_sanitizes_snapshot() -> None:
-    runtime = FakeRuntime(
-        agent_execution_snapshot={
-            "global_max_concurrency": 4,
-            "global_in_flight": 1,
-            "prompt": "do not expose",
-            "api_key": "sk-live",
-            "lanes": {
-                "news.story_brief": {
-                    "policy": {"priority": "high", "max_concurrency": 1},
-                    "in_flight": 1,
-                    "input_payload": {"secret": "value"},
-                    "provider_running": 1,
-                }
-            },
-        }
-    )
+def test_ops_diagnostics_agent_execution_consumes_exact_gateway_snapshot() -> None:
+    runtime = FakeRuntime(agent_execution_snapshot=_agent_execution_snapshot())
 
     payload = ops_diagnostics_payload(runtime, now_ms=10_000)
 
     assert payload["agent_execution"]["status"] == "ok"
-    assert "prompt" not in payload["agent_execution"]
-    assert "api_key" not in payload["agent_execution"]
-    assert set(payload["agent_execution"]["lanes"]["news.story_brief"]) <= {
-        "status",
-        "reason",
-        "policy",
-        "counters",
+    assert payload["agent_execution"]["policy"] == {
+        "lane": "news.story_brief",
+        "model": "test-model",
+        "provider_family": "litellm",
+        "output_strategy": "json_object",
+        "schema_enforcement": "client_validate",
+        "max_concurrency": 1,
+        "rpm_limit": 30,
+        "timeout_seconds": 120.0,
     }
-    assert "input_payload" not in payload["agent_execution"]["lanes"]["news.story_brief"]
+    assert payload["agent_execution"]["counters"] == {
+        "in_flight": 0,
+        "provider_running": 0,
+        "circuit_state": "closed",
+        "circuit_open_until_ms": None,
+        "capacity_denied_total": 0,
+        "circuit_open_total": 0,
+        "timeout_total": 0,
+        "last_denied_at_ms": None,
+        "last_timeout_at_ms": None,
+        "oldest_in_flight_age_ms": None,
+    }
+
+
+def test_ops_diagnostics_agent_execution_rejects_unknown_compatibility_fields() -> None:
+    snapshot = _agent_execution_snapshot()
+    snapshot["prompt"] = "do not expose"
+    runtime = FakeRuntime(agent_execution_snapshot=snapshot)
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000)
+
+    assert payload["agent_execution"]["status"] == "unknown"
+    assert payload["agent_execution"]["status_reason"] == "invalid_contract"
+    assert payload["agent_execution"]["policy"] is None
+    assert payload["agent_execution"]["counters"] is None
+    assert "unknown=['prompt']" in payload["agent_execution"]["error"]
+
+
+def test_ops_diagnostics_agent_execution_rejects_missing_required_field() -> None:
+    snapshot = _agent_execution_snapshot()
+    del snapshot["lane"]
+    runtime = FakeRuntime(agent_execution_snapshot=snapshot)
+
+    payload = ops_diagnostics_payload(runtime, now_ms=10_000)
+
+    assert payload["agent_execution"]["status"] == "unknown"
+    assert payload["agent_execution"]["status_reason"] == "invalid_contract"
+    assert "missing=['lane']" in payload["agent_execution"]["error"]
 
 
 def test_ops_diagnostics_agent_execution_disabled_without_gateway() -> None:
@@ -346,21 +342,8 @@ def test_ops_diagnostics_agent_execution_disabled_without_gateway() -> None:
     payload = ops_diagnostics_payload(runtime, now_ms=10_000)
 
     assert payload["agent_execution"]["status"] == "disabled"
-    assert payload["agent_execution"]["policy"] == {}
-    assert payload["agent_execution"]["counters"] == {}
-
-
-def test_ops_diagnostics_agent_execution_ignores_provider_alias_without_runtime_gateway() -> None:
-    runtime = FakeRuntime()
-    runtime.providers.agent_execution_gateway = SimpleNamespace(
-        status_snapshot=lambda: {"global_max_concurrency": 4, "lanes": {}}
-    )
-
-    payload = ops_diagnostics_payload(runtime, now_ms=10_000)
-
-    assert payload["agent_execution"]["status"] == "disabled"
-    assert payload["agent_execution"]["policy"] == {}
-    assert payload["agent_execution"]["counters"] == {}
+    assert payload["agent_execution"]["policy"] is None
+    assert payload["agent_execution"]["counters"] is None
 
 
 def test_ops_diagnostics_agent_execution_gateway_requires_status_snapshot_contract() -> None:
@@ -369,7 +352,7 @@ def test_ops_diagnostics_agent_execution_gateway_requires_status_snapshot_contra
 
     payload = ops_diagnostics_payload(runtime, now_ms=10_000)
 
-    assert payload["agent_execution"]["status"] == "unknown"
+    assert payload["agent_execution"]["status"] == "unavailable"
     assert payload["agent_execution"]["status_reason"] == "unavailable"
     assert payload["agent_execution"]["error"] == "agent_execution_status_contract_missing"
 
@@ -379,59 +362,40 @@ def test_ops_diagnostics_agent_execution_snapshot_failure_is_unavailable() -> No
 
     payload = ops_diagnostics_payload(runtime, now_ms=10_000)
 
-    assert payload["agent_execution"]["status"] == "unknown"
+    assert payload["agent_execution"]["status"] == "unavailable"
     assert payload["agent_execution"]["status_reason"] == "unavailable"
 
 
-def test_ops_diagnostics_overall_includes_blocked_agent_execution() -> None:
+def test_ops_diagnostics_overall_includes_degraded_agent_execution() -> None:
     runtime = FakeRuntime(
-        agent_execution_snapshot={
-            "global_max_concurrency": 4,
-            "global_in_flight": 0,
-            "lanes": {
-                "news.story_brief": {
-                    "policy": {"priority": "high", "max_concurrency": 1},
-                    "circuit_state": "open",
-                    "last_circuit_open_at_ms": 9_900,
-                    "circuit_open_total": 1,
-                }
-            },
-        }
+        agent_execution_snapshot=_agent_execution_snapshot(overrides={"circuit_state": "open", "circuit_open_total": 1})
     )
 
     payload = ops_diagnostics_payload(runtime, now_ms=10_000)
 
-    assert payload["agent_execution"]["status"] == "blocked"
-    assert payload["overall"]["status"] == "blocked"
-    assert payload["overall"]["section_status_counts"]["blocked"] >= 1
+    assert payload["agent_execution"]["status"] == "degraded"
+    assert payload["overall"]["status"] == "degraded"
+    assert payload["overall"]["section_status_counts"]["degraded"] >= 1
 
 
 def test_ops_diagnostics_agent_execution_degraded_requires_recent_signal() -> None:
     runtime = FakeRuntime(
-        agent_execution_snapshot={
-            "global_max_concurrency": 4,
-            "global_in_flight": 0,
-            "lanes": {
-                "news.story_brief": {
-                    "policy": {"priority": "standard", "max_concurrency": 2},
-                    "capacity_denied_total": 17,
-                    "timeout_total": 3,
-                    "circuit_open_total": 2,
-                    "last_denied_at_ms": 100,
-                    "last_timeout_at_ms": 200,
-                    "last_rpm_wait_at_ms": 300,
-                    "rpm_waiting_count": 0,
-                    "provider_running": 0,
-                }
-            },
-        }
+        agent_execution_snapshot=_agent_execution_snapshot(
+            overrides={
+                "capacity_denied_total": 17,
+                "timeout_total": 3,
+                "circuit_open_total": 2,
+                "last_denied_at_ms": 100,
+                "last_timeout_at_ms": 200,
+            }
+        )
     )
 
     stale_payload = ops_diagnostics_payload(runtime, now_ms=1_000_000)
     assert stale_payload["agent_execution"]["status"] == "ok"
     assert stale_payload["overall"]["status"] == "ok"
 
-    runtime.agent_execution_gateway.snapshot["lanes"]["news.story_brief"]["last_rpm_wait_at_ms"] = 999_800
+    runtime.agent_execution_gateway.snapshot["last_timeout_at_ms"] = 999_800
     recent_payload = ops_diagnostics_payload(runtime, now_ms=1_000_000)
 
     assert recent_payload["agent_execution"]["status"] == "degraded"
@@ -553,14 +517,14 @@ class FakeRuntime:
         agent_execution_error: Exception | None = None,
     ) -> None:
         self.settings = SimpleNamespace(
-            app_home="/var/lib/parallax-test",
+            app_home=Path("/var/lib/parallax-test"),
             handles=("alpha",),
-            upstream_channels=("twitter_monitor_basic",),
+            upstream=SimpleNamespace(channels=("twitter_monitor_basic",)),
             gmgn_configured=True,
             okx_dex_configured=True,
             llm_configured=False,
-            news_intel_enabled=True,
-            notification_rules={},
+            news_intel=SimpleNamespace(enabled=True),
+            notifications=SimpleNamespace(enabled=True),
         )
         self.db = SimpleNamespace(api_pool=FakePool(FakeConn(queue_rows)))
         self.collector = SimpleNamespace(
@@ -598,21 +562,8 @@ class FakeRuntime:
             )
         )
         self.scheduler = SimpleNamespace(
-            unhealthy_reasons=lambda: [],
-            status_payload=lambda: {
-                "token_radar_projection": {
-                    "enabled": True,
-                    "running": True,
-                    "last_started_at_ms": 8_000,
-                    "last_finished_at_ms": 9_000,
-                    "last_result": {"status": "ready"},
-                    "last_error": None,
-                    "iteration_duration_p99_ms": 15.0,
-                    "queue_depth": None,
-                    "pool_wait_ms_p99": None,
-                    "details": {},
-                }
-            },
+            tasks={},
+            status_payload=_running_worker_statuses,
         )
         if agent_execution_error is not None:
             self.agent_execution_gateway = SimpleNamespace(
@@ -625,7 +576,72 @@ class FakeRuntime:
             )
         else:
             self.agent_execution_gateway = None
+        self.snapshot = RuntimeSnapshot.startup(
+            startup_db_status={"ok": True, "migration_version": latest_migration_version()},
+            composition={"ok": True},
+            news_provider_contract={"ok": True},
+        )
         self._news_error = news_error
+
+    def current_snapshot(self) -> RuntimeSnapshot:
+        self.snapshot = capture_runtime_snapshot(self)
+        return self.snapshot
 
     def repositories(self) -> FakeRepos:
         return FakeRepos(self._news_error)
+
+
+def _running_worker_statuses() -> dict[str, dict[str, Any]]:
+    statuses = _all_worker_statuses()
+    statuses["token_radar_projection"].update(
+        {
+            "running": True,
+            "effective_status": "running",
+            "last_started_at_ms": 8_000,
+            "last_finished_at_ms": 9_000,
+            "last_result": {"status": "ready"},
+            "iteration_duration_p99_ms": 15.0,
+        }
+    )
+    return statuses
+
+
+def _all_worker_statuses() -> dict[str, dict[str, Any]]:
+    return {
+        name: {
+            "enabled": True,
+            "running": False,
+            "effective_status": "stopped",
+            "unavailable_reason": None,
+            "last_started_at_ms": None,
+            "last_finished_at_ms": None,
+            "last_result": None,
+            "last_error": None,
+            "iteration_duration_p99_ms": None,
+        }
+        for name in worker_names()
+    }
+
+
+def _agent_execution_snapshot(*, overrides: dict[str, Any] | None = None) -> dict[str, Any]:
+    return {
+        "lane": "news.story_brief",
+        "model": "test-model",
+        "provider_family": "litellm",
+        "output_strategy": "json_object",
+        "schema_enforcement": "client_validate",
+        "rpm_limit": 30,
+        "max_concurrency": 1,
+        "timeout_seconds": 120.0,
+        "in_flight": 0,
+        "provider_running": 0,
+        "circuit_state": "closed",
+        "circuit_open_until_ms": None,
+        "capacity_denied_total": 0,
+        "circuit_open_total": 0,
+        "timeout_total": 0,
+        "last_denied_at_ms": None,
+        "last_timeout_at_ms": None,
+        "oldest_in_flight_age_ms": None,
+        **(overrides or {}),
+    }

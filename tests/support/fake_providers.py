@@ -105,11 +105,3 @@ class RecordingNotificationProvider:
 
     def notify_markdown(self, *, url: str, title: str, body: str) -> None:
         self.deliveries.append({"url": url, "title": title, "body": body, "body_format": "markdown"})
-
-
-class RecordingWakeEmitter:
-    def __init__(self) -> None:
-        self.market_tick_writes: list[tuple[str, str]] = []
-
-    def notify_market_tick_written(self, *, target_type: str, target_id: str) -> None:
-        self.market_tick_writes.append((target_type, target_id))

@@ -57,7 +57,7 @@ def build_parser() -> argparse.ArgumentParser:
     macro_subcommands.add_parser("status", help="print macro import and projection status")
 
     recent = subcommands.add_parser("recent", help="print recent stored events")
-    recent.add_argument("--limit", type=int, default=20)
+    recent.add_argument("--limit", type=_positive_int, default=20)
     recent.add_argument("--handles", default="")
     recent.add_argument("--ca", default="", help="filter by token contract address")
     recent.add_argument("--chain", default="", help="chain for contract address filters")
@@ -67,18 +67,18 @@ def build_parser() -> argparse.ArgumentParser:
     search = subcommands.add_parser("search", help="search stored tweets by query text")
     search.add_argument("query", nargs="?", default="")
     search.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
-    search.add_argument("--limit", type=int, default=20)
+    search.add_argument("--limit", type=_positive_int, default=20)
     search.add_argument("--scope", choices=("all", "matched"), default="all")
     search.add_argument("--cursor", default="", help="opaque cursor returned by a prior search page")
 
     asset_flow = subcommands.add_parser("asset-flow", help="rank resolved assets and unresolved attention candidates")
     asset_flow.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
-    asset_flow.add_argument("--limit", type=int, default=20)
+    asset_flow.add_argument("--limit", type=_positive_int, default=20)
     asset_flow.add_argument("--scope", choices=("all", "matched"), default="all")
 
     account_alerts = subcommands.add_parser("account-alerts", help="print watched-account token alerts")
     account_alerts.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
-    account_alerts.add_argument("--limit", type=int, default=50)
+    account_alerts.add_argument("--limit", type=_positive_int, default=50)
     account_alerts.add_argument("--handles", default="")
     account_alerts.add_argument(
         "--alert-type",
@@ -95,7 +95,7 @@ def build_parser() -> argparse.ArgumentParser:
         choices=("pending", "running", "failed", "dead", "delivered"),
         default=None,
     )
-    notification_deliveries.add_argument("--limit", type=int, default=50)
+    notification_deliveries.add_argument("--limit", type=_positive_int, default=50)
 
     ops = subcommands.add_parser("ops", help="maintenance commands")
     ops_subcommands = ops.add_subparsers(dest="ops_command", required=True)
@@ -111,29 +111,26 @@ def build_parser() -> argparse.ArgumentParser:
     )
     enqueue_token_radar_dirty_targets_mode.add_argument("--dry-run", action="store_true")
     enqueue_token_radar_dirty_targets_mode.add_argument("--execute", action="store_true")
-    enqueue_token_capture_tier_rank_set = ops_subcommands.add_parser(
-        "enqueue-token-capture-tier-rank-set",
-        help="enqueue Token Capture Tier repair from current Token Radar rank set",
+    rebuild_market_current = ops_subcommands.add_parser(
+        "rebuild-market-current",
+        help="rebuild current market rows from persisted market tick facts",
     )
-    enqueue_token_capture_tier_rank_set.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
-    enqueue_token_capture_tier_rank_set.add_argument("--limit", type=_positive_int, default=500)
-    enqueue_token_capture_tier_rank_set_mode = enqueue_token_capture_tier_rank_set.add_mutually_exclusive_group(
-        required=True
-    )
-    enqueue_token_capture_tier_rank_set_mode.add_argument("--dry-run", action="store_true")
-    enqueue_token_capture_tier_rank_set_mode.add_argument("--execute", action="store_true")
+    rebuild_market_current.add_argument("--after-target-type", default="")
+    rebuild_market_current.add_argument("--after-target-id", default="")
+    rebuild_market_current.add_argument("--limit", type=_positive_int, default=500)
+    rebuild_market_current.add_argument("--execute", action="store_true", required=True)
     ops_subcommands.add_parser("projection-status", help="print Token Radar publication state")
     queue_inspect = ops_subcommands.add_parser("queue-inspect", help="inspect worker queue terminal evidence")
     queue_inspect.add_argument("--worker", default="")
     queue_inspect.add_argument("--source-table", default="")
     queue_inspect.add_argument("--status", choices=("terminal", "active"), default="terminal")
     queue_inspect.add_argument("--reason-bucket", default="")
-    queue_inspect.add_argument("--limit", type=int, default=50)
+    queue_inspect.add_argument("--limit", type=_positive_int, default=50)
     queue_resolve = ops_subcommands.add_parser("queue-resolve", help="resolve worker queue terminal evidence")
     queue_resolve.add_argument("--terminal-id", required=True)
     queue_resolve.add_argument("--action", choices=("retry", "quarantine", "archive"), required=True)
     queue_resolve.add_argument("--reason", required=True)
-    queue_resolve.add_argument("--execute", action="store_true")
+    queue_resolve.add_argument("--execute", action="store_true", required=True)
     queue_resolve_bucket = ops_subcommands.add_parser(
         "queue-resolve-bucket",
         help="resolve a bounded worker queue terminal evidence bucket",
@@ -143,7 +140,7 @@ def build_parser() -> argparse.ArgumentParser:
     queue_resolve_bucket.add_argument("--reason-bucket", required=True)
     queue_resolve_bucket.add_argument("--action", choices=("retry", "quarantine", "archive"), required=True)
     queue_resolve_bucket.add_argument("--reason", required=True)
-    queue_resolve_bucket.add_argument("--limit", type=int, default=100)
+    queue_resolve_bucket.add_argument("--limit", type=_positive_int, default=100)
     queue_resolve_bucket_mode = queue_resolve_bucket.add_mutually_exclusive_group(required=True)
     queue_resolve_bucket_mode.add_argument("--dry-run", action="store_true")
     queue_resolve_bucket_mode.add_argument("--execute", action="store_true")
@@ -151,20 +148,20 @@ def build_parser() -> argparse.ArgumentParser:
         "reconcile-event-anchor-jobs",
         help="one-shot reconcile of historical ready event-anchor backfill jobs",
     )
-    reconcile_event_anchor.add_argument("--limit", type=int, default=1000)
+    reconcile_event_anchor.add_argument("--limit", type=_positive_int, default=1000)
     reconcile_event_anchor.add_argument("--execute", action="store_true")
     validate_projections = ops_subcommands.add_parser(
         "validate-projections",
         help="validate projection read models against PostgreSQL facts",
     )
-    validate_projections.add_argument("--sample", type=int, default=100)
+    validate_projections.add_argument("--sample", type=_nonnegative_int, default=100)
     enqueue_projection_dirty_targets = ops_subcommands.add_parser(
         "enqueue-projection-dirty-targets",
         help="enqueue dirty targets for rebuildable News projections",
     )
     enqueue_projection_dirty_targets.add_argument("--domain", choices=DOMAIN_CHOICES, default="all")
     enqueue_projection_dirty_targets.add_argument("--projection", choices=PROJECTION_CHOICES, default="all")
-    enqueue_projection_dirty_targets.add_argument("--since-hours", type=float, default=None)
+    enqueue_projection_dirty_targets.add_argument("--since-hours", type=_positive_float, default=None)
     enqueue_projection_dirty_targets_mode = enqueue_projection_dirty_targets.add_mutually_exclusive_group(required=True)
     enqueue_projection_dirty_targets_mode.add_argument("--dry-run", action="store_true")
     enqueue_projection_dirty_targets_mode.add_argument("--execute", action="store_true")
@@ -173,14 +170,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="print News canonical dedup and OpenNews sync diagnostics",
     )
     news_dedup_diagnostics.add_argument("--window-hours", type=_positive_float, default=8.0)
-    rebuild_news_canonical_items = ops_subcommands.add_parser(
-        "rebuild-news-canonical-items",
-        help="enqueue a bounded rebuild of News canonical item derived projections",
-    )
-    rebuild_news_canonical_items.add_argument("--limit", type=_positive_int, default=5000)
-    rebuild_news_canonical_items_mode = rebuild_news_canonical_items.add_mutually_exclusive_group(required=True)
-    rebuild_news_canonical_items_mode.add_argument("--dry-run", action="store_true")
-    rebuild_news_canonical_items_mode.add_argument("--execute", action="store_true")
     sync_binance_universe = ops_subcommands.add_parser(
         "sync-binance-usdt-perp-universe",
         help="sync Binance USD-M USDT perpetual contracts into the CEX registry",
@@ -194,23 +183,23 @@ def build_parser() -> argparse.ArgumentParser:
         "run-resolution-refresh",
         help="refresh due token resolution lookups and reprocess recent intents",
     )
-    run_resolution_refresh.add_argument("--limit", type=int, default=50)
-    run_resolution_refresh.add_argument("--reprocess-limit", type=int, default=500)
+    run_resolution_refresh.add_argument("--limit", type=_positive_int, default=50)
+    run_resolution_refresh.add_argument("--reprocess-limit", type=_positive_int, default=500)
     refresh_asset_profiles = ops_subcommands.add_parser(
         "refresh-asset-profiles",
         help="enqueue missing DEX profile targets and refresh due profile facts",
     )
-    refresh_asset_profiles.add_argument("--limit", type=int, default=50)
+    refresh_asset_profiles.add_argument("--limit", type=_positive_int, default=50)
     rebuild_token_profiles = ops_subcommands.add_parser(
         "rebuild-token-profiles",
         help="rebuild canonical token profile current facts",
     )
-    rebuild_token_profiles.add_argument("--limit", type=int, default=500)
+    rebuild_token_profiles.add_argument("--limit", type=_positive_int, default=500)
     mirror_token_images = ops_subcommands.add_parser(
         "mirror-token-images",
         help="mirror provider token images into the local cache",
     )
-    mirror_token_images.add_argument("--limit", type=int, default=500)
+    mirror_token_images.add_argument("--limit", type=_positive_int, default=500)
     repair_token_profile_images = ops_subcommands.add_parser(
         "repair-token-profile-images",
         help="enqueue current profile targets so token image source admission can repair stuck icons",
@@ -221,41 +210,35 @@ def build_parser() -> argparse.ArgumentParser:
         help="re-resolve recent unresolved token intents and rebuild token radar",
     )
     reprocess_token_intents.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
-    reprocess_token_intents.add_argument("--limit", type=int, default=500)
-    reprocess_token_intents.add_argument("--projection-limit", type=int, default=100)
+    reprocess_token_intents.add_argument("--limit", type=_positive_int, default=500)
+    reprocess_token_intents.add_argument("--projection-limit", type=_positive_int, default=100)
     reprocess_token_intents.add_argument("--lookup-key", action="append", default=[])
     rebuild_token_intents = ops_subcommands.add_parser(
         "rebuild-token-intents",
         help="rebuild recent token evidence, intents, resolutions, lookup keys, and token radar",
     )
     rebuild_token_intents.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="24h")
-    rebuild_token_intents.add_argument("--limit", type=int, default=500)
-    rebuild_token_intents.add_argument("--projection-limit", type=int, default=100)
+    rebuild_token_intents.add_argument("--limit", type=_positive_int, default=500)
+    rebuild_token_intents.add_argument("--projection-limit", type=_positive_int, default=100)
     audit_token_intent = ops_subcommands.add_parser(
         "audit-token-intent",
         help="inspect token intent evidence and resolution",
     )
-    audit_token_intent.add_argument("--event-id", default="")
-    audit_token_intent.add_argument("--intent-id", default="")
+    audit_token_intent_target = audit_token_intent.add_mutually_exclusive_group(required=True)
+    audit_token_intent_target.add_argument("--event-id", default="")
+    audit_token_intent_target.add_argument("--intent-id", default="")
     rebuild_token_radar = ops_subcommands.add_parser(
         "rebuild-token-radar",
         help="write the current token radar read model",
     )
     rebuild_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
-    rebuild_token_radar.add_argument("--limit", type=int, default=50)
+    rebuild_token_radar.add_argument("--limit", type=_positive_int, default=50)
     rebuild_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
-    audit_token_radar = ops_subcommands.add_parser(
-        "audit-token-radar",
-        help="audit token radar rows for scoring and market-readiness regressions",
-    )
-    audit_token_radar.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="5m")
-    audit_token_radar.add_argument("--limit", type=int, default=100)
-    audit_token_radar.add_argument("--scope", choices=("all", "matched"), default="all")
     factor_diagnostics = ops_subcommands.add_parser(
         "factor-diagnostics",
         help="inspect token factor distribution health for latest radar rows",
     )
     factor_diagnostics.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     factor_diagnostics.add_argument("--scope", choices=("all", "matched"), default="all")
-    factor_diagnostics.add_argument("--limit", type=int, default=200)
+    factor_diagnostics.add_argument("--limit", type=_positive_int, default=200)
     return parser

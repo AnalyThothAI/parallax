@@ -1,7 +1,9 @@
 import type { MacroModuleChart, MacroModuleTable } from "@lib/types";
 
+import { requireMacroArray } from "./macroCurrentContract";
+
 export function chartConceptKeys(chart: MacroModuleChart): string[] {
-  return (chart.series ?? [])
+  return requireMacroArray<Record<string, unknown>>(chart.series, "primary_chart.series")
     .map((series) => (typeof series.concept_key === "string" ? series.concept_key : ""))
     .filter(Boolean);
 }

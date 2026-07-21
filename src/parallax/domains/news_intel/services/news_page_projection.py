@@ -115,7 +115,6 @@ def build_news_page_row(
         "agent_brief": agent_payload,
         "agent_status": agent_status,
         "agent_brief_computed_at_ms": agent_payload.get("computed_at_ms"),
-        "market_scope": market_scope,
         "macro_event_flow": _macro_event_flow_payload(
             agent_signal=agent_payload,
             market_scope=market_scope,

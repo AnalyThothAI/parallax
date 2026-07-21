@@ -96,8 +96,9 @@ def build_token_factor_snapshot(
         "families": families,
         "normalization": {
             "status": "pending_cross_section",
+            "cohort_status": "pending_cross_section",
             "cohort": {},
-            "factor_ranks": {},
+            "factor_ranks": {family: None for family in FACTOR_FAMILIES},
             "alpha_rank": None,
         },
         "composite": _composite(families=families, gates=gates),
@@ -687,8 +688,8 @@ def _subject(*, target: dict[str, Any], market: dict[str, Any]) -> dict[str, Any
         "target_id": _optional_str(target.get("target_id")),
         "symbol": _optional_str(target.get("symbol")),
         "target_market_type": _target_market_type(target),
-        "chain": _optional_str(target.get("chain") or target.get("asset_chain_id")),
-        "address": _optional_str(target.get("address") or target.get("asset_address")),
+        "chain": _optional_str(target.get("chain")),
+        "address": _optional_str(target.get("address")),
         "pricefeed_id": _optional_str(
             target.get("pricefeed_id") or decision_latest.get("pricefeed_id") or event_anchor.get("pricefeed_id")
         ),

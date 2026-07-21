@@ -8,6 +8,7 @@ from parallax.domains.token_intel.scoring.factor_snapshot import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     build_token_factor_snapshot,
 )
+from parallax.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
 
 
 def test_scoring_package_exports_factor_snapshot_contract() -> None:
@@ -75,8 +76,9 @@ def test_factor_snapshot_outputs_v3_social_attention_shape() -> None:
     assert "mentions_24h" not in heat_factors
     assert snapshot["normalization"] == {
         "status": "pending_cross_section",
+        "cohort_status": "pending_cross_section",
         "cohort": {},
-        "factor_ranks": {},
+        "factor_ranks": {family: None for family in FACTOR_FAMILIES},
         "alpha_rank": None,
     }
     assert snapshot["provenance"]["source_event_ids"] == ["event-strong-1", "event-strong-2"]
@@ -90,6 +92,58 @@ def test_factor_snapshot_outputs_v3_social_attention_shape() -> None:
             "factors",
         }
         assert snapshot["families"][family]["data_health"] in {"ready", "partial", "missing"}
+
+
+@pytest.mark.parametrize(
+    ("mutate", "error"),
+    [
+        (lambda subject: subject.pop("chain"), r"factor_snapshot\.subject\.chain is required"),
+        (
+            lambda subject: subject.__setitem__("chain_id", "solana"),
+            r"factor_snapshot\.subject\.chain_id is not allowed",
+        ),
+    ],
+)
+def test_factor_snapshot_subject_requires_one_exact_identity_contract(mutate, error: str) -> None:
+    snapshot = _strong_dex_snapshot()
+    mutate(snapshot["subject"])
+
+    with pytest.raises(ValueError, match=error):
+        require_token_factor_snapshot(snapshot)
+
+
+@pytest.mark.parametrize(
+    ("block", "mutation", "error"),
+    [
+        ("gates", lambda value: value.pop("risk_reasons"), r"factor_snapshot\.gates\.risk_reasons is required"),
+        (
+            "gates",
+            lambda value: value.__setitem__("eligible_for_watch", True),
+            r"factor_snapshot\.gates\.eligible_for_watch is not allowed",
+        ),
+        (
+            "composite",
+            lambda value: value.pop("raw_alpha_score"),
+            r"factor_snapshot\.composite\.raw_alpha_score is required",
+        ),
+        (
+            "composite",
+            lambda value: value.__setitem__("score", 50),
+            r"factor_snapshot\.composite\.score is not allowed",
+        ),
+        (
+            "normalization",
+            lambda value: value.pop("cohort_status"),
+            r"factor_snapshot\.normalization\.cohort_status is required",
+        ),
+    ],
+)
+def test_factor_snapshot_fixed_blocks_require_exact_contract(block: str, mutation, error: str) -> None:
+    snapshot = _strong_dex_snapshot()
+    mutation(snapshot[block])
+
+    with pytest.raises(ValueError, match=error):
+        require_token_factor_snapshot(snapshot)
 
 
 def test_identity_market_and_social_start_presence_do_not_score_as_alpha() -> None:
@@ -632,7 +686,6 @@ def _dex_market(overrides: dict[str, object] | None = None) -> dict[str, object]
         "holders": None,
         "volume_24h_usd": None,
         "open_interest_usd": None,
-        "raw_payload_hash": None,
     }
     decision_latest = {
         **event_anchor,

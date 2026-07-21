@@ -12,7 +12,7 @@ from parallax.app.runtime.provider_wiring.types import (
     NewsIntelProviders,
     WiredProviders,
 )
-from parallax.app.runtime.worker_factories import DisabledWorker, construct_worker, construct_workers
+from parallax.app.runtime.worker_factories import InactiveWorker, construct_worker, construct_workers
 from parallax.app.runtime.worker_manifest import worker_names
 from parallax.platform.config.settings import Settings
 from parallax.platform.runtime.worker_base import WorkerBase
@@ -33,8 +33,7 @@ class _ProbeWorker(WorkerBase):
 
 
 class _FakeDB(SimpleNamespace):
-    def wake_listener(self, *_args: Any) -> SimpleNamespace:
-        return SimpleNamespace(wake=lambda: None, close=lambda: None)
+    pass
 
 
 def _construct(settings: Any) -> dict[str, WorkerBase]:
@@ -50,7 +49,6 @@ def _construct(settings: Any) -> dict[str, WorkerBase]:
         hub=SimpleNamespace(publish=lambda _event: None),
         collector=_ProbeWorker("collector"),
         collector_enabled=False,
-        wake_bus=SimpleNamespace(),
     )
 
 
@@ -70,7 +68,8 @@ def test_all_domain_factories_construct_every_configured_worker() -> None:
     workers = _construct(settings)
 
     assert tuple(workers) == worker_names()
-    assert all(isinstance(worker, DisabledWorker) for worker in workers.values())
+    assert all(isinstance(worker, InactiveWorker) for worker in workers.values())
+    assert {worker.effective_status for worker in workers.values()} == {"disabled"}
 
 
 def test_one_worker_composition_does_not_require_fake_provider_bundles() -> None:
@@ -89,11 +88,76 @@ def test_one_worker_composition_does_not_require_fake_provider_bundles() -> None
         hub=None,
         collector=None,
         collector_enabled=False,
-        wake_bus=SimpleNamespace(),
     )
 
     assert worker.name == "token_profile_current"
     assert worker.effective_status == "stopped"
+
+
+def test_enabled_notification_rule_without_publisher_is_unavailable() -> None:
+    settings = Settings(
+        ws_token="test-token",
+        workers={name: {"enabled": name == "notification_rule"} for name in worker_names()},
+    )
+
+    worker = construct_worker(
+        worker_name="notification_rule",
+        settings=settings,
+        db=_FakeDB(),
+        telemetry=SimpleNamespace(),
+        asset_market=None,
+        news_intel=None,
+        hub=None,
+        collector=None,
+        collector_enabled=False,
+    )
+
+    assert worker.effective_status == "unavailable"
+    assert worker.unavailable_reason == "missing_notification_publisher"
+
+
+def test_enabled_notification_delivery_without_channel_is_unavailable() -> None:
+    settings = Settings(
+        ws_token="test-token",
+        workers={name: {"enabled": name == "notification_delivery"} for name in worker_names()},
+    )
+
+    worker = construct_worker(
+        worker_name="notification_delivery",
+        settings=settings,
+        db=_FakeDB(),
+        telemetry=SimpleNamespace(),
+        asset_market=None,
+        news_intel=None,
+        hub=None,
+        collector=None,
+        collector_enabled=False,
+    )
+
+    assert worker.effective_status == "unavailable"
+    assert worker.unavailable_reason == "missing_notification_delivery_channel"
+
+
+def test_enabled_news_story_brief_without_llm_is_unavailable() -> None:
+    settings = Settings(
+        ws_token="test-token",
+        workers={name: {"enabled": name == "news_story_brief"} for name in worker_names()},
+    )
+
+    worker = construct_worker(
+        worker_name="news_story_brief",
+        settings=settings,
+        db=_FakeDB(),
+        telemetry=SimpleNamespace(),
+        asset_market=None,
+        news_intel=NewsIntelProviders(),
+        hub=None,
+        collector=None,
+        collector_enabled=False,
+    )
+
+    assert worker.effective_status == "unavailable"
+    assert worker.unavailable_reason == "missing_llm_configuration"
 
 
 def test_composition_fails_when_a_factory_omits_a_worker(monkeypatch: pytest.MonkeyPatch) -> None:

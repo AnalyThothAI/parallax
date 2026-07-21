@@ -1,10 +1,10 @@
 export type NewsMarketScope = {
-  scope?: string[];
-  primary?: string | null;
-  status?: string | null;
-  reason?: string | null;
-  basis?: Record<string, unknown>;
-  version?: string | null;
+  scope: string[];
+  primary: string;
+  status: string;
+  reason: string;
+  basis: Record<string, unknown>;
+  version: string;
 };
 
 export type NewsAgentAdmission = {
@@ -17,15 +17,13 @@ export type NewsAgentAdmission = {
 };
 
 export type NewsAlertEligibility = {
-  in_app_eligible?: boolean | null;
-  external_push_ready?: boolean | null;
+  in_app_eligible: boolean;
+  external_push_ready: boolean;
   external_push_block_reason?: string | null;
   external_push_basis?: string | null;
-  agent_status?: string | null;
+  agent_status: string;
   decision_class?: string | null;
-  market_scope?: NewsMarketScope | null;
-  agent_admission_status?: string | null;
-  agent_admission_reason?: string | null;
+  market_scope: NewsMarketScope;
 };
 
 export type NewsSignalSummary = {
@@ -41,9 +39,15 @@ export type NewsSignalSummary = {
   method?: string | null;
 };
 
+export type NewsAgentSignal = Record<string, unknown> & {
+  status: string;
+  direction?: string | null;
+  decision_class?: string | null;
+};
+
 export type NewsSignalEnvelope = {
   display_signal: NewsSignalSummary;
-  agent_signal: Record<string, unknown>;
+  agent_signal: NewsAgentSignal;
   alert_eligibility: NewsAlertEligibility;
 };
 
@@ -73,7 +77,7 @@ export type NewsFactLane = {
   claim?: string | null;
   event_type?: string | null;
   realis?: string | null;
-  status?: "accepted" | "rejected" | "attention" | string | null;
+  status: "accepted" | "rejected" | "attention" | string;
   affected_targets?: unknown[];
   rejection_reasons?: string[];
 };
@@ -148,27 +152,20 @@ export type NewsRow = {
   fetched_at_ms?: number | null;
   processing_terminal_error?: string | null;
   duplicate_observation_count?: number | null;
-  source_domain?: string | null;
-  provider_type?: string | null;
-  source_role?: string | null;
-  trust_tier?: string | null;
-  coverage_tags?: string[];
-  source_quality_status?: string | null;
-  source?: NewsSourceSummary | null;
+  source_domain: string;
+  source: NewsSourceSummary;
   canonical_url?: string | null;
   content_class?: string | null;
-  content_tags?: string[];
-  content_classification?: Record<string, unknown>;
+  content_tags: string[];
+  content_classification: Record<string, unknown>;
   signal: NewsSignalEnvelope;
   provider_rating?: NewsProviderRating | null;
-  token_impacts?: NewsTokenLane[];
+  token_impacts: NewsTokenLane[];
   token_lanes: NewsTokenLane[];
   fact_lanes: NewsFactLane[];
-  agent_brief?: NewsAgentBrief;
-  agent_brief_status?: NewsAgentBriefStatus | null;
+  agent_brief: NewsAgentBrief;
   agent_status?: NewsAgentBriefStatus | null;
   agent_brief_computed_at_ms?: number | null;
-  market_scope?: NewsMarketScope | null;
   agent_admission_status?: string | null;
   agent_admission_reason?: string | null;
   agent_admission?: NewsAgentAdmission | null;
@@ -178,12 +175,12 @@ export type NewsRow = {
 export type NewsSourceSummary = {
   source_id?: string | null;
   source_name?: string | null;
-  source_domain?: string | null;
-  provider_type?: string | null;
-  source_role?: string | null;
-  trust_tier?: string | null;
-  coverage_tags?: string[];
-  source_quality_status?: string | null;
+  source_domain: string;
+  provider_type: string;
+  source_role: string;
+  trust_tier: string;
+  coverage_tags: string[];
+  source_quality_status: string;
 };
 
 export type NewsItemDetail = NewsRow & {

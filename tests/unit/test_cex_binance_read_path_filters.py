@@ -25,12 +25,13 @@ def test_registry_preferred_cex_reads_are_binance_usdt_swap_only() -> None:
         _assert_no_legacy_cex_preference_ordering(sql)
 
 
-def test_registry_ranked_live_market_targets_cex_payloads_are_binance_usdt_swap_only() -> None:
+def test_registry_ranked_market_targets_cex_payloads_are_binance_usdt_swap_only() -> None:
     conn = RecordingConn()
 
-    RegistryRepository(conn).ranked_live_market_targets(
+    RegistryRepository(conn).ranked_market_targets(
         projection_version="token-radar-v13-social-attention",
         since_ms=1_700_000_000_000,
+        target_types=("cex_symbol",),
         limit=25,
     )
 
@@ -42,7 +43,50 @@ def test_registry_ranked_live_market_targets_cex_payloads_are_binance_usdt_swap_
     assert "token_radar_projection_coverage" not in sql
     assert "current_generation_id" not in sql
     assert "rows.generation_id = latest_sets.current_generation_id" not in sql
+    assert "rows.rank_score_json" not in sql
+    assert "rows.decision_state_json" not in sql
+    assert "rows.quality_state_json" not in sql
+    assert "rows.degraded_state_json" not in sql
+    assert "rows.factor_snapshot_json" not in sql
+    assert "rows.source_quality_json" not in sql
+    assert "rows.data_health_json" not in sql
+    assert "rows.resolution_json" not in sql
+    assert "rows.payload_json" not in sql
+    assert "rows.generation_id" not in sql
+    assert "SELECT *\n                FROM price_feeds" not in sql
     _assert_no_legacy_cex_preference_ordering(sql)
+
+
+def test_registry_maps_concrete_market_targets_back_to_product_keys() -> None:
+    conn = RecordingConn(
+        rows=[
+            {
+                "market_target_type": "chain_token",
+                "market_target_id": "eip155:1:0xabc",
+                "product_target_type": "Asset",
+                "product_target_id": "asset:eip155:1:erc20:0xabc",
+            },
+            {
+                "market_target_type": "cex_symbol",
+                "market_target_id": "binance:BTCUSDT",
+                "product_target_type": "CexToken",
+                "product_target_id": "cex_token:BTC",
+            },
+        ]
+    )
+
+    result = RegistryRepository(conn).product_targets_for_market_targets(
+        [("chain_token", "eip155:1:0xabc"), ("cex_symbol", "binance:BTCUSDT")]
+    )
+
+    assert result == {
+        ("chain_token", "eip155:1:0xabc"): ("Asset", "asset:eip155:1:erc20:0xabc"),
+        ("cex_symbol", "binance:BTCUSDT"): ("CexToken", "cex_token:BTC"),
+    }
+    sql = conn.sql_calls[-1]
+    _assert_binance_usdt_swap_only(sql)
+    assert "registry_assets.chain_id || ':' || registry_assets.address" in sql
+    assert "registry_assets.status IN ('candidate', 'canonical')" in sql
 
 
 def test_registry_exact_cex_lookup_still_requires_a_matching_exchange_row() -> None:

@@ -24,7 +24,7 @@ Repository and service changes should cover the smallest observable boundary:
 - unchanged current projections write zero serving rows;
 - dirty targets use stable product keys and changed work resets retry state;
 - writer acknowledgement and projection replacement are atomic;
-- `NOTIFY` loss is recovered by bounded catch-up;
+- interval-driven workers recover pending durable work with bounded catch-up;
 - provider/network/model/filesystem I/O happens outside database transactions;
 - external delivery follows claim transaction, I/O, then compare-and-set finalization;
 - terminal retry/archive/quarantine preserves audit evidence;

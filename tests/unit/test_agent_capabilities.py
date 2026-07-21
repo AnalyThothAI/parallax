@@ -28,7 +28,6 @@ def test_explicit_profile_override_wins_for_arbitrary_model() -> None:
 
     override = AgentCapabilityProfile(
         provider_family="litellm",
-        client_validation_retries=2,
     )
 
     profile = resolve_agent_capability_profile(model="local-experiment", override=override)
@@ -44,12 +43,11 @@ def test_registered_model_profile_preserves_request_options_when_overriding_capa
 
     override = AgentCapabilityProfile(
         provider_family="deepseek",
-        client_validation_retries=2,
     )
 
     profile = resolve_agent_capability_profile(model="deepseek-v4-flash", override=override)
 
-    assert profile.client_validation_retries == 2
+    assert profile.provider_family == "deepseek"
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
 
 

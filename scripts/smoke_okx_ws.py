@@ -8,6 +8,8 @@ from collections.abc import Mapping, Sequence
 from typing import Any
 
 from parallax.app.runtime.provider_wiring.okx import okx_chain_index
+from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
 from parallax.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
 from parallax.platform.config.settings import Settings, load_settings
 from parallax.platform.db.postgres_client import connect_postgres, with_password_from_file
@@ -55,19 +57,14 @@ def main(argv: Sequence[str] | None = None) -> int:
 
 
 def _load_targets(settings: Settings, *, limit: int) -> list[dict[str, str]]:
-    dsn = with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)
-    with connect_postgres(dsn, connect_timeout_seconds=settings.postgres_connect_timeout_seconds) as conn:
-        rows = conn.execute(
-            """
-            SELECT target_id
-              FROM token_capture_tier
-             WHERE tier = 1
-               AND target_type = 'chain_token'
-             ORDER BY score DESC, updated_at_ms DESC, target_id ASC
-             LIMIT %s
-            """,
-            (limit,),
-        ).fetchall()
+    dsn = with_password_from_file(settings.storage.postgres.dsn, settings.postgres_password_file)
+    with connect_postgres(dsn, connect_timeout_seconds=settings.storage.postgres.connect_timeout_seconds) as conn:
+        rows = RegistryRepository(conn).ranked_market_targets(
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+            since_ms=_now_ms() - WINDOW_MS["24h"],
+            target_types=("chain_token",),
+            limit=limit,
+        )
     targets: list[dict[str, str]] = []
     for row in rows:
         target = _target_from_id(str(row["target_id"]))
@@ -93,10 +90,10 @@ async def _smoke(
     timeout_seconds: float,
 ) -> dict[str, str]:
     provider = OkxDexWebSocketMarketProvider(
-        url=settings.okx_dex_ws_url,
-        api_key=settings.okx_dex_api_key or "",
-        secret_key=settings.okx_dex_secret_key or "",
-        passphrase=settings.okx_dex_passphrase or "",
+        url=settings.providers.okx.dex_ws_url,
+        api_key=settings.providers.okx.dex_api_key or "",
+        secret_key=settings.providers.okx.dex_secret_key or "",
+        passphrase=settings.providers.okx.dex_passphrase or "",
         subscription_limit=len(targets),
     )
     data_frames = 0

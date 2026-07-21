@@ -193,7 +193,7 @@ function post(eventId: string, handle: string, text: string, quality: number, wa
   return {
     event_id: eventId,
     tweet_id: eventId.replace("event-", "tweet-"),
-    handle,
+    author_handle: handle,
     text,
     url: `https://x.com/${handle}/status/${eventId}`,
     received_at_ms: BASE_MS - Number(eventId.slice(-1)) * 5 * 60_000,

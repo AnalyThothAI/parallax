@@ -54,13 +54,15 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     if (path === "/api/events/by-ids") return fulfill(route, socialEventsByIds(url));
     if (path === "/api/target-social-timeline") return fulfill(route, timelineData());
     if (path === "/api/target-posts") return fulfill(route, targetPostsData(url));
-    if (path === "/api/notification-summary") return fulfill(route, notificationSummary());
     if (path === "/api/notifications") return fulfill(route, notificationsData());
     if (path === "/api/news") return fulfill(route, newsRowsData());
     if (path.startsWith("/api/news/items/")) return fulfill(route, newsItemDetailData(path));
+    if (path === "/api/notifications/read-all") return fulfill(route, { updated_count: 1 });
+    if (path.startsWith("/api/notifications/author/") && path.endsWith("/read")) {
+      return fulfill(route, { updated_count: 1 });
+    }
     if (path.endsWith("/read"))
       return fulfill(route, { notification_id: "notification-1", updated: true });
-    if (path === "/api/notifications/read-all") return fulfill(route, { updated: true });
     if (path === "/api/stocks-radar") return fulfill(route, stocksRadarData(url));
     if (path === "/api/watchlist/handles/overview") return fulfill(route, watchlistOverviewData());
     if (path.match(/^\/api\/watchlist\/handles?\/[^/]+\/overview$/)) {
@@ -251,37 +253,19 @@ function statusData() {
     snapshot_gate: {},
     db: { ok: true },
     provider_states: {},
+    agent_execution: null,
+    news_provider_contract: { ok: true },
     workers: {
       collector: workerStatus({
         enabled: true,
         running: true,
-        details: {
-          started_at_ms: NOW - 120_000,
-          frames_received: 88,
-          twitter_events: 44,
-          matched_twitter_events: 7,
-          events_published: 7,
-          duplicate_twitter_events: 0,
-          duplicate_matched_twitter_events: 0,
-          parse_errors: 0,
-          last_frame_at_ms: NOW,
-          last_event_at_ms: NOW,
-          last_matched_event_at_ms: NOW,
-        },
       }),
-      enrichment: workerStatus({ enabled: true, running: true, queue_depth: 0 }),
       token_radar_projection: workerStatus({ enabled: true, running: true }),
-      token_capture_tier: workerStatus({ enabled: true, running: true }),
       market_tick_stream: workerStatus({ enabled: false, running: false }),
       market_tick_poll: workerStatus({ enabled: true, running: true }),
-      live_price_gateway: workerStatus({
-        enabled: true,
-        running: true,
-        details: { configured: true },
-      }),
-      handle_summary: workerStatus(),
+      event_anchor_backfill: workerStatus({ enabled: true, running: true }),
       notification_rule: workerStatus({ enabled: true, running: true }),
-      notification_delivery: workerStatus({ enabled: true, running: true, queue_depth: 0 }),
+      notification_delivery: workerStatus({ enabled: true, running: true }),
       asset_profile_refresh: workerStatus(),
       resolution_refresh: workerStatus(),
     },
@@ -289,17 +273,19 @@ function statusData() {
 }
 
 function workerStatus(overrides: Record<string, unknown> = {}) {
+  const enabled = overrides.enabled === true;
+  const running = overrides.running === true;
   return {
-    enabled: false,
-    running: false,
+    enabled,
+    running,
+    effective_status:
+      overrides.effective_status ?? (!enabled ? "disabled" : running ? "running" : "stopped"),
+    unavailable_reason: null,
     last_started_at_ms: null,
     last_finished_at_ms: null,
     last_result: null,
     last_error: null,
     iteration_duration_p99_ms: null,
-    queue_depth: null,
-    pool_wait_ms_p99: null,
-    details: {},
     ...overrides,
   };
 }
@@ -365,14 +351,36 @@ function tokenRadarData(url: URL) {
   return {
     window: url.searchParams.get("window") ?? "1h",
     scope: url.searchParams.get("scope") ?? "all",
+    venue: url.searchParams.get("venue") ?? "all",
     targets,
     attention: [],
     projection: {
       status: "fresh",
       version: "e2e-token-radar",
-      source: "playwright",
+      source: "token_radar_current_rows",
+      venue: url.searchParams.get("venue") ?? "all",
+      reason: null,
+      latest_attempt_status: "ready",
+      row_count: targets.length,
+      source_rows: targets.length,
       source_max_received_at_ms: NOW,
+      source_frontier_ms: NOW,
       computed_at_ms: NOW,
+      error: null,
+      anchor_coverage: {
+        status: "fresh",
+        ready: targets.length,
+        missing: 0,
+        total: targets.length,
+      },
+      quality_status: "ready",
+      degraded_reasons: [],
+      unresolved: {
+        identity_missing_count: 0,
+        nil_count: 0,
+        ambiguous_count: 0,
+        sample_symbols: [],
+      },
     },
   };
 }
@@ -382,16 +390,6 @@ function shouldReturnLongMobileRadarList(url: URL) {
 }
 
 function assetFlowRow() {
-  const target = {
-    target_type: "Asset",
-    target_id: TARGET_ID,
-    symbol: "UPEG",
-    status: "candidate",
-    chain_id: "eip155:1",
-    token_standard: "erc20",
-    address: ADDRESS,
-    pricefeed_id: `pricefeed:dex-token:gmgn_payload:eip155:1:${ADDRESS.toLowerCase()}`,
-  };
   const attention = {
     mentions_5m: 2,
     mentions_1h: 4,
@@ -437,25 +435,30 @@ function assetFlowRow() {
   return {
     intent: {
       intent_id: `intent:${TARGET_ID}`,
+      event_id: "event-upeg-1",
       display_symbol: "UPEG",
       display_name: null,
       evidence: [],
     },
-    target,
-    attention,
-    market,
+    radar: {
+      lane: "resolved",
+      rank: 1,
+      listed_at_ms: NOW - 60_000,
+      computed_at_ms: NOW,
+      source_max_received_at_ms: NOW,
+    },
     resolution: {
       status: "EXACT",
-      resolution_status: "EXACT",
       target_type: "Asset",
       target_id: TARGET_ID,
+      pricefeed_id: null,
       reason_codes: ["CHAIN_ADDRESS_EXACT"],
       candidate_ids: [TARGET_ID],
       lookup_keys: [],
+      discovery: [],
     },
     factor_snapshot: factorSnapshot({ attention, market }),
-    data_health: { identity: "EXACT", market: "ready", coverage: "public_stream" },
-    source_event_ids: ["event-upeg-1", "event-upeg-2"],
+    quality: { status: "ready", degraded_reasons: [] },
   };
 }
 
@@ -469,6 +472,7 @@ function factorSnapshot({ attention, market }: { attention: any; market: any }) 
       chain: "eip155:1",
       address: ADDRESS,
       target_market_type: "dex",
+      pricefeed_id: null,
     },
     market,
     gates: {
@@ -517,12 +521,18 @@ function factorSnapshot({ attention, market }: { attention: any; market: any }) 
     },
     normalization: {
       status: "ready",
+      cohort_status: "ready",
       cohort: { window: "1h" },
-      factor_ranks: {},
+      factor_ranks: {
+        social_heat: 0.86,
+        social_propagation: 0.72,
+        semantic_catalyst: 0.78,
+        timing_risk: 0.5,
+      },
       alpha_rank: 4,
-      cohort_size: 80,
     },
     composite: {
+      raw_alpha_score: 79,
       rank_score: 79,
       recommended_decision: "high_alert",
       family_scores: {
@@ -1038,6 +1048,7 @@ function watchlistHandleOverviewData(handle: string) {
         source: "token_resolutions",
         target_type: "Asset",
         target_id: TARGET_ID,
+        symbol: "UPEG",
       },
     ],
     candidate_mention_clusters: [
@@ -1047,11 +1058,24 @@ function watchlistHandleOverviewData(handle: string) {
         query: "$ALOY",
         kind: "candidate_mention",
         source: "event_cashtags",
+        target_type: null,
+        target_id: null,
+        symbol: null,
       },
     ],
     narrative_clusters: [
-      { label: "Liquidity rotation", count: 2, query: "liquidity", kind: "narrative" },
+      {
+        label: "Liquidity rotation",
+        count: 2,
+        query: "liquidity",
+        kind: "narrative",
+        source: "event_hashtags",
+        target_type: null,
+        target_id: null,
+        symbol: null,
+      },
     ],
+    clusters_truncated: false,
     risk_notes: [],
   };
 }
@@ -1069,6 +1093,18 @@ function watchlistHandleTimelineData(handle: string) {
       cashtags: ["UPEG"],
       hashtags: [],
       mentions: [],
+      event: {
+        event_id: item.event_id,
+        action: "tweet",
+        canonical_url: item.url,
+        received_at_ms: item.received_at_ms,
+        author_handle: handle,
+        text_clean: item.text,
+        cashtags: ["UPEG"],
+        hashtags: [],
+        mentions: [],
+      },
+      token_resolutions: [],
     })),
     has_more: false,
     next_cursor: null,
@@ -1282,7 +1318,6 @@ function opsDiagnosticsData() {
         group: "ingest",
         enabled: true,
         running: true,
-        queue_depth: 0,
         status: "ok",
         reason: null,
       },
@@ -1301,7 +1336,31 @@ function opsDiagnosticsData() {
         reason: null,
       },
     ],
-    agent_execution: { status: "ok", lanes: {} },
+    agent_execution: {
+      status: "ok",
+      policy: {
+        lane: "news.story_brief",
+        model: "deepseek-v4-flash",
+        provider_family: "deepseek",
+        output_strategy: "json_object",
+        schema_enforcement: "client_validate",
+        max_concurrency: 1,
+        rpm_limit: 60,
+        timeout_seconds: 180,
+      },
+      counters: {
+        in_flight: 0,
+        provider_running: 0,
+        circuit_state: "closed",
+        circuit_open_until_ms: null,
+        capacity_denied_total: 0,
+        circuit_open_total: 0,
+        timeout_total: 0,
+        last_denied_at_ms: null,
+        last_timeout_at_ms: null,
+        oldest_in_flight_age_ms: null,
+      },
+    },
     domains: { token_intel: { status: "ok", reason: "ready", due_jobs: 0 } },
     suggested_checks: [],
   };

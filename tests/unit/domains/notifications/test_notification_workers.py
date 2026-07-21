@@ -169,16 +169,6 @@ class RecordingPushAdapter:
             raise RuntimeError(self.error)
 
 
-class WakeRecorder:
-    def __init__(self, transaction_state: TransactionState) -> None:
-        self.transaction_state = transaction_state
-        self.calls = 0
-
-    def wake(self) -> None:
-        assert not self.transaction_state.active
-        self.calls += 1
-
-
 def _candidate(dedup_key: str, *, rule_id: str = "news_high_signal") -> NotificationCandidate:
     return NotificationCandidate(
         dedup_key=dedup_key,
@@ -291,10 +281,9 @@ def test_rule_worker_prunes_expired_notifications_at_most_once_per_hour() -> Non
     assert third.notes["retention_pruned"] == 3
 
 
-def test_rule_worker_commits_notification_and_delivery_together_then_wakes() -> None:
+def test_rule_worker_commits_notification_and_delivery_together() -> None:
     state = TransactionState()
     repository = NotificationRepositoryDouble()
-    wake = WakeRecorder(state)
     candidate = replace(_candidate("external"), channels=("in_app", "push"))
     worker = _rule_worker(
         repository,
@@ -303,14 +292,12 @@ def test_rule_worker_commits_notification_and_delivery_together_then_wakes() -> 
         delivery_channels={
             "push": SimpleNamespace(enabled=True, provider="pushdeer", url="pushdeer://key", min_severity="info")
         },
-        delivery_wake=wake,
     )
 
     rows = asyncio.run(worker.process_once(now_ms=NOW_MS))
 
     assert [row["dedup_key"] for row in rows] == ["external"]
     assert repository.deliveries == [("notification:external", "push", False)]
-    assert wake.calls == 1
     assert (state.enters, state.exits) == (1, 1)
 
 

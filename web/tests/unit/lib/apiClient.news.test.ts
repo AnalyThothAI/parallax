@@ -19,21 +19,30 @@ describe("news API client normalization", () => {
           data: {
             items: [
               {
+                ...requiredNewsRowSections("sec.gov"),
                 row_id: "row-classified",
                 news_item_id: "news-classified",
                 lifecycle_status: "attention",
                 headline: "SEC reviews tokenized stocks",
                 source_domain: "sec.gov",
-                signal: newsSignalEnvelope({
-                  source: "provider",
-                  provider: "opennews",
-                  status: "ready",
-                  direction: "bullish",
-                  label_zh: "利好",
-                }),
-                token_lanes: {
-                  bad: "shape",
-                },
+                signal: newsSignalEnvelope(
+                  {
+                    source: "provider",
+                    provider: "opennews",
+                    status: "ready",
+                    direction: "bullish",
+                    label_zh: "利好",
+                  },
+                  {
+                    scope: ["us_equity", "crypto"],
+                    primary: "us_equity",
+                    status: "classified",
+                    reason: "market_scope_classified",
+                    basis: { subject: "tokenized_stocks" },
+                    version: "news_market_scope_v1",
+                  },
+                ),
+                token_lanes: [],
                 token_impacts: [
                   {
                     lane: "provider",
@@ -49,14 +58,7 @@ describe("news API client normalization", () => {
                     status: "accepted",
                   },
                 ],
-                market_scope: {
-                  scope: ["us_equity", "crypto"],
-                  primary: "us_equity",
-                  status: "classified",
-                  reason: "market_scope_classified",
-                  basis: { subject: "tokenized_stocks" },
-                  version: "news_market_scope_v1",
-                },
+                agent_brief: { status: "pending" },
                 agent_admission_status: "eligible",
                 agent_admission_reason: "agent_brief_ready",
                 agent_admission: {
@@ -69,6 +71,7 @@ describe("news API client normalization", () => {
                 },
                 agent_representative_news_item_id: "news-classified",
                 source: {
+                  source_domain: "sec.gov",
                   provider_type: "opennews",
                   source_role: "aggregator",
                   trust_tier: "standard",
@@ -134,17 +137,17 @@ describe("news API client normalization", () => {
     });
     expect(rows.items[0].signal).not.toHaveProperty("provider_signal");
     expect(rows.items[0].signal.alert_eligibility).not.toHaveProperty("provider_score");
-    expect(rows.items[0].source?.provider_type).toBe("opennews");
-    expect(rows.items[0].provider_type).toBe("opennews");
-    expect(rows.items[0].market_scope?.primary).toBe("us_equity");
+    expect(rows.items[0].source.provider_type).toBe("opennews");
+    expect(rows.items[0]).not.toHaveProperty("provider_type");
+    expect(rows.items[0]).not.toHaveProperty("market_scope");
     expect(rows.items[0].agent_admission?.status).toBe("eligible");
     expect(rows.items[0].agent_representative_news_item_id).toBe("news-classified");
-    expect(rows.items[0].signal.alert_eligibility.market_scope?.primary).toBe("us_equity");
-    expect(rows.items[0].signal.alert_eligibility.agent_admission_status).toBe("eligible");
-    expect(rows.items[0].signal.alert_eligibility.agent_admission_reason).toBe("agent_brief_ready");
+    expect(rows.items[0].signal.alert_eligibility.market_scope.primary).toBe("us_equity");
+    expect(rows.items[0].signal.alert_eligibility).not.toHaveProperty("agent_admission_status");
+    expect(rows.items[0].signal.alert_eligibility).not.toHaveProperty("agent_admission_reason");
   });
 
-  it("keeps agent brief optional when the hard-cut row omits it", async () => {
+  it("normalizes the required current agent brief", async () => {
     server.use(
       http.get(/.*\/api\/news$/, () =>
         HttpResponse.json({
@@ -152,6 +155,7 @@ describe("news API client normalization", () => {
           data: {
             items: [
               {
+                ...requiredNewsRowSections(),
                 row_id: "row-flat",
                 news_item_id: "news-flat",
                 lifecycle_status: "processed",
@@ -163,6 +167,10 @@ describe("news API client normalization", () => {
                   label_zh: "利空",
                   method: "news_story_brief",
                 }),
+                token_impacts: [],
+                token_lanes: [],
+                fact_lanes: [],
+                agent_brief_computed_at_ms: 1_700_000_000_000,
                 agent_brief: {
                   status: "ready",
                   direction: "bearish",
@@ -195,20 +203,11 @@ describe("news API client normalization", () => {
                     evidence_refs: ["item:summary"],
                   },
                   data_gaps: [{ kind: "identity", severity: "medium" }],
+                  data_gap_count: 1,
+                  bull_strength: "absent",
+                  bear_strength: "strong",
                   evidence_refs: ["item:summary"],
                 },
-              },
-              {
-                row_id: "row-missing",
-                news_item_id: "news-missing",
-                lifecycle_status: "processed",
-                headline: "Missing brief",
-                signal: newsSignalEnvelope({
-                  source: "partial",
-                  status: "partial",
-                  direction: "neutral",
-                  label_zh: "中性",
-                }),
               },
             ],
             next_cursor: null,
@@ -224,6 +223,8 @@ describe("news API client normalization", () => {
     expect(rows.items[0].agent_brief?.data_gaps).toEqual([
       { description_zh: "identity", severity: "medium" },
     ]);
+    expect(rows.items[0].agent_brief?.computed_at_ms).toBeNull();
+    expect(rows.items[0].agent_brief_computed_at_ms).toBe(1_700_000_000_000);
     const brief = rows.items[0].agent_brief as Record<string, unknown>;
     expect(brief).not.toHaveProperty("confirmation_state");
     expect(brief).not.toHaveProperty("novelty_status");
@@ -239,7 +240,6 @@ describe("news API client normalization", () => {
     expect(brief).not.toHaveProperty("prompt_version");
     expect(brief).not.toHaveProperty("schema_version");
     expect(brief).not.toHaveProperty("brief_json");
-    expect(rows.items[1].agent_brief).toBeUndefined();
   });
 
   it("does not normalize retired news row aliases after the hard cut", async () => {
@@ -250,6 +250,7 @@ describe("news API client normalization", () => {
           data: {
             items: [
               {
+                ...requiredNewsRowSections(),
                 row_id: "row-legacy",
                 news_item_id: "news-legacy",
                 lifecycle_status: "processed",
@@ -271,15 +272,9 @@ describe("news API client normalization", () => {
       ),
     );
 
-    const rows = await fetchNewsRows({ limit: 1, token: "test-token" });
-
-    expect(rows.items[0].headline).toBe("Untitled news item");
-    expect(rows.items[0].canonical_url).toBeNull();
-    expect(rows.items[0].latest_at_ms).toBeNull();
-    expect(rows.items[0].source).toBeNull();
-    expect(rows.items[0].content_tags).toEqual([]);
-    expect(rows.items[0].token_lanes).toEqual([]);
-    expect(rows.items[0].fact_lanes).toEqual([]);
+    await expect(fetchNewsRows({ limit: 1, token: "test-token" })).rejects.toThrow(
+      "news_current_contract:headline",
+    );
   });
 
   it("normalizes item detail agent run error aliases", async () => {
@@ -288,10 +283,20 @@ describe("news API client normalization", () => {
         HttpResponse.json({
           ok: true,
           data: {
+            ...requiredNewsRowSections(),
             row_id: "row-failed",
             news_item_id: "news-failed",
             lifecycle_status: "processed",
             headline: "Failed brief",
+            body_text: "Retired content fallback must not populate detail content.",
+            signal: newsSignalEnvelope({
+              source: "agent",
+              status: "failed",
+              direction: "neutral",
+            }),
+            token_impacts: [],
+            token_lanes: [],
+            fact_lanes: [],
             agent_brief: {
               status: "failed",
               data_gaps: [{ description_zh: "provider failed", severity: "high" }],
@@ -307,18 +312,27 @@ describe("news API client normalization", () => {
     expect(item.agent_brief?.data_gaps).toEqual([
       { description_zh: "provider failed", severity: "high" },
     ]);
+    expect(item.content).toBeNull();
   });
 
-  it("does not reconstruct detail lanes from retired token and fact aliases", async () => {
+  it("fails closed instead of reconstructing detail lanes from retired aliases", async () => {
     server.use(
       http.get(/.*\/api\/news\/items\/news-legacy-detail$/, () =>
         HttpResponse.json({
           ok: true,
           data: {
+            ...requiredNewsRowSections(),
             row_id: "row-legacy-detail",
             news_item_id: "news-legacy-detail",
             lifecycle_status: "processed",
             headline: "Legacy detail",
+            signal: newsSignalEnvelope({
+              source: "agent",
+              status: "pending",
+              direction: "neutral",
+            }),
+            token_impacts: [],
+            agent_brief: { status: "pending" },
             token_mentions: [{ display_symbol: "OLD", resolution_status: "resolved" }],
             fact_candidates: [{ event_type: "legacy", validation_status: "accepted" }],
           },
@@ -326,14 +340,102 @@ describe("news API client normalization", () => {
       ),
     );
 
-    const item = await fetchNewsItem({ newsItemId: "news-legacy-detail" });
+    await expect(fetchNewsItem({ newsItemId: "news-legacy-detail" })).rejects.toThrow(
+      "news_current_contract:token_lanes",
+    );
+  });
 
-    expect(item.token_lanes).toEqual([]);
-    expect(item.fact_lanes).toEqual([]);
+  it.each([
+    [{ market_scope: { primary: "crypto" } }, "news_current_contract:retired.market_scope"],
+    [{ provider_type: "opennews" }, "news_current_contract:retired.provider_type"],
+    [{ source_role: "aggregator" }, "news_current_contract:retired.source_role"],
+    [{ source: undefined }, "news_current_contract:source"],
+    [{ content_classification: undefined }, "news_current_contract:content_classification"],
+    [
+      {
+        signal: {
+          ...newsSignalEnvelope({ source: "agent", status: "pending", direction: "neutral" }),
+          alert_eligibility: {
+            ...newsSignalEnvelope({ source: "agent", status: "pending", direction: "neutral" })
+              .alert_eligibility,
+            agent_admission_status: "eligible",
+          },
+        },
+      },
+      "news_current_contract:retired.signal.alert_eligibility.agent_admission_status",
+    ],
+    [{ signal: undefined }, "news_current_contract:signal"],
+    [{ signal: [] }, "news_current_contract:signal"],
+    [{ headline: undefined }, "news_current_contract:headline"],
+    [{ token_lanes: undefined }, "news_current_contract:token_lanes"],
+    [{ token_lanes: {} }, "news_current_contract:token_lanes"],
+    [{ token_lanes: [{ symbol: "BTC" }] }, "news_current_contract:token_lanes.0.lane"],
+    [{ fact_lanes: [{ event_type: "listing" }] }, "news_current_contract:fact_lanes.0.status"],
+    [{ agent_brief: undefined }, "news_current_contract:agent_brief"],
+    [{ agent_brief: {} }, "news_current_contract:agent_brief.status"],
+  ])("fails closed for malformed current sections %#", async (patch, error) => {
+    server.use(
+      http.get(/.*\/api\/news$/, () =>
+        HttpResponse.json({
+          ok: true,
+          data: {
+            items: [{ ...currentNewsRow(), ...(patch as Record<string, unknown>) }],
+            next_cursor: null,
+          },
+        }),
+      ),
+    );
+
+    await expect(fetchNewsRows({ limit: 1, token: "test-token" })).rejects.toThrow(error as string);
   });
 });
 
-function newsSignalEnvelope(displaySignal: Record<string, unknown>) {
+function currentNewsRow() {
+  return {
+    ...requiredNewsRowSections(),
+    row_id: "row-current",
+    news_item_id: "news-current",
+    lifecycle_status: "processed",
+    headline: "Current row",
+    signal: newsSignalEnvelope({
+      source: "agent",
+      status: "pending",
+      direction: "neutral",
+    }),
+    token_impacts: [],
+    token_lanes: [],
+    fact_lanes: [],
+    agent_brief: { status: "pending" },
+  };
+}
+
+function requiredNewsRowSections(sourceDomain = "example.com") {
+  return {
+    source_domain: sourceDomain,
+    source: {
+      source_domain: sourceDomain,
+      provider_type: "opennews",
+      source_role: "aggregator",
+      trust_tier: "standard",
+      coverage_tags: [],
+      source_quality_status: "healthy",
+    },
+    content_tags: [],
+    content_classification: {},
+  };
+}
+
+function newsSignalEnvelope(
+  displaySignal: Record<string, unknown>,
+  marketScope: Record<string, unknown> = {
+    scope: ["crypto"],
+    primary: "crypto",
+    status: "classified",
+    reason: "market_scope_classified",
+    basis: { subject: "crypto" },
+    version: "news_market_scope_v1",
+  },
+) {
   return {
     display_signal: displaySignal,
     agent_signal: { status: "pending" },
@@ -341,6 +443,7 @@ function newsSignalEnvelope(displaySignal: Record<string, unknown>) {
       in_app_eligible: true,
       external_push_ready: false,
       agent_status: "pending",
+      market_scope: marketScope,
     },
   };
 }

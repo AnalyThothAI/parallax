@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import time
 from contextlib import contextmanager
 from types import SimpleNamespace
 
@@ -30,10 +29,19 @@ class FakeTokenRadar:
     def mark_publication_failed(self, **kwargs):
         self.publication_failures.append(kwargs)
 
+    def prune_target_features(self, **kwargs):
+        return 0
+
+
+class FakeRankSources:
+    def prune_edges(self, **kwargs):
+        return 0
+
 
 class FakeRepos:
     def __init__(self, publication_state, *, dirty_claims=None):
         self.token_radar = FakeTokenRadar(publication_state)
+        self.token_radar_rank_sources = FakeRankSources()
         self.token_radar_dirty_targets = FakeDirtyTargets(dirty_claims)
 
     @contextmanager
@@ -83,14 +91,6 @@ class FakeDB:
         )
         self.sessions.append(session)
         yield session.repos
-
-    def acquire_advisory_lock_connection(self, worker_name, key):
-        return FakeAdvisoryLock()
-
-
-class FakeAdvisoryLock:
-    def release(self):
-        return None
 
 
 def _default_dirty_claim() -> dict[str, object]:
@@ -174,14 +174,12 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
     assert result["rows_written"] == 2
     assert result["windows"]["5m:all"]["status"] == "ready"
     assert isinstance(worker, WorkerBase)
-    assert worker.SINGLE_WRITER_KEY == 2026051501
     assert worker.windows == ("5m", "1h", "4h")
     assert worker.scopes == ("all", "matched")
     assert worker.venues == ("all",)
     assert worker.hot_windows == ("5m",)
     assert worker.limit == 7
     assert worker.cold_interval_ms == 60_000
-    assert not hasattr(worker, "wake_bus")
     assert db.worker_sessions[0] == {"name": "token_radar_projection", "statement_timeout_seconds": 120.0}
 
 
@@ -332,6 +330,51 @@ def test_token_radar_worker_claims_dirty_targets_even_when_publication_cadence_i
     assert db.sessions[0].repos.token_radar_dirty_targets.claim_due_calls
 
 
+def test_projection_worker_scores_each_window_scope_once_across_product_venues(monkeypatch) -> None:
+    calls: list[dict[str, object]] = []
+    now_ms = 1_777_800_001_000
+    windows = ("5m", "1h", "4h", "24h")
+    scopes = ("all", "matched")
+    venues = ("all", "sol", "eth", "base", "bsc", "cex")
+    publication_state = {
+        (window, scope, venue): _ready_state(now_ms - 1_000)
+        for window in windows
+        for scope in scopes
+        for venue in venues
+    }
+
+    class FakeProjection:
+        def __init__(self, *, repos):
+            self.repos = repos
+
+        def rebuild_dirty_targets(self, **kwargs):
+            calls.append(kwargs)
+            return {
+                "rows_written": 0,
+                "source_rows": 8,
+                "computed_at_ms": kwargs["now_ms"],
+                "status": "ready",
+                "claimed": 1,
+                "windows": {},
+            }
+
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
+    worker = module.TokenRadarProjectionWorker(
+        name="token_radar_projection",
+        settings=_settings(windows=windows, scopes=scopes, venues=venues),
+        db=FakeDB(publication_state),
+        telemetry=object(),
+    )
+
+    result = worker.rebuild_once(now_ms=now_ms)
+
+    assert result["status"] == "ready"
+    assert calls[0]["work_items"] == ()
+    assert calls[0]["score_work_items"] == tuple((window, scope) for window in windows for scope in scopes)
+    assert "venues" not in calls[0]
+
+
 def test_projection_worker_uses_formal_dirty_lease_and_retry_settings(monkeypatch) -> None:
     calls: list[dict[str, object]] = []
     now_ms = 1_777_800_001_000
@@ -389,18 +432,19 @@ def test_projection_worker_runs_bounded_private_cache_retention_from_formal_sett
         def rebuild_dirty_targets(self, **kwargs):  # pragma: no cover - retention-only path must stay idle
             raise AssertionError("retention test should not run dirty projection")
 
-        def prune_private_cache(self, **kwargs):
-            retention_calls.append(kwargs)
-            return {
-                "status": "ready",
-                "target_features_deleted": 2,
-                "rank_source_edges_deleted": 1,
-                "cutoff_ms": kwargs["now_ms"] - kwargs["retention_ms"],
-                "limit": kwargs["limit"],
-            }
+    def fake_retention(**kwargs):
+        retention_calls.append({key: value for key, value in kwargs.items() if key != "repos"})
+        return {
+            "status": "ready",
+            "target_features_deleted": 2,
+            "rank_source_edges_deleted": 1,
+            "cutoff_ms": kwargs["now_ms"] - kwargs["retention_ms"],
+            "limit": kwargs["limit"],
+        }
 
     monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
     monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
+    monkeypatch.setattr(module, "prune_token_radar_private_cache", fake_retention)
     publication_state = {
         ("5m", "all"): _ready_state(now_ms),
         ("5m", "matched"): _ready_state(now_ms),
@@ -415,7 +459,6 @@ def test_projection_worker_runs_bounded_private_cache_retention_from_formal_sett
             scopes=("all", "matched"),
             hot_windows=("5m",),
             batch_size=23,
-            private_cache_retention_enabled=True,
             private_cache_retention_ms=600_000,
         ),
         db=db,
@@ -929,78 +972,6 @@ def test_projection_worker_records_partial_window_results_before_background_fail
     assert worker.last_error == "target projection timeout"
 
 
-def test_projection_worker_uses_wake_waiter_before_interval(monkeypatch):
-    wake_waiter = FakeWakeWaiter()
-
-    async def scenario() -> None:
-        class FakeProjection:
-            def __init__(self, *, repos):
-                self.repos = repos
-
-            def rebuild_dirty_targets(self, **kwargs):
-                return {
-                    "rows_written": 0,
-                    "source_rows": 0,
-                    "computed_at_ms": kwargs["now_ms"],
-                    "status": "idle",
-                    "claimed": 0,
-                    "windows": {},
-                }
-
-        monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
-        monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
-        worker = module.TokenRadarProjectionWorker(
-            name="token_radar_projection",
-            settings=_settings(windows=("5m",), scopes=("all",), interval_seconds=60.0),
-            db=FakeDB({}),
-            telemetry=object(),
-            wake_waiter=wake_waiter,
-        )
-        task = asyncio.create_task(worker.run())
-        try:
-            await _wait_until(lambda: wake_waiter.wait_calls >= 1)
-        finally:
-            await worker.stop()
-            await task
-
-    asyncio.run(scenario())
-    assert wake_waiter.wait_calls >= 1
-
-
-class FakeWakeListener:
-    def __init__(self) -> None:
-        self.listen_calls = 0
-        self.emitted = False
-
-    def listen_projection_wakes(self, *, on_wake, should_stop, interval_seconds):
-        self.listen_calls += 1
-        if not self.emitted:
-            self.emitted = True
-            on_wake()
-        time.sleep(0.05)
-
-
-class FakeWakeWaiter:
-    def __init__(self) -> None:
-        self.wait_calls = 0
-
-    async def async_wait(self, timeout: float) -> bool:
-        self.wait_calls += 1
-        await asyncio.sleep(0.01)
-        return True
-
-    def wake(self) -> None:
-        return None
-
-
-async def _wait_until(predicate, *, timeout_seconds: float = 5.0) -> None:
-    deadline = asyncio.get_running_loop().time() + timeout_seconds
-    while not predicate():
-        if asyncio.get_running_loop().time() >= deadline:
-            raise AssertionError("timed out waiting for condition")
-        await asyncio.sleep(0.01)
-
-
 def _settings(**overrides):
     values = {
         "enabled": True,
@@ -1010,10 +981,8 @@ def _settings(**overrides):
         "lease_ms": 120_000,
         "retry_ms": 30_000,
         "max_attempts": 3,
-        "private_cache_retention_enabled": False,
         "private_cache_retention_ms": 172_800_000,
         "statement_timeout_seconds": 120.0,
-        "advisory_lock_key": 2026051501,
         "backoff": SimpleNamespace(base_ms=1, max_ms=5),
         "windows": ("5m", "1h", "4h", "24h"),
         "scopes": ("all", "matched"),

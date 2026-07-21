@@ -25,6 +25,13 @@ must not replace a missing source occurrence timestamp. Duplicate aggregation
 updates the existing stable row and does not create generation-, attempt-,
 timestamp-, or UUID-identified serving rows.
 
+The database unique constraint on `dedup_key` is the sole semantic dedup
+authority. `payload_json.semantic_signature` is evidence carried to consumers,
+not a second lookup identity. External-push cooldown remains a separate
+side-effect policy across distinct `dedup_key` values. The notification list
+response contains both `items` and `summary`; there is no parallel summary
+endpoint.
+
 ## Worker flows
 
 ```text
@@ -34,7 +41,7 @@ PostgreSQL facts/current projections
   -> notifications upsert/aggregate
   -> notification_deliveries enqueue (external channels only)
   -> commit
-  -> WebSocket publish + delivery wake hint
+  -> WebSocket publish
 
 notification_deliveries due rows
   -> transactional claim and configuration validation
@@ -43,14 +50,13 @@ notification_deliveries due rows
 ```
 
 `NotificationWorker` evaluates and persists candidates in one repository unit
-of work. Delivery wake and WebSocket publication happen only after that unit of
-work exits. `NotificationDeliveryWorker` never keeps a transaction open across
+of work. WebSocket publication happens only after that unit of work exits.
+`NotificationDeliveryWorker` never keeps a transaction open across
 network I/O; completion and failure are separate compare-and-set repository
 transitions using the persisted attempt contract.
 
-Both workers remain interval-driven even when a wake hint is available. A
-missed `NOTIFY` or in-process wake therefore delays work only until the next
-bounded `interval_seconds` catch-up. Batch size, statement timeout, delivery
+Both workers are interval-driven and re-read durable work on each bounded
+`interval_seconds` catch-up. Batch size, statement timeout, delivery
 attempts, running timeout, and stale-running terminalization batch size come
 from the formal worker settings.
 

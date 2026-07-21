@@ -57,12 +57,8 @@ class FallbackDexQuoteProvider:
         ]
 
     def close(self) -> None:
-        seen: set[int] = set()
-        for provider in (self._primary, self._fallback):
-            if provider is None or id(provider) in seen:
-                continue
-            seen.add(id(provider))
-            provider.close()
+        if self._fallback is not None:
+            self._fallback.close()
 
 
 def wire_asset_market(settings: Settings) -> AssetMarketProviders:
@@ -72,9 +68,10 @@ def wire_asset_market(settings: Settings) -> AssetMarketProviders:
     binance_profile_market: BinanceWeb3DexProfileProvider | None = None
     try:
         okx_bundle = okx.wire_okx_provider_bundle(settings)
-        binance_cex_market = binance.binance_usdm_futures_market(settings) if settings.binance_enabled else None
+        binance_enabled = settings.providers.binance.enabled
+        binance_cex_market = binance.binance_usdm_futures_market(settings) if binance_enabled else None
         gmgn_dex_market = gmgn.gmgn_dex_market(settings) if settings.gmgn_configured else None
-        binance_profile_market = binance.binance_web3_profile_market(settings) if settings.binance_enabled else None
+        binance_profile_market = binance.binance_web3_profile_market(settings) if binance_enabled else None
         dex_profile_sources = _dex_profile_sources(
             gmgn_dex_market=gmgn_dex_market,
             binance_profile_market=binance_profile_market,
@@ -89,7 +86,7 @@ def wire_asset_market(settings: Settings) -> AssetMarketProviders:
             dex_candle_market=gmgn_dex_market,
             dex_profile_sources=dex_profile_sources,
             stream_dex_market=okx_bundle.stream_dex_market,
-            discovery_chain_ids=okx.okx_chain_indexes_to_chain_ids(settings.okx_dex_chain_indexes),
+            discovery_chain_ids=okx.okx_chain_indexes_to_chain_ids(settings.providers.okx.dex_chain_indexes),
             provider_health=(
                 okx_bundle.health,
                 gmgn.gmgn_provider_health(settings),
@@ -106,10 +103,6 @@ def wire_asset_market(settings: Settings) -> AssetMarketProviders:
             binance_profile_market,
         )
         raise
-
-
-def wire_asset_market_providers(settings: Settings) -> AssetMarketProviders:
-    return wire_asset_market(settings)
 
 
 def _dex_quote_market(
@@ -216,5 +209,4 @@ def _close_partial_providers(error: BaseException, *providers: object | None) ->
 __all__ = [
     "FallbackDexQuoteProvider",
     "wire_asset_market",
-    "wire_asset_market_providers",
 ]

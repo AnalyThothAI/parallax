@@ -21,7 +21,7 @@ def test_queue_inspect_dispatches_through_ops_handler(monkeypatch) -> None:
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=conn))
+        yield SimpleNamespace(conn=conn)
 
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
@@ -47,7 +47,7 @@ def test_queue_inspect_passes_reason_bucket_to_terminal_inspect(monkeypatch) -> 
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=object()))
+        yield SimpleNamespace(conn=object())
 
     def fake_inspect(conn: object, **kwargs: Any) -> dict[str, Any]:
         calls.append({"conn": conn, **kwargs})
@@ -81,13 +81,13 @@ def test_queue_inspect_passes_reason_bucket_to_terminal_inspect(monkeypatch) -> 
     assert payload["data"]["reason_bucket"] == "llm_provider_522"
 
 
-def test_queue_inspect_rejects_zero_limit_before_terminal_sampling(monkeypatch) -> None:
+def test_queue_inspect_parser_rejects_zero_limit_before_terminal_sampling(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
     from parallax.app.surfaces.cli.commands import queue_ops
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=object()))
+        yield SimpleNamespace(conn=object())
 
     def fake_inspect(*args: Any, **kwargs: Any) -> dict[str, Any]:
         raise AssertionError("terminal queue rows must not be sampled when limit is invalid")
@@ -102,8 +102,8 @@ def test_queue_inspect_rejects_zero_limit_before_terminal_sampling(monkeypatch) 
         stdout=stdout,
     )
 
-    assert code == 1
-    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "limit_must_be_positive"}
+    assert code == 2
+    assert stdout.getvalue() == ""
 
 
 def test_queue_resolve_requires_execute_and_non_empty_reason(monkeypatch) -> None:
@@ -111,7 +111,7 @@ def test_queue_resolve_requires_execute_and_non_empty_reason(monkeypatch) -> Non
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=_FakeTerminalConnection()))
+        yield SimpleNamespace(conn=_FakeTerminalConnection())
 
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
@@ -130,8 +130,8 @@ def test_queue_resolve_requires_execute_and_non_empty_reason(monkeypatch) -> Non
         ],
         stdout=stdout,
     )
-    assert code == 1
-    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "execute_and_reason_required"}
+    assert code == 2
+    assert stdout.getvalue() == ""
 
     stdout = io.StringIO()
     code = main(
@@ -149,7 +149,7 @@ def test_queue_resolve_requires_execute_and_non_empty_reason(monkeypatch) -> Non
         stdout=stdout,
     )
     assert code == 1
-    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "execute_and_reason_required"}
+    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "reason_required"}
 
 
 def test_queue_resolve_retry_uses_registered_transition(monkeypatch) -> None:
@@ -172,7 +172,7 @@ def test_queue_resolve_retry_uses_registered_transition(monkeypatch) -> None:
         )
     ]
     repos = SimpleNamespace(
-        signals=SimpleNamespace(conn=conn),
+        conn=conn,
         transaction=conn.transaction,
         discovery=_FakeDiscoveryRetryRepository(),
     )
@@ -251,7 +251,7 @@ def test_queue_resolve_retry_requeues_token_image_source_terminal(monkeypatch) -
         )
     ]
     repos = SimpleNamespace(
-        signals=SimpleNamespace(conn=conn),
+        conn=conn,
         transaction=conn.transaction,
         token_image_source_dirty_targets=_FakeTokenImageSourceRetryRepository(),
     )
@@ -321,7 +321,7 @@ def test_queue_resolve_retry_requeues_token_radar_dirty_target_with_bounded_tran
         )
     ]
     repos = SimpleNamespace(
-        signals=SimpleNamespace(conn=conn),
+        conn=conn,
         transaction=conn.transaction,
         token_radar_dirty_targets=_FakeTokenRadarTargetRetryRepository(),
     )
@@ -365,69 +365,6 @@ def test_queue_resolve_retry_requeues_token_radar_dirty_target_with_bounded_tran
     ]
 
 
-def test_queue_resolve_retry_requeues_market_tick_current_dirty_target(monkeypatch) -> None:
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    source_row = {
-        "target_type": "chain_token",
-        "target_id": "solana:unit",
-        "payload_hash": "payload-market-current",
-        "attempt_count": 3,
-    }
-    conn = _FakeTerminalConnection()
-    conn.rows = [
-        _terminal_row(
-            "terminal-market-current-1",
-            worker_name="market_tick_current_projection",
-            source_table="market_tick_current_dirty_targets",
-            target_key="chain_token:solana:unit",
-            source_row_json=source_row,
-        )
-    ]
-    repos = SimpleNamespace(
-        signals=SimpleNamespace(conn=conn),
-        transaction=conn.transaction,
-        market_tick_current_dirty_targets=_FakeMarketTickCurrentDirtyTargetRetryRepository(),
-    )
-
-    @contextmanager
-    def fake_repositories(_settings: object):
-        yield repos
-
-    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
-    stdout = io.StringIO()
-
-    code = main(
-        [
-            "ops",
-            "queue-resolve",
-            "--terminal-id",
-            "terminal-market-current-1",
-            "--action",
-            "retry",
-            "--reason",
-            "operator checked market current",
-            "--execute",
-        ],
-        stdout=stdout,
-    )
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert payload["ok"] is True
-    assert payload["data"]["operator_action"] == "retry"
-    assert payload["data"]["transition"] == {"requeued": 1, "due_at_ms": 1_700_000_100_000}
-    assert repos.market_tick_current_dirty_targets.calls == [
-        {
-            "targets": [source_row],
-            "reason": "terminal_retry:operator checked market current",
-            "now_ms": 1_700_000_100_000,
-        }
-    ]
-
-
 def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
@@ -452,7 +389,7 @@ def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatc
         )
     ]
     repos = SimpleNamespace(
-        signals=SimpleNamespace(conn=conn),
+        conn=conn,
         transaction=conn.transaction,
         macro_intel=_FakeMacroProjectionRetryRepository(),
     )
@@ -523,7 +460,7 @@ def test_queue_resolve_retry_rolls_back_when_transition_requeues_nothing(monkeyp
         )
     ]
     repos = SimpleNamespace(
-        signals=SimpleNamespace(conn=conn),
+        conn=conn,
         transaction=conn.transaction,
         discovery=_FakeEmptyDiscoveryRetryRepository(),
     )
@@ -558,55 +495,6 @@ def test_queue_resolve_retry_rolls_back_when_transition_requeues_nothing(monkeyp
     assert conn.rollbacks == 1
 
 
-def test_queue_resolve_retry_requires_discovery_repository_contract(monkeypatch) -> None:
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    conn = _FakeTerminalConnection()
-    conn.rows = [
-        _terminal_row(
-            "terminal-1",
-            worker_name="resolution_refresh",
-            source_table="token_discovery_dirty_lookup_keys",
-            target_key="okx_dex_search:bonk",
-            source_row_json={
-                "provider": "okx_dex_search",
-                "lookup_key": "symbol:BONK",
-                "payload_hash": "",
-            },
-        )
-    ]
-    repos = SimpleNamespace(signals=SimpleNamespace(conn=conn), transaction=conn.transaction)
-
-    @contextmanager
-    def fake_repositories(_settings: object):
-        yield repos
-
-    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
-    stdout = io.StringIO()
-
-    code = main(
-        [
-            "ops",
-            "queue-resolve",
-            "--terminal-id",
-            "terminal-1",
-            "--action",
-            "retry",
-            "--reason",
-            "operator checked row",
-            "--execute",
-        ],
-        stdout=stdout,
-    )
-
-    assert code == 1
-    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "discovery_repository_required"}
-    assert conn.rows[0]["operator_action"] is None
-    assert conn.rollbacks == 1
-
-
 def test_queue_resolve_bucket_dry_run_reports_count_without_terminal_ids(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
@@ -630,7 +518,7 @@ def test_queue_resolve_bucket_dry_run_reports_count_without_terminal_ids(monkeyp
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=conn), transaction=conn.transaction)
+        yield SimpleNamespace(conn=conn, transaction=conn.transaction)
 
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
@@ -703,7 +591,7 @@ def test_queue_resolve_bucket_execute_archives_bounded_rows_without_terminal_ids
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=conn), transaction=conn.transaction)
+        yield SimpleNamespace(conn=conn, transaction=conn.transaction)
 
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
@@ -750,7 +638,6 @@ def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
     assert set(queue_ops.QUEUE_RETRY_TRANSITIONS) >= {
         ("resolution_refresh", "token_discovery_dirty_lookup_keys"),
         ("event_anchor_backfill", "event_anchor_backfill_jobs"),
-        ("market_tick_current_projection", "market_tick_current_dirty_targets"),
         ("token_image_mirror", "token_image_source_dirty_targets"),
         ("token_profile_current", "token_profile_current_dirty_targets"),
         ("token_radar_projection", "token_radar_dirty_targets"),
@@ -759,13 +646,13 @@ def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
     assert ("mention_semantics", "token_mention_semantics") not in queue_ops.QUEUE_RETRY_TRANSITIONS
 
 
-def test_queue_resolve_bucket_rejects_zero_limit_before_listing_terminal_ids(monkeypatch) -> None:
+def test_queue_resolve_bucket_parser_rejects_zero_limit_before_listing_terminal_ids(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
     from parallax.app.surfaces.cli.commands import queue_ops
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=object()))
+        yield SimpleNamespace(conn=object())
 
     def fake_list_terminal_event_ids(*args: Any, **kwargs: Any) -> list[str]:
         raise AssertionError("terminal ids must not be listed when limit is invalid")
@@ -796,8 +683,8 @@ def test_queue_resolve_bucket_rejects_zero_limit_before_listing_terminal_ids(mon
         stdout=stdout,
     )
 
-    assert code == 1
-    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "limit_must_be_positive"}
+    assert code == 2
+    assert stdout.getvalue() == ""
 
 
 def test_queue_inspect_active_uses_queue_health_adapter(monkeypatch) -> None:
@@ -808,7 +695,7 @@ def test_queue_inspect_active_uses_queue_health_adapter(monkeypatch) -> None:
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=conn))
+        yield SimpleNamespace(conn=conn)
 
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
@@ -860,13 +747,13 @@ def test_queue_inspect_active_uses_queue_health_adapter(monkeypatch) -> None:
     ]
 
 
-def test_queue_inspect_active_rejects_zero_limit_before_queue_health_sampling(monkeypatch) -> None:
+def test_queue_inspect_active_parser_rejects_zero_limit_before_queue_health_sampling(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
     from parallax.app.surfaces.cli.commands import queue_ops
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=object()))
+        yield SimpleNamespace(conn=object())
 
     def fake_queue_health(*args: Any, **kwargs: Any) -> dict[str, Any]:
         raise AssertionError("active queue health must not be sampled when limit is invalid")
@@ -895,8 +782,8 @@ def test_queue_inspect_active_rejects_zero_limit_before_queue_health_sampling(mo
         stdout=stdout,
     )
 
-    assert code == 1
-    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "limit_must_be_positive"}
+    assert code == 2
+    assert stdout.getvalue() == ""
 
 
 class _FakeDiscoveryRetryRepository:
@@ -912,15 +799,6 @@ class _FakeEmptyDiscoveryRetryRepository(_FakeDiscoveryRetryRepository):
     def enqueue_lookup_keys(self, lookup_keys, **kwargs):
         self.calls.append({"lookup_keys": list(lookup_keys), **kwargs})
         return 0
-
-
-class _FakeMarketTickCurrentDirtyTargetRetryRepository:
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-
-    def enqueue_targets(self, targets, **kwargs):
-        self.calls.append({"targets": [dict(target) for target in targets], **kwargs})
-        return len(targets)
 
 
 class _FakeTokenImageSourceRetryRepository:

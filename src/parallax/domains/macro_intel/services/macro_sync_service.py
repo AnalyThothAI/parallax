@@ -11,7 +11,7 @@ from typing import Any, Protocol, cast
 
 from parallax.domains.macro_intel.observation_identity import normalize_macro_date
 from parallax.domains.macro_intel.services.macro_sync_scheduler import ensure_due_macro_sync_windows
-from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
+from parallax.domains.macro_intel.services.macro_sync_types import MacrodataBundleRunResult, MacroSyncRunSummary
 from parallax.domains.macro_intel.services.macrodata_bundle_importer import (
     parse_macrodata_bundle,
     write_macrodata_bundle_import,
@@ -19,11 +19,11 @@ from parallax.domains.macro_intel.services.macrodata_bundle_importer import (
 
 
 class MacrodataBundleRunnerProtocol(Protocol):
-    def history_bundle(self, *, bundle: str, start: str, end: str) -> object: ...
+    def history_bundle(self, *, bundle: str, start: str, end: str) -> MacrodataBundleRunResult: ...
 
 
 _CONFIG_ERROR_CODES = {
-    "macrodata_executable_missing",
+    "macrodata_entrypoint_missing",
 }
 _URI_CREDENTIAL_RE = re.compile(r"([a-z][a-z0-9+.-]*://[^:/@\s]+):([^@\s]+)@", re.IGNORECASE)
 _SECRET_ASSIGNMENT_RE = re.compile(
@@ -44,7 +44,6 @@ class MacroSyncService:
         db: Any | None = None,
         repository_factory: Callable[[], AbstractContextManager[Any]] | None = None,
         runner: MacrodataBundleRunnerProtocol | None = None,
-        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
     ) -> None:
         if settings is None:
@@ -56,7 +55,6 @@ class MacroSyncService:
         self.db = db
         self.repository_factory = repository_factory
         self.runner = runner
-        self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
 
     def enqueue_due_windows(self, *, now_ms: int | None = None) -> dict[str, Any]:
@@ -143,8 +141,12 @@ class MacroSyncService:
                 start=_date_string(window["window_start"]),
                 end=_date_string(window["window_end"]),
             )
-            parsed = parse_macrodata_bundle(_run_result_envelope(run_result), now_ms=now_ms)
-            diagnostics = _safe_diagnostics(_run_result_diagnostics(run_result))
+            if not isinstance(run_result.envelope, Mapping):
+                raise ValueError("macrodata bundle runner returned invalid envelope")
+            if not isinstance(run_result.diagnostics, Mapping):
+                raise ValueError("macrodata bundle runner returned invalid diagnostics")
+            parsed = parse_macrodata_bundle(run_result.envelope, now_ms=now_ms)
+            diagnostics = _safe_diagnostics(run_result.diagnostics)
             with self._repository_session() as repos, repos.transaction():
                 import_summary = write_macrodata_bundle_import(parsed, repos=repos)
                 completed_at_ms = int(self.clock_ms())
@@ -191,8 +193,6 @@ class MacroSyncService:
                 if not completed:
                     raise _StaleMacroSyncClaimError("macro sync claim is no longer current")
             summary = _summary_from_payload(run_payload)
-            if summary.imported_observation_count > 0 and self.wake_emitter is not None:
-                _notify_macro_observations_imported(self.wake_emitter, summary)
             return summary
         except _StaleMacroSyncClaimError:
             return _stale_claim_summary(sync_run_id=sync_run_id)
@@ -354,18 +354,6 @@ def _aggregate_enqueue_summaries(bundle_summaries: list[dict[str, Any]]) -> dict
     }
 
 
-def _run_result_envelope(run_result: object) -> Mapping[str, Any]:
-    envelope = getattr(run_result, "envelope", None)
-    if not isinstance(envelope, Mapping):
-        raise ValueError("macrodata bundle runner returned no envelope")
-    return envelope
-
-
-def _run_result_diagnostics(run_result: object) -> Mapping[str, Any]:
-    diagnostics = getattr(run_result, "diagnostics", None)
-    return diagnostics if isinstance(diagnostics, Mapping) else {}
-
-
 def _runner_error_diagnostics(exc: Exception) -> Mapping[str, Any] | None:
     diagnostics = getattr(exc, "diagnostics", None)
     return diagnostics if isinstance(diagnostics, Mapping) else None
@@ -381,9 +369,9 @@ def _fred_api_key_state(settings: object) -> dict[str, Any]:
 
 def _configured_fred_env_name(settings: Any) -> str | None:
     try:
-        env_name = settings.macrodata_fred_api_key_env
+        env_name = settings.providers.macrodata.fred_api_key_env
     except AttributeError as exc:
-        raise RuntimeError("macrodata_fred_api_key_env_settings_required") from exc
+        raise RuntimeError("macrodata_provider_settings_required") from exc
     if env_name is None:
         return None
     if isinstance(env_name, str) and env_name.strip():
@@ -520,17 +508,6 @@ def _macro_sync_window_max_attempts(window: Mapping[str, Any]) -> int:
 def _explicit_trigger_reason(trigger_reason: str, *, now_ms: int) -> str:
     _ = now_ms
     return str(trigger_reason).strip() or "operator_sync"
-
-
-def _notify_macro_observations_imported(wake_emitter: Any, summary: MacroSyncRunSummary) -> None:
-    try:
-        wake_emitter.notify_macro_observations_imported(
-            count=summary.imported_observation_count,
-            max_observed_at=str(summary.max_observed_at) if summary.max_observed_at else None,
-            asof_date=str(summary.asof_date) if summary.asof_date else None,
-        )
-    except Exception:
-        return
 
 
 def _safe_diagnostics(diagnostics: Mapping[str, Any]) -> dict[str, Any]:

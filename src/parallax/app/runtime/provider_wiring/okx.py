@@ -170,11 +170,11 @@ def wire_okx_provider_bundle(settings: Settings) -> OkxProviderBundle:
 def okx_dex_discovery_market(settings: Settings) -> OkxDexDiscoveryProvider:
     return OkxDexDiscoveryProvider(
         OkxDexClient(
-            base_url=settings.okx_dex_base_url,
-            api_key=settings.okx_dex_api_key,
-            secret_key=settings.okx_dex_secret_key,
-            passphrase=settings.okx_dex_passphrase,
-            timeout_seconds=settings.okx_timeout_seconds,
+            base_url=settings.providers.okx.dex_base_url,
+            api_key=settings.providers.okx.dex_api_key,
+            secret_key=settings.providers.okx.dex_secret_key,
+            passphrase=settings.providers.okx.dex_passphrase,
+            timeout_seconds=settings.providers.okx.timeout_seconds,
         )
     )
 
@@ -182,11 +182,11 @@ def okx_dex_discovery_market(settings: Settings) -> OkxDexDiscoveryProvider:
 def okx_dex_quote_market(settings: Settings) -> OkxDexQuoteProvider:
     return OkxDexQuoteProvider(
         OkxDexClient(
-            base_url=settings.okx_dex_base_url,
-            api_key=settings.okx_dex_api_key,
-            secret_key=settings.okx_dex_secret_key,
-            passphrase=settings.okx_dex_passphrase,
-            timeout_seconds=settings.okx_timeout_seconds,
+            base_url=settings.providers.okx.dex_base_url,
+            api_key=settings.providers.okx.dex_api_key,
+            secret_key=settings.providers.okx.dex_secret_key,
+            passphrase=settings.providers.okx.dex_passphrase,
+            timeout_seconds=settings.providers.okx.timeout_seconds,
         )
     )
 
@@ -194,10 +194,10 @@ def okx_dex_quote_market(settings: Settings) -> OkxDexQuoteProvider:
 def okx_dex_ws_market(settings: Settings) -> OkxDexWebSocketMarketProviderAdapter:
     return OkxDexWebSocketMarketProviderAdapter(
         OkxDexWebSocketMarketProvider(
-            url=settings.okx_dex_ws_url,
-            api_key=settings.okx_dex_api_key or "",
-            secret_key=settings.okx_dex_secret_key or "",
-            passphrase=settings.okx_dex_passphrase or "",
+            url=settings.providers.okx.dex_ws_url,
+            api_key=settings.providers.okx.dex_api_key or "",
+            secret_key=settings.providers.okx.dex_secret_key or "",
+            passphrase=settings.providers.okx.dex_passphrase or "",
             subscription_limit=settings.workers.market_tick_stream.subscription_limit,
         )
     )

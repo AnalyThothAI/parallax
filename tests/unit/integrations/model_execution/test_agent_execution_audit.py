@@ -11,6 +11,7 @@ from parallax.platform.agent_capabilities import (
     resolve_agent_capability_profile,
 )
 from parallax.platform.agent_execution import (
+    AGENT_RUNTIME_LANE,
     RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentCircuitBreakerPolicy,
@@ -20,8 +21,6 @@ from parallax.platform.agent_execution import (
     AgentExecutionResult,
     AgentExecutionResultAudit,
     AgentExecutionStatus,
-    AgentLanePolicy,
-    AgentRuntimeDefaultsPolicy,
     AgentRuntimePolicy,
     AgentStageSpec,
 )
@@ -115,8 +114,8 @@ def test_json_sha256_handles_pydantic_model_payloads_explicitly() -> None:
 
 def test_agent_stage_spec_request_audit_shape() -> None:
     spec = AgentStageSpec(
-        lane="social.event_enrichment",
-        stage="social_event",
+        lane=AGENT_RUNTIME_LANE,
+        stage="news_story_brief",
         instructions="Return JSON.",
         input_payload={"event_id": "e1"},
         output_type=dict,
@@ -136,22 +135,21 @@ def test_agent_stage_spec_request_audit_shape() -> None:
 
     assert audit.provider == "litellm"
     assert audit.backend == "litellm_sdk"
-    assert audit.lane == "social.event_enrichment"
-    assert audit.stage == "social_event"
+    assert audit.lane == AGENT_RUNTIME_LANE
+    assert audit.stage == "news_story_brief"
     assert audit.runtime_version == RUNTIME_VERSION
     assert audit.input_hash == json_sha256({"event_id": "e1"})
     assert audit.execution_started is False
     assert audit.status is AgentExecutionStatus.PLANNED
     assert audit.model_dump(mode="json")["status"] == "planned"
     assert audit.usage == {}
-    assert audit.safety_net == {}
     assert audit.trace_metadata["event_id"] == "e1"
     assert audit.trace_metadata["artifact_version_hash"] == "sha256:abc"
 
 
 def test_request_audit_shape_includes_capability_profile() -> None:
     spec = AgentStageSpec(
-        lane="news.story_brief",
+        lane=AGENT_RUNTIME_LANE,
         stage="news_story_brief",
         instructions="Return JSON.",
         input_payload={"event_id": "e1"},
@@ -182,51 +180,45 @@ def test_request_audit_shape_includes_capability_profile() -> None:
     assert audit.trace_metadata["request_option_keys"] == ["extra_body"]
 
 
-def test_runtime_policy_uses_default_lane_when_missing() -> None:
+def test_runtime_policy_is_one_flat_execution_policy() -> None:
     policy = AgentRuntimePolicy(
-        global_max_concurrency=2,
-        global_rpm_limit=30,
-        lanes={"known": AgentLanePolicy(priority="high", max_concurrency=1, timeout_seconds=15)},
+        model="deepseek-v4-flash",
+        max_concurrency=2,
+        rpm_limit=30,
+        timeout_seconds=15,
     )
 
-    known = policy.lane_for("known")
-    missing = policy.lane_for("missing")
-
-    assert known.timeout_seconds == 15
-    assert missing.timeout_seconds == 180
-    assert policy.model_for_lane("known") == "deepseek-v4-flash"
-    assert missing is not policy.lane_for("missing")
+    assert policy.timeout_seconds == 15
+    assert policy.model == "deepseek-v4-flash"
+    assert policy.max_concurrency == 2
+    assert policy.rpm_limit == 30
     assert AgentExecutionErrorClass.TIMEOUT.value == "timeout"
 
 
 def test_runtime_policy_resolves_model_capability_profiles() -> None:
-    policy = AgentRuntimePolicy(
-        defaults=AgentRuntimeDefaultsPolicy(model="qwen3.6"),
-        lanes={
-            "deepseek.lane": AgentLanePolicy(model="deepseek-v4-flash"),
-            "override.lane": AgentLanePolicy(
-                model="local-model",
-                provider_family="deepseek",
-                client_validation_retries=2,
-                max_tokens=1200,
-            ),
-        },
+    deepseek_policy = AgentRuntimePolicy(model="deepseek-v4-flash")
+    override_policy = AgentRuntimePolicy(
+        model="local-model",
+        provider_family="deepseek",
+        max_tokens=1200,
     )
 
-    deepseek = policy.capability_for_lane("deepseek.lane")
-    override = policy.capability_for_lane("override.lane")
+    deepseek = deepseek_policy.capability_profile()
+    override = override_policy.capability_profile()
 
     assert deepseek.request_options.extra_body == {"thinking": {"type": "disabled"}}
     assert override.provider_family == AgentProviderFamily.DEEPSEEK
-    assert override.client_validation_retries == 2
     assert override.request_options.max_tokens == 1200
     assert override.request_options.extra_body == {}
 
 
-def test_runtime_policy_resolves_capability_for_inherited_deepseek_default_model() -> None:
-    policy = AgentRuntimePolicy(defaults=AgentRuntimeDefaultsPolicy(model="deepseek-v4-flash", max_tokens=1600))
+def test_runtime_policy_resolves_deepseek_model_capability_with_flat_max_tokens() -> None:
+    policy = AgentRuntimePolicy(
+        model="deepseek-v4-flash",
+        max_tokens=1600,
+    )
 
-    profile = policy.capability_for_lane("news.story_brief")
+    profile = policy.capability_profile()
 
     assert profile.provider_family == AgentProviderFamily.DEEPSEEK
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
@@ -236,18 +228,35 @@ def test_runtime_policy_resolves_capability_for_inherited_deepseek_default_model
 def test_policy_models_forbid_extra_fields_and_invalid_non_positive_values() -> None:
     for model, kwargs in (
         (AgentCircuitBreakerPolicy, {"failure_threshold": 0}),
-        (AgentLanePolicy, {"max_concurrency": 0}),
-        (AgentRuntimePolicy, {"global_rpm_limit": 0}),
-        (AgentStageSpec, {"lane": "x", "unknown": True}),
+        (AgentRuntimePolicy, {"max_concurrency": 0}),
+        (AgentRuntimePolicy, {"rpm_limit": 0}),
+        (AgentRuntimePolicy, {"global_rpm_limit": 1}),
+        (AgentRuntimePolicy, {"lanes": {}}),
+        (AgentRuntimePolicy, {"defaults": {}}),
     ):
         with pytest.raises(ValidationError):
             model(**kwargs)
 
 
+def test_stage_spec_requires_the_fixed_news_story_brief_audit_lane() -> None:
+    with pytest.raises(ValidationError, match=r"agent_stage_lane_required:news\.story_brief"):
+        AgentStageSpec(
+            lane="other.lane",
+            stage="stage",
+            instructions="Return JSON.",
+            input_payload={},
+            output_type=dict,
+            prompt_version="p1",
+            schema_version="s1",
+            workflow_name="workflow",
+            agent_name="agent",
+        )
+
+
 def test_result_audit_and_result_keep_execution_facts_separate() -> None:
     audit = AgentExecutionResultAudit(
         model="qwen3.6",
-        lane="lane",
+        lane=AGENT_RUNTIME_LANE,
         stage="stage",
         workflow_name="workflow",
         agent_name="agent",
@@ -277,7 +286,7 @@ def test_result_audit_and_result_keep_execution_facts_separate() -> None:
 def test_audit_rejects_invalid_status_and_error_class() -> None:
     base = {
         "model": "qwen3.6",
-        "lane": "lane",
+        "lane": AGENT_RUNTIME_LANE,
         "stage": "stage",
         "workflow_name": "workflow",
         "agent_name": "agent",
@@ -299,11 +308,11 @@ def test_audit_rejects_invalid_status_and_error_class() -> None:
 def test_execution_error_carries_class_audit_and_started_flag() -> None:
     error = AgentExecutionError(
         AgentExecutionErrorClass.CIRCUIT_OPEN,
-        "lane circuit is open",
+        "runtime circuit is open",
         execution_started=False,
     )
 
-    assert str(error) == "lane circuit is open"
+    assert str(error) == "runtime circuit is open"
     assert error.error_class is AgentExecutionErrorClass.CIRCUIT_OPEN
     assert error.audit is None
     assert error.execution_started is False
@@ -312,7 +321,6 @@ def test_execution_error_carries_class_audit_and_started_flag() -> None:
 def test_capacity_reservation_release_is_idempotent() -> None:
     calls: list[str] = []
     reservation = AgentCapacityReservation(
-        lane="lane",
         acquired=True,
         _release=lambda: calls.append("released"),
     )
@@ -342,7 +350,6 @@ def test_capacity_reservation_release_requires_sync_callback_without_awaitable_f
         return release_result
 
     reservation = AgentCapacityReservation(
-        lane="lane",
         acquired=True,
         _release=release,
     )

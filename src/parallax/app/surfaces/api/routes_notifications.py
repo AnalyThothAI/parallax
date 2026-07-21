@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from collections.abc import Mapping
 from typing import Annotated, Any
 
@@ -9,7 +8,7 @@ from fastapi.responses import JSONResponse
 
 from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
-from parallax.app.surfaces.api.responses import _json
+from parallax.app.surfaces.api.responses import _validated_json
 from parallax.app.surfaces.api.validators import _alert_type, _delivery_status, _handle_set, _limit, _window
 from parallax.domains.notifications.services.account_alert_service import AccountAlertService
 
@@ -53,7 +52,8 @@ def account_alerts(
             handles=_handle_set(handles),
             alert_type=parsed_alert_type,
         )
-    return _json(
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.AccountAlertsData],
         {
             "ok": True,
             "data": {
@@ -61,7 +61,7 @@ def account_alerts(
                 "alert_type": parsed_alert_type,
                 "items": items,
             },
-        }
+        },
     )
 
 
@@ -83,22 +83,13 @@ def notifications(
         rule_id=rule_id or None,
         subscriber_key="local",
     )
-    return _json(
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.NotificationsData],
         {
             "ok": True,
             "data": data,
-        }
+        },
     )
-
-
-@router.get(
-    "/notification-summary",
-    response_model=api_schemas.ApiEnvelope[api_schemas.NotificationSummary],
-)
-def notification_summary(request: Request) -> JSONResponse:
-    runtime = _authenticated_runtime(request)
-    data = _notification_summary_data(runtime, subscriber_key="local")
-    return _json({"ok": True, "data": data})
 
 
 @router.get(
@@ -116,13 +107,14 @@ def notification_deliveries(
             limit=_limit(limit, maximum=500),
             status=_delivery_status(status),
         )
-    return _json(
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.NotificationDeliveriesData],
         {
             "ok": True,
             "data": {
                 "items": items,
             },
-        }
+        },
     )
 
 
@@ -134,7 +126,10 @@ def mark_notification_read(request: Request, notification_id: str) -> JSONRespon
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos, repos.transaction():
         updated = repos.notifications.mark_read(notification_id=notification_id, subscriber_key="local")
-    return _json({"ok": True, "data": {"notification_id": notification_id, "updated": updated}})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.NotificationReadData],
+        {"ok": True, "data": {"notification_id": notification_id, "updated": updated}},
+    )
 
 
 @router.post(
@@ -145,7 +140,10 @@ def mark_all_notifications_read(request: Request) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos, repos.transaction():
         updated_count = repos.notifications.mark_all_read(subscriber_key="local")
-    return _json({"ok": True, "data": {"updated_count": updated_count}})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.NotificationReadAllData],
+        {"ok": True, "data": {"updated_count": updated_count}},
+    )
 
 
 @router.post(
@@ -159,21 +157,24 @@ def mark_author_notifications_read(request: Request, author_handle: str) -> JSON
             author_handle=author_handle,
             subscriber_key="local",
         )
-    return _json({"ok": True, "data": {"updated_count": updated_count}})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.NotificationReadAllData],
+        {"ok": True, "data": {"updated_count": updated_count}},
+    )
 
 
 def _notification_payload(row: dict[str, Any]) -> dict[str, Any]:
     payload = dict(row)
     rule_id = str(payload.get("rule_id") or "")
-    raw_payload = _notification_payload_json(rule_id, payload.pop("payload_json", None))
+    raw_payload = _notification_payload_json(_required_notification_field(payload, "payload_json"))
     payload["payload"] = _public_notification_payload(rule_id, raw_payload)
-    payload["channels"] = _json_loads(payload.pop("channels_json", "[]"), [])
+    payload["channels"] = _notification_channels(_required_notification_field(payload, "channels_json"))
     return payload
 
 
 def _public_notification_payload(rule_id: str, raw_payload: Any) -> dict[str, Any]:
     if rule_id != "news_high_signal":
-        return _json_object(raw_payload)
+        return dict(raw_payload)
     payload = _required_news_payload(raw_payload)
     public: dict[str, Any] = {}
     for key in _NEWS_HIGH_SIGNAL_TEXT_PAYLOAD_FIELDS:
@@ -211,34 +212,26 @@ def _notifications_data(
     }
 
 
-def _notification_summary_data(runtime: Any, *, subscriber_key: str) -> dict[str, Any]:
-    with runtime.repositories() as repos:
-        return repos.notifications.summary(subscriber_key=subscriber_key)
-
-
-def _json_loads(value: Any, default: Any) -> Any:
-    if value is None:
-        return default
-    if not isinstance(value, str):
-        return value
-    try:
-        return json.loads(value)
-    except json.JSONDecodeError:
-        return default
-
-
-def _notification_payload_json(rule_id: str, value: Any) -> Any:
-    if rule_id != "news_high_signal":
-        return _json_loads(value, {})
+def _notification_payload_json(value: Any) -> dict[str, Any]:
     if isinstance(value, Mapping):
         return dict(value)
-    raise ValueError("news_high_signal_payload_json_required")
+    raise ValueError("notification_payload_json_mapping_required")
 
 
-def _json_object(value: Any) -> dict[str, Any]:
-    if isinstance(value, Mapping):
-        return dict(value)
-    return {}
+def _notification_channels(value: Any) -> list[str]:
+    if (
+        not isinstance(value, list)
+        or not value
+        or any(not isinstance(channel, str) or not channel for channel in value)
+    ):
+        raise ValueError("notification_channels_json_list_required")
+    return list(value)
+
+
+def _required_notification_field(payload: dict[str, Any], field_name: str) -> Any:
+    if field_name not in payload:
+        raise ValueError(f"notification_{field_name}_required")
+    return payload.pop(field_name)
 
 
 def _required_news_payload(value: Any) -> dict[str, Any]:

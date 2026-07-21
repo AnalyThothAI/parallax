@@ -10,35 +10,109 @@ from psycopg.types.json import Jsonb
 from parallax.domains.asset_market.types import MarketTick, market_tick_id
 from parallax.platform.db.json_safety import postgres_safe_json
 from parallax.platform.db.write_contract import returning_mutation_count
+from parallax.platform.validation import require_positive_int
 
 
-def _optional_returning_id(cursor: Any, row: Any | None) -> str | None:
+def _optional_returning_row(cursor: Any, row: Any | None) -> dict[str, Any] | None:
     returning_mutation_count(cursor, row, error_code="market_tick_repository_rowcount_invalid")
     if row is None:
         return None
-    return str(row["tick_id"])
+    return dict(row)
 
 
 class MarketTickRepository:
     def __init__(self, conn: Any) -> None:
         self._conn = conn
 
-    def insert_tick(self, tick: MarketTick) -> str:
-        self._insert_tick_returning_id(tick)
-        return tick.tick_id
-
-    def insert_ticks(self, ticks: Iterable[MarketTick]) -> int:
-        return len(self.insert_ticks_returning_ids(ticks))
-
-    def insert_ticks_returning_ids(self, ticks: Iterable[MarketTick]) -> list[str]:
-        inserted: list[str] = []
+    def insert_ticks_returning_rows(self, ticks: Iterable[MarketTick]) -> list[dict[str, Any]]:
+        inserted: list[dict[str, Any]] = []
         for tick in ticks:
-            inserted_id = self._insert_tick_returning_id(tick)
-            if inserted_id is not None:
-                inserted.append(inserted_id)
+            inserted_row = self._insert_tick_returning_row(tick)
+            if inserted_row is not None:
+                inserted.append(inserted_row)
         return inserted
 
-    def _insert_tick_returning_id(self, tick: MarketTick) -> str | None:
+    def latest_target_ticks_after(
+        self,
+        *,
+        after: tuple[str, str] | None,
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        parsed_limit = require_positive_int(limit, error_code="market_tick_rebuild_limit_required")
+        if after is None:
+            after_target_type = None
+            after_target_id = None
+        else:
+            after_target_type = str(after[0]).strip()
+            after_target_id = str(after[1]).strip()
+            if not after_target_type or not after_target_id:
+                raise ValueError("market_tick_rebuild_cursor_required")
+        rows = self._conn.execute(
+            """
+            WITH RECURSIVE targets(target_type, target_id, position) AS (
+              (
+                SELECT target_type, target_id, 1::bigint
+                FROM market_ticks
+                WHERE %(after_target_type)s::text IS NULL
+                   OR (target_type, target_id) > (
+                     %(after_target_type)s::text,
+                     %(after_target_id)s::text
+                   )
+                ORDER BY target_type, target_id
+                LIMIT 1
+              )
+              UNION ALL
+              SELECT next_target.target_type, next_target.target_id, targets.position + 1
+              FROM targets
+              CROSS JOIN LATERAL (
+                SELECT ticks.target_type, ticks.target_id
+                FROM market_ticks AS ticks
+                WHERE (ticks.target_type, ticks.target_id) > (targets.target_type, targets.target_id)
+                ORDER BY ticks.target_type, ticks.target_id
+                LIMIT 1
+              ) AS next_target
+              WHERE targets.position < %(limit)s
+            )
+            SELECT
+              latest.tick_id,
+              latest.target_type,
+              latest.target_id,
+              latest.chain,
+              latest.token_address,
+              latest.exchange,
+              latest.instrument,
+              latest.pricefeed_id,
+              latest.source_tier,
+              latest.source_provider,
+              latest.observed_at_ms,
+              latest.received_at_ms,
+              latest.price_usd,
+              latest.liquidity_usd,
+              latest.volume_24h_usd,
+              latest.open_interest_usd,
+              latest.market_cap_usd,
+              latest.holders,
+              latest.created_at_ms
+            FROM targets
+            CROSS JOIN LATERAL (
+              SELECT ticks.*
+              FROM market_ticks AS ticks
+              WHERE ticks.target_type = targets.target_type
+                AND ticks.target_id = targets.target_id
+              ORDER BY ticks.observed_at_ms DESC, ticks.received_at_ms DESC, ticks.tick_id DESC
+              LIMIT 1
+            ) AS latest
+            ORDER BY latest.target_type, latest.target_id
+            """,
+            {
+                "after_target_type": after_target_type,
+                "after_target_id": after_target_id,
+                "limit": parsed_limit,
+            },
+        ).fetchall()
+        return [dict(row) for row in rows]
+
+    def _insert_tick_returning_row(self, tick: MarketTick) -> dict[str, Any] | None:
         expected_id = market_tick_id(
             target_type=tick.target_type,
             target_id=tick.target_id,
@@ -101,7 +175,26 @@ class MarketTickRepository:
                 %(created_at_ms)s
             )
             ON CONFLICT(observed_at_ms, target_type, target_id, source_provider) DO NOTHING
-            RETURNING tick_id
+            RETURNING
+                tick_id,
+                target_type,
+                target_id,
+                chain,
+                token_address,
+                exchange,
+                instrument,
+                pricefeed_id,
+                source_tier,
+                source_provider,
+                observed_at_ms,
+                received_at_ms,
+                price_usd,
+                liquidity_usd,
+                volume_24h_usd,
+                open_interest_usd,
+                market_cap_usd,
+                holders,
+                created_at_ms
             """,
             {
                 "tick_id": tick.tick_id,
@@ -128,7 +221,7 @@ class MarketTickRepository:
             },
         )
         row = cursor.fetchone()
-        return _optional_returning_id(cursor, row)
+        return _optional_returning_row(cursor, row)
 
     def latest_at_or_before(
         self,
@@ -186,97 +279,6 @@ class MarketTickRepository:
                 "at_ms": int(at_ms),
                 "min_observed_at_ms": int(at_ms) - int(max_lag_ms),
                 "max_observed_at_ms": int(at_ms) + int(max_lag_ms),
-            },
-        ).fetchone()
-        return cast("dict[str, Any] | None", row)
-
-    def latest_for_target(
-        self,
-        *,
-        target_type: str,
-        target_id: str,
-        max_age_ms: int,
-        now_ms: int,
-    ) -> dict[str, Any] | None:
-        row = self._conn.execute(
-            """
-            SELECT *
-            FROM market_ticks
-            WHERE target_type = %(target_type)s
-              AND target_id = %(target_id)s
-              AND received_at_ms >= %(min_received_at_ms)s
-            ORDER BY observed_at_ms DESC, received_at_ms DESC, tick_id DESC
-            LIMIT 1
-            """,
-            {
-                "target_type": target_type,
-                "target_id": target_id,
-                "min_received_at_ms": now_ms - max_age_ms,
-            },
-        ).fetchone()
-        return cast("dict[str, Any] | None", row)
-
-    def latest_for_targets(
-        self,
-        *,
-        targets: list[dict[str, str]],
-        max_age_ms: int,
-        now_ms: int,
-    ) -> dict[tuple[str, str], dict[str, Any]]:
-        if not targets:
-            return {}
-        values_sql = ",".join(["(%s, %s)"] * len(targets))
-        params: list[Any] = []
-        for target in targets:
-            params.extend([str(target["target_type"]), str(target["target_id"])])
-        params.append(int(now_ms) - int(max_age_ms))
-        rows = self._conn.execute(
-            f"""
-            WITH requested(target_type, target_id) AS (VALUES {values_sql}),
-            ranked AS (
-              SELECT mt.*,
-                     row_number() OVER (
-                       PARTITION BY mt.target_type, mt.target_id
-                       ORDER BY mt.observed_at_ms DESC, mt.received_at_ms DESC, mt.tick_id DESC
-                     ) AS rn
-              FROM requested r
-              JOIN market_ticks mt
-                ON mt.target_type = r.target_type
-               AND mt.target_id = r.target_id
-              WHERE mt.received_at_ms >= %s
-            )
-            SELECT *
-            FROM ranked
-            WHERE rn = 1
-            """,
-            params,
-        ).fetchall()
-        return {(str(row["target_type"]), str(row["target_id"])): dict(row) for row in rows}
-
-    def first_between(
-        self,
-        *,
-        target_type: str,
-        target_id: str,
-        start_ms: int,
-        end_ms: int,
-    ) -> dict[str, Any] | None:
-        row = self._conn.execute(
-            """
-            SELECT *
-            FROM market_ticks
-            WHERE target_type = %(target_type)s
-              AND target_id = %(target_id)s
-              AND observed_at_ms >= %(start_ms)s
-              AND observed_at_ms <= %(end_ms)s
-            ORDER BY observed_at_ms ASC, received_at_ms ASC, tick_id ASC
-            LIMIT 1
-            """,
-            {
-                "target_type": target_type,
-                "target_id": target_id,
-                "start_ms": start_ms,
-                "end_ms": end_ms,
             },
         ).fetchone()
         return cast("dict[str, Any] | None", row)

@@ -292,7 +292,15 @@ def _valid_factor_row() -> dict[str, object]:
 def _valid_factor_snapshot() -> dict[str, object]:
     return {
         "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
-        "subject": {"target_type": "Asset", "target_id": "asset-1", "symbol": "BOV"},
+        "subject": {
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "symbol": "BOV",
+            "target_market_type": "dex",
+            "chain": "eip155:1",
+            "address": "0xabc",
+            "pricefeed_id": None,
+        },
         "market": {
             "event_anchor": None,
             "decision_latest": None,
@@ -322,21 +330,32 @@ def _valid_factor_snapshot() -> dict[str, object]:
         },
         "gates": {
             "eligible_for_high_alert": False,
-            "eligible_for_watch": True,
             "max_decision": "discard",
-            "suppression_reasons": [],
+            "blocked_reasons": [],
+            "risk_reasons": [],
         },
         "data_health": {"identity": "ready", "market": "missing", "social": "ready", "alpha": "ready"},
         "normalization": {
             "status": "ranked",
             "cohort_status": "ready",
             "cohort": {"in_cohort": True, "size": 10},
-            "factor_ranks": {},
+            "factor_ranks": {
+                "social_heat": None,
+                "social_propagation": None,
+                "semantic_catalyst": None,
+                "timing_risk": None,
+            },
             "alpha_rank": 0.5,
         },
         "composite": {
+            "raw_alpha_score": 0,
             "rank_score": 0,
-            "family_scores": {},
+            "family_scores": {
+                "social_heat": 0,
+                "social_propagation": 0,
+                "semantic_catalyst": 0,
+                "timing_risk": 0,
+            },
             "recommended_decision": "discard",
         },
         "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": 200},

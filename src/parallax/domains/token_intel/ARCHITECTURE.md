@@ -14,7 +14,7 @@ Provider payloads and WebSocket frames are inputs only.
 4. Worker, service, or application code owns the transaction boundary.
 5. Serving identity uses stable product keys, never run, attempt, timestamp, generation, or UUID identity.
 6. Replaying unchanged facts writes zero serving rows.
-7. `NOTIFY` is only a wake hint; interval catch-up is always authoritative.
+7. Workers re-read PostgreSQL on bounded intervals; there is no wake dependency.
 8. Token Radar has one work queue: `token_radar_dirty_targets`.
 
 ## Material facts
@@ -102,10 +102,10 @@ For each claimed target they perform:
 
 1. Refresh rank-source edges when social or repair facts changed.
 2. Reuse existing edges for market-only changes.
-3. Load source rows in bounded batches.
+3. Load source rows once per `(window, scope)` in bounded batches; venue is not a feature-input dimension.
 4. Overlay the latest market context when required.
-5. Build or delete the target feature row.
-6. Collect touched `(window, scope, venue)` rank sets.
+5. Build or delete the target feature row once per `(window, scope)`.
+6. Derive the target's venue and touch only the `all` plus actual-venue rank sets.
 7. Rank the complete active cohort for each touched set.
 8. Publish current rows and publication state.
 9. Enqueue downstream derived work from semantic rank changes.
@@ -135,14 +135,21 @@ An older publication timestamp cannot replace a newer current set.
 If the incoming semantic signature matches current rows, publication updates no serving rows.
 
 `token_radar_target_first_seen` preserves stable first-listing time independently of publication attempts.
-Read APIs join current rows to publication state and expose only ready state.
+Read APIs join current rows to publication state and expose the last good generation whenever one exists. A failed refresh keeps those rows readable while publication metadata reports the failed attempt as stale/degraded.
+
+The public Radar row has one semantic payload authority: `factor_snapshot`. Its
+`subject` has the exact keys `target_type`, `target_id`, `symbol`,
+`target_market_type`, `chain`, `address`, and `pricefeed_id`. Target, market,
+attention, score, decision, and source-event fields are not duplicated beside
+the snapshot. `gates`, `normalization`, and `composite` retain one exact
+producer-owned shape, and consumers reject unknown decision values rather than
+mapping compatibility labels.
 
 ## Runtime ownership
 
 `TokenRadarProjectionWorker` is the only runtime writer of Token Radar serving tables.
-Its single-writer advisory lock prevents concurrent worker instances from publishing the same read model.
 Manual repair commands enqueue targets; they do not write serving rows directly.
 
-The worker wakes on hints and also runs bounded interval catch-up.
-After restart or a missed notification it re-reads publication state and the dirty queue from PostgreSQL.
-Correctness does not depend on an in-memory cursor or a delivered notification.
+The worker runs bounded interval catch-up. After restart it re-reads publication
+state and the dirty queue from PostgreSQL. Correctness does not depend on an
+in-memory cursor or a delivered message.

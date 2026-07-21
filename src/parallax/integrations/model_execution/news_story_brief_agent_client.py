@@ -4,7 +4,7 @@ from typing import Any
 
 from parallax.domains.news_intel.services.news_story_brief_stage import (
     build_news_story_brief_stage,
-    news_story_brief_prompt_text_hash,
+    news_story_brief_stage_instructions,
 )
 from parallax.domains.news_intel.types.news_story_brief import (
     NEWS_STORY_BRIEF_PROMPT_VERSION,
@@ -12,9 +12,7 @@ from parallax.domains.news_intel.types.news_story_brief import (
     NewsStoryBriefInputPacket,
     NewsStoryBriefPayload,
 )
-from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
-from parallax.platform.agent_execution import RUNTIME_VERSION, AgentCapacityReservation
-from parallax.platform.agent_hashing import artifact_hash_for, json_sha256
+from parallax.platform.agent_execution import AgentCapacityReservation
 
 
 class LiteLLMNewsStoryBriefClient:
@@ -27,21 +25,19 @@ class LiteLLMNewsStoryBriefClient:
 
     @property
     def model(self) -> str:
-        return self._agent_gateway.model_for_lane("news.story_brief")
+        return self._agent_gateway.model
 
     @property
     def artifact_version_hash(self) -> str:
-        return artifact_hash_for(
-            model=self.model,
+        return self._agent_gateway.artifact_version_hash(
+            output_type=NewsStoryBriefPayload,
             prompt_version=NEWS_STORY_BRIEF_PROMPT_VERSION,
             schema_version=NEWS_STORY_BRIEF_SCHEMA_VERSION,
-            runtime_version=RUNTIME_VERSION,
-            output_schema_hash=json_sha256(StrictJsonOutputSchema(NewsStoryBriefPayload).json_schema()),
-            prompt_text_hash=news_story_brief_prompt_text_hash(),
+            instructions=news_story_brief_stage_instructions(),
         )
 
-    def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation:
-        return self._agent_gateway.try_reserve(lane, rate_units=rate_units)
+    def try_reserve_execution(self, *, rate_units: int = 1) -> AgentCapacityReservation:
+        return self._agent_gateway.try_reserve(rate_units=rate_units)
 
     def request_audit(self, *, run_id: str, packet: NewsStoryBriefInputPacket) -> dict[str, Any]:
         stage = build_news_story_brief_stage(packet=packet, run_id=run_id)

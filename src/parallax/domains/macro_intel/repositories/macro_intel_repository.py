@@ -17,6 +17,7 @@ from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
     normalize_macro_date,
+    require_macro_observation_raw_payload,
 )
 from parallax.platform.current_read_model_payload_hash import (
     stable_current_payload_hash,
@@ -53,7 +54,7 @@ class MacroIntelRepository:
     def upsert_observation(self, observation: Mapping[str, Any]) -> MacroObservationUpsertOutcome:
         observed_at = normalize_macro_date(observation.get("observed_at"))
         observation_id = str(observation.get("observation_id") or macro_observation_id(observation))
-        raw_payload = dict(observation.get("raw_payload") or observation.get("raw_payload_json") or {})
+        raw_payload = require_macro_observation_raw_payload(observation)
         fact_payload_hash = macro_observation_fact_payload_hash(observation)
         row = self.conn.execute(
             """
@@ -1678,10 +1679,10 @@ class MacroIntelRepository:
             INSERT INTO macro_view_snapshots(
               projection_version, asof_date, status, regime, overall_score, panels_json,
               indicators_json, triggers_json, data_gaps_json, source_coverage_json, features_json,
-              chain_json, scenario_json, scorecard_json, assets_brief_json, module_views_json,
+              chain_json, scenario_json, scorecard_json, module_views_json,
               computed_at_ms, payload_hash
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(projection_version) DO UPDATE SET
               asof_date = excluded.asof_date,
               status = excluded.status,
@@ -1696,7 +1697,6 @@ class MacroIntelRepository:
               chain_json = excluded.chain_json,
               scenario_json = excluded.scenario_json,
               scorecard_json = excluded.scorecard_json,
-              assets_brief_json = excluded.assets_brief_json,
               module_views_json = excluded.module_views_json,
               computed_at_ms = excluded.computed_at_ms,
               payload_hash = excluded.payload_hash
@@ -1718,7 +1718,6 @@ class MacroIntelRepository:
                 Jsonb(payload["chain_json"]),
                 Jsonb(payload["scenario_json"]),
                 Jsonb(payload["scorecard_json"]),
-                Jsonb(payload["assets_brief_json"]),
                 Jsonb(payload["module_views_json"]),
                 int(snapshot["computed_at_ms"]),
                 payload_hash,
@@ -1978,7 +1977,6 @@ def _macro_snapshot_payload(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "chain_json": _required_snapshot_mapping(snapshot, "chain_json"),
         "scenario_json": _required_snapshot_mapping(snapshot, "scenario_json"),
         "scorecard_json": _required_snapshot_mapping(snapshot, "scorecard_json"),
-        "assets_brief_json": _required_snapshot_mapping(snapshot, "assets_brief_json"),
         "module_views_json": _required_module_views(snapshot),
     }
     return payload

@@ -39,8 +39,6 @@ class NewsItemProcessWorker(WorkerBase):
         db: Any,
         telemetry: Any,
         identity_lookup: TokenIdentityLookup | None = None,
-        wake_waiter: Any | None = None,
-        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         name: str = "news_item_process",
     ) -> None:
@@ -51,10 +49,8 @@ class NewsItemProcessWorker(WorkerBase):
             settings=settings,
             db=db,
             telemetry=telemetry,
-            wake_waiter=wake_waiter,
         )
         self.identity_lookup = identity_lookup
-        self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
 
     async def run_once(self) -> WorkerResult:
@@ -234,8 +230,6 @@ class NewsItemProcessWorker(WorkerBase):
                     continue
                 failed += 1
 
-        if processed > 0 and self.wake_emitter is not None:
-            self.wake_emitter.notify_news_item_processed(count=processed)
         notes = {"claimed": len(items)}
         if stale_claims > 0:
             notes["stale_claims"] = stale_claims

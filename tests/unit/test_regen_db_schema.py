@@ -62,8 +62,8 @@ class _Inspector:
 
 
 def test_require_database_at_alembic_head_accepts_exact_single_head(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0185")
-    connection = _Connection(["20260721_0185"])
+    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260722_0186")
+    connection = _Connection(["20260722_0186"])
 
     regen_db_schema._require_database_at_alembic_head(connection)
 
@@ -75,7 +75,7 @@ def test_require_database_at_alembic_head_accepts_exact_single_head(monkeypatch:
     [
         ([], "<missing>"),
         (["20260713_0183"], "20260713_0183"),
-        (["20260713_0183", "20260721_0185"], "20260713_0183,20260721_0185"),
+        (["20260713_0183", "20260722_0186"], "20260713_0183,20260722_0186"),
     ],
 )
 def test_require_database_at_alembic_head_fails_closed(
@@ -83,25 +83,32 @@ def test_require_database_at_alembic_head_fails_closed(
     versions: list[str],
     actual: str,
 ) -> None:
-    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0185")
+    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260722_0186")
 
     with pytest.raises(
         RuntimeError,
-        match=rf"db_schema_generation_requires_alembic_head: expected=20260721_0185 actual={actual}",
+        match=rf"db_schema_generation_requires_alembic_head: expected=20260722_0186 actual={actual}",
     ):
         regen_db_schema._require_database_at_alembic_head(_Connection(versions))
 
 
 @pytest.mark.parametrize(
     "retired_table",
-    ["cex_derivative_series", "pulse_candidates", "narrative_admissions", "projection_runs"],
+    [
+        "cex_derivative_series",
+        "market_tick_current_dirty_targets",
+        "narrative_admissions",
+        "projection_runs",
+        "pulse_candidates",
+        "token_capture_tier",
+    ],
 )
 def test_same_revision_schema_drift_fails_closed_after_version_matches(
     monkeypatch: pytest.MonkeyPatch,
     retired_table: str,
 ) -> None:
-    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0185")
-    regen_db_schema._require_database_at_alembic_head(_Connection(["20260721_0185"]))
+    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260722_0186")
+    regen_db_schema._require_database_at_alembic_head(_Connection(["20260722_0186"]))
 
     with pytest.raises(
         RuntimeError,
@@ -118,11 +125,11 @@ def test_main_rejects_same_revision_schema_drift_before_writing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    connection = _Connection(["20260721_0185"])
+    connection = _Connection(["20260722_0186"])
     engine = _Engine(connection)
     output = tmp_path / "db-schema.md"
     monkeypatch.setenv(regen_db_schema.TEST_POSTGRES_DSN_ENV, "postgresql://test")
-    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0185")
+    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260722_0186")
     monkeypatch.setattr(regen_db_schema, "create_engine", lambda *_args, **_kwargs: engine)
     monkeypatch.setattr(regen_db_schema, "inspect", lambda _connection: _Inspector(["events", "model_runs"]))
     monkeypatch.setattr(regen_db_schema, "OUTPUT", output)

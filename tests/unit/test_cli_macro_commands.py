@@ -26,6 +26,11 @@ from parallax.domains.macro_intel.observation_identity import (
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 
 NOW_MS = 1_779_000_000_000
+MACRODATA_COMMAND_PREFIX = (
+    sys.executable,
+    "-c",
+    "from macrodata.surfaces.cli import main; main()",
+)
 
 ENVELOPE = {
     "ok": True,
@@ -90,6 +95,13 @@ def test_macro_import_bundle_parser_accepts_stdin() -> None:
     assert args.stdin is True
 
 
+def test_macro_import_bundle_handler_requires_parser_owned_arguments() -> None:
+    from parallax.app.surfaces.cli.commands import macro as macro_module
+
+    with pytest.raises(AttributeError):
+        macro_module._handle_import_bundle(SimpleNamespace())
+
+
 def test_macro_parser_rejects_direct_projection_paths() -> None:
     parser = build_parser()
 
@@ -126,11 +138,10 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
     from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 
     secret = "dummy-fred-secret"
-    resolved = "/app/.venv/bin/macrodata"
     calls: list[dict[str, object]] = []
 
     class Settings:
-        macrodata_fred_api_key_env = "APP_FRED_KEY"
+        providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env="APP_FRED_KEY"))
         macrodata_fred_api_key = None
         workers = _macrodata_workers()
 
@@ -154,10 +165,7 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
         return Completed()
 
     monkeypatch.setenv("APP_FRED_KEY", secret)
-    monkeypatch.setattr(
-        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
-        lambda *, environ=None: resolved,
-    )
+    monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
     monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
@@ -170,7 +178,7 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
     assert calls == [
         {
             "command": [
-                resolved,
+                *MACRODATA_COMMAND_PREFIX,
                 "bundle",
                 "history",
                 "macro-core",
@@ -188,9 +196,9 @@ def test_macrodata_runner_injects_fred_env_without_exposing_secret(monkeypatch) 
         }
     ]
     rendered = json.dumps(result.diagnostics)
-    assert calls[0]["command"][0] == resolved
+    assert calls[0]["command"][:3] == list(MACRODATA_COMMAND_PREFIX)
     assert "uv" not in calls[0]["command"]
-    assert calls[0]["command"][1:] == [
+    assert calls[0]["command"][3:] == [
         "bundle",
         "history",
         "macro-core",
@@ -218,7 +226,7 @@ def test_macrodata_runner_injects_configured_fred_key_without_exposing_secret(mo
     calls: list[dict[str, object]] = []
 
     class Settings:
-        macrodata_fred_api_key_env = "APP_FRED_KEY"
+        providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env="APP_FRED_KEY"))
         macrodata_fred_api_key = secret
         workers = _macrodata_workers()
 
@@ -232,10 +240,7 @@ def test_macrodata_runner_injects_configured_fred_key_without_exposing_secret(mo
         return Completed()
 
     monkeypatch.setenv("APP_FRED_KEY", stale_env_secret)
-    monkeypatch.setattr(
-        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
-        lambda *, environ=None: "/app/.venv/bin/macrodata",
-    )
+    monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
     monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
@@ -261,15 +266,15 @@ def test_macrodata_runner_requires_formal_fred_and_timeout_settings_contracts() 
         workers = _macrodata_workers()
 
     class MissingSecretSettings:
-        macrodata_fred_api_key_env = "APP_FRED_KEY"
+        providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env="APP_FRED_KEY"))
         workers = _macrodata_workers()
 
     class MissingTimeoutSettings:
-        macrodata_fred_api_key_env = None
+        providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env=None))
         macrodata_fred_api_key = None
         workers = SimpleNamespace()
 
-    with pytest.raises(RuntimeError, match="macrodata_fred_api_key_env_settings_required"):
+    with pytest.raises(RuntimeError, match="macrodata_provider_settings_required"):
         runner.fred_api_key_state(MissingEnvSettings(), environ={})
     with pytest.raises(RuntimeError, match="macrodata_fred_api_key_settings_required"):
         runner.fred_api_key_state(MissingSecretSettings(), environ={})
@@ -294,7 +299,7 @@ def test_macrodata_runner_honors_disabled_fred_env_without_defaulting(monkeypatc
     calls: list[dict[str, object]] = []
 
     class Settings:
-        macrodata_fred_api_key_env = None
+        providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env=None))
         macrodata_fred_api_key = None
         workers = _macrodata_workers()
 
@@ -308,10 +313,7 @@ def test_macrodata_runner_honors_disabled_fred_env_without_defaulting(monkeypatc
         return Completed()
 
     monkeypatch.delenv("FINANCE_FRED_API_KEY", raising=False)
-    monkeypatch.setattr(
-        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
-        lambda *, environ=None: "/app/.venv/bin/macrodata",
-    )
+    monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
     monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
@@ -325,13 +327,13 @@ def test_macrodata_runner_honors_disabled_fred_env_without_defaulting(monkeypatc
     assert calls[0]["env_has_fred"] is False
 
 
-def test_macrodata_runner_falls_back_to_python_entrypoint_when_console_script_missing(monkeypatch) -> None:
-    from parallax.integrations.macrodata.runner import MacrodataBundleRunner, MacrodataRunnerError
+def test_macrodata_runner_uses_only_current_python_package_entrypoint(monkeypatch) -> None:
+    from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 
     calls: list[dict[str, object]] = []
 
     class Settings:
-        macrodata_fred_api_key_env = None
+        providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env=None))
         macrodata_fred_api_key = None
         workers = _macrodata_workers()
 
@@ -340,17 +342,10 @@ def test_macrodata_runner_falls_back_to_python_entrypoint_when_console_script_mi
         stdout = json.dumps(ENVELOPE)
         stderr = ""
 
-    def fake_resolve_executable(*, environ=None):
-        raise MacrodataRunnerError(
-            "macrodata executable not found",
-            diagnostics={"error_code": "macrodata_executable_missing"},
-        )
-
     def fake_run(command, *, env, cwd, capture_output, text, check, timeout=None):
         calls.append({"command": command, "cwd": cwd, "timeout": timeout})
         return Completed()
 
-    monkeypatch.setattr("parallax.integrations.macrodata.runner.resolve_macrodata_executable", fake_resolve_executable)
     monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
     monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
@@ -379,23 +374,36 @@ def test_macrodata_runner_falls_back_to_python_entrypoint_when_console_script_mi
     assert result.diagnostics["command"] == calls[0]["command"]
 
 
-def test_macrodata_runner_skips_stale_console_script_shebang(monkeypatch, tmp_path) -> None:
+def test_macrodata_runner_command_is_independent_of_path(monkeypatch) -> None:
     from parallax.integrations.macrodata.runner import resolve_macrodata_command
 
-    executable = tmp_path / "macrodata"
-    executable.write_text(
-        "#!/missing/parallax/python\nfrom macrodata.surfaces.cli import main\nmain()\n",
-        encoding="utf-8",
-    )
-    executable.chmod(0o755)
-    fake_python = str(tmp_path / "python")
-
     monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
-    monkeypatch.setattr("parallax.integrations.macrodata.runner.sys.executable", fake_python)
 
-    command = resolve_macrodata_command(environ={"PATH": str(tmp_path)})
+    command = resolve_macrodata_command()
 
-    assert command == [fake_python, "-c", "from macrodata.surfaces.cli import main; main()"]
+    assert command == list(MACRODATA_COMMAND_PREFIX)
+
+
+def test_macrodata_runner_reports_missing_package_entrypoint(monkeypatch) -> None:
+    from parallax.integrations.macrodata.runner import MacrodataRunnerError, resolve_macrodata_command
+
+    monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: False)
+
+    with pytest.raises(MacrodataRunnerError) as excinfo:
+        resolve_macrodata_command()
+
+    assert excinfo.value.diagnostics == {"error_code": "macrodata_entrypoint_missing"}
+
+
+def test_macrodata_runner_reports_missing_parent_package_as_unavailable(monkeypatch) -> None:
+    from parallax.integrations.macrodata import runner
+
+    def missing_spec(_name: str) -> None:
+        raise ModuleNotFoundError("No module named 'macrodata'")
+
+    monkeypatch.setattr(runner, "find_spec", missing_spec)
+
+    assert runner._macrodata_cli_entrypoint_available() is False
 
 
 def test_macrodata_runtime_state_reports_missing_required_catalog_series(monkeypatch) -> None:
@@ -405,18 +413,16 @@ def test_macrodata_runtime_state_reports_missing_required_catalog_series(monkeyp
     monkeypatch.setattr(runner, "_macrodata_catalog_series", lambda: {"fred:SP500"})
     monkeypatch.setattr(runner, "_macrodata_bundle_series", lambda bundle_name: {"fred:SP500"})
     monkeypatch.setattr(runner, "_macrodata_cli_entrypoint_available", lambda: True)
-    monkeypatch.setattr(runner, "resolve_macrodata_command", lambda *, environ=None: ["/app/.venv/bin/macrodata"])
 
     state = runner.macrodata_runtime_state(
         required_series=("fred:SP500", "nyfed:SRF", "yahoo:USDCNY=X"),
-        environ={"PATH": "/app/.venv/bin"},
     )
 
     assert state == {
         "package_version": "0.1.5",
         "entrypoint_available": True,
-        "command_mode": "console_script",
-        "command_path": "/app/.venv/bin/macrodata",
+        "command_mode": "python_entrypoint",
+        "command_path": sys.executable,
         "command_error_code": None,
         "catalog_available": True,
         "required_series_count": 3,
@@ -453,7 +459,6 @@ def test_macrodata_runtime_state_reports_missing_configured_sync_bundles(monkeyp
     )
     monkeypatch.setattr(runner, "_macrodata_bundle_series", lambda bundle_name: bundle_series[bundle_name])
     monkeypatch.setattr(runner, "_macrodata_cli_entrypoint_available", lambda: True)
-    monkeypatch.setattr(runner, "resolve_macrodata_command", lambda *, environ=None: ["/app/.venv/bin/macrodata"])
 
     state = runner.macrodata_runtime_state(
         required_series=("fred:SP500",),
@@ -490,7 +495,6 @@ def test_macrodata_runtime_state_reports_missing_event_bundle_series(monkeypatch
     monkeypatch.setattr(runner, "_macrodata_catalog_series", lambda: {"fred:SP500", *required_calendar_series})
     monkeypatch.setattr(runner, "_macrodata_bundle_series", lambda bundle_name: bundle_series[bundle_name])
     monkeypatch.setattr(runner, "_macrodata_cli_entrypoint_available", lambda: True)
-    monkeypatch.setattr(runner, "resolve_macrodata_command", lambda *, environ=None: ["/app/.venv/bin/macrodata"])
 
     state = runner.macrodata_runtime_state(
         required_series=("fred:SP500", *required_calendar_series),
@@ -519,19 +523,13 @@ def test_macrodata_runtime_state_reports_missing_event_bundle_series(monkeypatch
     }
 
 
-def test_macrodata_runtime_state_reports_python_entrypoint_fallback(monkeypatch) -> None:
+def test_macrodata_runtime_state_reports_only_python_entrypoint(monkeypatch) -> None:
     from parallax.integrations.macrodata import runner
 
     monkeypatch.setattr(runner, "_macrodata_cli_package_version", lambda: "0.1.6")
     monkeypatch.setattr(runner, "_macrodata_catalog_series", lambda: {"nyfed:SRF"})
     monkeypatch.setattr(runner, "_macrodata_bundle_series", lambda bundle_name: {"nyfed:SRF"})
     monkeypatch.setattr(runner, "_macrodata_cli_entrypoint_available", lambda: True)
-    monkeypatch.setattr(
-        runner,
-        "resolve_macrodata_command",
-        lambda *, environ=None: [sys.executable, "-c", "from macrodata.surfaces.cli import main; main()"],
-    )
-
     state = runner.macrodata_runtime_state(required_series=("nyfed:SRF",))
 
     assert state["command_mode"] == "python_entrypoint"
@@ -540,13 +538,31 @@ def test_macrodata_runtime_state_reports_python_entrypoint_fallback(monkeypatch)
     assert state["required_bundle_series_available"] is True
 
 
+def test_macrodata_bundle_catalog_requires_bundles_without_legacy_macro_core(monkeypatch) -> None:
+    from parallax.integrations.macrodata import runner
+
+    monkeypatch.setattr(
+        runner,
+        "import_module",
+        lambda _name: SimpleNamespace(MACRO_CORE=("fred:SP500",)),
+    )
+    assert runner._macrodata_bundle_series("macro-core") is None
+
+    monkeypatch.setattr(
+        runner,
+        "import_module",
+        lambda _name: SimpleNamespace(BUNDLES={"macro-core": ("fred:SP500",)}),
+    )
+    assert runner._macrodata_bundle_series("macro-core") == {"fred:SP500"}
+
+
 def test_macrodata_runner_passes_configured_timeout_to_child_process(monkeypatch) -> None:
     from parallax.integrations.macrodata.runner import MacrodataBundleRunner
 
     calls: list[dict[str, object]] = []
 
     class Settings:
-        macrodata_fred_api_key_env = None
+        providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env=None))
         macrodata_fred_api_key = None
         workers = _macrodata_workers(12.5)
 
@@ -559,10 +575,7 @@ def test_macrodata_runner_passes_configured_timeout_to_child_process(monkeypatch
         calls.append({"command": command, "timeout": timeout})
         return Completed()
 
-    monkeypatch.setattr(
-        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
-        lambda *, environ=None: "/app/.venv/bin/macrodata",
-    )
+    monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
     monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
@@ -579,17 +592,14 @@ def test_macrodata_runner_timeout_raises_redacted_runner_error(monkeypatch) -> N
     from parallax.integrations.macrodata.runner import MacrodataBundleRunner, MacrodataRunnerError
 
     class Settings:
-        macrodata_fred_api_key_env = None
+        providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env=None))
         macrodata_fred_api_key = None
         workers = _macrodata_workers(9.0)
 
     def fake_run(command, *, env, cwd, capture_output, text, check, timeout=None):
         raise subprocess.TimeoutExpired(command, timeout)
 
-    monkeypatch.setattr(
-        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
-        lambda *, environ=None: "/app/.venv/bin/macrodata",
-    )
+    monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
     monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     with pytest.raises(MacrodataRunnerError) as excinfo:
@@ -610,7 +620,7 @@ def test_macrodata_runner_ignores_legacy_cli_project_dir(monkeypatch, tmp_path) 
     calls: list[dict[str, object]] = []
 
     class Settings:
-        macrodata_fred_api_key_env = None
+        providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env=None))
         macrodata_fred_api_key = None
         workers = _macrodata_workers()
         macrodata_cli_project_dir = str(tmp_path)
@@ -624,10 +634,7 @@ def test_macrodata_runner_ignores_legacy_cli_project_dir(monkeypatch, tmp_path) 
         calls.append({"command": command, "cwd": cwd, "capture_output": capture_output, "text": text, "check": check})
         return Completed()
 
-    monkeypatch.setattr(
-        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
-        lambda *, environ=None: "/app/.venv/bin/macrodata",
-    )
+    monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
     monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
@@ -647,7 +654,7 @@ def test_macrodata_runner_removes_stale_parent_fred_key_when_configured_env_miss
     calls: list[dict[str, object]] = []
 
     class Settings:
-        macrodata_fred_api_key_env = "APP_FRED_KEY"
+        providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env="APP_FRED_KEY"))
         macrodata_fred_api_key = None
         workers = _macrodata_workers()
 
@@ -662,10 +669,7 @@ def test_macrodata_runner_removes_stale_parent_fred_key_when_configured_env_miss
 
     monkeypatch.setenv("FRED_API_KEY", stale_secret)
     monkeypatch.delenv("APP_FRED_KEY", raising=False)
-    monkeypatch.setattr(
-        "parallax.integrations.macrodata.runner.resolve_macrodata_executable",
-        lambda *, environ=None: "/app/.venv/bin/macrodata",
-    )
+    monkeypatch.setattr("parallax.integrations.macrodata.runner._macrodata_cli_entrypoint_available", lambda: True)
     monkeypatch.setattr("parallax.integrations.macrodata.runner.subprocess.run", fake_run)
 
     result = MacrodataBundleRunner(settings=Settings()).history_bundle(
@@ -915,10 +919,22 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
         "latest_attempt_error": None,
     }
     repo.latest = {
+        "projection_version": "macro_regime_v4",
         "status": "partial",
+        "regime": "mixed",
+        "overall_score": None,
         "computed_at_ms": NOW_MS,
         "asof_date": "2026-05-21",
         "source_coverage_json": {"latest_observed_at": "2026-05-22"},
+        "panels_json": {},
+        "indicators_json": {},
+        "triggers_json": [],
+        "data_gaps_json": [],
+        "features_json": {},
+        "chain_json": {},
+        "scenario_json": {},
+        "scorecard_json": {},
+        "module_views_json": {},
     }
     _patch_macro_dependencies(monkeypatch, macro_module, repo, settings=FakeSettings(fred_env="APP_FRED_KEY"))
     monkeypatch.setenv("APP_FRED_KEY", "dummy-fred-secret")
@@ -938,8 +954,8 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
             "macrodata_cli": {
                 "package_version": "0.1.test",
                 "entrypoint_available": True,
-                "command_mode": "console_script",
-                "command_path": "/app/.venv/bin/macrodata",
+                "command_mode": "python_entrypoint",
+                "command_path": sys.executable,
                 "command_error_code": None,
                 "catalog_available": True,
                 "required_series_count": len(MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT),
@@ -980,10 +996,10 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
             "projection_lag_days": 1,
             "projection_behind_facts": True,
             "latest_snapshot": {
-                "projection_version": None,
+                "projection_version": "macro_regime_v4",
                 "asof_date": "2026-05-21",
                 "status": "partial",
-                "regime": None,
+                "regime": "mixed",
                 "overall_score": None,
                 "computed_at_ms": NOW_MS,
                 "feature_count": 0,
@@ -1049,8 +1065,8 @@ def test_macro_status_repository_exception_returns_structured_error_without_secr
             "macrodata_cli": {
                 "package_version": "0.1.test",
                 "entrypoint_available": True,
-                "command_mode": "console_script",
-                "command_path": "/app/.venv/bin/macrodata",
+                "command_mode": "python_entrypoint",
+                "command_path": sys.executable,
                 "command_error_code": None,
                 "catalog_available": True,
                 "required_series_count": len(MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT),
@@ -1088,8 +1104,8 @@ def test_macro_status_requires_importable_event_bundle_series(monkeypatch) -> No
         return {
             "package_version": "0.1.test",
             "entrypoint_available": True,
-            "command_mode": "console_script",
-            "command_path": "/app/.venv/bin/macrodata",
+            "command_mode": "python_entrypoint",
+            "command_path": sys.executable,
             "command_error_code": None,
             "catalog_available": True,
             "required_series_count": len(required_series),
@@ -1224,8 +1240,8 @@ def _patch_macro_dependencies(
         lambda *, required_series, required_bundles, required_bundle_series: {
             "package_version": "0.1.test",
             "entrypoint_available": True,
-            "command_mode": "console_script",
-            "command_path": "/app/.venv/bin/macrodata",
+            "command_mode": "python_entrypoint",
+            "command_path": sys.executable,
             "command_error_code": None,
             "catalog_available": True,
             "required_series_count": len(required_series),
@@ -1249,7 +1265,7 @@ def _patch_macro_dependencies(
 
 class FakeSettings:
     def __init__(self, *, fred_env: str | None = None) -> None:
-        self.macrodata_fred_api_key_env = fred_env
+        self.providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env=fred_env))
         self.macrodata_fred_api_key = None
         self.workers = _macrodata_workers()
 

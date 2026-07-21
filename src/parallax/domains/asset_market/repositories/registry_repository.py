@@ -5,6 +5,7 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
+from parallax.domains.asset_market.chain_identity import canonical_chain_address, canonical_chain_id
 from parallax.platform.db.write_contract import expect_mutation_count, returning_mutation_count
 from parallax.platform.validation import require_nonnegative_int
 
@@ -50,8 +51,8 @@ class RegistryRepository:
         token_standard: str | None = None,
         status: str = "candidate",
     ) -> dict[str, Any]:
-        normalized_chain = _chain(chain_id)
-        normalized_address = _address(address)
+        normalized_chain = canonical_chain_id(chain_id)
+        normalized_address = canonical_chain_address(normalized_chain, address)
         standard = token_standard or ("erc20" if normalized_chain.startswith("eip155:") else "token")
         asset_id = f"asset:{normalized_chain}:{standard}:{normalized_address}"
         cursor = self.conn.execute(
@@ -62,7 +63,7 @@ class RegistryRepository:
                WHERE registry_assets.asset_id = %s
                   OR (
                     registry_assets.chain_id = %s
-                    AND lower(registry_assets.address) = lower(%s)
+                    AND registry_assets.address = %s
                   )
                ORDER BY
                  CASE WHEN registry_assets.asset_id = %s THEN 0 ELSE 1 END,
@@ -89,7 +90,7 @@ class RegistryRepository:
               )
               SELECT %s, %s, %s, %s, %s, %s, %s
                WHERE NOT EXISTS (SELECT 1 FROM updated)
-              ON CONFLICT(chain_id, lower(address)) DO UPDATE SET
+              ON CONFLICT(chain_id, address) DO UPDATE SET
                 status = CASE
                   WHEN registry_assets.status = 'demoted_search' THEN 'candidate'
                   ELSE registry_assets.status
@@ -145,8 +146,8 @@ class RegistryRepository:
         normalized_feed_type = feed_type.strip().lower()
         normalized_provider = provider.strip().lower()
         normalized_market = native_market_id.strip().upper() if native_market_id else None
-        normalized_chain = _chain(chain_id) if chain_id else None
-        normalized_address = _address(address) if address else None
+        normalized_chain = canonical_chain_id(chain_id) if chain_id else None
+        normalized_address = canonical_chain_address(normalized_chain, address) if address else None
         pricefeed_id = _pricefeed_id(
             feed_type=normalized_feed_type,
             provider=normalized_provider,
@@ -273,9 +274,6 @@ class RegistryRepository:
         return {
             "target_type": "chain_token",
             "target_id": f"{chain_id}:{address}",
-            "chain_id": chain_id,
-            "token_address": address,
-            "address": address,
         }
 
     def cex_pricefeed_for_token(
@@ -366,11 +364,13 @@ class RegistryRepository:
         return dict(row) if row else None
 
     def find_assets_by_address(self, *, chain_id: str | None, address: str) -> list[dict[str, Any]]:
-        clauses = ["lower(address) = %s", "status IN ('candidate', 'canonical')"]
-        params: list[Any] = [_address_lookup(address)]
+        normalized_chain = canonical_chain_id(chain_id) if chain_id else None
+        normalized_address = canonical_chain_address(normalized_chain, address)
+        clauses = ["address = %s", "status IN ('candidate', 'canonical')"]
+        params: list[Any] = [normalized_address]
         if chain_id:
             clauses.append("chain_id = %s")
-            params.append(_chain(chain_id))
+            params.append(normalized_chain)
         rows = self.conn.execute(
             f"""
             SELECT *
@@ -416,14 +416,21 @@ class RegistryRepository:
         assets = [_with_identity_metadata(dict(row)) for row in rows]
         return sorted(assets, key=_identity_metadata_sort_key)
 
-    def ranked_live_market_targets(
+    def ranked_market_targets(
         self,
         *,
         projection_version: str,
         since_ms: int,
+        target_types: tuple[str, ...],
         limit: int,
+        exclude_keys: tuple[tuple[str, str], ...] = (),
     ) -> list[dict[str, Any]]:
-        parsed_limit = require_nonnegative_int(limit, error_code="registry_ranked_live_market_targets_limit_required")
+        parsed_limit = require_nonnegative_int(limit, error_code="registry_ranked_market_targets_limit_required")
+        parsed_target_types = tuple(dict.fromkeys(str(value) for value in target_types))
+        if not parsed_target_types or set(parsed_target_types) - {"chain_token", "cex_symbol"}:
+            raise ValueError("registry_ranked_market_targets_target_types_required")
+        excluded_target_types = [str(target_type) for target_type, _ in exclude_keys]
+        excluded_target_ids = [str(target_id) for _, target_id in exclude_keys]
         rows = self.conn.execute(
             """
             WITH latest_sets AS MATERIALIZED (
@@ -443,20 +450,9 @@ class RegistryRepository:
                 rows.target_type,
                 rows.target_id,
                 rows.pricefeed_id,
-                rows.rank,
-                rows.decision,
-                rows.quality_status,
-                rows.degraded_reasons_json,
-                rows.factor_snapshot_json,
-                rows.source_event_ids_json,
-                rows.data_health_json,
-                rows.resolution_json,
-                rows.payload_hash,
-                rows.generation_id,
                 latest_sets.current_published_at_ms AS computed_at_ms,
                 rows.source_max_received_at_ms,
-                NULLIF(rows.factor_snapshot_json -> 'composite' ->> 'rank_score', '')::numeric
-                  AS rank_score
+                rows.rank_score
               FROM latest_sets
               JOIN token_radar_current_rows rows
                 ON rows.projection_version = %s
@@ -468,32 +464,21 @@ class RegistryRepository:
               ORDER BY
                 rows.target_type,
                 rows.target_id,
-                NULLIF(rows.factor_snapshot_json -> 'composite' ->> 'rank_score', '')::numeric DESC NULLS LAST,
+                rows.rank_score DESC,
                 rows.source_max_received_at_ms DESC,
                 rows.computed_at_ms DESC
             ),
             live_targets AS (
               SELECT
-                'Asset' AS target_type,
-                active_targets.target_id,
+                'chain_token' AS target_type,
+                registry_assets.chain_id || ':' || registry_assets.address AS target_id,
                 registry_assets.chain_id,
                 registry_assets.address,
                 NULL::text AS native_market_id,
                 NULL::text AS quote_symbol,
                 'okx' AS provider,
-                active_targets.rank,
-                active_targets.decision,
-                active_targets.quality_status,
-                active_targets.degraded_reasons_json,
-                active_targets.factor_snapshot_json,
-                active_targets.source_event_ids_json,
-                active_targets.data_health_json,
-                active_targets.resolution_json,
-                active_targets.payload_hash,
-                active_targets.generation_id,
+                active_targets.pricefeed_id,
                 active_targets.computed_at_ms,
-                active_targets.source_max_received_at_ms,
-                active_targets.rank_score,
                 active_targets.rank_score AS score
               FROM active_targets
               JOIN registry_assets ON registry_assets.asset_id = active_targets.target_id
@@ -503,26 +488,18 @@ class RegistryRepository:
                 AND registry_assets.address IS NOT NULL
               UNION ALL
               SELECT
-                'CexToken' AS target_type,
-                active_targets.target_id,
+                'cex_symbol' AS target_type,
+                COALESCE(selected_pricefeed.provider, preferred_pricefeed.provider)
+                  || ':' ||
+                COALESCE(selected_pricefeed.native_market_id, preferred_pricefeed.native_market_id)
+                  AS target_id,
                 NULL::text AS chain_id,
                 NULL::text AS address,
                 COALESCE(selected_pricefeed.native_market_id, preferred_pricefeed.native_market_id) AS native_market_id,
                 COALESCE(selected_pricefeed.quote_symbol, preferred_pricefeed.quote_symbol) AS quote_symbol,
                 COALESCE(selected_pricefeed.provider, preferred_pricefeed.provider) AS provider,
-                active_targets.rank,
-                active_targets.decision,
-                active_targets.quality_status,
-                active_targets.degraded_reasons_json,
-                active_targets.factor_snapshot_json,
-                active_targets.source_event_ids_json,
-                active_targets.data_health_json,
-                active_targets.resolution_json,
-                active_targets.payload_hash,
-                active_targets.generation_id,
+                COALESCE(selected_pricefeed.pricefeed_id, preferred_pricefeed.pricefeed_id) AS pricefeed_id,
                 active_targets.computed_at_ms,
-                active_targets.source_max_received_at_ms,
-                active_targets.rank_score,
                 active_targets.rank_score AS score
               FROM active_targets
               JOIN cex_tokens ON cex_tokens.cex_token_id = active_targets.target_id
@@ -535,7 +512,7 @@ class RegistryRepository:
                AND selected_pricefeed.quote_symbol = 'USDT'
                AND selected_pricefeed.status = 'canonical'
               LEFT JOIN LATERAL (
-                SELECT *
+                SELECT pricefeed_id, provider, native_market_id, quote_symbol
                 FROM price_feeds
                 WHERE price_feeds.subject_type = 'CexToken'
                   AND price_feeds.subject_id = active_targets.target_id
@@ -559,22 +536,16 @@ class RegistryRepository:
               native_market_id,
               quote_symbol,
               provider,
-              rank,
-              decision,
-              quality_status,
-              degraded_reasons_json,
-              factor_snapshot_json,
-              source_event_ids_json,
-              data_health_json,
-              resolution_json,
-              payload_hash,
-              generation_id,
-              computed_at_ms,
-              source_max_received_at_ms,
-              rank_score,
-              score
+              pricefeed_id
             FROM live_targets
-            WHERE target_type = 'Asset' OR native_market_id IS NOT NULL
+            WHERE target_type = ANY(%s::text[])
+              AND (target_type = 'chain_token' OR native_market_id IS NOT NULL)
+              AND NOT EXISTS (
+                SELECT 1
+                FROM unnest(%s::text[], %s::text[]) AS excluded(target_type, target_id)
+                WHERE excluded.target_type = live_targets.target_type
+                  AND excluded.target_id = live_targets.target_id
+              )
             ORDER BY score DESC NULLS LAST, computed_at_ms DESC, target_type, target_id
             LIMIT %s
             """,
@@ -582,10 +553,87 @@ class RegistryRepository:
                 projection_version,
                 int(since_ms),
                 projection_version,
+                list(parsed_target_types),
+                excluded_target_types,
+                excluded_target_ids,
                 parsed_limit,
             ),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def product_targets_for_market_targets(
+        self,
+        targets: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], tuple[str, str]]:
+        requested = list(dict.fromkeys((str(target_type), str(target_id)) for target_type, target_id in targets))
+        if not requested:
+            return {}
+        if any(
+            target_type not in {"chain_token", "cex_symbol"} or not target_id for target_type, target_id in requested
+        ):
+            raise ValueError("registry_market_target_identity_required")
+        rows = self.conn.execute(
+            """
+            WITH requested AS (
+              SELECT *
+              FROM unnest(%s::text[], %s::text[]) WITH ORDINALITY
+                AS requested(market_target_type, market_target_id, ordinality)
+            ),
+            resolved AS (
+              SELECT
+                requested.market_target_type,
+                requested.market_target_id,
+                'Asset'::text AS product_target_type,
+                registry_assets.asset_id AS product_target_id,
+                requested.ordinality,
+                registry_assets.updated_at_ms
+              FROM requested
+              JOIN registry_assets
+                ON requested.market_target_type = 'chain_token'
+               AND requested.market_target_id = registry_assets.chain_id || ':' || registry_assets.address
+               AND registry_assets.status IN ('candidate', 'canonical')
+              UNION ALL
+              SELECT
+                requested.market_target_type,
+                requested.market_target_id,
+                'CexToken'::text AS product_target_type,
+                price_feeds.subject_id AS product_target_id,
+                requested.ordinality,
+                price_feeds.updated_at_ms
+              FROM requested
+              JOIN price_feeds
+                ON requested.market_target_type = 'cex_symbol'
+               AND requested.market_target_id = price_feeds.provider || ':' || price_feeds.native_market_id
+               AND price_feeds.subject_type = 'CexToken'
+               AND price_feeds.provider = 'binance'
+               AND price_feeds.feed_type = 'cex_swap'
+               AND price_feeds.quote_symbol = 'USDT'
+               AND price_feeds.status = 'canonical'
+            )
+            SELECT DISTINCT ON (market_target_type, market_target_id)
+              market_target_type,
+              market_target_id,
+              product_target_type,
+              product_target_id
+            FROM resolved
+            ORDER BY
+              market_target_type,
+              market_target_id,
+              updated_at_ms DESC,
+              product_target_id
+            """,
+            (
+                [target_type for target_type, _target_id in requested],
+                [target_id for _target_type, target_id in requested],
+            ),
+        ).fetchall()
+        return {
+            (str(row["market_target_type"]), str(row["market_target_id"])): (
+                str(row["product_target_type"]),
+                str(row["product_target_id"]),
+            )
+            for row in rows
+        }
 
     def find_cex_pricefeed(self, *, exchange: str, native_market_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -657,12 +705,6 @@ class RegistryRepository:
                   WHERE target_type = 'cex_symbol'
                     AND (target_id LIKE 'okx:%%' OR source_provider = 'okx_cex_rest')
                 )
-                + (
-                  SELECT COUNT(*)::bigint
-                  FROM token_capture_tier
-                  WHERE target_type = 'cex_symbol'
-                    AND target_id LIKE 'okx:%%'
-                )
               ) AS old_okx_cex_rows_to_delete
             """,
             (normalized_token_ids, normalized_token_ids, normalized_market_ids),
@@ -730,28 +772,6 @@ def _symbol(value: str | None) -> str:
 def _optional_text(value: str | None) -> str | None:
     text = str(value or "").strip()
     return text or None
-
-
-def _chain(value: str) -> str:
-    normalized = value.strip().lower()
-    if normalized in {"eth", "ethereum"}:
-        return "eip155:1"
-    if normalized in {"base"}:
-        return "eip155:8453"
-    if normalized in {"bsc", "bnb"}:
-        return "eip155:56"
-    if normalized in {"sol", "solana"}:
-        return "solana"
-    return normalized
-
-
-def _address(value: str) -> str:
-    text = value.strip()
-    return text.lower() if text.startswith(("0x", "0X")) else text
-
-
-def _address_lookup(value: str) -> str:
-    return value.strip().lower()
 
 
 def _with_identity_metadata(row: dict[str, Any]) -> dict[str, Any]:

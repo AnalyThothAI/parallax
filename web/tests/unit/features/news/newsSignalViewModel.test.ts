@@ -37,13 +37,15 @@ describe("newsSignalViewModel", () => {
       newsAgentReviewBadge({
         agent_status: "not_required",
         agent_brief: { status: "not_required" },
-        agent_brief_status: null,
         signal: {
           display_signal: { source: "provider", status: "ready", direction: "neutral" },
           agent_signal: { status: "not_required" },
           alert_eligibility: {
+            in_app_eligible: false,
+            external_push_ready: false,
             agent_status: "not_required",
-            agent_admission_reason: "exact_duplicate",
+            external_push_block_reason: "exact_duplicate",
+            market_scope: marketScope(),
           },
         },
       }),
@@ -98,7 +100,7 @@ function agentRow({
 }: {
   status: string;
   decisionClass: string;
-}): Pick<NewsRow, "agent_brief" | "agent_brief_status" | "agent_status" | "signal"> {
+}): Pick<NewsRow, "agent_brief" | "agent_status" | "signal"> {
   return {
     agent_brief: {
       status,
@@ -108,11 +110,24 @@ function agentRow({
       display_signal: { source: "agent", status: "ready", direction: "neutral" },
       agent_signal: { status, decision_class: decisionClass },
       alert_eligibility: {
+        in_app_eligible: true,
         external_push_ready: false,
         external_push_block_reason: "cooldown",
         agent_status: status,
         decision_class: decisionClass,
+        market_scope: marketScope(),
       },
     },
+  };
+}
+
+function marketScope() {
+  return {
+    scope: ["crypto"],
+    primary: "crypto",
+    status: "classified",
+    reason: "market_scope_classified",
+    basis: { subject: "crypto" },
+    version: "news_market_scope_v1",
   };
 }

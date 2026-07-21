@@ -211,7 +211,7 @@ class CollectorService(WorkerBase):
             await self.publisher.publish(
                 {
                     "type": "event",
-                    "event": event.to_dict(),
+                    "event": ingested.event,
                     "entities": ingested.entities,
                     "alerts": ingested.alerts,
                     "token_intents": ingested.token_intents,

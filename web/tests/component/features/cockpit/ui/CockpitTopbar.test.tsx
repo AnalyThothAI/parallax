@@ -1,5 +1,6 @@
 import { CockpitTopbar } from "@features/cockpit";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { appStatusFixture } from "@tests/fixtures/appRouteFixtures";
 import { axe } from "jest-axe";
 import { createRef } from "react";
 import { MemoryRouter, useLocation } from "react-router-dom";
@@ -60,6 +61,31 @@ describe("CockpitTopbar", () => {
     fireEvent.click(screen.getByRole("button", { name: "Open ops diagnostics" }));
 
     expect(screen.getByTestId("location-pathname")).toHaveTextContent("/ops");
+  });
+
+  it("shows required status reasons when the runtime is not ready", () => {
+    render(
+      <MemoryRouter>
+        <CockpitTopbar
+          search={{ inputRef: createRef<HTMLInputElement>(), onSubmitQuery: vi.fn() }}
+          status={{
+            socketStatus: "connected",
+            lastSocketMessageAt: 1_700_000_000_000,
+            status: appStatusFixture({
+              ok: false,
+              reasons: ["news_provider_contract_error"],
+            }),
+            statusLoading: false,
+            statusError: false,
+            configReady: true,
+          }}
+          notifications={{ summary: null, drawerOpen: false, onToggleDrawer: vi.fn() }}
+          onRefresh={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByText("not ready")).toHaveAttribute("title", "news_provider_contract_error");
   });
 });
 

@@ -37,6 +37,7 @@ RETIRED_TABLES_AT_HEAD = frozenset(
         "account_token_call_stats",
         "macro_daily_briefs",
         "macro_import_runs",
+        "market_tick_current_dirty_targets",
         "model_runs",
         "narrative_admission_dirty_targets",
         "narrative_admissions",
@@ -66,6 +67,8 @@ RETIRED_TABLES_AT_HEAD = frozenset(
         "registry_versions",
         "schema_migrations",
         "token_aliases",
+        "token_capture_tier",
+        "token_capture_tier_dirty_targets",
         "token_discussion_digests",
         "token_flow_window_snapshots",
         "token_mention_semantics",
@@ -86,7 +89,9 @@ def _sqlalchemy_url(settings: Settings | None) -> str:
     else:
         if settings is None:
             settings = load_settings(require_ws_token=False)
-        dsn = local_docker_host_dsn(with_password_from_file(settings.postgres_dsn, settings.postgres_password_file))
+        dsn = local_docker_host_dsn(
+            with_password_from_file(settings.storage.postgres.dsn, settings.postgres_password_file)
+        )
     if dsn.startswith("postgresql://"):
         return "postgresql+psycopg://" + dsn.removeprefix("postgresql://")
     return dsn

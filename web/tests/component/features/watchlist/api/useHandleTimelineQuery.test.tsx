@@ -19,9 +19,7 @@ describe("useHandleTimelineQuery", () => {
         ok: true,
         data: {
           query: { handle: "toly", limit: 30 },
-          items: [
-            { event_id: cursor ? "event-2" : "event-1", received_at_ms: cursor ? 900 : 1_000 },
-          ],
+          items: [timelineItem(cursor ? "event-2" : "event-1", cursor ? 900 : 1_000)],
           has_more: !cursor,
           next_cursor: cursor ? null : "cursor-1",
         },
@@ -43,6 +41,22 @@ describe("useHandleTimelineQuery", () => {
     ]);
   });
 });
+
+function timelineItem(eventId: string, receivedAtMs: number) {
+  return {
+    event_id: eventId,
+    received_at_ms: receivedAtMs,
+    author_handle: "toly",
+    action: "tweet",
+    text_clean: "source event",
+    canonical_url: `https://x.com/toly/status/${eventId}`,
+    cashtags: [],
+    hashtags: [],
+    mentions: [],
+    event: { event_id: eventId },
+    token_resolutions: [],
+  };
+}
 
 function wrapper() {
   const queryClient = new QueryClient({ defaultOptions: { queries: { retry: false } } });

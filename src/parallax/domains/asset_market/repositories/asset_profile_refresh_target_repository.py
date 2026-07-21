@@ -149,11 +149,7 @@ class AssetProfileRefreshTargetRepository:
               SELECT DISTINCT ON (current_rows.identity_id)
                 'Asset' AS target_type,
                 current_rows.identity_id AS target_id,
-                COALESCE(
-                  current_rows.factor_snapshot_json #>> '{subject,chain_id}',
-                  current_rows.factor_snapshot_json #>> '{subject,chain}',
-                  current_rows.factor_snapshot_json #>> '{subject,asset_chain_id}'
-                ) AS chain_id,
+                current_rows.factor_snapshot_json #>> '{subject,chain}' AS chain_id,
                 current_rows.factor_snapshot_json #>> '{subject,address}' AS address,
                 current_rows.factor_snapshot_json #>> '{subject,symbol}' AS symbol,
                 current_rows.source_max_received_at_ms AS source_watermark_ms
@@ -163,12 +159,7 @@ class AssetProfileRefreshTargetRepository:
                 AND current_rows.identity_id IS NOT NULL
                 AND btrim(current_rows.identity_id) <> ''
                 AND current_rows.source_max_received_at_ms > 0
-                AND COALESCE(
-                  current_rows.factor_snapshot_json #>> '{subject,chain_id}',
-                  current_rows.factor_snapshot_json #>> '{subject,chain}',
-                  current_rows.factor_snapshot_json #>> '{subject,asset_chain_id}',
-                  ''
-                ) <> ''
+                AND COALESCE(current_rows.factor_snapshot_json #>> '{subject,chain}', '') <> ''
                 AND COALESCE(current_rows.factor_snapshot_json #>> '{subject,address}', '') <> ''
                 AND NOT EXISTS (
                   SELECT 1
@@ -397,8 +388,8 @@ def _target_records(
     records: dict[tuple[str, str, str], dict[str, Any]] = {}
     for target in targets:
         provider = _required_text(target.get("provider"), field_name="provider")
-        target_type = _required_text(target.get("target_type") or "Asset", field_name="target_type")
-        target_id = _required_text(target.get("target_id") or target.get("asset_id"), field_name="target_id")
+        target_type = _required_text(target.get("target_type"), field_name="target_type")
+        target_id = _required_text(target.get("target_id"), field_name="target_id")
         chain_id = _required_text(target.get("chain_id"), field_name="chain_id")
         address = _required_text(target.get("address"), field_name="address")
         record = {

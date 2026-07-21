@@ -27,6 +27,7 @@ export function macroModuleFixture(overrides: Partial<MacroModuleView> = {}): Ma
       asof_label: "截至 2026-05-20",
       source_projection_version: "macro_regime_v4",
       computed_at_ms: NOW_MS,
+      computed_at_label: "计算于 2026-05-18T00:00+00:00",
     },
     tiles: [
       {
@@ -909,9 +910,6 @@ export function macroAssetsModuleFixture(
       },
     },
     daily_brief: {
-      brief_key: "assets_today",
-      projection_version: "macro_daily_brief_v1",
-      brief_date: "2026-05-20",
       asof_date: "2026-05-20",
       status: "partial",
       headline: "今日判断：风险资产偏震荡",
@@ -964,10 +962,24 @@ export function macroSeriesFixture(conceptKeys = ["asset:spx"]): MacroSeriesData
           concept_key: conceptKey,
           status: "ok",
           unit: "index",
+          sources: ["fixture"],
+          latest_observed_at: "2026-05-19",
+          data_quality: "ok",
           points: [
-            { observed_at: "2026-05-18", value: 100, source_name: "fixture" },
-            { observed_at: "2026-05-19", value: 110, source_name: "fixture" },
+            {
+              observed_at: "2026-05-18",
+              value: 100,
+              source_name: "fixture",
+              data_quality: "ok",
+            },
+            {
+              observed_at: "2026-05-19",
+              value: 110,
+              source_name: "fixture",
+              data_quality: "ok",
+            },
           ],
+          data_gaps: [],
         },
       ]),
     ),
@@ -983,6 +995,7 @@ export function macroYieldCurveModuleFixture(): MacroModuleView {
     status: "ok",
     status_label: "可用",
     min_points: 2,
+    missing_concept_keys: [],
     series: [
       {
         concept_key: "rates:dgs10",
@@ -2104,12 +2117,13 @@ export function macroFedFundsModuleFixture(): MacroModuleView {
     kind: "rates_corridor",
     status: "partial",
     status_label: "SOFR 30D 缺失",
-    min_points: 1,
+    min_points: 2,
     missing_concept_keys: ["fed:sofr_30d"],
     series: [
       {
         concept_key: "fed:target_lower",
         label: "目标下限",
+        unit_label: "%",
         latest: 4.25,
         unit: "percent",
         points: [
@@ -2120,6 +2134,7 @@ export function macroFedFundsModuleFixture(): MacroModuleView {
       {
         concept_key: "fed:target_upper",
         label: "目标上限",
+        unit_label: "%",
         latest: 4.5,
         unit: "percent",
         points: [
@@ -2130,6 +2145,7 @@ export function macroFedFundsModuleFixture(): MacroModuleView {
       {
         concept_key: "fed:effr",
         label: "EFFR",
+        unit_label: "%",
         latest: 4.33,
         unit: "percent",
         points: [
@@ -2140,12 +2156,18 @@ export function macroFedFundsModuleFixture(): MacroModuleView {
       {
         concept_key: "fed:iorb",
         label: "IORB",
+        unit_label: "%",
         latest: 4.4,
         unit: "percent",
+        points: [
+          { observed_at: "2026-05-19", value: 4.4 },
+          { observed_at: "2026-05-20", value: 4.4 },
+        ],
       },
       {
         concept_key: "liquidity:sofr",
         label: "SOFR",
+        unit_label: "%",
         latest: 4.31,
         unit: "percent",
         points: [
@@ -2156,10 +2178,12 @@ export function macroFedFundsModuleFixture(): MacroModuleView {
       {
         concept_key: "fed:sofr_30d",
         label: "SOFR 30D",
+        unit_label: "%",
         latest: null,
         unit: "percent",
         status: "missing",
         status_label: "缺失",
+        points: [],
       },
     ],
   };
@@ -2338,6 +2362,8 @@ export function macroRealRatesModuleFixture(): MacroModuleView {
       kind: "line",
       status: "ok",
       status_label: "可用",
+      min_points: 2,
+      missing_concept_keys: [],
       series: [
         { concept_key: "rates:real_5y", label: "5年期实际利率", latest: 1.78, unit: "percent" },
         { concept_key: "rates:real_10y", label: "10年期实际利率", latest: 1.94, unit: "percent" },
@@ -2508,6 +2534,8 @@ function equityChart(): MacroModuleChart {
       {
         concept_key: "asset:spx",
         label: "标普500",
+        unit_label: "点",
+        points: [{ observed_at: "2026-05-20", value: 5312.4 }],
         short_label: "SPX",
         latest: 5312.4,
         unit: "index",

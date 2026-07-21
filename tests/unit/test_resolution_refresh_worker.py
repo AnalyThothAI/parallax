@@ -81,10 +81,9 @@ def test_symbol_lookup_requires_formal_dex_token_candidate_without_reflection():
         )
 
 
-def test_resolution_refresh_worker_notifies_from_workerbase_path(monkeypatch):
+def test_resolution_refresh_worker_commits_resolution_and_defers_projection(monkeypatch):
     repos = FakeRefreshRepos()
     db = FakeDB(repos)
-    wake_bus = FakeWakeBus()
     reprocess_calls: list[dict[str, object]] = []
 
     monkeypatch.setattr(
@@ -110,7 +109,6 @@ def test_resolution_refresh_worker_notifies_from_workerbase_path(monkeypatch):
         db=db,
         telemetry=object(),
         dex_discovery_market=object(),
-        wake_emitter=wake_bus,
     )
 
     result = asyncio.run(worker.run_once(now_ms=1_778_200_000_000)).notes["result"]
@@ -119,7 +117,6 @@ def test_resolution_refresh_worker_notifies_from_workerbase_path(monkeypatch):
     assert result["affected_lookup_keys"] == ["symbol:ABC"]
     assert result["anchor"] is None
     assert result["projection"]["status"] == "deferred_to_worker"
-    assert wake_bus.resolution_notifications == [["symbol:ABC"]]
     assert repos.discovery.claim_calls[0]["limit"] == 50
     assert reprocess_calls[0]["limit"] == 500
     assert db.session_names == [
@@ -595,14 +592,6 @@ class FakeRefreshDiscovery:
 
     def counts(self):
         return {"found": 1}
-
-
-class FakeWakeBus:
-    def __init__(self) -> None:
-        self.resolution_notifications: list[list[str]] = []
-
-    def notify_resolution_updated(self, *, lookup_keys):
-        self.resolution_notifications.append(list(lookup_keys))
 
 
 class FakeRegistry:

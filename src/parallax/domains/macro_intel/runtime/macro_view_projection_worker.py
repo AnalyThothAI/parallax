@@ -9,7 +9,6 @@ from parallax.domains.macro_intel._constants import (
     MACRO_CORE_CONCEPTS,
     MACRO_VIEW_PROJECTION_VERSION,
 )
-from parallax.domains.macro_intel.services.macro_assets_brief import build_macro_assets_brief
 from parallax.domains.macro_intel.services.macro_module_catalog import MACRO_MODULE_CONCEPTS
 from parallax.domains.macro_intel.services.macro_module_views import build_macro_module_views
 from parallax.domains.macro_intel.services.macro_regime_engine import (
@@ -29,7 +28,6 @@ class MacroViewProjectionWorker(WorkerBase):
         settings: MacroViewProjectionWorkerSettings,
         db: Any,
         telemetry: Any,
-        wake_waiter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         name: str = "macro_view_projection",
     ) -> None:
@@ -40,7 +38,6 @@ class MacroViewProjectionWorker(WorkerBase):
             settings=settings,
             db=db,
             telemetry=telemetry,
-            wake_waiter=wake_waiter,
         )
         self.clock_ms = clock_ms or _now_ms
 
@@ -155,7 +152,6 @@ class MacroViewProjectionWorker(WorkerBase):
             if str(observation.get("concept_key") or "") in set(MACRO_CORE_CONCEPTS)
         ]
         snapshot = build_macro_view_snapshot(core_observations, computed_at_ms=now)
-        snapshot["assets_brief_json"] = build_macro_assets_brief(snapshot=snapshot)
         snapshot["module_views_json"] = build_macro_module_views(snapshot=snapshot, observations=observations)
         snapshot_changed = repos.macro_intel.insert_snapshot(snapshot)
         snapshot_rows_written = 1 if snapshot_changed else 0

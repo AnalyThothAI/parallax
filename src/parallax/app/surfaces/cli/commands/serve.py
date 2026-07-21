@@ -12,10 +12,10 @@ def handle_serve(_args: object) -> int:
     setup_logging(settings.log_file)
     uvicorn.run(
         create_app(settings=settings),
-        host=settings.api_host,
-        port=settings.api_port,
+        host=settings.api.host,
+        port=settings.api.port,
         log_config=None,
-        ws_ping_interval=settings.ws_heartbeat_interval,
-        ws_ping_timeout=settings.ws_heartbeat_interval * 2,
+        ws_ping_interval=settings.api.heartbeat_interval,
+        ws_ping_timeout=settings.api.heartbeat_interval * 2,
     )
     return 0

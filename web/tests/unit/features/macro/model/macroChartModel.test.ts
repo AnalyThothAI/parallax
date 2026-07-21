@@ -11,6 +11,7 @@ describe("macroChartModel", () => {
   it("uses backend display labels and hides under-minimum series from drawable output", () => {
     const chart: MacroModuleChart = {
       id: "equity_proxy_performance",
+      min_points: 2,
       series: [
         { concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" },
         { concept_key: "rates:dgs10", short_label: "10Y", latest: 4.1, unit: "percent" },
@@ -66,6 +67,7 @@ describe("macroChartModel", () => {
     const model = buildMacroTimeSeriesModel(
       {
         id: "equity_proxy_performance",
+        min_points: 2,
         series: [{ concept_key: "asset:spx", latest: 110, unit: "index" }],
       },
       {
@@ -91,6 +93,7 @@ describe("macroChartModel", () => {
     const model = buildMacroTimeSeriesModel(
       {
         id: "equity_proxy_performance",
+        min_points: 2,
         series: [
           { concept_key: "asset:spx", title: "Raw chart title", latest: 110, unit: "index" },
           { concept_key: "rates:dgs10", short_label: "10Y", latest: 4.1, unit: "percent" },
@@ -125,6 +128,7 @@ describe("macroChartModel", () => {
   it("drops chart models with missing chart ids instead of assigning unknown ids", () => {
     const chart = {
       id: "",
+      min_points: 2,
       series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" }],
     } as MacroModuleChart;
     const data: MacroSeriesData = {
@@ -155,6 +159,7 @@ describe("macroChartModel", () => {
   it("does not manufacture unknown chart status when backend status metadata is absent", () => {
     const model = buildMacroTimeSeriesModel({
       id: "equity_proxy_performance",
+      min_points: 2,
       series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" }],
     });
 
@@ -166,6 +171,7 @@ describe("macroChartModel", () => {
     const model = buildMacroTimeSeriesModel(
       {
         id: "equity_proxy_performance",
+        min_points: 2,
         series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" }],
       },
       {
@@ -191,6 +197,7 @@ describe("macroChartModel", () => {
     const model = buildMacroTimeSeriesModel(
       {
         id: "equity_proxy_performance",
+        min_points: 2,
         series: [{ concept_key: "rates:dgs10", label: "10Y", latest: 4.1 }],
       },
       {
@@ -224,6 +231,7 @@ describe("macroChartModel", () => {
     const model = buildMacroTimeSeriesModel(
       {
         id: "equity_proxy_performance",
+        min_points: 2,
         series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110 }],
       },
       {
@@ -248,6 +256,7 @@ describe("macroChartModel", () => {
   it("normalizes returns from the first numeric backend observation", () => {
     const chart: MacroModuleChart = {
       id: "asset_proxy_performance",
+      min_points: 2,
       series: [{ concept_key: "asset:spy", label: "SPY", latest: 104, unit: "usd" }],
     };
     const data: MacroSeriesData = {
@@ -274,6 +283,7 @@ describe("macroChartModel", () => {
   it("does not fall back to v2 inline chart points when hydrated series data is unavailable", () => {
     const model = buildMacroTimeSeriesModel({
       id: "equity_proxy_performance",
+      min_points: 2,
       series: [
         {
           concept_key: "asset:spx",
@@ -290,6 +300,30 @@ describe("macroChartModel", () => {
     expect(model.series[0]?.points).toEqual([]);
     expect(JSON.stringify(model)).not.toContain("2026-05-18");
     expect(JSON.stringify(model)).not.toContain("2026-05-19");
+  });
+
+  it("fails closed when the current chart minimum or returned series points are absent", () => {
+    expect(() =>
+      buildMacroTimeSeriesModel({
+        id: "equity_proxy_performance",
+        series: [],
+      }),
+    ).toThrowError("macro_current_contract:primary_chart.min_points");
+
+    expect(() =>
+      buildMacroTimeSeriesModel(
+        {
+          id: "equity_proxy_performance",
+          min_points: 2,
+          series: [{ concept_key: "asset:spx", label: "S&P 500" }],
+        },
+        {
+          window: "60d",
+          data_gaps: [],
+          series: { "asset:spx": { concept_key: "asset:spx" } },
+        },
+      ),
+    ).toThrowError("macro_current_contract:series_data.series.asset:spx.points");
   });
 
   it("sorts yield curve points by semantic tenor concept keys", () => {

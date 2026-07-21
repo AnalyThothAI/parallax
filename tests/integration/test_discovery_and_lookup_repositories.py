@@ -19,49 +19,53 @@ def test_discovery_results_claim_only_explicitly_enqueued_unresolved_lookup_keys
         _insert_event_intent_and_evidence(conn)
         lookup = TokenIntentLookupRepository(conn)
         discovery = DiscoveryRepository(conn)
-        lookup.replace_lookup_keys(
-            intent_id="intent-1",
-            event_id="event-1",
-            keys=["symbol:UPEG", "cex_token:UPEG"],
-            source_evidence_id="evidence-1",
-            created_at_ms=1_000,
-        )
+        with conn.transaction():
+            lookup.replace_lookup_keys(
+                intent_id="intent-1",
+                event_id="event-1",
+                keys=["symbol:UPEG", "cex_token:UPEG"],
+                source_evidence_id="evidence-1",
+                created_at_ms=1_000,
+            )
 
         not_enqueued = _due_lookup_keys_for_test(conn, now_ms=2_000, limit=10, running_timeout_ms=60_000)
-        enqueued = discovery.enqueue_lookup_keys(
-            ["symbol:UPEG", "cex_token:UPEG"],
-            reason="intent_unresolved",
-            now_ms=2_000,
-        )
+        with conn.transaction():
+            enqueued = discovery.enqueue_lookup_keys(
+                ["symbol:UPEG", "cex_token:UPEG"],
+                reason="intent_unresolved",
+                now_ms=2_000,
+            )
         due = _due_lookup_keys_for_test(conn, now_ms=2_000, limit=10, running_timeout_ms=60_000)
-        discovery.start_lookup(
-            provider="okx_dex_search",
-            lookup_key="symbol:UPEG",
-            lookup_type="dex_symbol_lookup",
-            now_ms=2_000,
-            running_timeout_ms=60_000,
-        )
-        discovery.finish_lookup(
-            provider="okx_dex_search",
-            lookup_key="symbol:UPEG",
-            lookup_type="dex_symbol_lookup",
-            status="found",
-            candidate_ids=["asset:eip155:1:erc20:0xupeg"],
-            result_hash="hash-1",
-            next_refresh_at_ms=62_000,
-            now_ms=2_100,
-        )
+        with conn.transaction():
+            discovery.start_lookup(
+                provider="okx_dex_search",
+                lookup_key="symbol:UPEG",
+                lookup_type="dex_symbol_lookup",
+                now_ms=2_000,
+                running_timeout_ms=60_000,
+            )
+        with conn.transaction():
+            discovery.finish_lookup(
+                provider="okx_dex_search",
+                lookup_key="symbol:UPEG",
+                lookup_type="dex_symbol_lookup",
+                status="found",
+                candidate_ids=["asset:eip155:1:erc20:0xupeg"],
+                result_hash="hash-1",
+                next_refresh_at_ms=62_000,
+                now_ms=2_100,
+            )
         suppressed = _due_lookup_keys_for_test(conn, now_ms=61_000, limit=10, running_timeout_ms=60_000)
         stale = _due_lookup_keys_for_test(conn, now_ms=62_000, limit=10, running_timeout_ms=60_000)
-        conn.execute(
-            """
-            UPDATE token_intent_resolutions
-            SET resolution_status = 'AMBIGUOUS',
-                candidate_ids_json = '["asset:eip155:1:erc20:0xupeg"]'::jsonb
-            WHERE resolution_id = 'resolution-1'
-            """
-        )
-        conn.commit()
+        with conn.transaction():
+            conn.execute(
+                """
+                UPDATE token_intent_resolutions
+                SET resolution_status = 'AMBIGUOUS',
+                    candidate_ids_json = '["asset:eip155:1:erc20:0xupeg"]'::jsonb
+                WHERE resolution_id = 'resolution-1'
+                """
+            )
         known_ambiguous = _due_lookup_keys_for_test(conn, now_ms=63_000, limit=10, running_timeout_ms=60_000)
         intents = lookup.intents_for_lookup_keys(["cex_token:UPEG"], limit=10)
     finally:
@@ -99,42 +103,43 @@ def test_discovery_refreshes_ambiguous_lookup_after_nil_backlog(tmp_path):
             received_at_ms=100_000,
         )
         lookup = TokenIntentLookupRepository(conn)
-        lookup.replace_lookup_keys(
-            intent_id="intent-nil",
-            event_id="event-nil",
-            keys=["symbol:NILCOIN"],
-            source_evidence_id="evidence-nil",
-            created_at_ms=1_000,
-        )
-        lookup.replace_lookup_keys(
-            intent_id="intent-ambiguous",
-            event_id="event-ambiguous",
-            keys=["symbol:MAYBE"],
-            source_evidence_id="evidence-ambiguous",
-            created_at_ms=100_000,
-        )
-        conn.execute(
-            """
-            UPDATE token_intent_resolutions
-            SET resolution_status = 'AMBIGUOUS',
-                reason_codes_json = '["NO_MARKET_DOMINANT_CHAIN_ASSET"]'::jsonb,
-                candidate_ids_json = '["asset:solana:token:maybe","asset:eip155:1:erc20:maybe"]'::jsonb
-            WHERE resolution_id = 'resolution-ambiguous'
-            """
-        )
         discovery = DiscoveryRepository(conn)
-        discovery.enqueue_lookup_keys(
-            ["symbol:NILCOIN"],
-            reason="intent_resolution_unresolved",
-            now_ms=1_000,
-            latest_seen_ms=1_000,
-        )
-        discovery.enqueue_lookup_keys(
-            ["symbol:MAYBE"],
-            reason="intent_resolution_unresolved",
-            now_ms=100_000,
-            latest_seen_ms=100_000,
-        )
+        with conn.transaction():
+            lookup.replace_lookup_keys(
+                intent_id="intent-nil",
+                event_id="event-nil",
+                keys=["symbol:NILCOIN"],
+                source_evidence_id="evidence-nil",
+                created_at_ms=1_000,
+            )
+            lookup.replace_lookup_keys(
+                intent_id="intent-ambiguous",
+                event_id="event-ambiguous",
+                keys=["symbol:MAYBE"],
+                source_evidence_id="evidence-ambiguous",
+                created_at_ms=100_000,
+            )
+            conn.execute(
+                """
+                UPDATE token_intent_resolutions
+                SET resolution_status = 'AMBIGUOUS',
+                    reason_codes_json = '["NO_MARKET_DOMINANT_CHAIN_ASSET"]'::jsonb,
+                    candidate_ids_json = '["asset:solana:token:maybe","asset:eip155:1:erc20:maybe"]'::jsonb
+                WHERE resolution_id = 'resolution-ambiguous'
+                """
+            )
+            discovery.enqueue_lookup_keys(
+                ["symbol:NILCOIN"],
+                reason="intent_resolution_unresolved",
+                now_ms=1_000,
+                latest_seen_ms=1_000,
+            )
+            discovery.enqueue_lookup_keys(
+                ["symbol:MAYBE"],
+                reason="intent_resolution_unresolved",
+                now_ms=100_000,
+                latest_seen_ms=100_000,
+            )
 
         due = _due_lookup_keys_for_test(conn, now_ms=120_000, limit=2, running_timeout_ms=60_000)
     finally:
@@ -166,43 +171,44 @@ def test_discovery_prioritizes_recent_due_lookup_over_old_never_seen_backlog(tmp
             received_at_ms=100_000,
         )
         lookup = TokenIntentLookupRepository(conn)
-        lookup.replace_lookup_keys(
-            intent_id="intent-old",
-            event_id="event-old",
-            keys=["symbol:OLD"],
-            source_evidence_id="evidence-old",
-            created_at_ms=1_000,
-        )
-        lookup.replace_lookup_keys(
-            intent_id="intent-recent",
-            event_id="event-recent",
-            keys=["symbol:RECENT"],
-            source_evidence_id="evidence-recent",
-            created_at_ms=100_000,
-        )
         discovery = DiscoveryRepository(conn)
-        discovery.enqueue_lookup_keys(
-            ["symbol:OLD"],
-            reason="intent_resolution_unresolved",
-            now_ms=1_000,
-            latest_seen_ms=1_000,
-        )
-        discovery.enqueue_lookup_keys(
-            ["symbol:RECENT"],
-            reason="intent_resolution_unresolved",
-            now_ms=100_000,
-            latest_seen_ms=100_000,
-        )
-        discovery.finish_lookup(
-            provider="okx_dex_search",
-            lookup_key="symbol:RECENT",
-            lookup_type="dex_symbol_lookup",
-            status="found",
-            candidate_ids=["asset:solana:token:recent"],
-            result_hash="hash-recent",
-            next_refresh_at_ms=90_000,
-            now_ms=80_000,
-        )
+        with conn.transaction():
+            lookup.replace_lookup_keys(
+                intent_id="intent-old",
+                event_id="event-old",
+                keys=["symbol:OLD"],
+                source_evidence_id="evidence-old",
+                created_at_ms=1_000,
+            )
+            lookup.replace_lookup_keys(
+                intent_id="intent-recent",
+                event_id="event-recent",
+                keys=["symbol:RECENT"],
+                source_evidence_id="evidence-recent",
+                created_at_ms=100_000,
+            )
+            discovery.enqueue_lookup_keys(
+                ["symbol:OLD"],
+                reason="intent_resolution_unresolved",
+                now_ms=1_000,
+                latest_seen_ms=1_000,
+            )
+            discovery.enqueue_lookup_keys(
+                ["symbol:RECENT"],
+                reason="intent_resolution_unresolved",
+                now_ms=100_000,
+                latest_seen_ms=100_000,
+            )
+            discovery.finish_lookup(
+                provider="okx_dex_search",
+                lookup_key="symbol:RECENT",
+                lookup_type="dex_symbol_lookup",
+                status="found",
+                candidate_ids=["asset:solana:token:recent"],
+                result_hash="hash-recent",
+                next_refresh_at_ms=90_000,
+                now_ms=80_000,
+            )
 
         due = _due_lookup_keys_for_test(conn, now_ms=120_000, limit=1, running_timeout_ms=60_000)
     finally:
@@ -234,43 +240,44 @@ def test_discovery_retries_hot_not_found_before_old_backlog(tmp_path):
             received_at_ms=100_000,
         )
         lookup = TokenIntentLookupRepository(conn)
-        lookup.replace_lookup_keys(
-            intent_id="intent-old",
-            event_id="event-old",
-            keys=["symbol:OLD"],
-            source_evidence_id="evidence-old",
-            created_at_ms=1_000,
-        )
-        lookup.replace_lookup_keys(
-            intent_id="intent-hot",
-            event_id="event-hot",
-            keys=["symbol:HOT"],
-            source_evidence_id="evidence-hot",
-            created_at_ms=100_000,
-        )
         discovery = DiscoveryRepository(conn)
-        discovery.enqueue_lookup_keys(
-            ["symbol:OLD"],
-            reason="intent_resolution_unresolved",
-            now_ms=1_000,
-            latest_seen_ms=1_000,
-        )
-        discovery.enqueue_lookup_keys(
-            ["symbol:HOT"],
-            reason="intent_resolution_unresolved",
-            now_ms=100_000,
-            latest_seen_ms=100_000,
-        )
-        discovery.finish_lookup(
-            provider="okx_dex_search",
-            lookup_key="symbol:HOT",
-            lookup_type="dex_symbol_lookup",
-            status="not_found",
-            candidate_ids=[],
-            result_hash="empty",
-            next_refresh_at_ms=380_000,
-            now_ms=80_000,
-        )
+        with conn.transaction():
+            lookup.replace_lookup_keys(
+                intent_id="intent-old",
+                event_id="event-old",
+                keys=["symbol:OLD"],
+                source_evidence_id="evidence-old",
+                created_at_ms=1_000,
+            )
+            lookup.replace_lookup_keys(
+                intent_id="intent-hot",
+                event_id="event-hot",
+                keys=["symbol:HOT"],
+                source_evidence_id="evidence-hot",
+                created_at_ms=100_000,
+            )
+            discovery.enqueue_lookup_keys(
+                ["symbol:OLD"],
+                reason="intent_resolution_unresolved",
+                now_ms=1_000,
+                latest_seen_ms=1_000,
+            )
+            discovery.enqueue_lookup_keys(
+                ["symbol:HOT"],
+                reason="intent_resolution_unresolved",
+                now_ms=100_000,
+                latest_seen_ms=100_000,
+            )
+            discovery.finish_lookup(
+                provider="okx_dex_search",
+                lookup_key="symbol:HOT",
+                lookup_type="dex_symbol_lookup",
+                status="not_found",
+                candidate_ids=[],
+                result_hash="empty",
+                next_refresh_at_ms=380_000,
+                now_ms=80_000,
+            )
 
         due = _due_lookup_keys_for_test(
             conn,
@@ -292,36 +299,39 @@ def test_discovery_result_hash_reports_changed_only_when_lookup_result_changes(t
         migrate(conn)
         discovery = DiscoveryRepository(conn)
 
-        first_changed = discovery.finish_lookup(
-            provider="okx_dex_search",
-            lookup_key="symbol:SLOP",
-            lookup_type="dex_symbol_lookup",
-            status="found",
-            candidate_ids=["asset:solana:token:slop"],
-            result_hash="hash-1",
-            next_refresh_at_ms=10_000,
-            now_ms=1_000,
-        )
-        unchanged = discovery.finish_lookup(
-            provider="okx_dex_search",
-            lookup_key="symbol:SLOP",
-            lookup_type="dex_symbol_lookup",
-            status="found",
-            candidate_ids=["asset:solana:token:slop"],
-            result_hash="hash-1",
-            next_refresh_at_ms=20_000,
-            now_ms=2_000,
-        )
-        changed_again = discovery.finish_lookup(
-            provider="okx_dex_search",
-            lookup_key="symbol:SLOP",
-            lookup_type="dex_symbol_lookup",
-            status="found",
-            candidate_ids=["asset:solana:token:slop", "asset:eip155:1:erc20:slop"],
-            result_hash="hash-2",
-            next_refresh_at_ms=30_000,
-            now_ms=3_000,
-        )
+        with conn.transaction():
+            first_changed = discovery.finish_lookup(
+                provider="okx_dex_search",
+                lookup_key="symbol:SLOP",
+                lookup_type="dex_symbol_lookup",
+                status="found",
+                candidate_ids=["asset:solana:token:slop"],
+                result_hash="hash-1",
+                next_refresh_at_ms=10_000,
+                now_ms=1_000,
+            )
+        with conn.transaction():
+            unchanged = discovery.finish_lookup(
+                provider="okx_dex_search",
+                lookup_key="symbol:SLOP",
+                lookup_type="dex_symbol_lookup",
+                status="found",
+                candidate_ids=["asset:solana:token:slop"],
+                result_hash="hash-1",
+                next_refresh_at_ms=20_000,
+                now_ms=2_000,
+            )
+        with conn.transaction():
+            changed_again = discovery.finish_lookup(
+                provider="okx_dex_search",
+                lookup_key="symbol:SLOP",
+                lookup_type="dex_symbol_lookup",
+                status="found",
+                candidate_ids=["asset:solana:token:slop", "asset:eip155:1:erc20:slop"],
+                result_hash="hash-2",
+                next_refresh_at_ms=30_000,
+                now_ms=3_000,
+            )
         counts = discovery.counts()
     finally:
         conn.close()
@@ -338,28 +348,29 @@ def test_discovery_due_order_includes_error_count_for_backoff(tmp_path):
         migrate(conn)
         _insert_event_intent_and_evidence(conn, symbol="RATE")
         lookup = TokenIntentLookupRepository(conn)
-        lookup.replace_lookup_keys(
-            intent_id="intent-1",
-            event_id="event-1",
-            keys=["symbol:RATE"],
-            source_evidence_id="evidence-1",
-            created_at_ms=1_000,
-        )
         discovery = DiscoveryRepository(conn)
-        discovery.enqueue_lookup_keys(
-            ["symbol:RATE"],
-            reason="intent_resolution_unresolved",
-            now_ms=1_000,
-            latest_seen_ms=1_000,
-        )
-        discovery.fail_lookup(
-            provider="okx_dex_search",
-            lookup_key="symbol:RATE",
-            lookup_type="dex_symbol_lookup",
-            last_error="HTTP 429 Too Many Requests",
-            next_refresh_at_ms=2_000,
-            now_ms=1_000,
-        )
+        with conn.transaction():
+            lookup.replace_lookup_keys(
+                intent_id="intent-1",
+                event_id="event-1",
+                keys=["symbol:RATE"],
+                source_evidence_id="evidence-1",
+                created_at_ms=1_000,
+            )
+            discovery.enqueue_lookup_keys(
+                ["symbol:RATE"],
+                reason="intent_resolution_unresolved",
+                now_ms=1_000,
+                latest_seen_ms=1_000,
+            )
+            discovery.fail_lookup(
+                provider="okx_dex_search",
+                lookup_key="symbol:RATE",
+                lookup_type="dex_symbol_lookup",
+                last_error="HTTP 429 Too Many Requests",
+                next_refresh_at_ms=2_000,
+                now_ms=1_000,
+            )
 
         due = _due_lookup_keys_for_test(conn, now_ms=2_000, limit=10, running_timeout_ms=60_000)
     finally:
@@ -377,23 +388,23 @@ def test_lookup_key_reprocess_can_revisit_already_resolved_intents(tmp_path):
         migrate(conn)
         _insert_event_intent_and_evidence(conn)
         lookup = TokenIntentLookupRepository(conn)
-        lookup.replace_lookup_keys(
-            intent_id="intent-1",
-            event_id="event-1",
-            keys=["symbol:UPEG"],
-            source_evidence_id="evidence-1",
-            created_at_ms=1_000,
-        )
-        conn.execute(
-            """
-            UPDATE token_intent_resolutions
-            SET resolution_status = 'UNIQUE_BY_CONTEXT',
-                target_type = 'Asset',
-                target_id = 'asset:eip155:1:erc20:0xold'
-            WHERE resolution_id = 'resolution-1'
-            """
-        )
-        conn.commit()
+        with conn.transaction():
+            lookup.replace_lookup_keys(
+                intent_id="intent-1",
+                event_id="event-1",
+                keys=["symbol:UPEG"],
+                source_evidence_id="evidence-1",
+                created_at_ms=1_000,
+            )
+            conn.execute(
+                """
+                UPDATE token_intent_resolutions
+                SET resolution_status = 'UNIQUE_BY_CONTEXT',
+                    target_type = 'Asset',
+                    target_id = 'asset:eip155:1:erc20:0xold'
+                WHERE resolution_id = 'resolution-1'
+                """
+            )
 
         intents = lookup.recent_intents_for_lookup_keys(["symbol:UPEG"], since_ms=0, limit=10)
     finally:
@@ -491,49 +502,48 @@ def _insert_event_intent_and_evidence(
             make_event(event_id, text=f"${symbol}", received_at_ms=received_at_ms),
             is_watched=True,
         )
-    conn.execute(
-        """
-        INSERT INTO token_evidence(
-          evidence_id, event_id, source_kind, source_id, evidence_type, raw_value,
-          normalized_symbol, chain_hint, address_hint, provider, provider_ref,
-          text_surface, span_start, span_end, sentence_id, local_group_key,
-          strength, confidence, created_at_ms
+        conn.execute(
+            """
+            INSERT INTO token_evidence(
+              evidence_id, event_id, source_kind, source_id, evidence_type, raw_value,
+              normalized_symbol, chain_hint, address_hint, provider, provider_ref,
+              text_surface, span_start, span_end, sentence_id, local_group_key,
+              strength, confidence, created_at_ms
+            )
+            VALUES (
+              %s, %s, 'entity', %s, 'cashtag', %s,
+              %s, NULL, NULL, NULL, NULL, 'primary', 0, 5, 0, 'primary:0',
+              'medium', 0.8, 1
+            )
+            """,
+            (evidence_id, event_id, f"entity-{evidence_id}", f"${symbol}", symbol),
         )
-        VALUES (
-          %s, %s, 'entity', %s, 'cashtag', %s,
-          %s, NULL, NULL, NULL, NULL, 'primary', 0, 5, 0, 'primary:0',
-          'medium', 0.8, 1
+        conn.execute(
+            """
+            INSERT INTO token_intents(
+              intent_id, event_id, intent_key, construction_policy, primary_evidence_id,
+              display_symbol, display_name, chain_hint, address_hint, intent_status,
+              intent_confidence, created_at_ms, updated_at_ms
+            )
+            VALUES (
+              %s, %s, %s, 'test', %s,
+              %s, NULL, NULL, NULL, 'pending', 1.0, 1, 1
+            )
+            """,
+            (intent_id, event_id, f"symbol:{symbol}", evidence_id, symbol),
         )
-        """,
-        (evidence_id, event_id, f"entity-{evidence_id}", f"${symbol}", symbol),
-    )
-    conn.execute(
-        """
-        INSERT INTO token_intents(
-          intent_id, event_id, intent_key, construction_policy, primary_evidence_id,
-          display_symbol, display_name, chain_hint, address_hint, intent_status,
-          intent_confidence, created_at_ms, updated_at_ms
+        conn.execute(
+            """
+            INSERT INTO token_intent_resolutions(
+              resolution_id, intent_id, event_id, resolution_status, resolver_policy_version,
+              target_type, target_id, pricefeed_id, reason_codes_json, candidate_ids_json,
+              lookup_keys_json, record_status, is_current, decision_time_ms, created_at_ms
+            )
+            VALUES (
+              %s, %s, %s, 'NIL', %s,
+              NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, %s::jsonb,
+              'current', true, 1, 1
+            )
+            """,
+            (resolution_id, intent_id, event_id, TOKEN_RADAR_RESOLVER_POLICY_VERSION, f'["symbol:{symbol}"]'),
         )
-        VALUES (
-          %s, %s, %s, 'test', %s,
-          %s, NULL, NULL, NULL, 'pending', 1.0, 1, 1
-        )
-        """,
-        (intent_id, event_id, f"symbol:{symbol}", evidence_id, symbol),
-    )
-    conn.execute(
-        """
-        INSERT INTO token_intent_resolutions(
-          resolution_id, intent_id, event_id, resolution_status, resolver_policy_version,
-          target_type, target_id, pricefeed_id, reason_codes_json, candidate_ids_json,
-          lookup_keys_json, record_status, is_current, decision_time_ms, created_at_ms
-        )
-        VALUES (
-          %s, %s, %s, 'NIL', %s,
-          NULL, NULL, NULL, '[]'::jsonb, '[]'::jsonb, %s::jsonb,
-          'current', true, 1, 1
-        )
-        """,
-        (resolution_id, intent_id, event_id, TOKEN_RADAR_RESOLVER_POLICY_VERSION, f'["symbol:{symbol}"]'),
-    )
-    conn.commit()

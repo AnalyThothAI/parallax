@@ -10,9 +10,12 @@ from fastapi.testclient import TestClient
 from parallax.app.runtime.worker_manifest import all_worker_manifests
 from parallax.app.surfaces.api.app import create_app
 from parallax.app.surfaces.api.responses import _json
+from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
+from parallax.domains.asset_market.types import MarketTick, market_tick_id
 from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from parallax.platform.config.settings import Settings
+from tests.notification_helpers import insert_notification_row
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
@@ -221,6 +224,7 @@ def make_settings(tmp_path) -> Settings:
         handles=("toly", "elonmusk"),
         ws_token="secret",
         storage=postgres_settings_storage(),
+        workers={"macro_sync": {"enabled": False}},
     )
     settings.set_config_dir(tmp_path / "app-home")
     return settings
@@ -432,7 +436,7 @@ def test_api_search_rejects_malformed_cursor(tmp_path):
     assert response.json() == {"ok": False, "error": "invalid_cursor"}
 
 
-def test_api_status_exposes_market_tick_and_live_market_status(tmp_path):
+def test_api_status_exposes_flat_worker_status(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -441,17 +445,14 @@ def test_api_status_exposes_market_tick_and_live_market_status(tmp_path):
     assert response.status_code == 200
     data = response.json()["data"]
     assert "_".join(("anchor", "price")) not in data
-    assert "live_price_gateway" not in data
     assert "resolution_refresh" not in data
     assert "token_radar_projection" not in data
-    assert "worker_lanes" in data
+    assert "worker_lanes" not in data
     workers = data["workers"]
     for name in (
-        "token_capture_tier",
         "market_tick_stream",
         "market_tick_poll",
         "event_anchor_backfill",
-        "live_price_gateway",
         "resolution_refresh",
         "token_radar_projection",
     ):
@@ -526,7 +527,8 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
 
     assert asset_flow.status_code == 200
     radar_row = asset_flow.json()["data"]["targets"][0]
-    assert radar_row["target"]["symbol"] == "PEPE"
+    assert radar_row["factor_snapshot"]["subject"]["symbol"] == "PEPE"
+    assert {"target", "attention", "market", "score", "data_health", "source_event_ids"}.isdisjoint(radar_row)
     assert radar_row["profile"]["status"] == "pending"
     assert radar_row["profile"]["provider"] is None
     assert "discussion_digest" not in radar_row
@@ -574,49 +576,19 @@ def test_token_radar_public_payload_excludes_unresolved_rows(tmp_path):
     data = response.json()["data"]
     public_rows = [*data["targets"], *data["attention"]]
     assert public_rows
-    assert all(row["target"]["target_id"] for row in public_rows)
-    assert "NEWTOKEN" not in {row["target"]["symbol"] for row in public_rows}
+    assert all(row["factor_snapshot"]["subject"]["target_id"] for row in public_rows)
+    assert "NEWTOKEN" not in {row["factor_snapshot"]["subject"]["symbol"] for row in public_rows}
     assert data["projection"]["unresolved"]["identity_missing_count"] == 0
     assert "NEWTOKEN" not in data["projection"]["unresolved"]["sample_symbols"]
 
 
-def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
-    class FakeLiveGateway:
-        def status_payload(self) -> dict[str, object]:
-            return {"enabled": True, "running": True}
-
-        async def stop(self) -> None:
-            return None
-
-        async def aclose(self) -> None:
-            return None
-
-        def snapshot(self, *, target_type: str, target_id: str, now_ms: int | None = None):
-            return {
-                "target_type": target_type,
-                "target_id": target_id,
-                "status": "live",
-                "price_usd": 0.123,
-                "price_quote": None,
-                "quote_symbol": "USD",
-                "price_basis": "usd",
-                "market_cap_usd": 123_000,
-                "liquidity_usd": 45_000,
-                "holders": 321,
-                "volume_24h_usd": 9_000,
-                "observed_at_ms": now_ms,
-                "received_at_ms": now_ms,
-                "age_ms": 0,
-                "provider": "test_live",
-            }
-
+def test_live_market_reads_durable_current_without_gateway(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         now_ms = int(time.time() * 1000)
-        rebuild_now_ms = now_ms + TOKEN_RADAR_TEST_REBUILD_OFFSET_MS
         runtime = client.app.state.service
-        runtime.ingest.ingest_event(
+        ingested = runtime.ingest.ingest_event(
             make_token_event(
                 "event-pepe-live-overlay",
                 symbol="PEPE",
@@ -626,33 +598,51 @@ def test_token_radar_uses_live_market_endpoint_without_legacy_overlay(tmp_path):
             ),
             is_watched=True,
         )
-        runtime.scheduler.workers["live_price_gateway"] = FakeLiveGateway()
-        rebuild_token_radar(client, now_ms=rebuild_now_ms)
-
-        response = client.get(
-            "/api/token-radar",
-            params={"window": "5m", "scope": "all", "limit": 20},
-            headers={"Authorization": "Bearer secret"},
-        )
-
-        assert response.status_code == 200
-        row = response.json()["data"]["targets"][0]
+        resolution = next(item for item in ingested.token_resolutions if item["resolution_status"] == "EXACT")
+        with runtime.repositories() as repos:
+            market_target = repos.registry.chain_token_market_target(str(resolution["target_id"]))
+            assert market_target is not None
+            chain, _, token_address = str(market_target["target_id"]).rpartition(":")
+            tick = MarketTick(
+                tick_id=market_tick_id(
+                    target_type="chain_token",
+                    target_id=str(market_target["target_id"]),
+                    source_provider="gmgn_dex_quote",
+                    observed_at_ms=now_ms,
+                ),
+                target_type="chain_token",
+                target_id=str(market_target["target_id"]),
+                chain=chain,
+                token_address=token_address,
+                exchange=None,
+                instrument=None,
+                pricefeed_id=None,
+                source_tier="tier3_inline",
+                source_provider="gmgn_dex_quote",
+                observed_at_ms=now_ms,
+                received_at_ms=now_ms,
+                price_usd=Decimal("0.123"),
+                liquidity_usd=Decimal("45000"),
+                volume_24h_usd=Decimal("9000"),
+                market_cap_usd=Decimal("123000"),
+                holders=321,
+                created_at_ms=now_ms,
+                raw_payload_json={"source": "test"},
+            )
+            with repos.transaction():
+                MarketTickPersistenceService(repos).persist_ticks([tick], now_ms=now_ms)
         live_market = client.get(
             "/api/live-market",
-            params={"target_type": row["target"]["target_type"], "target_id": row["target"]["target_id"]},
+            params={"target_type": resolution["target_type"], "target_id": resolution["target_id"]},
             headers={"Authorization": "Bearer secret"},
         )
 
-    assert "live_market" not in row
-    assert row["market"]["event_anchor"] is None
-    assert row["market"]["decision_latest"] is None
-    assert row["market"]["readiness"]["anchor_status"] == "missing"
     assert live_market.status_code == 200
     payload = live_market.json()["data"]
     assert payload["status"] == "live"
     assert payload["price_usd"] == 0.123
     assert payload["market_cap_usd"] == 123_000
-    assert payload["provider"] == "test_live"
+    assert payload["provider"] == "gmgn_dex_quote"
 
 
 def test_stocks_radar_returns_us_equity_market_instruments_with_unavailable_quote_state(tmp_path):
@@ -744,7 +734,8 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
     with TestClient(app) as client:
         runtime = client.app.state.service
         with runtime.repositories() as repos, repos.transaction():
-            first = repos.notifications.insert_notification(
+            first = insert_notification_row(
+                repos.notifications,
                 dedup_key="activity:event-1",
                 rule_id="watched_account_activity",
                 severity="info",
@@ -760,7 +751,8 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
                 payload={"event_id": "event-1"},
                 channels=["in_app"],
             )
-            repos.notifications.insert_notification(
+            insert_notification_row(
+                repos.notifications,
                 dedup_key="news:pepe",
                 rule_id="news_high_signal",
                 severity="high",
@@ -792,18 +784,14 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
         assert first is not None
 
         headers = {"Authorization": "Bearer secret"}
-        summary = client.get("/api/notification-summary", headers=headers)
         listed = client.get("/api/notifications?limit=10", headers=headers)
         read = client.post(f"/api/notifications/{first['notification_id']}/read", headers=headers)
         unread = client.get("/api/notifications?unread_only=true&limit=10", headers=headers)
-        updated_summary = client.get("/api/notification-summary", headers=headers)
-
-    assert summary.status_code == 200
-    assert summary.json()["data"]["unread_count"] == 2
-    assert summary.json()["data"]["high_unread_count"] == 1
-    assert summary.json()["data"]["account_unread_counts"] == {"toly": 1}
 
     assert listed.status_code == 200
+    assert listed.json()["data"]["summary"]["unread_count"] == 2
+    assert listed.json()["data"]["summary"]["high_unread_count"] == 1
+    assert listed.json()["data"]["summary"]["account_unread_counts"] == {"toly": 1}
     assert listed.json()["data"]["items"][0]["rule_id"] == "news_high_signal"
     assert listed.json()["data"]["items"][0]["payload"]["decision_class"] == "driver"
     assert listed.json()["data"]["items"][0]["payload"]["symbols"] == ["PEPE"]
@@ -815,7 +803,7 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
     assert read.json()["data"]["updated"] is True
     assert unread.status_code == 200
     assert [item["notification_id"] for item in unread.json()["data"]["items"]] != [first["notification_id"]]
-    assert updated_summary.json()["data"]["unread_count"] == 1
+    assert unread.json()["data"]["summary"]["unread_count"] == 1
 
 
 def test_api_marks_author_notifications_read(tmp_path):
@@ -825,7 +813,8 @@ def test_api_marks_author_notifications_read(tmp_path):
         runtime = client.app.state.service
         with runtime.repositories() as repos, repos.transaction():
             for suffix in ("1", "2"):
-                repos.notifications.insert_notification(
+                insert_notification_row(
+                    repos.notifications,
                     dedup_key=f"activity:toly:{suffix}",
                     rule_id="watched_account_activity",
                     severity="info",
@@ -841,7 +830,8 @@ def test_api_marks_author_notifications_read(tmp_path):
                     payload={"event_id": f"event-toly-{suffix}"},
                     channels=["in_app"],
                 )
-            repos.notifications.insert_notification(
+            insert_notification_row(
+                repos.notifications,
                 dedup_key="activity:elon",
                 rule_id="watched_account_activity",
                 severity="info",
@@ -860,13 +850,13 @@ def test_api_marks_author_notifications_read(tmp_path):
 
         headers = {"Authorization": "Bearer secret"}
         read = client.post("/api/notifications/author/toly/read", headers=headers)
-        summary = client.get("/api/notification-summary", headers=headers)
+        listed = client.get("/api/notifications?limit=10", headers=headers)
 
     assert read.status_code == 200
     assert read.json()["data"]["updated_count"] == 2
-    assert summary.status_code == 200
-    assert summary.json()["data"]["unread_count"] == 1
-    assert summary.json()["data"]["account_unread_counts"] == {"elonmusk": 1}
+    assert listed.status_code == 200
+    assert listed.json()["data"]["summary"]["unread_count"] == 1
+    assert listed.json()["data"]["summary"]["account_unread_counts"] == {"elonmusk": 1}
 
 
 def test_api_exposes_notification_delivery_audit(tmp_path):
@@ -875,7 +865,8 @@ def test_api_exposes_notification_delivery_audit(tmp_path):
     with TestClient(app) as client:
         runtime = client.app.state.service
         with runtime.repositories() as repos, repos.transaction():
-            notification = repos.notifications.insert_notification(
+            notification = insert_notification_row(
+                repos.notifications,
                 dedup_key="news:pepe",
                 rule_id="news_high_signal",
                 severity="high",
@@ -956,17 +947,18 @@ def test_api_asset_flow_scope_filters_watched_mentions(tmp_path):
         watched_flow = client.get("/api/token-radar", params={"window": "5m", "scope": "matched"}, headers=headers)
 
     assert all_flow.status_code == 200
-    assert {item["target"]["symbol"] for item in all_flow.json()["data"]["targets"]} == {"PEPE", "BONK"}
+    assert {item["factor_snapshot"]["subject"]["symbol"] for item in all_flow.json()["data"]["targets"]} == {
+        "PEPE",
+        "BONK",
+    }
 
     assert watched_flow.status_code == 200
     assert watched_flow.json()["data"]["scope"] == "matched"
-    assert [item["target"]["symbol"] for item in watched_flow.json()["data"]["targets"]] == ["PEPE"]
+    assert [item["factor_snapshot"]["subject"]["symbol"] for item in watched_flow.json()["data"]["targets"]] == ["PEPE"]
 
 
-def test_api_live_market_returns_unsupported_without_live_gateway(tmp_path):
-    settings = make_settings(tmp_path)
-    settings.workers.live_price_gateway.enabled = False
-    app = create_app(settings=settings, start_collector=False)
+def test_api_live_market_returns_missing_without_durable_current_row(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
         response = client.get(
@@ -980,7 +972,7 @@ def test_api_live_market_returns_unsupported_without_live_gateway(tmp_path):
     data = response.json()["data"]
     assert data["target_type"] == "Asset"
     assert data["target_id"] == "asset:missing"
-    assert data["status"] == "unsupported"
+    assert data["status"] == "missing"
     assert missing.status_code == 400
     assert missing.json() == {"ok": False, "error": "target_required", "field": "target_id"}
 
@@ -1114,8 +1106,8 @@ def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(t
             params={"window": "5m", "limit": 5, "scope": "all"},
             headers={"Authorization": "Bearer secret"},
         ).json()["data"]["targets"][0]
-        target_type = asset_flow["target"]["target_type"]
-        target_id = asset_flow["target"]["target_id"]
+        target_type = asset_flow["factor_snapshot"]["subject"]["target_type"]
+        target_id = asset_flow["factor_snapshot"]["subject"]["target_id"]
 
         missing = client.get("/api/target-posts?window=5m", headers={"Authorization": "Bearer secret"})
         first_page = client.get(
@@ -1195,8 +1187,8 @@ def test_api_target_social_timeline_returns_buckets_authors_and_posts(tmp_path):
             params={"window": "5m", "limit": 5, "scope": "all"},
             headers={"Authorization": "Bearer secret"},
         ).json()["data"]["targets"][0]
-        target_type = asset_flow["target"]["target_type"]
-        target_id = asset_flow["target"]["target_id"]
+        target_type = asset_flow["factor_snapshot"]["subject"]["target_type"]
+        target_id = asset_flow["factor_snapshot"]["subject"]["target_id"]
 
         missing = client.get("/api/target-social-timeline?window=5m", headers={"Authorization": "Bearer secret"})
         response = client.get(
@@ -1274,7 +1266,7 @@ def test_api_status_exposes_operational_state(tmp_path):
     assert data["handles"] == ["toly", "elonmusk"]
     manifest_names = {manifest.name for manifest in all_worker_manifests()}
     assert manifest_names.issubset(data["workers"])
-    assert set(data["worker_lanes"]) >= {"ingest", "projection", "agent"}
+    assert "worker_lanes" not in data
     assert "collector" not in data
     assert "enrichment" not in data
     assert "notifications" not in data
@@ -1282,10 +1274,15 @@ def test_api_status_exposes_operational_state(tmp_path):
     collector = data["workers"]["collector"]
     assert collector["enabled"] is False
     assert collector["running"] is False
+    assert collector["effective_status"] == "intentionally_not_started"
     assert "queue_depth" not in collector
-    assert collector["details"]["frames_received"] == 0
-    assert collector["details"]["matched_twitter_events"] == 0
-    assert collector["details"]["snapshot_gate_outcomes"] == data["snapshot_gate"]
+    assert "details" not in collector
+    assert data["snapshot_gate"] == {
+        "immediate_complete": 0,
+        "debounced_complete": 0,
+        "debounced_timeout": 0,
+        "non_tw_channel": 0,
+    }
 
 
 def test_api_status_remains_queryable_when_readiness_is_degraded(tmp_path):
@@ -1293,13 +1290,17 @@ def test_api_status_remains_queryable_when_readiness_is_degraded(tmp_path):
 
     with TestClient(app) as client:
         client.app.state.service.db.api_pool.close()
+        readiness = client.get("/readyz")
         response = client.get("/api/status", headers={"Authorization": "Bearer secret"})
 
     body = response.json()
+    assert readiness.status_code == 503
+    assert readiness.json()["reasons"] == ["database_unhealthy"]
     assert response.status_code == 200
     assert body["ok"] is True
     assert body["data"]["ok"] is False
-    assert "database_unhealthy" in body["data"]["reasons"]
+    assert "database_unhealthy" not in body["data"]["reasons"]
+    assert body["data"]["db"]["ok"] is True
 
 
 def test_api_rejects_removed_narrative_product_surfaces(tmp_path):

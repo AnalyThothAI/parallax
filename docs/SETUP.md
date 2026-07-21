@@ -33,6 +33,9 @@ credentials/endpoints needed by the enabled data lanes, including GMGN OpenAPI
 for exact token profiles and OKX provider settings for discovery, market data,
 or DEX WebSocket lanes when those workers are enabled. Keep secrets out of
 terminal output, docs, tests, and commits.
+The `llm` block contains only `api_key` and `base_url`; configure the story-brief
+model and its execution policy under the flat `agent_runtime` block in
+`workers.yaml`.
 
 Use `uv run parallax config` to inspect both config paths and the effective
 worker settings. Inspect the running process through authenticated
@@ -70,9 +73,9 @@ booleans, and diagnostic command status; do not paste WebSocket tokens, API
 keys, provider passwords, or full config payloads into docs or chat.
 
 Macro freshness is normally owned by the `macro_sync` worker. Docker/runtime
-uses the packaged `macrodata` executable when the console script is healthy, or
-the installed Python package entrypoint when the script is absent or stale. It
-must not depend on `uv run macrodata` or a host-local macrodata checkout.
+always invokes the installed `macrodata` package entrypoint with the current
+Python interpreter. It does not probe `PATH`, inspect console-script shebangs,
+run `uv run macrodata`, or depend on a host-local macrodata checkout.
 The worker reads the formal `workers.macro_sync.bundle_names` list; the default
 set is `macro-core`, `macro-calendar-core`, `treasury-auction-core`, and
 `fed-text-core`.
@@ -81,9 +84,9 @@ operator-owned `~/.parallax/config.yaml`, or through the environment /
 deployment secret manager named by `providers.macrodata.fred_api_key_env`
 (default `FINANCE_FRED_API_KEY`). `uv run parallax config` and macro sync
 diagnostics report only whether a key is configured, never the key value. Tune
-`workers.macro_sync.macrodata_timeout_seconds` below the worker hard timeout so
-a stuck macrodata child process is killed and recorded as source-health
-failure.
+`workers.macro_sync.macrodata_timeout_seconds` to bound the provider subprocess;
+a stuck macrodata child process is killed at that boundary and recorded as a
+source-health failure.
 
 For an operator-triggered repair of one bounded window, use the same sync
 service as the worker:

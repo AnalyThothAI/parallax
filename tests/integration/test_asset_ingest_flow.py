@@ -34,7 +34,7 @@ def open_ingest(tmp_path):
         intent_resolutions=repos.intent_resolutions,
         discovery=repos.discovery,
         market_ticks=repos.market_ticks,
-        market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
+        market_tick_current=repos.market_tick_current,
         enriched_events=repos.enriched_events,
         event_anchor_jobs=repos.event_anchor_jobs,
         token_intent_lookup=repos.token_intent_lookup,
@@ -142,7 +142,7 @@ def test_ingest_unknown_chain_ca_is_retained_as_unresolved_asset(tmp_path):
     assert result.token_resolutions[0]["target_id"] is None
 
 
-def test_ingest_capture_tick_enqueues_market_tick_current_dirty_target(tmp_path):
+def test_ingest_capture_tick_updates_current_and_enqueues_token_radar(tmp_path):
     conn, repos, ingest = open_ingest(tmp_path)
     event = make_event(
         "event-capture-dirty",
@@ -150,21 +150,34 @@ def test_ingest_capture_tick_enqueues_market_tick_current_dirty_target(tmp_path)
         received_at_ms=1_800_000_000_000,
     )
     try:
-        prepared, resolutions, capture_result = _prepared_capture(ingest, event)
-        result = ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=[capture_result])
-        dirty_row = repos.market_tick_current_dirty_targets.get(
-            capture_result.tick.target_type,
-            capture_result.tick.target_id,
+        with repos.transaction():
+            prepared, resolutions, capture_result = _prepared_capture(ingest, event)
+            result = ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=[capture_result])
+        asset_id = _asset_identity_id(resolutions)
+        current_row = repos.market_tick_current.get(
+            target_type=capture_result.tick.target_type,
+            target_id=capture_result.tick.target_id,
         )
+        dirty_row = conn.execute(
+            """
+            SELECT *
+            FROM token_radar_dirty_targets
+            WHERE target_type_key = 'Asset' AND identity_id = %s
+            """,
+            (asset_id,),
+        ).fetchone()
     finally:
         conn.close()
 
     assert result.inserted is True
+    assert current_row is not None
+    assert current_row["tick_id"] == capture_result.tick.tick_id
     assert dirty_row is not None
-    assert dirty_row["dirty_reason"] == "event_capture_tick_inserted"
+    assert dirty_row["dirty_reason"] == "mixed"
+    assert dirty_row["market_dirty"] is True
 
 
-def test_ingest_capture_tick_and_dirty_target_roll_back_with_event_transaction(tmp_path):
+def test_ingest_capture_tick_current_and_downstream_dirty_roll_back_with_event_transaction(tmp_path):
     conn, repos, ingest = open_ingest(tmp_path)
     event = make_event(
         "event-capture-rollback",
@@ -172,14 +185,10 @@ def test_ingest_capture_tick_and_dirty_target_roll_back_with_event_transaction(t
         received_at_ms=1_800_000_010_000,
     )
     try:
-        prepared, resolutions, capture_result = _prepared_capture(ingest, event)
         ingest.event_anchor_jobs = _FailingEventAnchorJobs()
-        try:
+        with pytest.raises(RuntimeError, match="event_anchor_enqueue_failed_for_test"), repos.transaction():
+            prepared, resolutions, capture_result = _prepared_capture(ingest, event)
             ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=[capture_result])
-        except RuntimeError as exc:
-            assert str(exc) == "event_anchor_enqueue_failed_for_test"
-        else:
-            raise AssertionError("expected ingest commit to fail after capture tick persistence")
 
         event_row = conn.execute("SELECT * FROM events WHERE event_id = %s", (event.event_id,)).fetchone()
         tick_row = repos.market_ticks.latest_at_or_before(
@@ -188,15 +197,17 @@ def test_ingest_capture_tick_and_dirty_target_roll_back_with_event_transaction(t
             at_ms=capture_result.tick.observed_at_ms,
             max_lag_ms=1,
         )
-        dirty_row = repos.market_tick_current_dirty_targets.get(
-            capture_result.tick.target_type,
-            capture_result.tick.target_id,
+        current_row = repos.market_tick_current.get(
+            target_type=capture_result.tick.target_type,
+            target_id=capture_result.tick.target_id,
         )
+        dirty_row = conn.execute("SELECT * FROM token_radar_dirty_targets").fetchone()
     finally:
         conn.close()
 
     assert event_row is None
     assert tick_row is None
+    assert current_row is None
     assert dirty_row is None
 
 
@@ -229,20 +240,21 @@ def test_ingest_registry_asset_rolls_back_with_failed_event_transaction(tmp_path
 
 
 def test_ingest_rejects_loose_capture_result_contract(tmp_path):
-    conn, _, ingest = open_ingest(tmp_path)
+    conn, repos, ingest = open_ingest(tmp_path)
     event = make_event(
         "event-loose-capture-result",
         text="https://gmgn.ai/eth/token/0x6982508145454ce325ddbe47a25d4ec3d2311933 loose",
         received_at_ms=1_800_000_020_000,
     )
     try:
-        prepared, resolutions, capture_result = _prepared_capture(ingest, event)
 
         class LooseCaptureResult:
-            tick = capture_result.tick
-            capture = capture_result.capture
+            pass
 
-        with pytest.raises(RuntimeError, match="ingest_capture_result_contract_required"):
+        with pytest.raises(RuntimeError, match="ingest_capture_result_contract_required"), repos.transaction():
+            prepared, resolutions, capture_result = _prepared_capture(ingest, event)
+            LooseCaptureResult.tick = capture_result.tick
+            LooseCaptureResult.capture = capture_result.capture
             ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=[LooseCaptureResult()])
     finally:
         conn.close()
@@ -273,9 +285,14 @@ def _prepared_capture(ingest: IngestService, event):
     return prepared, resolutions, CaptureResult(tick=tick, capture=capture)
 
 
+def _asset_identity_id(resolutions) -> str:
+    return str(next(item.target_id for item in resolutions if item.target_type == "Asset" and item.target_id))
+
+
 def _capture_tick(market_resolution: dict[str, object], *, observed_at_ms: int) -> MarketTick:
     target_type = str(market_resolution["target_type"])
     target_id = str(market_resolution["target_id"])
+    chain, _, token_address = target_id.rpartition(":")
     source_provider = "gmgn_dex_quote"
     return MarketTick(
         tick_id=market_tick_id(
@@ -286,8 +303,8 @@ def _capture_tick(market_resolution: dict[str, object], *, observed_at_ms: int) 
         ),
         target_type=target_type,  # type: ignore[arg-type]
         target_id=target_id,
-        chain=str(market_resolution.get("chain_id") or ""),
-        token_address=str(market_resolution.get("token_address") or ""),
+        chain=chain,
+        token_address=token_address,
         exchange=None,
         instrument=None,
         pricefeed_id=None,

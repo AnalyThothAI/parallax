@@ -110,7 +110,7 @@ class RepositoryConnection:
         self.params.append(params)
         kind = _statement_kind(sql_text)
         rowcount = self.rowcounts.get(kind, 1 if kind in _WRITE_KINDS else 0)
-        if kind in {"semantic_duplicate", "external_duplicate", "dedup_duplicate"}:
+        if kind in {"external_duplicate", "dedup_duplicate"}:
             return Cursor(row=None)
         if kind == "notification_read":
             return Cursor(rows=[self.notification])
@@ -143,8 +143,6 @@ _WRITE_KINDS = {
 def _statement_kind(sql: str) -> str:
     if "WITH expired_notifications AS" in sql:
         return "notification_retention_prune"
-    if "payload_json->>'semantic_signature'" in sql:
-        return "semantic_duplicate"
     if "payload_json->>'external_push_signature'" in sql:
         return "external_duplicate"
     if "SELECT * FROM notifications WHERE dedup_key" in sql:
@@ -200,6 +198,15 @@ def test_repository_writes_use_only_the_callers_transaction() -> None:
     assert delivery is not None
     assert not hasattr(conn, "transaction")
     assert not hasattr(conn, "commit")
+
+
+def test_notification_semantic_identity_uses_only_the_unique_dedup_key() -> None:
+    conn = RepositoryConnection()
+
+    _repository(conn).insert_notification_with_outcome(**_notification_kwargs())
+
+    assert all("payload_json->>'semantic_signature'" not in sql for sql in conn.sql)
+    assert any("ON CONFLICT(dedup_key) DO NOTHING" in sql for sql in conn.sql)
 
 
 def test_notification_read_state_is_a_caller_owned_write() -> None:

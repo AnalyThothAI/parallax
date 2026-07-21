@@ -7,6 +7,12 @@ from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
+class MacrodataBundleRunResult:
+    envelope: Mapping[str, Any]
+    diagnostics: Mapping[str, Any]
+
+
+@dataclass(frozen=True, slots=True)
 class MacroSyncRunSummary:
     sync_run_id: str
     status: str
@@ -41,4 +47,4 @@ class MacrodataBundleImport:
     max_observed_at: date | str | None
 
 
-__all__ = ["MacroSyncRunSummary", "MacrodataBundleImport"]
+__all__ = ["MacroSyncRunSummary", "MacrodataBundleImport", "MacrodataBundleRunResult"]

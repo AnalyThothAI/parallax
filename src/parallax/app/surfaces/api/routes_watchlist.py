@@ -8,7 +8,7 @@ from fastapi.responses import JSONResponse
 from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
 from parallax.app.surfaces.api.exceptions import ApiBadRequest
-from parallax.app.surfaces.api.responses import _json
+from parallax.app.surfaces.api.responses import _json, _validated_json
 from parallax.domains.evidence.read_models.watchlist_read_service import (
     WatchlistReadConfig,
     WatchlistReadService,
@@ -32,7 +32,10 @@ def watchlist_handles_overview(request: Request) -> JSONResponse:
             configured_handles=tuple(runtime.settings.handles),
             now_ms=_now_ms(),
         )
-    return _json({"ok": True, "data": data})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.WatchlistHandlesOverviewData],
+        {"ok": True, "data": data},
+    )
 
 
 @router.get(
@@ -60,7 +63,10 @@ def watchlist_handle_overview(
             )
     except LookupError:
         return _json({"ok": False, "error": "handle_not_found", "field": "handle"}, status_code=404)
-    return _json({"ok": True, "data": data})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.WatchlistHandleOverviewData],
+        {"ok": True, "data": data},
+    )
 
 
 @router.get(
@@ -93,7 +99,10 @@ def watchlist_handle_timeline(
         return _json({"ok": False, "error": "handle_not_found", "field": "handle"}, status_code=404)
     except WatchlistTimelineCursorError:
         return _json({"ok": False, "error": "invalid_cursor"}, status_code=400)
-    return _json({"ok": True, "data": data})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.WatchlistHandleTimelineData],
+        {"ok": True, "data": data},
+    )
 
 
 def _watchlist_read_config(_runtime: object) -> WatchlistReadConfig:

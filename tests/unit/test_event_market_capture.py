@@ -35,8 +35,6 @@ def test_existing_recent_tick_hit_returns_capture_without_provider_io() -> None:
         resolution={
             "target_type": "chain_token",
             "target_id": "solana:ABC111",
-            "chain_id": "solana",
-            "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
         tick_lookup=lookup.as_tick_lookup(),
@@ -74,8 +72,6 @@ def test_capture_for_event_does_not_call_provider_when_no_fresh_tick() -> None:
         resolution={
             "target_type": "chain_token",
             "target_id": "solana:ABC111",
-            "chain_id": "solana",
-            "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
         tick_lookup=lookup.as_tick_lookup(),
@@ -112,8 +108,6 @@ def test_capture_backfill_quote_dispatches_chain_token_to_dex_provider() -> None
         resolution={
             "target_type": "chain_token",
             "target_id": "solana:ABC111",
-            "chain_id": "solana",
-            "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
     )
@@ -147,8 +141,6 @@ def test_capture_backfill_quote_dispatches_cex_symbol_to_cex_provider() -> None:
         resolution={
             "target_type": "cex_symbol",
             "target_id": "OKX:BTCUSDT",
-            "exchange": "OKX",
-            "instrument": "BTCUSDT",
         },
         event_ms=EVENT_MS,
     )
@@ -204,8 +196,6 @@ def test_inline_dex_quote_returns_tier3_market_tick_and_capture() -> None:
         resolution={
             "target_type": "chain_token",
             "target_id": "solana:ABC111",
-            "chain_id": "solana",
-            "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
     )
@@ -337,8 +327,6 @@ def test_inline_cex_ticker_returns_tier3_market_tick_and_capture() -> None:
         resolution={
             "target_type": "cex_symbol",
             "target_id": "OKX:BTCUSDT",
-            "exchange": "OKX",
-            "instrument": "BTCUSDT",
         },
         event_ms=EVENT_MS,
     )
@@ -414,8 +402,6 @@ def test_inline_dex_no_quote_and_null_price_are_unavailable() -> None:
         resolution={
             "target_type": "chain_token",
             "target_id": "solana:ABC111",
-            "chain_id": "solana",
-            "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
     )
@@ -441,8 +427,6 @@ def test_inline_dex_no_quote_and_null_price_are_unavailable() -> None:
         resolution={
             "target_type": "chain_token",
             "target_id": "solana:ABC111",
-            "chain_id": "solana",
-            "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
     )
@@ -481,8 +465,6 @@ def test_inline_dex_invalid_price_is_unavailable(price_usd: Any) -> None:
         resolution={
             "target_type": "chain_token",
             "target_id": "solana:ABC111",
-            "chain_id": "solana",
-            "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
     )
@@ -519,8 +501,6 @@ def test_inline_dex_invalid_optional_market_fields_do_not_block_tick() -> None:
         resolution={
             "target_type": "chain_token",
             "target_id": "solana:ABC111",
-            "chain_id": "solana",
-            "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
     )
@@ -557,8 +537,6 @@ def test_inline_cex_invalid_price_is_unavailable(last_price: Any) -> None:
         resolution={
             "target_type": "cex_symbol",
             "target_id": "OKX:BTCUSDT",
-            "exchange": "OKX",
-            "instrument": "BTCUSDT",
         },
         event_ms=EVENT_MS,
     )
@@ -590,8 +568,6 @@ def test_inline_cex_invalid_optional_volume_does_not_block_tick() -> None:
         resolution={
             "target_type": "cex_symbol",
             "target_id": "OKX:BTCUSDT",
-            "exchange": "OKX",
-            "instrument": "BTCUSDT",
         },
         event_ms=EVENT_MS,
     )
@@ -625,8 +601,6 @@ def test_inline_dex_provider_timestamp_before_event_preserves_capture_with_absol
         resolution={
             "target_type": "chain_token",
             "target_id": "solana:ABC111",
-            "chain_id": "solana",
-            "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
     )
@@ -647,8 +621,6 @@ def test_provider_exception_maps_to_unavailable_without_raising() -> None:
         resolution={
             "target_type": "chain_token",
             "target_id": "solana:ABC111",
-            "chain_id": "solana",
-            "token_address": "ABC111",
         },
         event_ms=EVENT_MS,
     )

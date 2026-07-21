@@ -4,13 +4,15 @@ export function strongestCorrelationPairs(
   data: MacroAssetCorrelationData | null,
   direction: "positive" | "negative",
 ): MacroAssetCorrelationPair[] {
-  const pairs =
-    data?.pairs.filter(
-      (pair) =>
-        pair.available &&
-        typeof pair.correlation === "number" &&
-        (direction === "positive" ? pair.correlation >= 0 : pair.correlation < 0),
-    ) ?? [];
+  if (!data) {
+    return [];
+  }
+  const pairs = data.pairs.filter(
+    (pair) =>
+      pair.available &&
+      typeof pair.correlation === "number" &&
+      (direction === "positive" ? pair.correlation >= 0 : pair.correlation < 0),
+  );
 
   return pairs
     .sort((left, right) =>
@@ -22,7 +24,9 @@ export function strongestCorrelationPairs(
 }
 
 export function assetTitleByKey(data: MacroAssetCorrelationData | null): Record<string, string> {
-  return Object.fromEntries((data?.assets ?? []).map((asset) => [asset.concept_key, asset.title]));
+  return data
+    ? Object.fromEntries(data.assets.map((asset) => [asset.concept_key, asset.title]))
+    : {};
 }
 
 export function assetLabel(conceptKey: string, titleByKey: Record<string, string>): string | null {

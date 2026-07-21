@@ -1,4 +1,6 @@
 import { cleanup, fireEvent, screen, waitFor } from "@testing-library/react";
+import { notificationSummaryFixture } from "@tests/fixtures/appRouteFixtures";
+import { ok } from "@tests/msw/fixtures";
 import { mockNotificationRoute } from "@tests/msw/scenarios";
 import { renderAppRoute } from "@tests/render/renderRoute";
 import { socketScenario } from "@tests/socket/socketScenarios";
@@ -15,22 +17,22 @@ describe("notifications route shell", () => {
     setupAppRouteTest(mockNotificationRoute);
   });
 
-  it("does not fetch notification summary before the drawer opens", async () => {
-    renderAppRoute("/");
-
-    await screen.findByRole("button", { name: "notifications" });
-
-    expect(apiMock.getApi.mock.calls.some(([path]) => path === "/api/notification-summary")).toBe(
-      false,
-    );
-    expect(apiMock.getApi.mock.calls.some(([path]) => path === "/api/notifications")).toBe(false);
-  });
-
-  it("fetches notifications only after opening the drawer", async () => {
+  it("loads the durable notification summary before the drawer opens", async () => {
     renderAppRoute("/");
 
     const bell = await screen.findByRole("button", { name: "notifications" });
-    expect(bell).not.toHaveTextContent("1");
+
+    await waitFor(() =>
+      expect(apiMock.getApi.mock.calls.some(([path]) => path === "/api/notifications")).toBe(true),
+    );
+    await waitFor(() => expect(bell).toHaveTextContent("1"));
+  });
+
+  it("uses the same durable response when opening the drawer", async () => {
+    renderAppRoute("/");
+
+    const bell = await screen.findByRole("button", { name: "notifications" });
+    await waitFor(() => expect(bell).toHaveTextContent("1"));
 
     fireEvent.click(bell);
     expect(
@@ -38,16 +40,31 @@ describe("notifications route shell", () => {
     ).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("1 unread")).toBeInTheDocument());
     expect(screen.getByRole("button", { name: "open Watched token alert" })).toBeInTheDocument();
-    expect(apiMock.getApi.mock.calls.some(([path]) => path === "/api/notification-summary")).toBe(
-      true,
-    );
     expect(apiMock.getApi.mock.calls.some(([path]) => path === "/api/notifications")).toBe(true);
+    expect(apiMock.getApi.mock.calls.map(([path]) => path)).not.toContain(
+      "/api/notification-summary",
+    );
 
     fireEvent.click(screen.getByRole("button", { name: "close notifications" }));
     expect(screen.queryByRole("complementary", { name: "notification drawer" })).toBeNull();
   });
 
-  it("does not refetch summary for socket notifications while the drawer is closed", async () => {
+  it("does not synthesize a summary from socket notification payloads", async () => {
+    const baseGetApi = apiMock.getApiImpl;
+    apiMock.getApiImpl = async (path, options) => {
+      if (path === "/api/notifications") {
+        return ok({
+          items: [],
+          summary: {
+            ...notificationSummaryFixture(),
+            unread_count: 0,
+            high_unread_count: 0,
+          },
+        });
+      }
+      return baseGetApi(path, options);
+    };
+
     socketScenario.notifications.push({
       type: "notification",
       notification: {
@@ -79,9 +96,10 @@ describe("notifications route shell", () => {
 
     renderAppRoute("/");
 
-    await screen.findByRole("button", { name: "notifications" });
-    expect(apiMock.getApi.mock.calls.some(([path]) => path === "/api/notification-summary")).toBe(
-      false,
+    const bell = await screen.findByRole("button", { name: "notifications" });
+    await waitFor(() =>
+      expect(apiMock.getApi.mock.calls.some(([path]) => path === "/api/notifications")).toBe(true),
     );
+    expect(bell).not.toHaveTextContent("1");
   });
 });

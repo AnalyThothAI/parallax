@@ -9,38 +9,15 @@ import pytest
 from parallax.app.runtime.worker_scheduler import WorkerScheduler
 
 
-class FakePool:
-    def __init__(self) -> None:
-        self.closed = False
-        self.aclosed = False
-
-    def close(self) -> None:
-        self.closed = True
-
-    async def aclose(self) -> None:
-        self.aclosed = True
-
-
 class FakeDB:
-    def __init__(self) -> None:
-        self.api_pool = FakePool()
-        self.worker_pool = FakePool()
-        self.wake_pool = FakePool()
-        self.closed = False
+    def __init__(self, *, fail_close: bool = False) -> None:
+        self.closed = 0
+        self.fail_close = fail_close
 
     async def aclose(self) -> None:
-        self.closed = True
-        await self.api_pool.aclose()
-        await self.worker_pool.aclose()
-        await self.wake_pool.aclose()
-
-
-class SyncLifecycleDB:
-    def __init__(self) -> None:
-        self.closed = 0
-
-    def aclose(self) -> None:
         self.closed += 1
+        if self.fail_close:
+            raise RuntimeError("db close failed")
 
 
 class FakeWorker:
@@ -48,56 +25,48 @@ class FakeWorker:
         self,
         name: str,
         *,
-        enabled: bool = True,
+        effective_status: str = "stopped",
         fail_run: bool = False,
-        fail_after_start: bool = False,
-        never_stop: bool = False,
-        exit_immediately: bool = False,
         fail_stop: bool = False,
         fail_close: bool = False,
+        fail_task_exit: bool = False,
     ) -> None:
         self.name = name
-        self.settings = SimpleNamespace(enabled=enabled)
+        self.settings = SimpleNamespace(enabled=effective_status != "disabled", concurrency=3)
+        self._effective_status = effective_status
         self.fail_run = fail_run
-        self.fail_after_start = fail_after_start
-        self.never_stop = never_stop
-        self.exit_immediately = exit_immediately
         self.fail_stop = fail_stop
         self.fail_close = fail_close
-        self.started_event = asyncio.Event()
+        self.fail_task_exit = fail_task_exit
+        self.started = asyncio.Event()
+        self.release = asyncio.Event()
+        self.stop_requested = asyncio.Event()
+        self.run_order: list[str] | None = None
         self.started_count = 0
-        self.stop_event = asyncio.Event()
         self.stopped = 0
         self.closed = 0
-        self.run_order: list[str] | None = None
         self.last_error: str | None = None
         self.last_result: dict[str, Any] | None = None
-        self.active_run_once_hard_timed_out_at_ms: int | None = None
 
     async def run(self) -> None:
+        self.started_count += 1
         if self.run_order is not None:
             self.run_order.append(self.name)
-        self.started_count += 1
-        self.started_event.set()
+        self.started.set()
         if self.fail_run:
             self.last_error = "run failed"
             raise RuntimeError("run failed")
-        if self.fail_after_start:
-            await asyncio.sleep(0)
-            self.last_error = "run failed"
-            raise RuntimeError("run failed")
-        if self.exit_immediately:
-            return
-        if self.never_stop:
-            await asyncio.Event().wait()
-        await self.stop_event.wait()
+        await self.stop_requested.wait()
+        await self.release.wait()
+        if self.fail_task_exit:
+            raise RuntimeError(f"{self.name} task exit failed")
 
     async def stop(self) -> None:
         self.stopped += 1
+        self.stop_requested.set()
         if self.fail_stop:
+            self.release.set()
             raise RuntimeError(f"{self.name} stop failed")
-        if not self.never_stop:
-            self.stop_event.set()
 
     async def aclose(self) -> None:
         self.closed += 1
@@ -105,163 +74,168 @@ class FakeWorker:
             raise RuntimeError(f"{self.name} close failed")
 
     def status_payload(self) -> dict[str, Any]:
+        running = self.started.is_set() and not self.stop_requested.is_set()
+        status = self._effective_status
+        if status == "stopped" and running:
+            status = "running"
         return {
             "enabled": self.settings.enabled,
-            "running": self.started_event.is_set() and not self.stop_event.is_set(),
+            "running": running,
+            "effective_status": status,
+            "unavailable_reason": "missing_provider" if status == "unavailable" else None,
             "last_result": self.last_result,
             "last_error": self.last_error,
-            "active_run_once_hard_timed_out_at_ms": self.active_run_once_hard_timed_out_at_ms,
         }
 
 
-class SyncLifecycleWorker:
-    def __init__(self) -> None:
-        self.stopped = 0
-        self.closed = 0
-
-    def stop(self) -> None:
-        self.stopped += 1
-
-    def aclose(self) -> None:
-        self.closed += 1
-
-    def status_payload(self) -> dict[str, Any]:
-        return {"enabled": True, "running": False}
+async def _finish_scheduler(scheduler: WorkerScheduler) -> None:
+    stop_task = asyncio.create_task(scheduler.stop())
+    await asyncio.gather(*(worker.stop_requested.wait() for worker in scheduler.workers.values()))
+    for worker in scheduler.workers.values():
+        worker.release.set()
+    await stop_task
 
 
-def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() -> None:
+def test_scheduler_starts_one_task_per_enabled_worker_in_priority_order() -> None:
     async def scenario() -> None:
         run_order: list[str] = []
         workers = {
-            "collector": FakeWorker("collector"),
-            "token_capture_tier": FakeWorker("token_capture_tier"),
-            "market_tick_stream": FakeWorker("market_tick_stream"),
-            "market_tick_poll": FakeWorker("market_tick_poll"),
-            "resolution_refresh": FakeWorker("resolution_refresh"),
-            "asset_profile_refresh": FakeWorker("asset_profile_refresh"),
-            "token_radar_projection": FakeWorker("token_radar_projection"),
-            "token_profile_current": FakeWorker("token_profile_current"),
-            "notification_rule": FakeWorker("notification_rule"),
             "notification_delivery": FakeWorker("notification_delivery"),
-            "live_price_gateway": FakeWorker("live_price_gateway"),
+            "collector": FakeWorker("collector"),
+            "market_tick_poll": FakeWorker("market_tick_poll"),
         }
         for worker in workers.values():
             worker.run_order = run_order
-        scheduler = WorkerScheduler(workers=workers, db=FakeDB(), stop_timeout_seconds=0.1)
+        scheduler = WorkerScheduler(workers=workers, db=FakeDB())
 
         await scheduler.start()
-        await asyncio.gather(*(worker.started_event.wait() for worker in workers.values()))
+        await asyncio.gather(*(worker.started.wait() for worker in workers.values()))
 
-        assert run_order == [
-            "collector",
-            "token_capture_tier",
-            "market_tick_stream",
-            "market_tick_poll",
-            "live_price_gateway",
-            "resolution_refresh",
-            "asset_profile_refresh",
-            "token_radar_projection",
-            "token_profile_current",
-            "notification_rule",
-            "notification_delivery",
-        ]
+        assert run_order == ["collector", "market_tick_poll", "notification_delivery"]
         assert [task.get_name() for task in scheduler.tasks.values()] == [
             "worker:collector",
-            "worker:token_capture_tier",
-            "worker:market_tick_stream",
             "worker:market_tick_poll",
-            "worker:live_price_gateway",
-            "worker:resolution_refresh",
-            "worker:asset_profile_refresh",
-            "worker:token_radar_projection",
-            "worker:token_profile_current",
-            "worker:notification_rule",
             "worker:notification_delivery",
         ]
-        await scheduler.stop()
+        assert all(worker.started_count == 1 for worker in workers.values())
+        await _finish_scheduler(scheduler)
 
     asyncio.run(scenario())
 
 
-def test_scheduler_uses_one_run_loop_even_when_worker_has_internal_concurrency() -> None:
+def test_scheduler_does_not_start_inactive_worker() -> None:
     async def scenario() -> None:
-        worker = FakeWorker("market_tick_poll")
-        worker.settings.concurrency = 3
-        scheduler = WorkerScheduler(workers={"market_tick_poll": worker}, db=FakeDB(), stop_timeout_seconds=0.1)
+        disabled = FakeWorker("collector", effective_status="disabled")
+        unavailable = FakeWorker("market_tick_stream", effective_status="unavailable")
+        scheduler = WorkerScheduler(workers={"collector": disabled, "market_tick_stream": unavailable}, db=FakeDB())
 
         await scheduler.start()
-        await worker.started_event.wait()
 
-        assert list(scheduler.tasks) == ["market_tick_poll"]
-        assert worker.started_count == 1
+        assert scheduler.tasks == {}
+        assert disabled.started_count == 0
+        assert unavailable.started_count == 0
         await scheduler.stop()
 
     asyncio.run(scenario())
 
 
-@pytest.mark.parametrize("value", [-1, True, "0.1"])
-def test_scheduler_rejects_malformed_stop_timeout_without_runtime_repair(value: object) -> None:
-    with pytest.raises(ValueError, match="worker_scheduler_stop_timeout_seconds_required"):
-        WorkerScheduler(workers={}, db=FakeDB(), stop_timeout_seconds=value)  # type: ignore[arg-type]
-
-
-def test_scheduler_rejects_repeated_start_without_losing_existing_task() -> None:
+def test_scheduler_rejects_repeated_start_without_losing_task() -> None:
     async def scenario() -> None:
         worker = FakeWorker("collector")
-        scheduler = WorkerScheduler(workers={"collector": worker}, db=FakeDB(), stop_timeout_seconds=0.1)
-
+        scheduler = WorkerScheduler(workers={"collector": worker}, db=FakeDB())
         await scheduler.start()
-        await worker.started_event.wait()
-        original_task = scheduler.tasks["collector"]
+        await worker.started.wait()
+        task = scheduler.tasks["collector"]
 
-        with pytest.raises(RuntimeError, match="worker_scheduler:already_started"):
+        with pytest.raises(RuntimeError, match="already_started"):
             await scheduler.start()
 
-        assert scheduler.tasks == {"collector": original_task}
-        assert worker.started_count == 1
-        await scheduler.stop()
+        assert scheduler.tasks["collector"] is task
+        await _finish_scheduler(scheduler)
 
     asyncio.run(scenario())
 
 
-def test_scheduler_cleans_up_tasks_when_worker_fails_during_start() -> None:
+def test_scheduler_start_failure_stops_started_workers_without_cancelling_tasks() -> None:
     async def scenario() -> None:
-        failing = FakeWorker("collector", fail_run=True)
-        other = FakeWorker("market_tick_poll")
-        scheduler = WorkerScheduler(
-            workers={"collector": failing, "market_tick_poll": other},
-            db=FakeDB(),
-            stop_timeout_seconds=0.1,
-        )
+        first = FakeWorker("collector", fail_run=True)
+        second = FakeWorker("market_tick_poll")
+        scheduler = WorkerScheduler(workers={"collector": first, "market_tick_poll": second}, db=FakeDB())
 
         with pytest.raises(RuntimeError, match="run failed"):
             await scheduler.start()
 
         assert scheduler.tasks == {}
         assert scheduler._started is False
-        assert failing.closed == 0
-        assert other.started_count == 0
+        assert second.started_count == 0
 
     asyncio.run(scenario())
 
 
-def test_scheduler_keeps_disabled_workers_in_status_without_starting_them() -> None:
+def test_stop_waits_for_current_iteration_before_closing_workers_and_db() -> None:
     async def scenario() -> None:
-        enabled = FakeWorker("market_tick_stream")
-        disabled = FakeWorker("collector", enabled=False)
-        scheduler = WorkerScheduler(
-            workers={"collector": disabled, "market_tick_stream": enabled},
-            db=FakeDB(),
-            stop_timeout_seconds=0.1,
-        )
-
+        worker = FakeWorker("collector")
+        db = FakeDB()
+        scheduler = WorkerScheduler(workers={"collector": worker}, db=db)
         await scheduler.start()
-        await enabled.started_event.wait()
+        await worker.started.wait()
 
-        assert list(scheduler.tasks) == ["market_tick_stream"]
-        assert disabled.started_event.is_set() is False
-        assert scheduler.status_payload()["collector"]["enabled"] is False
-        await scheduler.stop()
+        stop_task = asyncio.create_task(scheduler.stop())
+        await worker.stop_requested.wait()
+        await asyncio.sleep(0)
+        assert not stop_task.done()
+        assert not scheduler.tasks["collector"].cancelled()
+        assert worker.closed == 0
+        assert db.closed == 0
+
+        worker.release.set()
+        await stop_task
+
+        assert worker.closed == 1
+        assert db.closed == 1
+        assert scheduler.tasks["collector"].done()
+        assert not scheduler.tasks["collector"].cancelled()
+
+    asyncio.run(scenario())
+
+
+def test_stop_collects_lifecycle_errors_after_other_cleanup() -> None:
+    async def scenario() -> None:
+        failing = FakeWorker("collector", fail_stop=True, fail_close=True)
+        other = FakeWorker("market_tick_poll")
+        db = FakeDB(fail_close=True)
+        scheduler = WorkerScheduler(workers={"collector": failing, "market_tick_poll": other}, db=db)
+        await scheduler.start()
+        await asyncio.gather(failing.started.wait(), other.started.wait())
+        other.release.set()
+
+        with pytest.raises(ExceptionGroup, match="worker_scheduler_stop_failed") as excinfo:
+            await scheduler.stop()
+
+        messages = {str(error) for error in excinfo.value.exceptions}
+        assert messages == {"collector stop failed", "collector close failed", "db close failed"}
+        assert other.closed == 1
+
+    asyncio.run(scenario())
+
+
+def test_stop_reports_worker_task_exit_error_after_cleanup() -> None:
+    async def scenario() -> None:
+        worker = FakeWorker("collector", fail_task_exit=True)
+        db = FakeDB()
+        scheduler = WorkerScheduler(workers={"collector": worker}, db=db)
+        await scheduler.start()
+        await worker.started.wait()
+
+        stop_task = asyncio.create_task(scheduler.stop())
+        await worker.stop_requested.wait()
+        worker.release.set()
+        with pytest.raises(ExceptionGroup, match="worker_scheduler_stop_failed") as excinfo:
+            await stop_task
+
+        assert [str(error) for error in excinfo.value.exceptions] == ["collector task exit failed"]
+        assert worker.closed == 1
+        assert db.closed == 1
 
     asyncio.run(scenario())
 
@@ -269,249 +243,39 @@ def test_scheduler_keeps_disabled_workers_in_status_without_starting_them() -> N
 @pytest.mark.parametrize(
     ("worker", "exception_type", "match"),
     [
-        (
-            SimpleNamespace(),
-            AttributeError,
-            "status_payload",
-        ),
+        (SimpleNamespace(), AttributeError, "status_payload"),
         (
             SimpleNamespace(status_payload=lambda: (_ for _ in ()).throw(RuntimeError("status failed"))),
             RuntimeError,
             "status failed",
         ),
-        (
-            SimpleNamespace(status_payload=lambda: ["not", "a", "dict"]),
-            TypeError,
-            "worker_status_payload_must_be_dict",
-        ),
+        (SimpleNamespace(status_payload=lambda: []), TypeError, "worker_status_payload_must_be_dict"),
     ],
 )
-def test_scheduler_liveness_requires_formal_status_payload_contract(
-    worker: object,
-    exception_type: type[Exception],
-    match: str,
-) -> None:
-    scheduler = WorkerScheduler(workers={"collector": worker}, db=FakeDB(), stop_timeout_seconds=0.1)
-
+def test_scheduler_requires_typed_status_payload(worker: object, exception_type: type[Exception], match: str) -> None:
+    scheduler = WorkerScheduler(workers={"collector": worker}, db=FakeDB())
     with pytest.raises(exception_type, match=match):
-        scheduler.unhealthy_reasons()
+        scheduler.status_payload()
 
 
-def test_scheduler_stop_stops_workers_cancels_stubborn_tasks_closes_workers_then_db_pools() -> None:
-    async def scenario() -> None:
-        db = FakeDB()
-        worker = FakeWorker("collector", never_stop=True)
-        scheduler = WorkerScheduler(workers={"collector": worker}, db=db, stop_timeout_seconds=0.01)
+def test_status_payload_preserves_formal_worker_state() -> None:
+    failed = FakeWorker("token_radar_projection", effective_status="failed")
+    failed.last_error = "database failed"
+    unavailable = FakeWorker("market_tick_stream", effective_status="unavailable")
+    disabled = FakeWorker("collector", effective_status="disabled")
+    scheduler = WorkerScheduler(
+        workers={
+            "token_radar_projection": failed,
+            "market_tick_stream": unavailable,
+            "collector": disabled,
+        },
+        db=FakeDB(),
+    )
 
-        await scheduler.start()
-        await worker.started_event.wait()
-        await scheduler.stop()
+    payload = scheduler.status_payload()
 
-        assert worker.stopped == 1
-        assert worker.closed == 1
-        assert db.api_pool.aclosed is True
-        assert db.worker_pool.aclosed is True
-        assert db.wake_pool.aclosed is True
-        assert all(task.cancelled() for task in scheduler.tasks.values())
-
-    asyncio.run(scenario())
-
-
-def test_scheduler_stop_collects_stop_errors_but_closes_other_workers_and_pools() -> None:
-    async def scenario() -> None:
-        db = FakeDB()
-        failing = FakeWorker("market_tick_poll", fail_stop=True)
-        other = FakeWorker("collector")
-        scheduler = WorkerScheduler(
-            workers={"market_tick_poll": failing, "collector": other},
-            db=db,
-            stop_timeout_seconds=0.01,
-        )
-
-        await scheduler.start()
-        await asyncio.gather(failing.started_event.wait(), other.started_event.wait())
-        with pytest.raises(ExceptionGroup, match="worker_scheduler_stop_failed") as excinfo:
-            await scheduler.stop()
-
-        assert any("market_tick_poll stop failed" in str(error) for error in excinfo.value.exceptions)
-        assert failing.stopped == 1
-        assert other.stopped == 1
-        assert failing.closed == 1
-        assert other.closed == 1
-        assert db.api_pool.aclosed is True
-        assert db.worker_pool.aclosed is True
-        assert db.wake_pool.aclosed is True
-
-    asyncio.run(scenario())
-
-
-def test_scheduler_stop_collects_close_errors_but_closes_other_workers_and_pools() -> None:
-    async def scenario() -> None:
-        db = FakeDB()
-        failing = FakeWorker("market_tick_poll", fail_close=True)
-        other = FakeWorker("collector")
-        scheduler = WorkerScheduler(
-            workers={"market_tick_poll": failing, "collector": other},
-            db=db,
-            stop_timeout_seconds=0.01,
-        )
-
-        await scheduler.start()
-        await asyncio.gather(failing.started_event.wait(), other.started_event.wait())
-        with pytest.raises(ExceptionGroup, match="worker_scheduler_stop_failed") as excinfo:
-            await scheduler.stop()
-
-        assert any("market_tick_poll close failed" in str(error) for error in excinfo.value.exceptions)
-        assert failing.stopped == 1
-        assert other.stopped == 1
-        assert failing.closed == 1
-        assert other.closed == 1
-        assert db.api_pool.aclosed is True
-        assert db.worker_pool.aclosed is True
-        assert db.wake_pool.aclosed is True
-
-    asyncio.run(scenario())
-
-
-def test_scheduler_stop_requires_db_bundle_aclose_without_pool_fallback() -> None:
-    async def scenario() -> None:
-        db = SimpleNamespace(
-            api_pool=FakePool(),
-            worker_pool=FakePool(),
-            wake_pool=FakePool(),
-        )
-        scheduler = WorkerScheduler(workers={"collector": FakeWorker("collector")}, db=db, stop_timeout_seconds=0.01)
-
-        with pytest.raises(ExceptionGroup, match="worker_scheduler_stop_failed") as excinfo:
-            await scheduler.stop()
-
-        assert any(isinstance(error, AttributeError) and "aclose" in str(error) for error in excinfo.value.exceptions)
-        assert db.api_pool.aclosed is False
-        assert db.worker_pool.aclosed is False
-        assert db.wake_pool.aclosed is False
-
-    asyncio.run(scenario())
-
-
-def test_scheduler_stop_requires_async_lifecycle_hooks_without_maybe_await_fallback() -> None:
-    async def scenario() -> None:
-        worker = SyncLifecycleWorker()
-        db = SyncLifecycleDB()
-        scheduler = WorkerScheduler(workers={"collector": worker}, db=db, stop_timeout_seconds=0.01)
-
-        with pytest.raises(ExceptionGroup, match="worker_scheduler_stop_failed") as excinfo:
-            await scheduler.stop()
-
-        assert worker.stopped == 1
-        assert worker.closed == 1
-        assert db.closed == 1
-        assert sum(isinstance(error, TypeError) for error in excinfo.value.exceptions) == 3
-
-    asyncio.run(scenario())
-
-
-def test_scheduler_unhealthy_reasons_reports_enabled_stopped_or_errored_workers_only() -> None:
-    async def scenario() -> None:
-        healthy = FakeWorker("market_tick_poll")
-        stopped = FakeWorker("collector", exit_immediately=True)
-        errored = FakeWorker("enrichment", fail_after_start=True)
-        disabled = FakeWorker("disabled_test_worker", enabled=False, fail_run=True)
-        scheduler = WorkerScheduler(
-            workers={
-                "market_tick_poll": healthy,
-                "collector": stopped,
-                "enrichment": errored,
-                "disabled_test_worker": disabled,
-            },
-            db=FakeDB(),
-            stop_timeout_seconds=0.1,
-        )
-
-        await scheduler.start()
-        await healthy.started_event.wait()
-        await errored.started_event.wait()
-        await asyncio.sleep(0)
-
-        reasons = scheduler.unhealthy_reasons()
-
-        assert "worker:collector:stopped" in reasons
-        assert "worker:enrichment:errored:run failed" in reasons
-        assert not any("disabled_test_worker" in reason for reason in reasons)
-        await scheduler.stop()
-
-    asyncio.run(scenario())
-
-
-def test_scheduler_unhealthy_reasons_reports_hard_timeout_as_liveness_failure() -> None:
-    async def scenario() -> None:
-        hard_timed_out = FakeWorker("test_worker")
-        hard_timed_out.last_error = "WorkerRunHardTimeout: worker:test_worker:run_once hard timeout after 660s"
-        scheduler = WorkerScheduler(
-            workers={"test_worker": hard_timed_out},
-            db=FakeDB(),
-            stop_timeout_seconds=0.1,
-        )
-        scheduler.tasks["test_worker"] = asyncio.Future()
-
-        assert "worker:test_worker:hard_timeout" in scheduler.unhealthy_reasons()
-
-    asyncio.run(scenario())
-
-
-def test_scheduler_unhealthy_reasons_use_formal_status_payload_for_reason_details() -> None:
-    workers = {
-        "token_radar_projection": SimpleNamespace(
-            last_error="stale attribute error",
-            status_payload=lambda: {
-                "enabled": True,
-                "running": False,
-                "last_error": "payload error",
-            },
-        ),
-        "live_price_gateway": SimpleNamespace(
-            unavailable_reason="stale attribute unavailable",
-            status_payload=lambda: {
-                "enabled": True,
-                "running": False,
-                "effective_status": "unavailable",
-                "unavailable_reason": "payload unavailable",
-            },
-        ),
-        "news_story_brief": SimpleNamespace(
-            active_run_once_hard_timed_out_at_ms=None,
-            status_payload=lambda: {
-                "enabled": True,
-                "running": True,
-                "active_run_once_hard_timed_out_at_ms": 1_778_000_000_000,
-            },
-        ),
-    }
-    scheduler = WorkerScheduler(workers=workers, db=FakeDB(), stop_timeout_seconds=0.1)
-
-    reasons = scheduler.unhealthy_reasons()
-
-    assert "worker:token_radar_projection:errored:payload error" in reasons
-    assert "worker:live_price_gateway:unavailable:payload unavailable" in reasons
-    assert "worker:news_story_brief:hard_timeout" in reasons
-    assert not any("stale attribute" in reason for reason in reasons)
-
-
-def test_scheduler_unhealthy_reasons_reports_result_derived_failed_workers() -> None:
-    workers = {
-        "token_radar_projection": FakeWorker("token_radar_projection"),
-        "token_profile_current": FakeWorker("token_profile_current"),
-        "market_tick_poll": FakeWorker("market_tick_poll"),
-    }
-    workers["token_radar_projection"].last_result = {"ok": False}
-    workers["token_profile_current"].last_result = {"failed": 1}
-    workers["market_tick_poll"].last_result = {"dead": 1}
-    scheduler = WorkerScheduler(workers=workers, db=FakeDB(), stop_timeout_seconds=0.1)
-
-    reasons = scheduler.unhealthy_reasons()
-
-    assert "worker:token_radar_projection:failed" in reasons
-    assert "worker:token_profile_current:failed" in reasons
-    assert "worker:market_tick_poll:failed" in reasons
-    assert "worker:token_radar_projection:stopped" not in reasons
-    assert "worker:token_profile_current:stopped" not in reasons
-    assert "worker:market_tick_poll:stopped" not in reasons
+    assert payload["token_radar_projection"]["last_error"] == "database failed"
+    assert payload["token_radar_projection"]["effective_status"] == "failed"
+    assert payload["market_tick_stream"]["effective_status"] == "unavailable"
+    assert payload["market_tick_stream"]["unavailable_reason"] == "missing_provider"
+    assert payload["collector"]["effective_status"] == "disabled"

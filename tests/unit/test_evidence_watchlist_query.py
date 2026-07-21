@@ -4,8 +4,11 @@ from decimal import Decimal
 from typing import Any
 
 import pytest
+from psycopg.types.json import Jsonb
 
+from parallax.domains.evidence.interfaces import materialize_event
 from parallax.domains.evidence.queries.watchlist_query import WatchlistQuery
+from tests.factories import make_event
 
 
 def test_token_resolutions_for_events_projects_symbol_and_event_price() -> None:
@@ -119,10 +122,20 @@ def test_timeline_rejects_malformed_limit_before_sql(limit: object) -> None:
 @pytest.mark.parametrize(
     ("field_name", "value", "error"),
     [
-        pytest.param("event_id", "", "watchlist_event_id_required", id="blank-event-id"),
-        pytest.param("received_at_ms", 0, "watchlist_event_received_at_ms_required", id="zero-timestamp"),
-        pytest.param("cashtags_json", "not-json", "watchlist_event_cashtags_json_required", id="invalid-json"),
-        pytest.param("hashtags_json", {}, "watchlist_event_hashtags_json_required", id="wrong-json-shape"),
+        pytest.param("event_id", "", "event_read_event_id_text_required", id="blank-event-id"),
+        pytest.param("received_at_ms", 0, "event_read_received_at_ms_positive_int_required", id="zero-timestamp"),
+        pytest.param(
+            "cashtags_json",
+            "not-json",
+            "event_read_cashtags_json_string_list_required",
+            id="string-json-compatibility",
+        ),
+        pytest.param(
+            "hashtags_json",
+            {},
+            "event_read_hashtags_json_string_list_required",
+            id="wrong-json-shape",
+        ),
     ],
 )
 def test_timeline_rejects_malformed_persisted_event_rows(
@@ -134,7 +147,7 @@ def test_timeline_rejects_malformed_persisted_event_rows(
     row[field_name] = value
     conn = _RecordingConn([_FakeResult(many=[row])])
 
-    with pytest.raises(ValueError, match=error):
+    with pytest.raises(TypeError, match=error):
         WatchlistQuery(conn).timeline(handle="marionawfal", cursor=None, limit=1)
 
     assert len(conn.calls) == 1
@@ -216,23 +229,17 @@ def _event_row(
     cashtags: list[str] | None = None,
     hashtags: list[str] | None = None,
 ) -> dict[str, Any]:
-    return {
-        "event_id": event_id,
-        "logical_dedup_key": event_id,
-        "canonical_url": None,
-        "received_at_ms": received_at_ms,
-        "author_handle": "marionawfal",
-        "action": "tweet",
-        "text_clean": "$THREE #macro",
-        "search_text": "$THREE #macro",
-        "event_json": {},
-        "urls_json": [],
-        "cashtags_json": cashtags or [],
-        "hashtags_json": hashtags or [],
-        "mentions_json": [],
-        "is_watched": True,
-        "matched_at_ms": received_at_ms,
-    }
+    event = make_event(
+        event_id,
+        author_handle="marionawfal",
+        text="$THREE #macro",
+        received_at_ms=received_at_ms,
+    )
+    row, _event_read = materialize_event(event, is_watched=True, now_ms=received_at_ms)
+    database_row = {key: value.obj if isinstance(value, Jsonb) else value for key, value in row.items()}
+    database_row["cashtags_json"] = cashtags or []
+    database_row["hashtags_json"] = hashtags or []
+    return database_row
 
 
 class _FakeConn:

@@ -1,9 +1,12 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.token_intel.repositories.token_radar_repository import (
     TokenRadarRepository,
     stable_generation_id,
 )
+from parallax.domains.token_intel.scoring.factor_snapshot import build_token_factor_snapshot
 from parallax.domains.token_intel.services import token_radar_projector
 
 
@@ -18,15 +21,16 @@ def test_token_radar_venue_for_rank_input_prefers_cex_target_type() -> None:
 
 def test_token_radar_venue_for_rank_input_normalizes_bsc_chain_ids() -> None:
     assert (
-        token_radar_projector.token_radar_venue_for_rank_input({"target_type": "Asset", "asset_chain_id": "eip155:56"})
-        == "bsc"
-    )
-    assert (
         token_radar_projector.token_radar_venue_for_rank_input(
-            {"target_type": "Asset", "factor_snapshot_json": {"subject": {"chain": "bnb"}}}
+            {"target_type": "Asset", "factor_snapshot_json": _factor_snapshot(chain="eip155:56")}
         )
         == "bsc"
     )
+
+
+def test_token_radar_venue_for_rank_input_rejects_identity_aliases() -> None:
+    with pytest.raises(ValueError, match="factor_snapshot_json must be a non-empty factor snapshot"):
+        token_radar_projector.token_radar_venue_for_rank_input({"target_type": "Asset", "asset_chain_id": "eip155:56"})
 
 
 def test_stable_generation_id_is_scoped_by_venue_product_key() -> None:
@@ -86,3 +90,34 @@ class _FakeConn:
 
     def fetchall(self) -> list[dict[str, object]]:
         return []
+
+
+def _factor_snapshot(*, chain: str) -> dict[str, object]:
+    return build_token_factor_snapshot(
+        target={
+            "target_type": "Asset",
+            "target_id": "asset:bsc:0xabc",
+            "symbol": "ABC",
+            "target_market_type": "dex",
+            "chain": chain,
+            "address": "0xabc",
+            "pricefeed_id": None,
+        },
+        attention={},
+        social_quality={},
+        social_semantics={},
+        market={
+            "event_anchor": None,
+            "decision_latest": None,
+            "readiness": {
+                "anchor_status": "missing",
+                "latest_status": "missing",
+                "dex_floor_status": "missing_fields",
+                "missing_fields": [],
+                "stale_fields": [],
+            },
+        },
+        timing={},
+        source_event_ids=["event-1"],
+        computed_at_ms=1,
+    )

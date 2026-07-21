@@ -7,9 +7,10 @@ from typing import Annotated, Any
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
+from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime
 from parallax.app.surfaces.api.exceptions import ApiBadRequest
-from parallax.app.surfaces.api.responses import _json
+from parallax.app.surfaces.api.responses import _validated_json
 from parallax.domains.macro_intel._constants import (
     MACRO_CORE_CONCEPTS,
     MACRO_VIEW_PROJECTION_VERSION,
@@ -40,17 +41,23 @@ from parallax.domains.macro_intel.services.macro_series_view import (
 router = APIRouter()
 
 
-@router.get("/macro")
+@router.get("/macro", response_model=api_schemas.ApiEnvelope[api_schemas.MacroData])
 def macro(request: Request) -> JSONResponse:
     runtime = _authenticated_macro_runtime(request)
     with runtime.repositories() as repos:
         snapshot = repos.macro_intel.latest_snapshot(projection_version=MACRO_VIEW_PROJECTION_VERSION)
         publication_state = repos.macro_intel.macro_series_publication_state(MACRO_VIEW_PROJECTION_VERSION)
         currentness = _macro_currentness(snapshot=snapshot, publication_state=publication_state)
-    return _json({"ok": True, "data": _public_macro(snapshot, currentness=currentness)})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.MacroData],
+        {"ok": True, "data": _public_macro(snapshot, currentness=currentness)},
+    )
 
 
-@router.get("/macro/assets/correlation")
+@router.get(
+    "/macro/assets/correlation",
+    response_model=api_schemas.ApiEnvelope[api_schemas.MacroAssetCorrelationData],
+)
 def macro_asset_correlation(request: Request) -> JSONResponse:
     runtime = _authenticated_macro_runtime(request)
     _validate_correlation_query_params(request)
@@ -63,7 +70,8 @@ def macro_asset_correlation(request: Request) -> JSONResponse:
             lookback_days=bounds["lookback_days"],
             limit_per_series=bounds["limit_per_series"],
         )
-    return _json(
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.MacroAssetCorrelationData],
         {
             "ok": True,
             "data": build_macro_asset_correlation(
@@ -72,11 +80,11 @@ def macro_asset_correlation(request: Request) -> JSONResponse:
                 optional_assets=optional_assets,
                 window=window,
             ),
-        }
+        },
     )
 
 
-@router.get("/macro/series")
+@router.get("/macro/series", response_model=api_schemas.ApiEnvelope[api_schemas.MacroSeriesData])
 def macro_series(
     request: Request,
     concept_keys: Annotated[str, Query()],
@@ -93,7 +101,8 @@ def macro_series(
             lookback_days=bounds["lookback_days"],
             limit_per_series=bounds["limit_per_series"],
         )
-    return _json(
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.MacroSeriesData],
         {
             "ok": True,
             "data": build_macro_series_view(
@@ -101,11 +110,14 @@ def macro_series(
                 observations=observations,
                 window=resolved_window,
             ),
-        }
+        },
     )
 
 
-@router.get("/macro/modules/{module_id:path}")
+@router.get(
+    "/macro/modules/{module_id:path}",
+    response_model=api_schemas.ApiEnvelope[api_schemas.MacroModuleData],
+)
 def macro_module(request: Request, module_id: str) -> JSONResponse:
     runtime = _authenticated_macro_runtime(request)
     try:
@@ -118,8 +130,15 @@ def macro_module(request: Request, module_id: str) -> JSONResponse:
             projection_version=MACRO_VIEW_PROJECTION_VERSION,
         )
     if module_view is None:
-        return _json({"ok": False, "error": "macro_module_projection_missing"}, status_code=503)
-    return _json({"ok": True, "data": module_view})
+        return _validated_json(
+            api_schemas.ApiEnvelope[api_schemas.MacroModuleData],
+            {"ok": False, "error": "macro_module_projection_missing"},
+            status_code=503,
+        )
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.MacroModuleData],
+        {"ok": True, "data": module_view},
+    )
 
 
 def _public_macro(snapshot: dict[str, Any] | None, *, currentness: dict[str, Any]) -> dict[str, Any]:

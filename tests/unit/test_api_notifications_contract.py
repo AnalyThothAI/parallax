@@ -60,7 +60,7 @@ def test_news_notification_requires_a_jsonb_object(payload_json: object) -> None
     if payload_json is not None:
         row["payload_json"] = payload_json
 
-    with pytest.raises(ValueError, match="news_high_signal_payload_json_required"):
+    with pytest.raises(ValueError, match=r"notification_(payload_json_required|payload_json_mapping_required)"):
         _notification_payload(row)
 
 
@@ -98,12 +98,12 @@ def test_news_notification_rejects_malformed_delivery_eligibility(value: object)
         _public_notification_payload("news_high_signal", {"external_push_eligible": value})
 
 
-def test_non_news_notification_keeps_generic_payload_json_parsing() -> None:
+def test_non_news_notification_requires_native_jsonb_shapes() -> None:
     payload = _notification_payload(
         {
             "rule_id": "watched_account_activity",
-            "payload_json": '{"event_id":"event-1"}',
-            "channels_json": '["in_app"]',
+            "payload_json": {"event_id": "event-1"},
+            "channels_json": ["in_app"],
         }
     )
 
@@ -111,13 +111,23 @@ def test_non_news_notification_keeps_generic_payload_json_parsing() -> None:
     assert payload["channels"] == ["in_app"]
 
 
-def test_non_news_invalid_json_is_empty_instead_of_becoming_a_compatibility_shape() -> None:
-    payload = _notification_payload(
-        {
-            "rule_id": "watched_account_activity",
-            "payload_json": "{not-json",
-            "channels_json": ["in_app"],
-        }
-    )
+@pytest.mark.parametrize(
+    ("field_name", "value", "error"),
+    [
+        ("payload_json", '{"event_id":"event-1"}', "notification_payload_json_mapping_required"),
+        ("payload_json", "{not-json", "notification_payload_json_mapping_required"),
+        ("channels_json", '["in_app"]', "notification_channels_json_list_required"),
+        ("channels_json", [], "notification_channels_json_list_required"),
+        ("channels_json", [""], "notification_channels_json_list_required"),
+    ],
+)
+def test_notification_rejects_non_jsonb_or_malformed_shapes(field_name: str, value: object, error: str) -> None:
+    row = {
+        "rule_id": "watched_account_activity",
+        "payload_json": {"event_id": "event-1"},
+        "channels_json": ["in_app"],
+    }
+    row[field_name] = value
 
-    assert payload["payload"] == {}
+    with pytest.raises(ValueError, match=error):
+        _notification_payload(row)

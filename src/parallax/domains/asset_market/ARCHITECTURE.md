@@ -19,11 +19,11 @@ The rebuildable serving and control tables are:
 
 - `market_tick_current`, keyed by `(target_type, target_id)`.
 - `token_profile_current`, keyed by `(target_type, target_id)`.
-- `token_capture_tier`, keyed by the stable market target.
-- `event_anchor_backfill_jobs` plus the `*_dirty_targets` and discovery lookup
-  tables, which are worker control state rather than product facts.
+- `event_anchor_backfill_jobs`, discovery lookup work, and the surviving
+  profile/image dirty-target tables are worker control state rather than
+  product facts.
 
-Every current table has one runtime writer. Stable keys contain no run/generation/
+Every current table has one write service. Stable keys contain no run/generation/
 attempt/timestamp/UUID identity, and unchanged projections write zero serving rows.
 
 ## Runtime lanes
@@ -33,14 +33,13 @@ attempt/timestamp/UUID identity, and unchanged projections write zero serving ro
 | Identity discovery | `token_discovery_dirty_lookup_keys` | `ResolutionRefreshWorker` writes registry assets, identity evidence/current, and discovery results |
 | Event capture | committed event and resolution facts | ingest writes an inline `market_tick` and `enriched_events`, or enqueues `event_anchor_backfill_jobs` |
 | Event anchor repair | due anchor jobs | `EventAnchorBackfillWorker` writes a tick, capture outcome, job state, and terminal evidence |
-| Capture-tier projection | `token_capture_tier_dirty_targets` | `TokenCaptureTierWorker` writes `token_capture_tier` |
-| Tier 1 stream | tier-1 capture targets | `MarketTickStreamWorker` appends `market_ticks` |
-| Tier 2 poll | tier-2 capture targets | `MarketTickPollWorker` appends `market_ticks` |
-| Market current | `market_tick_current_dirty_targets` | `MarketTickCurrentProjectionWorker` writes `market_tick_current` and wakes Token Radar |
+| Tier 1 stream | ranked Token Radar chain targets | `MarketTickStreamWorker` appends `market_ticks`, advances `market_tick_current`, and enqueues changed targets |
+| Tier 2 poll | ranked Token Radar chain/CEX targets | `MarketTickPollWorker` performs the same fact/current transaction |
+| Market current | newly inserted `market_ticks` | `MarketTickPersistenceService` advances the monotonic current row in the fact transaction; the bounded operator rebuild uses the same service against existing facts |
 | Asset profile refresh | `asset_profile_refresh_targets` | `AssetProfileRefreshWorker` writes provider-scoped `asset_profiles` and enqueues profile-current work |
 | Image mirror | `token_image_source_dirty_targets` | `TokenImageMirrorWorker` writes local `token_image_assets` lifecycle state |
 | Profile current | `token_profile_current_dirty_targets` | `TokenProfileCurrentWorker` writes `token_profile_current` and admits missing image work |
-| Live fan-out | capture tiers plus fresh ticks | `LivePriceGateway` updates process-local cache and WebSocket subscribers only |
+| Live fan-out | committed changed current rows | stream/poll publish directly to WebSocket subscribers after commit |
 
 Route, CEX profile, and US-equity sync are operator applications that write facts, not Token Radar projections.
 
@@ -57,7 +56,8 @@ The atomic groups are deliberately small:
   share one transaction.
 - A retry reschedule or exhausted-row delete and terminal-ledger insert share
   one transaction.
-- Market tick insert and market-current dirty enqueue share one transaction.
+- Market tick insert, monotonic current upsert, and Token Radar dirty enqueue
+  share one transaction.
 - Event-anchor tick/capture/job completion is atomic per claimed job.
 - Token-profile source loading may be batched, but publication and completion
   are atomic per claim so one malformed target cannot poison its peers.
@@ -116,8 +116,13 @@ queue contract requires it.
 - `price_usd` is positive and finite; other normalized scalar fields are optional;
 - `raw_payload_json` preserves audit evidence but is not itself business truth.
 
-Capture lanes use append-only `INSERT ... DO NOTHING RETURNING tick_id`.
-`market_tick_current` derives from that tape; provider frames never update it.
+Capture lanes use append-only `INSERT ... DO NOTHING RETURNING *`.
+`MarketTickPersistenceService` derives `market_tick_current` from rows that
+were actually inserted. Older or duplicate facts cannot regress or churn the
+current row. A bounded explicit application operation can scan stable target
+keys in `market_ticks` and repair missing/stale current rows through the same
+service; this recovery path is not a second worker, queue, or writer.
+Provider frames never update current state directly.
 Structured derivatives require their own append-only fact model and writer.
 
 ## Profiles and images
@@ -131,20 +136,25 @@ Remote logo URLs are mirror inputs only. Public rows expose `NULL` or a local
 `/api/token-images/{image_id}` URL. An unresolved image terminal event blocks
 automatic re-admission until an operator acts.
 
-## Wake and catch-up
+## Catch-up
 
-`market_tick_written`, `market_tick_current_updated`, and `resolution_updated`
-are wake hints. Listeners always re-read PostgreSQL and run bounded interval
-catch-up; correctness does not depend on receiving every notification. Workers
-receive wake dependencies by injection and never call `pg_notify` directly.
+Workers always re-read PostgreSQL and run bounded interval catch-up.
+Correctness depends only on durable facts, queues, and stable read-model keys;
+there is no injected wake dependency.
+
+`market_tick_current` is normally maintained in the fact transaction. Operators
+repair it with bounded `ops rebuild-market-current` batches over the append-only
+fact tape, carrying the returned `(target_type, target_id)` cursor forward until
+the batch is no longer full.
 
 ## Hard boundaries
 
 - Asset identity is deterministic and does not call an LLM.
 - Provider raw frames never enter Token Radar factor snapshots.
 - Product reads never expose worker queue rows as business state.
-- `LivePriceGateway` is presentation cache, not a fact writer.
+- Live-market REST reads durable `market_tick_current`; WebSocket updates are
+  post-commit presentation events, not another cache or business truth.
 - Public reads do not call market, profile, image, or discovery providers.
 - CLI provider construction is limited to explicit operator commands.
 
-Update this map when a fact, stable key, writer, transaction group, provider, or wake edge changes.
+Update this map when a fact, stable key, writer, transaction group, or provider boundary changes.

@@ -20,7 +20,9 @@ from parallax.platform.db.postgres_migrations import latest_migration_version, u
 def handle_db(args: object) -> tuple[int, dict[str, Any]]:
     settings = load_settings(require_ws_token=False)
     if args.db_command == "migrate":
-        dsn = local_docker_host_dsn(with_password_from_file(settings.postgres_dsn, settings.postgres_password_file))
+        dsn = local_docker_host_dsn(
+            with_password_from_file(settings.storage.postgres.dsn, settings.postgres_password_file)
+        )
         upgrade_head(dsn)
         return 0, {"ok": True, "data": {"migration": "head"}}
 

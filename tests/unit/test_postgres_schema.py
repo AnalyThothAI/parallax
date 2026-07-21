@@ -9,6 +9,7 @@ from parallax.platform.db.postgres_migrations import alembic_config
 
 VERSIONS = Path("src/parallax/platform/db/alembic/versions")
 HARD_CUT = VERSIONS / "20260721_0185_backend_kiss_hard_cut.py"
+RUNTIME_HARD_CUT = VERSIONS / "20260722_0186_runtime_projection_hard_cut.py"
 
 
 def _assignment(path: Path, name: str) -> str | None:
@@ -28,7 +29,7 @@ def test_alembic_graph_has_one_current_head_and_unique_revisions() -> None:
 
     assert None not in revisions
     assert len(revisions) == len(set(revisions))
-    assert script.get_heads() == ["20260721_0185"]
+    assert script.get_heads() == ["20260722_0186"]
 
 
 def test_backend_kiss_hard_cut_is_fail_closed_and_irreversible() -> None:
@@ -42,6 +43,45 @@ def test_backend_kiss_hard_cut_is_fail_closed_and_irreversible() -> None:
     assert "IF EXISTS" not in text
     assert "CASCADE" not in text
     assert "RuntimeError" in downgrade
+
+
+def test_runtime_projection_hard_cut_is_fail_closed_and_irreversible() -> None:
+    text = RUNTIME_HARD_CUT.read_text(encoding="utf-8")
+    downgrade = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    assert 'revision = "20260722_0186"' in text
+    assert 'down_revision = "20260721_0185"' in text
+    assert "SET LOCAL lock_timeout = '5s'" in text
+    assert "SET LOCAL statement_timeout = '30min'" in text
+    assert "IF EXISTS" not in text
+    assert "CASCADE" not in text
+    assert "RuntimeError" in downgrade
+    for retired_table in (
+        "market_tick_current_dirty_targets",
+        "token_capture_tier_dirty_targets",
+        "token_capture_tier",
+    ):
+        assert f"DROP TABLE {retired_table}" in text
+    assert text.index("_reconcile_market_tick_current_backlog()") < text.index(
+        'op.execute("DROP TABLE market_tick_current_dirty_targets")'
+    )
+    assert "ORDER BY ticks.observed_at_ms DESC, ticks.received_at_ms DESC, ticks.tick_id DESC" in text
+    assert "source_row_json ->> 'target_type'" in text
+    assert "source_table = 'market_tick_current_dirty_targets'" in text
+    assert "operator_reason = 'queue_retired_by_0186'" in text
+    assert "INSERT INTO market_tick_current" in text
+    assert "INSERT INTO token_radar_dirty_targets" in text
+    assert "ON registry_assets(chain_id, address)" in text
+    assert "ON price_feeds(provider, feed_type, chain_id, address)" in text
+    assert "ck_registry_assets_evm_address_canonical" in text
+    assert "ck_price_feeds_evm_address_canonical" in text
+    for cex_route_filter in (
+        "feeds.provider = 'binance'",
+        "feeds.feed_type = 'cex_swap'",
+        "feeds.quote_symbol = 'USDT'",
+        "feeds.status = 'canonical'",
+    ):
+        assert cex_route_filter in text
 
 
 def test_backend_kiss_hard_cut_removes_only_the_audited_control_planes() -> None:
@@ -105,8 +145,9 @@ def test_news_terminal_state_is_bound_to_the_current_source_config() -> None:
     assert "CHECK (projection_name IN ('page', 'story_brief'))" in text
 
 
-def test_macro_hard_cut_preserves_event_metadata_and_current_assets_payload() -> None:
+def test_macro_hard_cut_preserves_event_metadata_and_rebuilds_module_views_once() -> None:
     text = HARD_CUT.read_text(encoding="utf-8")
+    runtime_text = RUNTIME_HARD_CUT.read_text(encoding="utf-8")
 
     assert "ALTER TABLE macro_observation_series_rows ADD COLUMN event_metadata_json JSONB" in text
     assert "ALTER TABLE macro_observation_series_rows ALTER COLUMN event_metadata_json SET NOT NULL" in text
@@ -117,6 +158,13 @@ def test_macro_hard_cut_preserves_event_metadata_and_current_assets_payload() ->
     assert "macro_view_snapshots_assets_brief_object_check" in text
     assert "macro_view_snapshots_module_views_object_check" in text
     assert "migration_route_ready_module_rebuild" in text
+    assert "ALTER TABLE macro_view_snapshots DROP COLUMN assets_brief_json" in runtime_text
+    assert "migration:20260722_0186:module_views_only" in runtime_text
+    assert "migration_module_views_only_rebuild" in runtime_text
+    assert "DELETE FROM macro_view_snapshots" in runtime_text
+    assert runtime_text.index("_reset_macro_module_views()") < runtime_text.index(
+        "ALTER TABLE macro_view_snapshots DROP COLUMN assets_brief_json"
+    )
     for redundant_column in (
         "series_rank",
         "source_priority",
@@ -128,7 +176,7 @@ def test_macro_hard_cut_preserves_event_metadata_and_current_assets_payload() ->
     ):
         assert f"DROP COLUMN {redundant_column}" in text
     assert text.index("_backfill_macro_event_metadata()") < text.index("DROP COLUMN raw_payload_json")
-    assert text.index("_backfill_macro_view_snapshot_hashes()") < text.index("DROP TABLE macro_daily_briefs")
+    assert text.index("_enqueue_macro_module_view_rebuild()") < text.index("DROP TABLE macro_daily_briefs")
 
 
 def test_attempt_ledgers_have_explicit_bounded_retention() -> None:

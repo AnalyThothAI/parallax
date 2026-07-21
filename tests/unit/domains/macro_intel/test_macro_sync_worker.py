@@ -16,7 +16,6 @@ def test_worker_idle_claims_no_window_and_does_not_call_runner() -> None:
         db=object(),
         telemetry=object(),
         settings_root=_settings_root(),
-        wake_emitter=object(),
         service_factory=lambda: service,
     )
 
@@ -52,7 +51,6 @@ def test_worker_success_and_failure_results_reflect_sync_summary() -> None:
         db=object(),
         telemetry=object(),
         settings_root=_settings_root(),
-        wake_emitter=object(),
         service_factory=lambda: FakeService(result=success),
     )
 
@@ -80,7 +78,6 @@ def test_worker_success_and_failure_results_reflect_sync_summary() -> None:
         db=object(),
         telemetry=object(),
         settings_root=_settings_root(),
-        wake_emitter=object(),
         service_factory=lambda: FakeService(result=failure),
     )
 
@@ -113,7 +110,6 @@ def test_worker_drains_due_windows_up_to_batch_size() -> None:
         db=object(),
         telemetry=object(),
         settings_root=_settings_root(),
-        wake_emitter=object(),
         service_factory=lambda: service,
     )
 
@@ -151,7 +147,6 @@ def test_worker_counts_successful_empty_window_as_processed() -> None:
         db=object(),
         telemetry=object(),
         settings_root=_settings_root(),
-        wake_emitter=object(),
         service_factory=lambda: FakeService(result=success),
     )
 
@@ -185,7 +180,6 @@ def test_worker_uses_formal_batch_size_without_hidden_cycle_cap() -> None:
         db=object(),
         telemetry=object(),
         settings_root=_settings_root(),
-        wake_emitter=object(),
         service_factory=lambda: service,
     )
 

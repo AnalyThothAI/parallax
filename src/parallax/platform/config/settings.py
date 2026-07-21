@@ -7,8 +7,9 @@ from pathlib import Path
 from typing import Any, Literal
 
 import yaml
-from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, field_validator, model_validator
+from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, field_validator
 
+from parallax.platform.agent_execution import AgentRuntimePolicy
 from parallax.platform.config.news_provider_types import OPENNEWS_FETCH_POLICY_KEYS
 from parallax.platform.paths.runtime_paths import app_home, app_log_path, config_path, workers_config_path
 
@@ -276,27 +277,10 @@ class StorageConfig(BaseModel):
 class LlmConfig(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    provider: str = "litellm"
     api_key: str | None = None
     base_url: str = ""
-    timeout_seconds: float = 120.0
-    trace_enabled: bool = True
-    trace_api_key: str | None = None
-    trace_include_sensitive_data: bool = False
 
-    @field_validator("provider", mode="before")
-    @classmethod
-    def parse_provider(cls, value: Any) -> str:
-        normalized = str(value or "litellm").strip().lower()
-        if normalized != "litellm":
-            raise ValueError("llm.provider must be 'litellm'")
-        return normalized
-
-    @field_validator(
-        "api_key",
-        "trace_api_key",
-        mode="before",
-    )
+    @field_validator("api_key", mode="before")
     @classmethod
     def parse_optional_string(cls, value: Any) -> str | None:
         if value is None:
@@ -669,121 +653,11 @@ class BackoffPolicy(BaseModel):
     max_ms: int = Field(default=60_000, ge=0)
 
 
-class AgentCircuitBreakerSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    failure_threshold: int = Field(default=5, ge=1)
-    window_seconds: int = Field(default=300, ge=1)
-    open_seconds: int = Field(default=120, ge=1)
-
-
-class AgentLaneSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    model: str | None = None
-    provider_family: Literal["litellm", "deepseek"] | None = None
-    client_validation_retries: int | None = Field(default=None, ge=0)
-    max_tokens: int | None = Field(default=None, ge=1)
-    priority: Literal["high", "normal", "bulk", "low"] = "normal"
-    max_concurrency: int = Field(default=1, ge=1)
-    timeout_seconds: float = Field(default=180.0, ge=1)
-    rpm_limit: int | None = Field(default=None, ge=1)
-    circuit_breaker: AgentCircuitBreakerSettings = Field(default_factory=AgentCircuitBreakerSettings)
-
-    @field_validator("model", mode="before")
-    @classmethod
-    def parse_optional_model(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        normalized = str(value).strip()
-        return normalized or None
-
-    @field_validator("provider_family", mode="before")
-    @classmethod
-    def parse_optional_capability_label(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        normalized = str(value).strip().lower()
-        return normalized or None
-
-
-def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
-    return {
-        "news.story_brief": AgentLaneSettings(
-            priority="low",
-            max_concurrency=1,
-            timeout_seconds=180.0,
-            max_tokens=2200,
-        ),
-    }
-
-
-class AgentRuntimeDefaultsSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    model: str = "deepseek-v4-flash"
-    provider_family: Literal["litellm", "deepseek"] | None = None
-    client_validation_retries: int | None = Field(default=None, ge=0)
-    max_tokens: int | None = Field(default=None, ge=1)
-    disable_thinking: bool = True
-    include_usage: bool = True
-
-    @field_validator("model", mode="before")
-    @classmethod
-    def parse_model(cls, value: Any) -> str:
-        normalized = str(value or "").strip()
-        if not normalized:
-            raise ValueError("agent_runtime.defaults.model is required")
-        return normalized
-
-    @field_validator("provider_family", mode="before")
-    @classmethod
-    def parse_capability_label(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        normalized = str(value or "").strip().lower()
-        return normalized or None
-
-
-class AgentRuntimeSettings(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    defaults: AgentRuntimeDefaultsSettings = Field(default_factory=AgentRuntimeDefaultsSettings)
-    global_max_concurrency: int = Field(default=4, ge=1)
-    global_rpm_limit: int = Field(default=60, ge=1)
-    lanes: dict[str, AgentLaneSettings] = Field(default_factory=_default_agent_lanes)
-
-    @field_validator("lanes", mode="before")
-    @classmethod
-    def merge_default_lanes(cls, value: Any) -> dict[str, Any]:
-        default_lanes = _default_agent_lanes()
-        if value is None:
-            return default_lanes
-        if not isinstance(value, Mapping):
-            raise ValueError("agent_runtime.lanes must be a mapping")
-
-        unknown_keys = set(value) - set(default_lanes)
-        if unknown_keys:
-            unknown = ", ".join(sorted(str(key) for key in unknown_keys))
-            raise ValueError(f"agent_runtime.lanes contains unknown lane keys: {unknown}")
-
-        merged: dict[str, Any] = {key: lane.model_dump() for key, lane in default_lanes.items()}
-        for key, lane_value in value.items():
-            if isinstance(lane_value, AgentLaneSettings):
-                merged[key] = lane_value.model_dump()
-            elif isinstance(lane_value, Mapping):
-                merged[key].update(dict(lane_value))
-            else:
-                raise ValueError(f"agent_runtime.lanes.{key} must be a mapping")
-        return merged
-
-
 class PerWorkerSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
     enabled: bool = True
     interval_seconds: float = Field(default=5.0, ge=0)
-    hard_timeout_seconds: float = Field(default=180.0, ge=0)
     concurrency: int = Field(default=1, ge=1)
     batch_size: int = Field(default=100, ge=1)
     max_attempts: int = Field(default=3, ge=1)
@@ -795,7 +669,6 @@ class PerWorkerSettings(BaseModel):
 class CollectorWorkerSettings(PerWorkerSettings):
     mode: Literal["continuous"] = "continuous"
     interval_seconds: float = Field(default=3.0, ge=0)
-    hard_timeout_seconds: float = Field(default=0.0, ge=0)
     snapshot_timeout_seconds: float = Field(default=0.5, ge=0)
     watchdog_interval_seconds: float = Field(default=30.0, ge=0)
     stale_timeout_seconds: float = Field(default=180.0, ge=0)
@@ -813,13 +686,6 @@ class MarketTickPollWorkerSettings(PerWorkerSettings):
     concurrency: int = Field(default=4, ge=1)
 
 
-class MarketTickCurrentProjectionWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=5.0, ge=0)
-    batch_size: int = Field(default=100, ge=1)
-    retry_ms: int = Field(default=30_000, ge=1)
-    advisory_lock_key: int = 2026052401
-
-
 class EventAnchorBackfillWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=1.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
@@ -827,12 +693,6 @@ class EventAnchorBackfillWorkerSettings(PerWorkerSettings):
     min_age_ms: int = Field(default=250, ge=0)
     active_window_ms: int = Field(default=300_000, ge=1)
     max_anchor_lag_ms: int = Field(default=60_000, ge=1)
-
-
-class LivePriceGatewayWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=2.0, ge=0)
-    target_limit: int = Field(default=100, ge=0)
-    target_ttl_seconds: float = Field(default=300.0, ge=0)
 
 
 class ResolutionRefreshWorkerSettings(PerWorkerSettings):
@@ -866,34 +726,20 @@ class TokenImageMirrorWorkerSettings(PerWorkerSettings):
     retry_ms: int = Field(default=300_000, ge=1)
     max_attempts: int = Field(default=3, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
-    advisory_lock_key: int = 2026052111
 
 
 class TokenProfileCurrentWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=500, ge=1)
     retry_ms: int = Field(default=30_000, ge=1)
-    advisory_lock_key: int = 2026051702
-
-
-class TokenCaptureTierWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=30.0, ge=0)
-    batch_size: int = Field(default=500, ge=1)
-    ws_limit: int = Field(default=100, ge=0)
-    poll_limit: int = Field(default=500, ge=0)
-    retry_ms: int = Field(default=30_000, ge=1)
-    statement_timeout_seconds: float = Field(default=120.0, ge=0)
-    advisory_lock_key: int = 2026051503
 
 
 class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
     retry_ms: int = Field(default=30_000, ge=1)
-    private_cache_retention_enabled: bool = True
     private_cache_retention_ms: int = Field(default=172_800_000, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
-    advisory_lock_key: int = 2026051501
     windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
     scopes: tuple[str, ...] = ("all", "matched")
     venues: tuple[str, ...] = ("all", "sol", "eth", "base", "bsc", "cex")
@@ -913,17 +759,14 @@ class MacroViewProjectionWorkerSettings(PerWorkerSettings):
     lease_ms: int = Field(default=300_000, ge=1)
     retry_ms: int = Field(default=300_000, ge=1)
     max_attempts: int = Field(default=3, ge=1)
-    advisory_lock_key: int = 2026052109
     lookback_days: int = Field(default=1095, ge=1095)
     limit_per_series: int = Field(default=800, ge=800)
 
 
 class MacroSyncWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=900.0, ge=0)
-    hard_timeout_seconds: float = Field(default=300.0, ge=0)
     batch_size: int = Field(default=3, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    advisory_lock_key: int = 2026052711
     bundle_names: tuple[str, ...] = (
         "macro-core",
         "macro-calendar-core",
@@ -972,7 +815,6 @@ class NewsFetchWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=5, ge=1)
     lease_ms: int = Field(default=60_000, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    advisory_lock_key: int = 2026051905
 
 
 class NewsItemProcessWorkerSettings(PerWorkerSettings):
@@ -980,18 +822,15 @@ class NewsItemProcessWorkerSettings(PerWorkerSettings):
     lease_ms: int = Field(default=120_000, ge=1)
     max_attempts: int = Field(default=3, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    advisory_lock_key: int = 2026051902
     retry_delay_ms: int = Field(default=60_000, ge=1)
 
 
 class NewsStoryBriefWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
-    hard_timeout_seconds: float = Field(default=240.0, ge=0)
     batch_size: int = Field(default=5, ge=1)
     lease_ms: int = Field(default=120_000, ge=1)
     retry_ms: int = Field(default=60_000, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    advisory_lock_key: int = 2026061801
     backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
 
 
@@ -1000,22 +839,16 @@ class NewsPageProjectionWorkerSettings(PerWorkerSettings):
     lease_ms: int = Field(default=120_000, ge=1)
     retry_ms: int = Field(default=30_000, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    advisory_lock_key: int = 2026051904
 
 
 class WorkersSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    agent_runtime: AgentRuntimeSettings = Field(default_factory=AgentRuntimeSettings)
+    agent_runtime: AgentRuntimePolicy = Field(default_factory=AgentRuntimePolicy)
     collector: CollectorWorkerSettings = Field(default_factory=CollectorWorkerSettings)
     market_tick_stream: MarketTickStreamWorkerSettings = Field(default_factory=MarketTickStreamWorkerSettings)
     market_tick_poll: MarketTickPollWorkerSettings = Field(default_factory=MarketTickPollWorkerSettings)
-    market_tick_current_projection: MarketTickCurrentProjectionWorkerSettings = Field(
-        default_factory=MarketTickCurrentProjectionWorkerSettings
-    )
     event_anchor_backfill: EventAnchorBackfillWorkerSettings = Field(default_factory=EventAnchorBackfillWorkerSettings)
-    token_capture_tier: TokenCaptureTierWorkerSettings = Field(default_factory=TokenCaptureTierWorkerSettings)
-    live_price_gateway: LivePriceGatewayWorkerSettings = Field(default_factory=LivePriceGatewayWorkerSettings)
     resolution_refresh: ResolutionRefreshWorkerSettings = Field(default_factory=ResolutionRefreshWorkerSettings)
     asset_profile_refresh: AssetProfileRefreshWorkerSettings = Field(default_factory=AssetProfileRefreshWorkerSettings)
     token_image_mirror: TokenImageMirrorWorkerSettings = Field(default_factory=TokenImageMirrorWorkerSettings)
@@ -1033,16 +866,6 @@ class WorkersSettings(BaseModel):
     news_item_process: NewsItemProcessWorkerSettings = Field(default_factory=NewsItemProcessWorkerSettings)
     news_story_brief: NewsStoryBriefWorkerSettings = Field(default_factory=NewsStoryBriefWorkerSettings)
     news_page_projection: NewsPageProjectionWorkerSettings = Field(default_factory=NewsPageProjectionWorkerSettings)
-
-    @model_validator(mode="after")
-    def reject_zero_hard_timeout_for_non_continuous_workers(self) -> WorkersSettings:
-        for worker_key in type(self).model_fields:
-            if worker_key in {"agent_runtime", "collector"}:
-                continue
-            worker_settings = getattr(self, worker_key)
-            if worker_settings.hard_timeout_seconds <= 0:
-                raise ValueError(f"{worker_key}.hard_timeout_seconds must be > 0")
-        return self
 
 
 class Settings(BaseModel):
@@ -1070,10 +893,6 @@ class Settings(BaseModel):
         return self._config_dir
 
     @property
-    def postgres_dsn(self) -> str:
-        return self.storage.postgres.dsn
-
-    @property
     def postgres_password_file(self) -> Path | None:
         value = self.storage.postgres.password_file
         if not value:
@@ -1084,170 +903,33 @@ class Settings(BaseModel):
         return self._config_dir / configured
 
     @property
-    def postgres_pool_min_size(self) -> int:
-        return self.storage.postgres.pool_min_size
-
-    @property
-    def postgres_pool_max_size(self) -> int:
-        return self.storage.postgres.pool_max_size
-
-    @property
-    def postgres_connect_timeout_seconds(self) -> float:
-        return self.storage.postgres.connect_timeout_seconds
-
-    @property
     def log_file(self) -> Path:
         return app_log_path(self._config_dir)
 
     @property
-    def api_host(self) -> str:
-        return self.api.host
-
-    @property
-    def api_port(self) -> int:
-        return self.api.port
-
-    @property
-    def ws_heartbeat_interval(self) -> int:
-        return self.api.heartbeat_interval
-
-    @property
-    def replay_limit(self) -> int:
-        return self.api.replay_limit
-
-    @property
-    def llm_api_key(self) -> str | None:
-        return self.llm.api_key
-
-    @property
-    def agent_runtime_default_model(self) -> str:
-        return self.workers.agent_runtime.defaults.model
-
-    @property
-    def llm_base_url(self) -> str:
-        return self.llm.base_url
-
-    @property
-    def llm_provider(self) -> str:
-        return self.llm.provider
-
-    @property
-    def llm_trace_enabled(self) -> bool:
-        return bool(self.llm.trace_enabled)
-
-    @property
-    def llm_trace_api_key(self) -> str | None:
-        return self.llm.trace_api_key
-
-    @property
-    def llm_trace_include_sensitive_data(self) -> bool:
-        return bool(self.llm.trace_include_sensitive_data)
-
-    @property
-    def llm_trace_export_configured(self) -> bool:
-        return False
-
-    @property
     def llm_configured(self) -> bool:
-        return bool(self.llm_api_key and self.agent_runtime_default_model)
+        return bool(self.llm.api_key and self.workers.agent_runtime.model)
 
     @property
     def news_agent_execution_enabled(self) -> bool:
         return bool(self.news_intel.enabled and self.llm_configured and self.workers.news_story_brief.enabled)
 
     @property
-    def gmgn_api_key(self) -> str | None:
-        return self.gmgn.api_key
-
-    @property
-    def gmgn_openapi_base_url(self) -> str:
-        return self.gmgn.openapi_base_url
-
-    @property
-    def gmgn_timeout_seconds(self) -> float:
-        return self.gmgn.timeout_seconds
-
-    @property
-    def gmgn_token_info_cache_ttl_seconds(self) -> int:
-        return self.gmgn.token_info_cache_ttl_seconds
-
-    @property
     def gmgn_configured(self) -> bool:
-        return bool(self.gmgn_api_key)
-
-    @property
-    def okx_dex_base_url(self) -> str:
-        return self.providers.okx.dex_base_url
-
-    @property
-    def okx_dex_chain_indexes(self) -> tuple[str, ...]:
-        return self.providers.okx.dex_chain_indexes or ("501", "1", "56", "8453", "607")
-
-    @property
-    def okx_dex_ws_url(self) -> str:
-        return self.providers.okx.dex_ws_url
-
-    @property
-    def okx_dex_api_key(self) -> str | None:
-        return self.providers.okx.dex_api_key
-
-    @property
-    def okx_dex_secret_key(self) -> str | None:
-        return self.providers.okx.dex_secret_key
-
-    @property
-    def okx_dex_passphrase(self) -> str | None:
-        return self.providers.okx.dex_passphrase
-
-    @property
-    def okx_timeout_seconds(self) -> float:
-        return self.providers.okx.timeout_seconds
+        return bool(self.gmgn.api_key)
 
     @property
     def okx_dex_configured(self) -> bool:
-        return bool(self.okx_dex_base_url)
+        return bool(self.providers.okx.dex_base_url)
 
     @property
     def okx_dex_ws_configured(self) -> bool:
         return bool(
-            self.okx_dex_ws_url and self.okx_dex_api_key and self.okx_dex_secret_key and self.okx_dex_passphrase
+            self.providers.okx.dex_ws_url
+            and self.providers.okx.dex_api_key
+            and self.providers.okx.dex_secret_key
+            and self.providers.okx.dex_passphrase
         )
-
-    @property
-    def binance_enabled(self) -> bool:
-        return bool(self.providers.binance.enabled)
-
-    @property
-    def binance_web3_base_url(self) -> str:
-        return self.providers.binance.web3_base_url
-
-    @property
-    def binance_cex_profile_base_url(self) -> str:
-        return self.providers.binance.cex_profile_base_url
-
-    @property
-    def binance_usdm_futures_base_url(self) -> str:
-        return self.providers.binance.usdm_futures_base_url
-
-    @property
-    def binance_cex_universe_quote_symbol(self) -> str:
-        return self.providers.binance.cex_universe_quote_symbol
-
-    @property
-    def binance_cex_universe_contract_type(self) -> str:
-        return self.providers.binance.cex_universe_contract_type
-
-    @property
-    def binance_timeout_seconds(self) -> float:
-        return self.providers.binance.timeout_seconds
-
-    @property
-    def macrodata_enabled(self) -> bool:
-        return bool(self.providers.macrodata.enabled)
-
-    @property
-    def macrodata_fred_api_key_env(self) -> str | None:
-        return self.providers.macrodata.fred_api_key_env
 
     @property
     def macrodata_fred_api_key(self) -> str | None:
@@ -1261,38 +943,10 @@ class Settings(BaseModel):
     def macrodata_fred_api_key_configured(self) -> bool:
         if self.macrodata_fred_api_key:
             return True
-        env_name = self.macrodata_fred_api_key_env
+        env_name = self.providers.macrodata.fred_api_key_env
         if not env_name:
             return False
         return bool(os.environ.get(env_name, "").strip())
-
-    @property
-    def upstream_chains(self) -> tuple[str, ...]:
-        return self.upstream.chains
-
-    @property
-    def upstream_channels(self) -> tuple[str, ...]:
-        return self.upstream.channels
-
-    @property
-    def upstream_app_version(self) -> str:
-        return self.upstream.app_version
-
-    @property
-    def upstream_proxy(self) -> str | None:
-        return self.upstream.proxy
-
-    @property
-    def upstream_reconnect_delay(self) -> float:
-        return self.upstream.reconnect_delay
-
-    @property
-    def upstream_heartbeat_interval(self) -> float:
-        return self.upstream.heartbeat_interval
-
-    @property
-    def upstream_idle_timeout(self) -> float:
-        return self.upstream.idle_timeout
 
     @field_validator("handles", mode="before")
     @classmethod
@@ -1380,13 +1034,8 @@ storage:
     connect_timeout_seconds: 5
 
 llm:
-  provider: "litellm"
   api_key:
   base_url: ""
-  timeout_seconds: 120
-  trace_enabled: true
-  trace_api_key:
-  trace_include_sensitive_data: false
 
 gmgn:
   api_key:

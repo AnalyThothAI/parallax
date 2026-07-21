@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import time
+from dataclasses import asdict
 from decimal import Decimal
 from types import SimpleNamespace
 
@@ -14,15 +15,6 @@ from parallax.domains.asset_market.runtime.market_tick_stream_worker import (
 from parallax.domains.asset_market.types import market_tick_id
 from parallax.platform.runtime.worker_base import WorkerBase
 from parallax.platform.runtime.worker_result import WorkerResult
-
-
-def test_market_tick_stream_worker_is_not_single_writer_locked() -> None:
-    state = FakeSessionState()
-    repos = FakeRepos(state, [])
-    worker = _worker(db=FakeDB(state, repos), stream=FakeDexMarketStream(state, []))
-
-    assert worker.SINGLE_WRITER_KEY is None
-    assert worker._advisory_lock_key() is None
 
 
 def test_market_tick_stream_worker_reuses_stateful_provider_and_replaces_subscriptions() -> None:
@@ -46,7 +38,7 @@ def test_market_tick_stream_worker_reuses_stateful_provider_and_replaces_subscri
     )
 
     asyncio.run(worker.run_once())
-    repos.token_capture_tiers.rows = [tier_row(target_type="chain_token", target_id="solana:B", pricefeed_id="pf-B")]
+    repos.registry.rows = [tier_row(target_type="chain_token", target_id="solana:B", pricefeed_id="pf-B")]
     asyncio.run(worker.run_once())
 
     assert provider.replace_calls == [[("solana", "A")], [("solana", "B")]]
@@ -55,7 +47,7 @@ def test_market_tick_stream_worker_reuses_stateful_provider_and_replaces_subscri
     assert provider.iter_call_count >= 1
 
 
-def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_and_notifies() -> None:
+def test_market_tick_stream_worker_reads_ranked_targets_persists_current_and_publishes() -> None:
     state = FakeSessionState()
     repos = FakeRepos(
         state,
@@ -84,11 +76,11 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
             )
         ],
     )
-    wake = FakeWakeEmitter()
+    publisher = FakeLiveMarketPublisher()
     worker = _worker(
         db=db,
         stream=stream,
-        wake_emitter=wake,
+        publisher=publisher,
         settings_overrides={"subscription_limit": 10},
         clock=lambda: 1_800_000_000_100,
     )
@@ -100,7 +92,14 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
     assert result.processed == 1
     assert result.skipped == 0
     assert db.session_names == ["market_tick_stream", "market_tick_stream"]
-    assert repos.token_capture_tiers.calls == [{"tier": 1, "limit": 10}]
+    assert repos.registry.calls == [
+        {
+            "projection_version": "token-radar-v13-social-attention",
+            "since_ms": 1_799_913_600_100,
+            "target_types": ("chain_token",),
+            "limit": 10,
+        }
+    ]
     assert stream.saw_in_session == [False]
     assert len(stream.targets) == 1
     assert stream.targets[0].chain_id == "eip155:1"
@@ -110,10 +109,10 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
     assert stream.targets[0].pricefeed_id == "pf-1"
     assert repos.conn.commit_count == 1
     assert len(repos.market_ticks.inserted) == 1
-    assert repos.market_tick_current_dirty_targets.enqueues == [
+    assert repos.token_radar_dirty_targets.enqueues == [
         {
-            "rows": [("chain_token", "eip155:1:0xAbC")],
-            "reason": "market_tick_written",
+            "rows": [("Asset", "asset:eip155:1:0xAbC")],
+            "reason": "market_tick_current_changed",
             "now_ms": 1_800_000_000_100,
         }
     ]
@@ -132,13 +131,9 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
     assert tick.volume_24h_usd == Decimal("234.56")
     assert tick.holders == 333
     assert tick.raw_payload_json == {"source": "fake"}
-    assert wake.channels == ["market_tick_written"]
-    assert wake.market_tick_notifications == [
-        {
-            "target_type": "chain_token",
-            "target_id": "eip155:1:0xAbC",
-        }
-    ]
+    assert publisher.updates[0]["type"] == "live_market_update"
+    assert publisher.updates[0]["target_type"] == "Asset"
+    assert publisher.updates[0]["target_id"] == "asset:eip155:1:0xAbC"
 
 
 def test_market_tick_stream_worker_skips_cex_symbol_tier1_targets() -> None:
@@ -146,11 +141,11 @@ def test_market_tick_stream_worker_skips_cex_symbol_tier1_targets() -> None:
     repos = FakeRepos(state, [tier_row(target_type="cex_symbol", target_id="binance:BTCUSDT")])
     db = FakeDB(state, repos)
     stream = FakeDexMarketStream(state, [])
-    wake = FakeWakeEmitter()
+    publisher = FakeLiveMarketPublisher()
     worker = _worker(
         db=db,
         stream=stream,
-        wake_emitter=wake,
+        publisher=publisher,
         settings_overrides={"subscription_limit": 5},
         clock=lambda: 1_800_000_000_100,
     )
@@ -161,7 +156,7 @@ def test_market_tick_stream_worker_skips_cex_symbol_tier1_targets() -> None:
     assert result.skipped == 1
     assert stream.targets == []
     assert repos.market_ticks.inserted == []
-    assert wake.market_tick_notifications == []
+    assert publisher.updates == []
 
 
 def test_market_tick_stream_worker_skips_invalid_price_and_does_not_notify() -> None:
@@ -179,8 +174,8 @@ def test_market_tick_stream_worker_skips_invalid_price_and_does_not_notify() -> 
             DexMarketFactUpdate(chain_id="solana", address="TokenA", observed_at_ms=6, price_usd=float("inf")),
         ],
     )
-    wake = FakeWakeEmitter()
-    worker = _worker(db=db, stream=stream, wake_emitter=wake, clock=lambda: 1_800_000_000_100)
+    publisher = FakeLiveMarketPublisher()
+    worker = _worker(db=db, stream=stream, publisher=publisher, clock=lambda: 1_800_000_000_100)
 
     result = asyncio.run(worker.run_once())
 
@@ -189,7 +184,7 @@ def test_market_tick_stream_worker_skips_invalid_price_and_does_not_notify() -> 
     assert stream.saw_in_session == [False]
     assert repos.market_ticks.inserted == []
     assert repos.conn.commit_count == 0
-    assert wake.market_tick_notifications == []
+    assert publisher.updates == []
 
 
 def test_market_tick_stream_worker_flushes_collected_ticks_before_stream_error_returns_degraded_result() -> None:
@@ -207,8 +202,8 @@ def test_market_tick_stream_worker_flushes_collected_ticks_before_stream_error_r
             )
         ],
     )
-    wake = FakeWakeEmitter()
-    worker = _worker(db=db, stream=stream, wake_emitter=wake, clock=lambda: 1_800_000_000_100)
+    publisher = FakeLiveMarketPublisher()
+    worker = _worker(db=db, stream=stream, publisher=publisher, clock=lambda: 1_800_000_000_100)
 
     result = asyncio.run(worker.run_once())
 
@@ -219,8 +214,7 @@ def test_market_tick_stream_worker_flushes_collected_ticks_before_stream_error_r
     assert stream.saw_in_session == [False]
     assert len(repos.market_ticks.inserted) == 1
     assert repos.conn.commit_count == 1
-    assert wake.channels == ["market_tick_written"]
-    assert wake.market_tick_notifications == [{"target_type": "chain_token", "target_id": "solana:TokenA"}]
+    assert [row["target_id"] for row in publisher.updates] == ["asset:solana:TokenA"]
 
 
 def test_market_tick_stream_worker_persists_collected_ticks_once_when_error_and_close_error() -> None:
@@ -238,8 +232,8 @@ def test_market_tick_stream_worker_persists_collected_ticks_once_when_error_and_
             )
         ],
     )
-    wake = FakeWakeEmitter()
-    worker = _worker(db=db, stream=stream, wake_emitter=wake, clock=lambda: 1_800_000_000_100)
+    publisher = FakeLiveMarketPublisher()
+    worker = _worker(db=db, stream=stream, publisher=publisher, clock=lambda: 1_800_000_000_100)
 
     result = asyncio.run(worker.run_once())
 
@@ -247,8 +241,7 @@ def test_market_tick_stream_worker_persists_collected_ticks_once_when_error_and_
     assert result.notes["degraded"] is True
     assert len(repos.market_ticks.inserted) == 1
     assert repos.conn.commit_count == 1
-    assert wake.channels == ["market_tick_written"]
-    assert wake.market_tick_notifications == [{"target_type": "chain_token", "target_id": "solana:TokenA"}]
+    assert [row["target_id"] for row in publisher.updates] == ["asset:solana:TokenA"]
 
 
 def test_market_tick_stream_worker_provider_circuit_open_returns_degraded_result() -> None:
@@ -436,14 +429,14 @@ def _worker(
     *,
     db: object,
     stream: object | None,
-    wake_emitter: object | None = None,
+    publisher: FakeLiveMarketPublisher | None = None,
     settings_overrides: dict[str, object] | None = None,
     clock: object | None = None,
 ) -> MarketTickStreamWorker:
     return MarketTickStreamWorker(
         pool_bundle=db,
         stream_dex_market=stream,
-        wake_emitter=wake_emitter,
+        on_live_market_update=publisher.publish if publisher is not None else None,
         clock=clock,
         settings=_stream_settings(**(settings_overrides or {})),
         telemetry=object(),
@@ -454,7 +447,6 @@ def _stream_settings(**overrides: object) -> SimpleNamespace:
     values = {
         "enabled": True,
         "interval_seconds": 5.0,
-        "hard_timeout_seconds": 180.0,
         "subscription_limit": 50,
         "stream_cycle_seconds": 30.0,
     }
@@ -483,9 +475,10 @@ class FakeSessionState:
 
 class FakeRepos:
     def __init__(self, state: FakeSessionState, tier_rows: list[dict[str, object]]) -> None:
-        self.token_capture_tiers = FakeTokenCaptureTiers(tier_rows)
+        self.registry = FakeRegistry(tier_rows)
         self.market_ticks = FakeMarketTicks(state)
-        self.market_tick_current_dirty_targets = FakeDirtyTargets()
+        self.market_tick_current = FakeMarketTickCurrent()
+        self.token_radar_dirty_targets = FakeRadarDirtyTargets()
         self.conn = FakeConn()
 
     def transaction(self):
@@ -495,14 +488,21 @@ class FakeRepos:
         return None
 
 
-class FakeTokenCaptureTiers:
+class FakeRegistry:
     def __init__(self, rows: list[dict[str, object]]) -> None:
         self.rows = rows
-        self.calls: list[dict[str, int]] = []
+        self.calls: list[dict[str, object]] = []
 
-    def list_by_tier(self, tier: int, limit: int) -> list[dict[str, object]]:
-        self.calls.append({"tier": tier, "limit": limit})
+    def ranked_market_targets(self, **kwargs: object) -> list[dict[str, object]]:
+        self.calls.append(dict(kwargs))
+        limit = int(kwargs["limit"])
         return self.rows[:limit]
+
+    def product_targets_for_market_targets(
+        self,
+        targets: list[tuple[str, str]],
+    ) -> dict[tuple[str, str], tuple[str, str]]:
+        return {target: ("Asset", f"asset:{target[1]}") for target in targets if target[0] == "chain_token"}
 
 
 class FakeMarketTicks:
@@ -510,20 +510,22 @@ class FakeMarketTicks:
         self.state = state
         self.inserted = []
 
-    def insert_ticks(self, ticks) -> int:
-        return len(self.insert_ticks_returning_ids(ticks))
-
-    def insert_ticks_returning_ids(self, ticks) -> list[str]:
+    def insert_ticks_returning_rows(self, ticks) -> list[dict[str, object]]:
         assert self.state.in_session is True
         self.inserted.extend(ticks)
-        return [str(tick.tick_id) for tick in ticks]
+        return [asdict(tick) for tick in ticks]
 
 
-class FakeDirtyTargets:
+class FakeMarketTickCurrent:
+    def upsert_current_from_tick(self, tick_row: dict[str, object]) -> bool:
+        return True
+
+
+class FakeRadarDirtyTargets:
     def __init__(self) -> None:
         self.enqueues: list[dict[str, object]] = []
 
-    def enqueue_targets(self, rows, *, reason, now_ms) -> int:
+    def enqueue_market_product_targets(self, rows, *, reason, now_ms) -> int:
         self.enqueues.append({"rows": list(rows), "reason": reason, "now_ms": now_ms})
         return len(self.enqueues[-1]["rows"])
 
@@ -838,19 +840,12 @@ class FakeStatefulStreamProvider:
         }
 
 
-class FakeWakeEmitter:
+class FakeLiveMarketPublisher:
     def __init__(self) -> None:
-        self.channels: list[str] = []
-        self.market_tick_notifications: list[dict[str, str]] = []
+        self.updates: list[dict[str, object]] = []
 
-    def notify_market_tick_written(self, *, target_type: str, target_id: str) -> None:
-        self.channels.append("market_tick_written")
-        self.market_tick_notifications.append({"target_type": target_type, "target_id": target_id})
-
-    def __getattr__(self, name: str):
-        if name == f"notify_{'_'.join(('market', 'observation', 'written'))}":
-            raise AssertionError("market_tick_stream must not emit legacy market wakes")
-        raise AttributeError(name)
+    async def publish(self, payload: dict[str, object]) -> None:
+        self.updates.append(payload)
 
 
 def worker_settings(**overrides):

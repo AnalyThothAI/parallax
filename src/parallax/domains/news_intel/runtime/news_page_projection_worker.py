@@ -25,7 +25,6 @@ class NewsPageProjectionWorker(WorkerBase):
         settings: NewsPageProjectionWorkerSettings,
         db: Any,
         telemetry: Any,
-        wake_waiter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         name: str = "news_page_projection",
     ) -> None:
@@ -36,7 +35,6 @@ class NewsPageProjectionWorker(WorkerBase):
             settings=settings,
             db=db,
             telemetry=telemetry,
-            wake_waiter=wake_waiter,
         )
         self.clock_ms = clock_ms or _now_ms
 

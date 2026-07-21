@@ -22,6 +22,17 @@ TOKEN_FACTOR_SNAPSHOT_TOP_LEVEL_KEYS = frozenset(
     }
 )
 TOKEN_FACTOR_SNAPSHOT_PROVENANCE_KEYS = frozenset({"source_event_ids", "computed_at_ms"})
+TOKEN_FACTOR_SNAPSHOT_SUBJECT_KEYS = frozenset(
+    {
+        "target_type",
+        "target_id",
+        "symbol",
+        "target_market_type",
+        "chain",
+        "address",
+        "pricefeed_id",
+    }
+)
 TOKEN_FACTOR_SNAPSHOT_MARKET_REQUIRED_KEYS = frozenset({"event_anchor", "decision_latest", "readiness"})
 TOKEN_FACTOR_SNAPSHOT_MARKET_OPTIONAL_KEYS = frozenset({"capture_method", "capture_reason", "tick_lag_ms"})
 TOKEN_FACTOR_SNAPSHOT_MARKET_KEYS = (
@@ -40,8 +51,15 @@ TOKEN_FACTOR_SNAPSHOT_FAMILY_KEYS = frozenset(
         "factors",
     }
 )
-TOKEN_FACTOR_SNAPSHOT_GATES_REQUIRED_KEYS = frozenset({"max_decision"})
-TOKEN_FACTOR_SNAPSHOT_COMPOSITE_REQUIRED_KEYS = frozenset({"rank_score", "recommended_decision"})
+TOKEN_FACTOR_SNAPSHOT_GATES_KEYS = frozenset(
+    {"eligible_for_high_alert", "max_decision", "blocked_reasons", "risk_reasons"}
+)
+TOKEN_FACTOR_SNAPSHOT_NORMALIZATION_KEYS = frozenset(
+    {"status", "cohort_status", "cohort", "factor_ranks", "alpha_rank"}
+)
+TOKEN_FACTOR_SNAPSHOT_COMPOSITE_KEYS = frozenset(
+    {"raw_alpha_score", "rank_score", "family_scores", "recommended_decision"}
+)
 
 
 def require_token_factor_snapshot(value: Any, *, field_name: str = "factor_snapshot") -> dict[str, Any]:
@@ -60,26 +78,76 @@ def require_token_factor_snapshot(value: Any, *, field_name: str = "factor_snaps
     for key in ("subject", "market", "gates", "data_health", "normalization", "composite", "provenance"):
         _required_dict(value.get(key), field_name=f"{field_name}.{key}")
 
+    subject = _required_dict(value.get("subject"), field_name=f"{field_name}.subject")
+    _require_exact_keys(
+        subject,
+        allowed=TOKEN_FACTOR_SNAPSHOT_SUBJECT_KEYS,
+        field_name=f"{field_name}.subject",
+    )
+
     gates = _required_dict(value.get("gates"), field_name=f"{field_name}.gates")
-    _require_required_keys(
+    _require_exact_keys(
         gates,
-        required=TOKEN_FACTOR_SNAPSHOT_GATES_REQUIRED_KEYS,
+        allowed=TOKEN_FACTOR_SNAPSHOT_GATES_KEYS,
         field_name=f"{field_name}.gates",
     )
+    if not isinstance(gates.get("eligible_for_high_alert"), bool):
+        raise ValueError(f"{field_name}.gates.eligible_for_high_alert is required")
     _require_decision(gates.get("max_decision"), field_name=f"{field_name}.gates.max_decision")
+    for key in ("blocked_reasons", "risk_reasons"):
+        _require_string_list(gates.get(key), field_name=f"{field_name}.gates.{key}")
 
     composite = _required_dict(value.get("composite"), field_name=f"{field_name}.composite")
-    _require_required_keys(
+    _require_exact_keys(
         composite,
-        required=TOKEN_FACTOR_SNAPSHOT_COMPOSITE_REQUIRED_KEYS,
+        allowed=TOKEN_FACTOR_SNAPSHOT_COMPOSITE_KEYS,
         field_name=f"{field_name}.composite",
     )
-    if not _is_json_number(composite.get("rank_score")):
-        raise ValueError(f"{field_name}.composite.rank_score is required")
+    for key in ("raw_alpha_score", "rank_score"):
+        if not _is_json_number(composite.get(key)):
+            raise ValueError(f"{field_name}.composite.{key} is required")
+    family_scores = _required_dict(
+        composite.get("family_scores"),
+        field_name=f"{field_name}.composite.family_scores",
+    )
+    _require_exact_keys(
+        family_scores,
+        allowed=frozenset(TOKEN_RADAR_FACTOR_FAMILIES),
+        field_name=f"{field_name}.composite.family_scores",
+    )
+    for family, score in family_scores.items():
+        if not _is_json_number(score):
+            raise ValueError(f"{field_name}.composite.family_scores.{family} is required")
     _require_decision(
         composite.get("recommended_decision"),
         field_name=f"{field_name}.composite.recommended_decision",
     )
+
+    normalization = _required_dict(value.get("normalization"), field_name=f"{field_name}.normalization")
+    _require_exact_keys(
+        normalization,
+        allowed=TOKEN_FACTOR_SNAPSHOT_NORMALIZATION_KEYS,
+        field_name=f"{field_name}.normalization",
+    )
+    for key in ("status", "cohort_status"):
+        if not isinstance(normalization.get(key), str) or not normalization.get(key):
+            raise ValueError(f"{field_name}.normalization.{key} is required")
+    _required_dict(normalization.get("cohort"), field_name=f"{field_name}.normalization.cohort")
+    factor_ranks = _required_dict(
+        normalization.get("factor_ranks"),
+        field_name=f"{field_name}.normalization.factor_ranks",
+    )
+    _require_exact_keys(
+        factor_ranks,
+        allowed=frozenset(TOKEN_RADAR_FACTOR_FAMILIES),
+        field_name=f"{field_name}.normalization.factor_ranks",
+    )
+    for family, rank in factor_ranks.items():
+        if rank is not None and not _is_json_number(rank):
+            raise ValueError(f"{field_name}.normalization.factor_ranks.{family} must be a number or null")
+    alpha_rank = normalization.get("alpha_rank")
+    if alpha_rank is not None and not _is_json_number(alpha_rank):
+        raise ValueError(f"{field_name}.normalization.alpha_rank must be a number or null")
 
     market = _required_dict(value.get("market"), field_name=f"{field_name}.market")
     _require_allowed_keys(
@@ -186,13 +254,6 @@ def _require_allowed_keys(
         raise ValueError(f"{field_name}.{extra[0]} is not allowed")
 
 
-def _require_required_keys(value: dict[str, Any], *, required: frozenset[str], field_name: str) -> None:
-    keys = set(value)
-    missing = sorted(required - keys)
-    if missing:
-        raise ValueError(f"{field_name}.{missing[0]} is required")
-
-
 def _require_decision(value: Any, *, field_name: str) -> None:
     if not isinstance(value, str) or value not in TOKEN_RADAR_DECISIONS:
         raise ValueError(f"{field_name} is required")
@@ -200,3 +261,8 @@ def _require_decision(value: Any, *, field_name: str) -> None:
 
 def _is_json_number(value: Any) -> bool:
     return isinstance(value, int | float) and not isinstance(value, bool)
+
+
+def _require_string_list(value: Any, *, field_name: str) -> None:
+    if not isinstance(value, list) or any(not isinstance(item, str) or not item for item in value):
+        raise ValueError(f"{field_name} must be a string list")

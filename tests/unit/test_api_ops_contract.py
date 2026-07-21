@@ -1,11 +1,16 @@
 from __future__ import annotations
 
+from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
+import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
+from pydantic import ValidationError
 
+from parallax.app.runtime.runtime_snapshot import RuntimeSnapshot, capture_runtime_snapshot
+from parallax.app.runtime.worker_manifest import worker_names
 from parallax.app.surfaces.api.exceptions import (
     ApiBadRequest,
     ApiUnauthorized,
@@ -40,6 +45,17 @@ def test_ops_diagnostics_returns_aggregate_payload() -> None:
     assert "workers" in body["data"]
 
 
+def test_ops_diagnostics_fails_closed_when_producer_omits_required_section(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "parallax.app.surfaces.api.routes_ops.ops_diagnostics_payload",
+        lambda runtime, now_ms: {"schema_version": "ops.diagnostics.v1"},
+    )
+    app = _app(FakeRuntime())
+
+    with TestClient(app) as client, pytest.raises(ValidationError, match="generated_at_ms"):
+        client.get("/api/ops/diagnostics", headers={"Authorization": "Bearer secret"})
+
+
 def test_ops_queue_rejects_invalid_queue() -> None:
     app = _app(FakeRuntime())
 
@@ -51,6 +67,26 @@ def test_ops_queue_rejects_invalid_queue() -> None:
 
     assert response.status_code == 400
     assert response.json()["error"] == "invalid_queue"
+
+
+def test_ops_queue_fails_closed_when_producer_omits_summary(monkeypatch) -> None:
+    monkeypatch.setattr(
+        "parallax.app.surfaces.api.routes_ops.ops_queue_payload",
+        lambda runtime, **kwargs: {
+            "schema_version": "ops.queue.v1",
+            "queue_name": "notification_deliveries",
+            "status_filter": None,
+            "counts_by_status": {},
+            "items": [],
+        },
+    )
+    app = _app(FakeRuntime())
+
+    with TestClient(app) as client, pytest.raises(ValidationError, match="summary"):
+        client.get(
+            "/api/ops/queues/notification_deliveries",
+            headers={"Authorization": "Bearer secret"},
+        )
 
 
 class FakeRows:
@@ -102,8 +138,17 @@ class FakePool:
 class FakeRepos:
     def __init__(self) -> None:
         self.conn = FakeConn()
-        self.news = SimpleNamespace(list_source_status=lambda: [])
-        self.notifications = SimpleNamespace(summary=lambda subscriber_key="local", since_ms=None: {})
+        self.news_sources = SimpleNamespace(list_source_status=lambda: [])
+        self.notifications = SimpleNamespace(
+            summary=lambda subscriber_key="local", since_ms=None: {
+                "subscriber_key": subscriber_key,
+                "unread_count": 0,
+                "high_unread_count": 0,
+                "critical_unread_count": 0,
+                "highest_unread_severity": None,
+                "account_unread_counts": {},
+            }
+        )
 
     def __enter__(self) -> FakeRepos:
         return self
@@ -115,15 +160,15 @@ class FakeRepos:
 class FakeRuntime:
     def __init__(self) -> None:
         self.settings = SimpleNamespace(
-            app_home="/var/lib/parallax-test",
+            app_home=Path("/var/lib/parallax-test"),
             ws_token="secret",
             handles=("alpha",),
-            upstream_channels=("twitter_monitor_basic",),
+            upstream=SimpleNamespace(channels=("twitter_monitor_basic",)),
             gmgn_configured=True,
             okx_dex_configured=False,
             llm_configured=False,
-            news_intel_enabled=True,
-            notification_rules={},
+            news_intel=SimpleNamespace(enabled=True),
+            notifications=SimpleNamespace(enabled=True),
         )
         self.db = SimpleNamespace(api_pool=FakePool())
         self.collector = SimpleNamespace(
@@ -132,10 +177,32 @@ class FakeRuntime:
         )
         self.providers = SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None, provider_health=()))
         self.scheduler = SimpleNamespace(
-            unhealthy_reasons=lambda: [],
-            status_payload=lambda: {},
+            tasks={},
+            status_payload=lambda: {
+                name: {
+                    "enabled": True,
+                    "running": False,
+                    "effective_status": "stopped",
+                    "unavailable_reason": None,
+                    "last_started_at_ms": None,
+                    "last_finished_at_ms": None,
+                    "last_result": None,
+                    "last_error": None,
+                    "iteration_duration_p99_ms": None,
+                }
+                for name in worker_names()
+            },
         )
         self.agent_execution_gateway = None
+        self.snapshot = RuntimeSnapshot.startup(
+            startup_db_status={"ok": True},
+            composition={"ok": True},
+            news_provider_contract={"ok": True},
+        )
+
+    def current_snapshot(self) -> RuntimeSnapshot:
+        self.snapshot = capture_runtime_snapshot(self)
+        return self.snapshot
 
     def repositories(self) -> FakeRepos:
         return FakeRepos()
@@ -145,6 +212,6 @@ def _app(runtime: FakeRuntime) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
-    app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
+    app.include_router(create_api_router(lambda _: {"ok": True}))
     app.state.service = runtime
     return app

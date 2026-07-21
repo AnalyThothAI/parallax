@@ -39,48 +39,6 @@ class NotificationRepository:
             error_code="notification_delivery_stale_running_terminalization_batch_size_required",
         )
 
-    def insert_notification(
-        self,
-        *,
-        dedup_key: str,
-        rule_id: str,
-        severity: str,
-        title: str,
-        body: str,
-        entity_type: str | None,
-        entity_key: str | None,
-        author_handle: str | None = None,
-        symbol: str | None = None,
-        chain: str | None = None,
-        address: str | None = None,
-        event_id: str | None = None,
-        source_table: str,
-        source_id: str,
-        occurrence_at_ms: int,
-        payload: dict[str, Any] | None = None,
-        channels: list[str] | tuple[str, ...] = ("in_app",),
-    ) -> dict[str, Any] | None:
-        outcome = self.insert_notification_with_outcome(
-            dedup_key=dedup_key,
-            rule_id=rule_id,
-            severity=severity,
-            title=title,
-            body=body,
-            entity_type=entity_type,
-            entity_key=entity_key,
-            author_handle=author_handle,
-            symbol=symbol,
-            chain=chain,
-            address=address,
-            event_id=event_id,
-            source_table=source_table,
-            source_id=source_id,
-            occurrence_at_ms=occurrence_at_ms,
-            payload=payload,
-            channels=channels,
-        )
-        return outcome.row if outcome.created else None
-
     def insert_notification_with_outcome(
         self,
         *,
@@ -107,35 +65,11 @@ class NotificationRepository:
         normalized_severity = _normalize_severity(severity)
         normalized_channels = tuple(str(channel).strip() for channel in channels if str(channel).strip()) or ("in_app",)
         normalized_payload = dict(payload or {})
-        semantic_duplicate = self._semantic_signature_duplicate(
+        if self._external_push_cooldown_duplicate(
+            dedup_key=dedup_key,
             rule_id=rule_id,
             payload=normalized_payload,
-        )
-        if semantic_duplicate is not None:
-            aggregated = self._aggregate_notification_row(
-                existing=semantic_duplicate,
-                normalized_severity=normalized_severity,
-                title=title,
-                body=body,
-                author_handle=_normalize_handle(author_handle),
-                symbol=_normalize_symbol(symbol),
-                chain=_normalize_chain(chain),
-                address=_normalize_address(address),
-                event_id=event_id,
-                source_table=source_table,
-                source_id=source_id,
-                occurrence_at_ms=int(occurrence_at_ms),
-                payload=normalized_payload,
-                channels=list(normalized_channels),
-                now_ms=now_ms,
-            )
-            row = (
-                self.notification_by_id(str(semantic_duplicate["notification_id"]), subscriber_key=None)
-                if aggregated
-                else None
-            )
-            return NotificationInsertOutcome(row=row, created=False, aggregated=aggregated)
-        if self._external_push_cooldown_duplicate(rule_id=rule_id, payload=normalized_payload):
+        ):
             normalized_payload = {
                 **normalized_payload,
                 "external_push_eligible": False,
@@ -216,44 +150,10 @@ class NotificationRepository:
             aggregated=False,
         )
 
-    def _semantic_signature_duplicate(
-        self,
-        *,
-        rule_id: str,
-        payload: dict[str, Any],
-    ) -> dict[str, Any] | None:
-        signature_key_sql = "payload_json->>'semantic_signature'"
-        semantic_signature = str(payload.get("semantic_signature") or "").strip()
-        if not semantic_signature:
-            return None
-        external_clause = ""
-        params: tuple[Any, ...]
-        if rule_id == "news_high_signal":
-            params = (rule_id, semantic_signature)
-        else:
-            external_push_signature = str(payload.get("external_push_signature") or "").strip() or "in_app"
-            external_clause = "AND COALESCE(payload_json->>'external_push_signature', 'in_app') = %s"
-            params = (rule_id, semantic_signature, external_push_signature)
-        row = self.conn.execute(
-            f"""
-            SELECT *
-            FROM notifications
-            WHERE rule_id = %s
-              AND {signature_key_sql} = %s
-              {external_clause}
-            ORDER BY last_seen_at_ms DESC, created_at_ms DESC
-            LIMIT 1
-            FOR UPDATE
-            """,
-            params,
-        ).fetchone()
-        if row is not None:
-            return dict(row)
-        return None
-
     def _external_push_cooldown_duplicate(
         self,
         *,
+        dedup_key: str,
         rule_id: str,
         payload: dict[str, Any],
     ) -> bool:
@@ -267,12 +167,13 @@ class NotificationRepository:
             SELECT notification_id
             FROM notifications
             WHERE rule_id = %s
+              AND dedup_key <> %s
               AND payload_json->>'external_push_signature' = %s
             ORDER BY last_seen_at_ms DESC, created_at_ms DESC
             LIMIT 1
             FOR UPDATE
             """,
-            (rule_id, external_push_signature),
+            (rule_id, dedup_key, external_push_signature),
         ).fetchone()
         return row is not None
 

@@ -21,7 +21,9 @@ def _database_url() -> str:
     if configured:
         return local_docker_host_dsn(str(configured))
     settings = load_settings(require_ws_token=False)
-    return local_docker_host_dsn(with_password_from_file(settings.postgres_dsn, settings.postgres_password_file))
+    return local_docker_host_dsn(
+        with_password_from_file(settings.storage.postgres.dsn, settings.postgres_password_file)
+    )
 
 
 def _sqlalchemy_database_url() -> str:

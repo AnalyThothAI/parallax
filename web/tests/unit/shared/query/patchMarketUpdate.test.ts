@@ -11,6 +11,7 @@ import {
   patchTokenRadarLiveMarketUpdate,
 } from "@shared/query/patchMarketUpdate";
 import { QueryClient } from "@tanstack/react-query";
+import { tokenRadarFixture } from "@tests/fixtures/appRouteFixtures";
 import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
 import { describe, expect, it } from "vitest";
 
@@ -23,7 +24,7 @@ describe("liveMarketUpdatePatch", () => {
 
     const patched = patchAssetFlowData(data, update);
 
-    expect(patched.targets[0].market.decision_latest?.price_usd).toBe(42);
+    expect(patched.targets[0].factor_snapshot.market.decision_latest?.price_usd).toBe(42);
     expect(patched.targets[0]).not.toBe(row);
     expect(patched.attention[0]).toBe(other);
   });
@@ -67,11 +68,11 @@ describe("liveMarketUpdatePatch", () => {
 
     expect(
       queryClient.getQueryData<ApiResponse<AssetFlowData>>(["token-radar", "1h", "all"])?.data
-        .targets[0].market.decision_latest?.price_usd,
+        .targets[0].factor_snapshot.market.decision_latest?.price_usd,
     ).toBe(77);
     expect(
       queryClient.getQueryData<ApiResponse<AssetFlowData>>(["token-radar", "5m", "all"])?.data
-        .attention[0].market.decision_latest?.price_usd,
+        .attention[0].factor_snapshot.market.decision_latest?.price_usd,
     ).toBe(77);
     expect(
       queryClient.getQueryData<ApiResponse<AssetFlowData>>(["token-radar", "1h", "matched"]),
@@ -118,6 +119,15 @@ describe("liveMarketUpdatePatch", () => {
     expect(
       queryClient.getQueryData<ApiResponse<TokenCaseDossier>>([
         "token-case",
+        "Asset:asset:solana:token:abc",
+        "1h",
+        "all",
+        24,
+      ])?.data.market_live?.status,
+    ).toBe("live");
+    expect(
+      queryClient.getQueryData<ApiResponse<TokenCaseDossier>>([
+        "token-case",
         "Asset:asset:solana:token:other",
         "1h",
         "all",
@@ -139,27 +149,26 @@ function assetFlowData({
   attention: AssetFlowRow[];
 }): AssetFlowData {
   return {
-    window: "1h",
-    scope: "all",
-    generated_at_ms: 1,
+    ...tokenRadarFixture(),
     targets,
     attention,
-    projection: {},
-  } as unknown as AssetFlowData;
+  };
 }
 
 function assetFlowRow(targetType: string, targetId: string): AssetFlowRow {
   return {
-    target: { target_type: targetType, target_id: targetId },
-    market: {
-      event_anchor: null,
-      decision_latest: null,
-      readiness: {
-        anchor_status: "missing",
-        latest_status: "missing",
-        dex_floor_status: "not_applicable",
-        missing_fields: [],
-        stale_fields: [],
+    factor_snapshot: {
+      subject: { target_type: targetType, target_id: targetId },
+      market: {
+        event_anchor: null,
+        decision_latest: null,
+        readiness: {
+          anchor_status: "missing",
+          latest_status: "missing",
+          dex_floor_status: "not_applicable",
+          missing_fields: [],
+          stale_fields: [],
+        },
       },
     },
   } as unknown as AssetFlowRow;

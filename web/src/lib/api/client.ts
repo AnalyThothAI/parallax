@@ -135,49 +135,52 @@ export async function fetchNewsItem({
 
 function normalizeNewsRow<T extends NewsRow>(row: T): T {
   const payload = row as T & Record<string, unknown>;
-  const source = normalizeNewsSource(payload.source, payload);
-  const contentTags = stringArray(payload.content_tags);
-  const contentClassification = objectOrNull(payload.content_classification);
-  const marketScope = normalizeMarketScope(payload.market_scope);
+  for (const fieldName of [
+    "market_scope",
+    "provider_type",
+    "source_role",
+    "trust_tier",
+    "coverage_tags",
+    "source_quality_status",
+  ]) {
+    if (fieldName in payload) {
+      throw new Error(`news_current_contract:retired.${fieldName}`);
+    }
+  }
+  const source = normalizeNewsSource(payload.source);
+  const contentTags = requiredNewsStringList(payload.content_tags, "content_tags");
+  const contentClassification = requiredNewsObject(
+    payload.content_classification,
+    "content_classification",
+  );
   const agentAdmission = normalizeAgentAdmission(payload.agent_admission);
   const agentAdmissionStatus = stringOrNull(payload.agent_admission_status);
   const agentAdmissionReason = stringOrNull(payload.agent_admission_reason);
-  return {
+  const normalized = {
     ...row,
     canonical_url: stringOrNull(payload.canonical_url),
     content_class: stringOrNull(payload.content_class),
     content_tags: contentTags,
-    content_classification: contentClassification ?? {},
+    content_classification: contentClassification,
     processing_terminal_error: stringOrNull(payload.processing_terminal_error),
-    headline: stringOrNull(payload.headline) ?? "Untitled news item",
+    headline: requiredNewsString(payload.headline, "headline"),
     latest_at_ms: numberOrNull(payload.latest_at_ms),
-    provider_type: source?.provider_type ?? null,
     source,
-    source_domain: stringOrNull(payload.source_domain) ?? source?.source_domain ?? null,
-    source_quality_status: source?.source_quality_status ?? null,
-    source_role: source?.source_role ?? null,
+    source_domain: requiredNewsString(payload.source_domain, "source_domain"),
     summary: stringOrNull(payload.summary),
-    trust_tier: source?.trust_tier ?? null,
-    coverage_tags: source?.coverage_tags ?? [],
-    signal: normalizeNewsSignal(payload.signal, {
-      agentAdmissionReason,
-      agentAdmissionStatus,
-      marketScope,
-    }),
+    signal: normalizeNewsSignal(payload.signal),
     provider_rating: normalizeProviderRating(payload.provider_rating),
-    token_impacts: normalizeTokenLanes(payload.token_impacts),
+    token_impacts: normalizeTokenLanes(payload.token_impacts, "token_impacts"),
     token_lanes: normalizeTokenLanes(payload.token_lanes),
     fact_lanes: normalizeFactLanes(payload.fact_lanes),
-    agent_brief: payload.agent_brief
-      ? normalizeAgentBrief(payload.agent_brief, undefined, payload.agent_brief_computed_at_ms)
-      : undefined,
+    agent_brief: normalizeAgentBrief(payload.agent_brief),
     agent_brief_computed_at_ms: numberOrNull(payload.agent_brief_computed_at_ms),
-    market_scope: marketScope,
     agent_admission_status: agentAdmissionStatus,
     agent_admission_reason: agentAdmissionReason,
     agent_admission: agentAdmission,
     agent_representative_news_item_id: stringOrNull(payload.agent_representative_news_item_id),
-  };
+  } as T & Record<string, unknown>;
+  return normalized;
 }
 
 function normalizeProviderRating(raw: unknown) {
@@ -206,30 +209,19 @@ function normalizeProviderRating(raw: unknown) {
   return rating;
 }
 
-function normalizeNewsSource(raw: unknown, row: Record<string, unknown>): NewsSourceSummary | null {
-  const payload = objectOrNull(raw);
-  const sourceDomain = stringOrNull(payload?.source_domain ?? row.source_domain);
-  const sourceName = stringOrNull(payload?.source_name ?? row.source_name);
-  const providerType = stringOrNull(payload?.provider_type ?? row.provider_type);
-  const sourceRole = stringOrNull(payload?.source_role ?? row.source_role);
-  const trustTier = stringOrNull(payload?.trust_tier ?? row.trust_tier);
-  const coverageTags = stringArray(payload?.coverage_tags ?? row.coverage_tags);
-  const sourceQualityStatus = stringOrNull(
-    payload?.source_quality_status ?? row.source_quality_status,
+function normalizeNewsSource(raw: unknown): NewsSourceSummary {
+  const payload = requiredNewsObject(raw, "source");
+  const sourceDomain = requiredNewsString(payload.source_domain, "source.source_domain");
+  const sourceName = stringOrNull(payload.source_name);
+  const providerType = requiredNewsString(payload.provider_type, "source.provider_type");
+  const sourceRole = requiredNewsString(payload.source_role, "source.source_role");
+  const trustTier = requiredNewsString(payload.trust_tier, "source.trust_tier");
+  const coverageTags = requiredNewsStringList(payload.coverage_tags, "source.coverage_tags");
+  const sourceQualityStatus = requiredNewsString(
+    payload.source_quality_status,
+    "source.source_quality_status",
   );
-  const sourceId = stringOrNull(payload?.source_id ?? row.source_id);
-  if (
-    !sourceDomain &&
-    !sourceName &&
-    !providerType &&
-    !sourceRole &&
-    !trustTier &&
-    !coverageTags.length &&
-    !sourceQualityStatus &&
-    !sourceId
-  ) {
-    return null;
-  }
+  const sourceId = stringOrNull(payload.source_id);
   return {
     source_id: sourceId,
     source_name: sourceName,
@@ -246,13 +238,9 @@ function normalizeNewsDetail(row: NewsItemDetail): NewsItemDetail {
   const payload = row as NewsItemDetail & Record<string, unknown>;
   return normalizeNewsRow({
     ...row,
-    content: stringOrNull(payload.content ?? payload.body_text),
-    source_domain: row.source_domain ?? row.source?.source_domain ?? null,
+    content: stringOrNull(payload.content),
     token_lanes: row.token_lanes,
     fact_lanes: row.fact_lanes,
-    agent_brief: payload.agent_brief
-      ? normalizeAgentBrief(payload.agent_brief, undefined, payload.agent_brief_computed_at_ms)
-      : undefined,
     provider_item: objectOrNull(payload.provider_item),
     fetch_run: objectOrNull(payload.fetch_run),
     observation_edges: recordArray(payload.observation_edges),
@@ -260,50 +248,51 @@ function normalizeNewsDetail(row: NewsItemDetail): NewsItemDetail {
   });
 }
 
-function normalizeNewsSignal(
-  raw: unknown,
-  context: {
-    marketScope?: NewsMarketScope | null;
-    agentAdmissionStatus?: string | null;
-    agentAdmissionReason?: string | null;
-  } = {},
-): NewsSignalEnvelope {
-  const payload = objectOrNull(raw) ?? {};
-  const displayPayload = objectOrNull(payload.display_signal) ?? {};
-  const agentPayload = objectOrNull(payload.agent_signal) ?? {};
-  const alertPayload = objectOrNull(payload.alert_eligibility) ?? {};
-  const marketScope =
-    normalizeMarketScope(alertPayload.market_scope) ?? context.marketScope ?? null;
+function normalizeNewsSignal(raw: unknown): NewsSignalEnvelope {
+  const payload = requiredNewsObject(raw, "signal");
+  const displayPayload = requiredNewsObject(payload.display_signal, "signal.display_signal");
+  const agentPayload = requiredNewsObject(payload.agent_signal, "signal.agent_signal");
+  const alertPayload = requiredNewsObject(payload.alert_eligibility, "signal.alert_eligibility");
+  for (const fieldName of ["agent_admission_status", "agent_admission_reason"]) {
+    if (fieldName in alertPayload) {
+      throw new Error(`news_current_contract:retired.signal.alert_eligibility.${fieldName}`);
+    }
+  }
+  requiredNewsString(agentPayload.status, "signal.agent_signal.status");
   return {
     display_signal: normalizeNewsSignalSummary(displayPayload),
     agent_signal: agentPayload,
     alert_eligibility: {
-      in_app_eligible: booleanOrNull(alertPayload.in_app_eligible),
-      external_push_ready: booleanOrNull(alertPayload.external_push_ready),
+      in_app_eligible: requiredNewsBoolean(
+        alertPayload.in_app_eligible,
+        "signal.alert_eligibility.in_app_eligible",
+      ),
+      external_push_ready: requiredNewsBoolean(
+        alertPayload.external_push_ready,
+        "signal.alert_eligibility.external_push_ready",
+      ),
       external_push_block_reason: stringOrNull(alertPayload.external_push_block_reason),
       external_push_basis: stringOrNull(alertPayload.external_push_basis),
-      agent_status: stringOrNull(alertPayload.agent_status),
+      agent_status: requiredNewsString(
+        alertPayload.agent_status,
+        "signal.alert_eligibility.agent_status",
+      ),
       decision_class: stringOrNull(alertPayload.decision_class),
-      market_scope: marketScope,
-      agent_admission_status:
-        stringOrNull(alertPayload.agent_admission_status) ?? context.agentAdmissionStatus ?? null,
-      agent_admission_reason:
-        stringOrNull(alertPayload.agent_admission_reason) ?? context.agentAdmissionReason ?? null,
+      market_scope: normalizeMarketScope(alertPayload.market_scope),
     },
   };
 }
 
-function normalizeMarketScope(raw: unknown): NewsMarketScope | null {
-  const payload = objectOrNull(raw);
-  if (!payload) return null;
+function normalizeMarketScope(raw: unknown): NewsMarketScope {
+  const payload = requiredNewsObject(raw, "signal.alert_eligibility.market_scope");
   return {
     ...(payload as NewsMarketScope),
-    scope: stringArray(payload.scope),
-    primary: stringOrNull(payload.primary),
-    status: stringOrNull(payload.status),
-    reason: stringOrNull(payload.reason),
-    basis: objectOrNull(payload.basis) ?? {},
-    version: stringOrNull(payload.version),
+    scope: requiredNewsStringArray(payload.scope, "signal.alert_eligibility.market_scope.scope"),
+    primary: requiredNewsString(payload.primary, "signal.alert_eligibility.market_scope.primary"),
+    status: requiredNewsString(payload.status, "signal.alert_eligibility.market_scope.status"),
+    reason: requiredNewsString(payload.reason, "signal.alert_eligibility.market_scope.reason"),
+    basis: requiredNewsObject(payload.basis, "signal.alert_eligibility.market_scope.basis"),
+    version: requiredNewsString(payload.version, "signal.alert_eligibility.market_scope.version"),
   };
 }
 
@@ -322,18 +311,16 @@ function normalizeAgentAdmission(raw: unknown): NewsAgentAdmission | null {
 }
 
 function normalizeNewsSignalSummary(raw: unknown): NewsSignalSummary {
-  const payload = objectOrNull(raw) ?? {};
+  const payload = requiredNewsObject(raw, "signal.display_signal");
   const publicPayload = { ...payload };
   delete publicPayload.score;
   delete publicPayload.grade;
-  const direction = stringOrNull(payload.direction) ?? "neutral";
-  const status = stringOrNull(payload.status) ?? "partial";
   return {
     ...(publicPayload as Partial<NewsSignalSummary>),
-    source: stringOrNull(payload.source) ?? "partial",
+    source: requiredNewsString(payload.source, "signal.display_signal.source"),
     provider: stringOrNull(payload.provider),
-    status,
-    direction,
+    status: requiredNewsString(payload.status, "signal.display_signal.status"),
+    direction: requiredNewsString(payload.direction, "signal.display_signal.direction"),
     label_zh: stringOrNull(payload.label_zh),
     signal: stringOrNull(payload.signal),
     title_zh: stringOrNull(payload.title_zh),
@@ -343,19 +330,13 @@ function normalizeNewsSignalSummary(raw: unknown): NewsSignalSummary {
   };
 }
 
-function normalizeTokenLanes(raw: unknown): NewsTokenLane[] {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw.flatMap((lane) => {
-    const payload = lane && typeof lane === "object" ? (lane as Record<string, unknown>) : {};
+function normalizeTokenLanes(raw: unknown, fieldName = "token_lanes"): NewsTokenLane[] {
+  return requiredNewsArray(raw, fieldName).map((lane, index) => {
+    const payload = requiredNewsObject(lane, `${fieldName}.${index}`);
     const targetId = stringOrNull(payload.target_id);
     const resolution = stringOrNull(payload.resolution_status);
-    const normalized: NewsTokenLane = {
-      lane:
-        targetId || resolution === "resolved"
-          ? "resolved"
-          : stringOrNull(payload.lane) || "attention",
+    return {
+      lane: requiredNewsString(payload.lane, `${fieldName}.${index}.lane`),
       reason_codes: stringArray(payload.reason_codes),
       resolution_status: resolution,
       symbol: stringOrNull(payload.symbol),
@@ -365,16 +346,12 @@ function normalizeTokenLanes(raw: unknown): NewsTokenLane[] {
       score: numberOrNull(payload.score),
       signal: stringOrNull(payload.signal),
     };
-    return [normalized];
   });
 }
 
 function normalizeFactLanes(raw: unknown): NewsFactLane[] {
-  if (!Array.isArray(raw)) {
-    return [];
-  }
-  return raw.map((fact) => {
-    const payload = fact && typeof fact === "object" ? (fact as Record<string, unknown>) : {};
+  return requiredNewsArray(raw, "fact_lanes").map((fact, index) => {
+    const payload = requiredNewsObject(fact, `fact_lanes.${index}`);
     return {
       ...(payload as NewsFactLane),
       affected_targets: arrayOrEmpty(payload.affected_targets),
@@ -382,18 +359,20 @@ function normalizeFactLanes(raw: unknown): NewsFactLane[] {
       event_type: stringOrNull(payload.event_type),
       realis: stringOrNull(payload.realis),
       rejection_reasons: stringArray(payload.rejection_reasons),
-      status: stringOrNull(payload.status) ?? "attention",
+      status: requiredNewsString(payload.status, `fact_lanes.${index}.status`),
     };
   });
 }
 
-function normalizeAgentBrief(
-  raw: unknown,
-  statusAlias?: unknown,
-  computedAtAlias?: unknown,
-): NewsAgentBrief {
-  const payload = objectOrNull(raw) ?? {};
-  const status = stringOrNull(payload.status ?? statusAlias) ?? "pending";
+function normalizeAgentBrief(raw: unknown): NewsAgentBrief {
+  const payload = requiredNewsObject(raw, "agent_brief");
+  const status = requiredNewsString(payload.status, "agent_brief.status");
+  const direction = stringOrNull(payload.direction);
+  const decisionClass = stringOrNull(payload.decision_class);
+  if (status === "ready") {
+    requiredNewsString(direction, "agent_brief.direction");
+    requiredNewsString(decisionClass, "agent_brief.decision_class");
+  }
   const bullView = normalizeAgentBriefView(payload.bull_view);
   const bearView = normalizeAgentBriefView(payload.bear_view);
   const dataGaps = normalizeAgentDataGaps(payload.data_gaps);
@@ -406,16 +385,16 @@ function normalizeAgentBrief(
   const evidenceRefs = normalizeEvidenceRefs(payload.evidence_refs);
   return {
     status,
-    direction: stringOrNull(payload.direction),
-    decision_class: stringOrNull(payload.decision_class),
+    direction,
+    decision_class: decisionClass,
     title_zh: titleZh,
     summary_zh: summaryZh,
     market_read_zh: marketReadZh,
     market_impacts: marketImpacts,
-    bull_strength: stringOrNull(payload.bull_strength ?? bullView?.strength),
-    bear_strength: stringOrNull(payload.bear_strength ?? bearView?.strength),
-    data_gap_count: numberOrNull(payload.data_gap_count) ?? dataGaps.length,
-    computed_at_ms: numberOrNull(payload.computed_at_ms ?? computedAtAlias),
+    bull_strength: stringOrNull(payload.bull_strength),
+    bear_strength: stringOrNull(payload.bear_strength),
+    data_gap_count: numberOrNull(payload.data_gap_count),
+    computed_at_ms: numberOrNull(payload.computed_at_ms),
     bull_view: bullView,
     bear_view: bearView,
     affected_entities: arrayOrEmpty(payload.affected_entities),
@@ -479,6 +458,50 @@ function objectOrNull(value: unknown): Record<string, unknown> | null {
   return value && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : null;
+}
+
+function requiredNewsObject(value: unknown, fieldName: string): Record<string, unknown> {
+  const payload = objectOrNull(value);
+  if (!payload) {
+    throw new Error(`news_current_contract:${fieldName}`);
+  }
+  return payload;
+}
+
+function requiredNewsArray(value: unknown, fieldName: string): unknown[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`news_current_contract:${fieldName}`);
+  }
+  return value;
+}
+
+function requiredNewsString(value: unknown, fieldName: string): string {
+  const normalized = stringOrNull(value);
+  if (!normalized) {
+    throw new Error(`news_current_contract:${fieldName}`);
+  }
+  return normalized;
+}
+
+function requiredNewsStringArray(value: unknown, fieldName: string): string[] {
+  if (!Array.isArray(value) || value.length === 0) {
+    throw new Error(`news_current_contract:${fieldName}`);
+  }
+  return value.map((entry, index) => requiredNewsString(entry, `${fieldName}.${index}`));
+}
+
+function requiredNewsStringList(value: unknown, fieldName: string): string[] {
+  if (!Array.isArray(value)) {
+    throw new Error(`news_current_contract:${fieldName}`);
+  }
+  return value.map((entry, index) => requiredNewsString(entry, `${fieldName}.${index}`));
+}
+
+function requiredNewsBoolean(value: unknown, fieldName: string): boolean {
+  if (typeof value !== "boolean") {
+    throw new Error(`news_current_contract:${fieldName}`);
+  }
+  return value;
 }
 
 function normalizeEvidenceRefs(value: unknown): NewsAgentEvidenceRef[] {

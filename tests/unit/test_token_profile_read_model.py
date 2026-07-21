@@ -10,6 +10,7 @@ from parallax.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_VERSION,
 )
 from parallax.domains.token_intel.read_models.asset_flow_service import AssetFlowService
+from parallax.domains.token_intel.scoring.factor_snapshot import build_token_factor_snapshot
 
 
 def test_profile_read_model_returns_ready_block_from_current_profile_row():
@@ -416,17 +417,20 @@ def radar_row(*, target_type: str, target_id: str, symbol: str) -> dict[str, Any
         "target_id": target_id,
         "intent_json": {"display_symbol": symbol},
         "target_json": {},
-        "factor_snapshot_json": {
-            "schema_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
-            "subject": {
+        "factor_snapshot_json": build_token_factor_snapshot(
+            target={
                 "target_type": target_type,
                 "target_id": target_id,
                 "symbol": symbol,
+                "target_market_type": "dex",
                 "chain": "eth",
                 "address": "0xabc",
-                "target_market_type": "dex",
+                "pricefeed_id": None,
             },
-            "market": {
+            attention={"mentions_1h": 1},
+            social_quality={"independent_authors": 1},
+            social_semantics={},
+            market={
                 "event_anchor": {
                     "source": "event_anchor",
                     "provider": "okx",
@@ -444,16 +448,22 @@ def radar_row(*, target_type: str, target_id: str, symbol: str) -> dict[str, Any
                     "stale_fields": [],
                 },
             },
-            "families": {
-                "social_heat": {"facts": {"mentions_1h": 1}},
-                "social_propagation": {"facts": {"independent_authors": 1}},
-            },
-            "composite": {"rank_score": 80, "recommended_decision": "watch"},
-            "provenance": {"source_event_ids": ["event:abc"], "computed_at_ms": 1_700_000_060_000},
-        },
+            timing={},
+            source_event_ids=["event:abc"],
+            computed_at_ms=1_700_000_060_000,
+        ),
         "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "rank_score": 80,
-        "resolution_json": {"status": "EXACT", "target_type": target_type, "target_id": target_id},
+        "resolution_json": {
+            "status": "EXACT",
+            "target_type": target_type,
+            "target_id": target_id,
+            "pricefeed_id": None,
+            "reason_codes": [],
+            "candidate_ids": [],
+            "lookup_keys": [],
+            "discovery": [],
+        },
         "data_health_json": {"factor_snapshot": "ready", "identity": "ready", "market": "ready"},
         "source_event_ids_json": ["event:abc"],
         "source_max_received_at_ms": 1_700_000_000_000,

@@ -27,11 +27,11 @@ type NewsItemEvidencePageProps = {
 type IconComponent = ComponentType<{ "aria-hidden"?: boolean; size?: number }>;
 
 export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
-  const tokenIdentities = item.token_lanes ?? [];
-  const facts = item.fact_lanes ?? [];
+  const tokenIdentities = item.token_lanes;
+  const facts = item.fact_lanes;
   const displaySignal = item.signal.display_signal;
-  const brief = item.agent_brief ?? null;
-  const displayTitle = brief?.title_zh || displaySignal.title_zh || item.headline;
+  const brief = item.agent_brief;
+  const displayTitle = brief.title_zh || displaySignal.title_zh || item.headline;
   const sourceDomains = sourceDomainList(item);
   const marketScope = marketScopeForItem(item);
   const eligibility = item.signal.alert_eligibility;
@@ -44,7 +44,7 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
           <div className="news-evidence-kicker">
             <span>Evidence page</span>
             <span className={newsSignalTone(displaySignal)}>{newsSignalLabel(displaySignal)}</span>
-            <span>{brief?.decision_class || "decision pending"}</span>
+            <span>{brief.decision_class || "decision pending"}</span>
             <span>
               {eligibility.external_push_ready
                 ? "push ready"
@@ -53,7 +53,7 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
           </div>
           <h2>{displayTitle}</h2>
           <p>
-            {brief?.summary_zh ||
+            {brief.summary_zh ||
               displaySignal.summary_zh ||
               item.summary ||
               "No summary is present."}
@@ -76,7 +76,7 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
         <EvidenceMetric
           label="Market scope"
           value={marketScopeLabel(marketScope)}
-          detail={marketScope?.reason || eligibility.agent_admission_status}
+          detail={marketScope.reason}
         />
         <EvidenceMetric
           label="Source set"
@@ -90,8 +90,8 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
         />
         <EvidenceMetric
           label="Agent brief"
-          value={brief?.status || "absent"}
-          detail={brief?.decision_class || formatTimestamp(brief?.computed_at_ms)}
+          value={brief.status}
+          detail={brief.decision_class || formatTimestamp(brief.computed_at_ms)}
         />
       </section>
 
@@ -124,21 +124,9 @@ function MarketScopeEvidence({ item }: { item: NewsItemDetail }) {
         <FieldRow label="Primary scope" value={scope?.primary} />
         <FieldRow label="Scope set" value={scope?.scope ?? []} />
         <FieldRow label="Scope reason" value={scope?.reason} />
-        <FieldRow
-          label="Agent admission"
-          value={item.agent_admission_status || eligibility.agent_admission_status}
-        />
-        <FieldRow
-          label="Admission reason"
-          value={item.agent_admission_reason || eligibility.agent_admission_reason}
-        />
-        <FieldRow
-          label="Representative"
-          value={
-            item.agent_representative_news_item_id ||
-            item.agent_admission?.representative_news_item_id
-          }
-        />
+        <FieldRow label="Agent admission" value={item.agent_admission_status} />
+        <FieldRow label="Admission reason" value={item.agent_admission_reason} />
+        <FieldRow label="Representative" value={item.agent_representative_news_item_id} />
         <FieldRow label="In-app eligible" value={eligibility.in_app_eligible} />
         <FieldRow
           label="External push"
@@ -164,13 +152,10 @@ function SourcePacket({
   return (
     <section className="news-evidence-source-packet" aria-label="source packet">
       <span>Source packet</span>
-      <b>{item.source?.source_name || item.source_domain || "source unknown"}</b>
+      <b>{item.source.source_name || item.source_domain}</b>
       <p>{displayTitle}</p>
       <small>
-        {sourceDomains.join(", ") ||
-          item.source?.provider_type ||
-          item.provider_type ||
-          "provider unknown"}
+        {sourceDomains.join(", ") || item.source.provider_type}
         {item.latest_at_ms ? ` · ${formatRelativeTime(item.latest_at_ms)} ago` : ""}
       </small>
       {item.canonical_url ? (
@@ -435,14 +420,14 @@ function MetadataEvidence({ item }: { item: NewsItemDetail }) {
       <SectionHeading
         icon={ShieldCheck}
         title="Source metadata"
-        tag={item.source?.source_quality_status || "raw"}
+        tag={item.source.source_quality_status}
       />
       <dl className="news-evidence-definition-list">
         <FieldRow label="Lifecycle" value={item.lifecycle_status} />
-        <FieldRow label="Provider" value={item.source?.provider_type || item.provider_type} />
-        <FieldRow label="Source" value={item.source?.source_name || item.source_domain} />
-        <FieldRow label="Domain" value={item.source?.source_domain || item.source_domain} />
-        <FieldRow label="Trust" value={item.source?.trust_tier} />
+        <FieldRow label="Provider" value={item.source.provider_type} />
+        <FieldRow label="Source" value={item.source.source_name || item.source_domain} />
+        <FieldRow label="Domain" value={item.source.source_domain} />
+        <FieldRow label="Trust" value={item.source.trust_tier} />
       </dl>
     </section>
   );
@@ -540,14 +525,14 @@ function JsonDetails({
 
 function sourceDomainList(item: NewsItemDetail): string[] {
   return uniqueStrings([
-    item.source?.source_domain,
+    item.source.source_domain,
     item.source_domain,
     ...(item.observation_edges ?? []).map((edge) => edge.source_domain),
   ]);
 }
 
-function marketScopeForItem(item: NewsItemDetail): NewsMarketScope | null {
-  return item.market_scope ?? item.signal.alert_eligibility.market_scope ?? null;
+function marketScopeForItem(item: NewsItemDetail): NewsMarketScope {
+  return item.signal.alert_eligibility.market_scope;
 }
 
 function marketScopeLabel(scope?: NewsMarketScope | null): string {

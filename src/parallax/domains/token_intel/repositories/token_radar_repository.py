@@ -401,7 +401,7 @@ class TokenRadarRepository:
                   AND current_rows."window" = %s
                   AND current_rows.scope = %s
                   AND current_rows.venue = %s
-                  AND state.latest_attempt_status = 'ready'
+                  AND state.current_generation_id IS NOT NULL
               ) latest_ranked
               WHERE lane_rank <= %s
             )
@@ -446,7 +446,7 @@ class TokenRadarRepository:
               AND current_rows.venue = %s
               AND current_rows.target_type = %s
               AND current_rows.target_id = %s
-              AND state.latest_attempt_status = 'ready'
+              AND state.current_generation_id IS NOT NULL
             ORDER BY current_rows.lane DESC, current_rows.rank ASC
             LIMIT 1
             """,

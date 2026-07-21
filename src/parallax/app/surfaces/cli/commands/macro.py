@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import sys
 import time
+from argparse import Namespace
 from collections.abc import Mapping, Sequence
 from datetime import date
 from pathlib import Path
@@ -20,7 +21,7 @@ from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunS
 from parallax.platform.config.settings import load_settings
 
 
-def handle_macro(args: object) -> tuple[int, dict[str, Any]]:
+def handle_macro(args: Namespace) -> tuple[int, dict[str, Any]]:
     if args.macro_command == "import-bundle":
         return _handle_import_bundle(args)
     if args.macro_command == "sync":
@@ -30,9 +31,9 @@ def handle_macro(args: object) -> tuple[int, dict[str, Any]]:
     return 2, {"ok": False, "error": f"unknown macro command: {args.macro_command}"}
 
 
-def _handle_import_bundle(args: object) -> tuple[int, dict[str, Any]]:
-    file_path = getattr(args, "file", None)
-    use_stdin = bool(getattr(args, "stdin", False))
+def _handle_import_bundle(args: Namespace) -> tuple[int, dict[str, Any]]:
+    file_path = args.file
+    use_stdin = bool(args.stdin)
     if bool(file_path) == use_stdin:
         return 2, {"ok": False, "error": "macro_import_bundle_requires_file_or_stdin"}
 
@@ -48,7 +49,7 @@ def _handle_import_bundle(args: object) -> tuple[int, dict[str, Any]]:
     return 0, {"ok": True, "data": _json_ready(summary)}
 
 
-def _handle_sync(args: object) -> tuple[int, dict[str, Any]]:
+def _handle_sync(args: Namespace) -> tuple[int, dict[str, Any]]:
     try:
         settings = load_settings(require_ws_token=False)
         window_start = _parse_cli_date(str(args.start), field="start")

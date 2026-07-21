@@ -29,7 +29,6 @@ class WorkerFactoryContext:
     collector: WorkerBase | None
     collector_enabled: bool
     collector_start_requested: bool
-    wake_bus: Any
 
 
 WorkerFactory = Callable[[WorkerFactoryContext], Mapping[str, WorkerBase]]
@@ -44,7 +43,6 @@ def construct_workers(
     hub: EventPublisherProtocol,
     collector: WorkerBase,
     collector_enabled: bool,
-    wake_bus: Any,
     collector_start_requested: bool = True,
 ) -> dict[str, WorkerBase]:
     ctx = WorkerFactoryContext(
@@ -57,7 +55,6 @@ def construct_workers(
         collector=collector,
         collector_enabled=collector_enabled,
         collector_start_requested=collector_start_requested,
-        wake_bus=wake_bus,
     )
     constructed: dict[str, WorkerBase] = {}
     for factory in worker_factories():
@@ -89,7 +86,6 @@ def construct_worker(
     hub: EventPublisherProtocol | None,
     collector: WorkerBase | None,
     collector_enabled: bool,
-    wake_bus: Any,
     collector_start_requested: bool = False,
 ) -> WorkerBase:
     """Construct one worker from the same domain factories used by bootstrap."""
@@ -103,7 +99,6 @@ def construct_worker(
         collector=collector,
         collector_enabled=collector_enabled,
         collector_start_requested=collector_start_requested,
-        wake_bus=wake_bus,
     )
     candidates = [worker for factory in worker_factories() if (worker := factory(ctx).get(worker_name)) is not None]
     if len(candidates) != 1:
@@ -111,7 +106,7 @@ def construct_worker(
     return candidates[0]
 
 
-class _SentinelWorker(WorkerBase):
+class InactiveWorker(WorkerBase):
     def __init__(
         self,
         *,
@@ -123,72 +118,49 @@ class _SentinelWorker(WorkerBase):
         unavailable_reason: str | None = None,
     ) -> None:
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
-        self._effective_status = effective_status
-        self._unavailable_reason = unavailable_reason
+        self._inactive_status = str(effective_status)
+        self._inactive_reason = str(unavailable_reason) if unavailable_reason else None
+
+    @property
+    def effective_status(self) -> str:
+        return self._inactive_status
+
+    @property
+    def unavailable_reason(self) -> str | None:
+        return self._inactive_reason
 
     async def run_once(self) -> WorkerResult:
         return WorkerResult(skipped=1, notes={"reason": self.effective_status})
 
 
-class DisabledWorker(_SentinelWorker):
-    def __init__(self, *, name: str, settings: Any, db: Any, telemetry: Any) -> None:
-        super().__init__(
-            name=name,
-            settings=settings,
-            db=db,
-            telemetry=telemetry,
-            effective_status="disabled",
-        )
-
-
-class IntentionallyNotStartedWorker(_SentinelWorker):
-    def __init__(self, *, name: str, settings: Any, db: Any, telemetry: Any) -> None:
-        super().__init__(
-            name=name,
-            settings=settings,
-            db=db,
-            telemetry=telemetry,
-            effective_status="intentionally_not_started",
-        )
-
-
-class UnavailableWorker(_SentinelWorker):
-    def __init__(self, *, name: str, settings: Any, db: Any, telemetry: Any, reason: str) -> None:
-        super().__init__(
-            name=name,
-            settings=settings,
-            db=db,
-            telemetry=telemetry,
-            effective_status="unavailable",
-            unavailable_reason=_redacted_reason(reason),
-        )
-
-
 def disabled_worker(ctx: WorkerFactoryContext, name: str) -> WorkerBase:
-    return DisabledWorker(
+    return InactiveWorker(
         name=name,
         settings=_worker_settings(ctx.settings, name, enabled=False),
         db=ctx.db,
         telemetry=ctx.telemetry,
+        effective_status="disabled",
     )
 
 
 def intentionally_not_started_worker(ctx: WorkerFactoryContext, name: str) -> WorkerBase:
-    return IntentionallyNotStartedWorker(
+    return InactiveWorker(
         name=name,
         settings=_worker_settings(ctx.settings, name, enabled=False),
         db=ctx.db,
         telemetry=ctx.telemetry,
+        effective_status="intentionally_not_started",
     )
 
 
 def unavailable_worker(ctx: WorkerFactoryContext, name: str, reason: str) -> WorkerBase:
-    return UnavailableWorker(
+    return InactiveWorker(
         name=name,
         settings=_worker_settings(ctx.settings, name, enabled=True),
         db=ctx.db,
         telemetry=ctx.telemetry,
-        reason=reason,
+        effective_status="unavailable",
+        unavailable_reason=_redacted_reason(reason),
     )
 
 
@@ -248,9 +220,7 @@ def worker_factories() -> tuple[WorkerFactory, ...]:
 
 
 __all__ = [
-    "DisabledWorker",
-    "IntentionallyNotStartedWorker",
-    "UnavailableWorker",
+    "InactiveWorker",
     "WorkerFactoryContext",
     "construct_worker",
     "construct_workers",

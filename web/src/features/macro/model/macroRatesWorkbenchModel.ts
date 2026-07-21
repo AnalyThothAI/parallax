@@ -1,5 +1,6 @@
 import type { MacroModuleTable, MacroModuleView, MacroSemanticRecord } from "@lib/types";
 
+import { requireMacroArray } from "./macroCurrentContract";
 import { chartCaption } from "./macroModulePageModel";
 import { formatMacroScalar, macroAsOfLabel } from "./macroPageViewModel";
 
@@ -497,17 +498,15 @@ function decisionGroups(evidence: MacroModuleView["module_evidence"]): RatesDeci
   return DECISION_GROUPS.map((group) => ({
     key: group.key,
     label: group.label,
-    items: evidenceItems(evidence[group.key]),
+    items: evidenceItems(evidence[group.key], group.key),
   }));
 }
 
 function evidenceItems(
   items: MacroSemanticRecord[] | undefined,
+  key: RatesDecisionGroup["key"],
 ): Array<{ label: string; detail: string | null }> {
-  if (!Array.isArray(items)) {
-    return [];
-  }
-  return items
+  return requireMacroArray<MacroSemanticRecord>(items, `module_evidence.${key}`)
     .map((item) => {
       const label = readableText(item.label);
       if (!label) {
@@ -565,7 +564,7 @@ function allGaps(module: MacroModuleView): MacroSemanticRecord[] {
 }
 
 function sourceMeta(provenance: MacroSemanticRecord): string | null {
-  const rows = Array.isArray(provenance.rows) ? (provenance.rows as MacroSemanticRecord[]) : [];
+  const rows = requireMacroArray<MacroSemanticRecord>(provenance.rows, "provenance.rows");
   const labels = rows
     .map((row) =>
       [row.source_label, row.status_label].map(sanitizeOptionalText).filter(Boolean).join("："),

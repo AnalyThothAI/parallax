@@ -22,10 +22,9 @@ from .repositories.discovery_repository import DiscoveryRepository
 from .repositories.enriched_event_repository import EnrichedEventRepository
 from .repositories.event_anchor_backfill_job_repository import EventAnchorBackfillJobRepository
 from .repositories.identity_evidence_repository import IdentityEvidenceRepository
-from .repositories.market_tick_current_dirty_target_repository import MarketTickCurrentDirtyTargetRepository
+from .repositories.market_tick_current_repository import MarketTickCurrentRepository
 from .repositories.market_tick_repository import MarketTickRepository
 from .repositories.registry_repository import RegistryRepository
-from .repositories.token_capture_tier_repository import TokenCaptureTierRepository
 from .repositories.token_profile_current_repository import TokenProfileCurrentRepository
 from .services.event_market_capture import CaptureResult
 from .services.market_tick_persistence import MarketTickPersistenceService
@@ -53,11 +52,10 @@ __all__ = [
     "EventAnchorBackfillJobRepository",
     "IdentityEvidenceRepository",
     "MarketTick",
-    "MarketTickCurrentDirtyTargetRepository",
+    "MarketTickCurrentRepository",
     "MarketTickPersistenceService",
     "MarketTickRepository",
     "RegistryRepository",
-    "TokenCaptureTierRepository",
     "TokenProfileCurrentRepository",
     "message_price_payload",
     "select_current_identity",

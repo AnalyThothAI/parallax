@@ -2,14 +2,14 @@
 
 **Parallax Market Research System** is an evidence-first research system for
 turning social, news, macro, DEX/CEX market flow, and auditable agent runs into
-replayable market decisions and outcome attribution.
+replayable evidence, current research views, and operator alerts.
 
 Parallax is built around the idea that a market event becomes more trustworthy
 when it can be observed from several independent angles: social attention,
-token identity, liquidity, derivatives positioning, news, macro regime, agent
-reasoning, and realized outcomes. Provider adapters are inputs to that research
-loop; the product boundary is the durable evidence, auditable decisions, and
-operator workflows built on top of them.
+token identity, liquidity, derivatives positioning, news, and macro regime.
+Provider adapters are inputs to that research loop; the product boundary is
+durable evidence, rebuildable current views, and operator workflows built on
+top of them.
 
 ## Research Direction
 
@@ -18,29 +18,23 @@ Its core research loop is:
 
 ```text
 Information flow
-  -> Evidence ledger
+  -> Material facts
   -> Identity and market context
-  -> Signal projections
-  -> Agent research runtime
-  -> Decision ledger
-  -> Outcome attribution
-  -> Research feedback loop
+  -> Deterministic current views
+  -> Evidence-bounded News story brief
+  -> Operator console and notifications
 ```
 
-The system should answer six questions for every asset, event, or candidate:
+The system should answer four questions for every asset, event, or candidate:
 
 - **What happened?** Preserve the raw market/social/news observation as durable
   evidence.
 - **What is it really about?** Resolve token identity, asset venue, author,
   topic, macro concept, and related market target.
 - **Why is it worth attention?** Show deterministic gates, factor snapshots,
-  source quality, data freshness, and missing fields.
-- **What did the agent conclude?** Record typed model outputs, validation,
-  trace metadata, route, prompt/schema/artifact versions, usage, and abstains.
-- **What decision was persisted?** Keep a replayable decision ledger with data
-  gaps, confidence, risk flags, and why-not explanations.
-- **Was it useful?** Settle outcomes, attribute credit, inspect score buckets,
-  and keep report-only weights separate from production truth.
+  source evidence, freshness, and missing fields.
+- **What analysis was produced?** Keep typed News story-brief output and its
+  side-effect audit bound to the facts that supported it.
 
 ## Architecture At A Glance
 
@@ -58,13 +52,13 @@ Macrodata bundles       DEX / CEX / market-data providers
   identity, market context, and deterministic projections
          |
          v
-  Token Radar / Search / Token Case / Watchlist / News / Macro / CEX OI
+  Token Radar / Search / Token Case / Watchlist / Stocks / News / Macro
          |
          v
-  audited agent runtime: Narrative, News briefs, summaries
+  bounded agent runtime: News story briefs
          |
          v
-  decisions, settlements, attribution, diagnostics, notifications
+  diagnostics and notifications
          |
          v
   React console / HTTP API / WebSocket / JSON CLI
@@ -78,10 +72,11 @@ Parallax follows a Kappa/CQRS model:
 - **Read models are rebuildable.** Current serving rows use stable product,
   window, scope, and target keys. They are not keyed by run ids, attempts,
   timestamp-derived generations, or UUIDs.
-- **One writer per read model.** Each derived model has exactly one runtime
-  writer declared in the worker manifest and documented in the owning domain.
-- **Wake hints are not truth.** PostgreSQL `NOTIFY` wakes listeners only.
-  Consumers re-read durable state and run bounded catch-up loops.
+- **One writer per read model.** Worker-owned models are declared in the worker
+  manifest; transactionally maintained models such as `market_tick_current`
+  are documented by their owning domain service.
+- **Catch-up is durable.** Workers re-read PostgreSQL state on bounded
+  intervals without a message-delivery dependency.
 - **Agent execution is operational.** The shared execution gateway owns model
   transport, structured JSON dispatch, validation, tracing, quotas, and
   backpressure. Domains still own facts, gates, decisions, and read-model writes.
@@ -93,11 +88,11 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 
 | Surface | Role |
 | --- | --- |
-| React console | Operator workbench for Radar, Search, Token Case, Stocks/CEX, News, Macro, Watchlist, Ops, and notifications. |
+| React console | Operator workbench for Radar, Search, Token Case, Stocks, News, Macro, Watchlist, Ops, and notifications. |
 | HTTP API | Authenticated `/api/*` read surfaces, health checks, bootstrap, token images, status, and diagnostics. |
 | WebSocket | Authenticated `/ws` replay/live stream for events, subscriptions, notifications, and live market updates. |
 | JSON CLI | Scriptable local/operator interface for config, DB health, read-model queries, macro sync/status, and ops repair commands. |
-| PostgreSQL | Durable system of record for facts, control-plane rows, read models, audit ledgers, and settlement results. |
+| PostgreSQL | Durable system of record for facts, bounded control rows, current read models, and required side-effect ledgers. |
 
 ## Research Console Model
 
@@ -107,11 +102,10 @@ than a generic chat pane:
 | Panel | Purpose |
 | --- | --- |
 | Flow Tape | Chronological social, news, macro, market, and watchlist events with provenance and data-health badges. |
-| Candidate Board | Deterministic gates and ranked targets before agent execution: why a target entered Radar, News, or Watchlist workflows. |
-| Evidence Dossier | One selected target with source posts, resolved identity, market ticks, profiles, narrative digest, news facts, macro context, and CEX context. |
-| Agent Run Trace | Stage-by-stage run ledger with route, prompt/schema/artifact versions, input/output hashes, trace id, validation status, usage, timeout, and abstain reason. |
-| Decision Ledger | Persisted decisions, confidence, data gaps, risk flags, and why-not explanations. No decision should appear without an audit row. |
-| Outcome Lab | Settlement, forward returns, credit attribution, score buckets, report-only weights, and drift diagnostics. |
+| Radar Board | Deterministic gates and ranked targets: why a target entered the current Token Radar view. |
+| Evidence Dossier | One selected target with source posts, resolved identity, market ticks, profiles, News facts, and macro context. |
+| News Brief Trace | Current story brief plus the bounded run evidence needed to explain model output, validation, and abstention. |
+| Macro Console | Projected regime, module views, scenarios, and source-quality gaps derived from macro facts. |
 | Ops Console | Worker status, lane capacity, queue depth, circuit state, provider health, retries, stale projections, and safe repair actions. |
 
 Tooling should be safe by default:
@@ -120,8 +114,8 @@ Tooling should be safe by default:
 - Show the exact fact rows or read-model keys a tool will touch before execute.
 - Keep prompts, raw model inputs/outputs, credentials, and tokens out of public
   UI unless the route is explicitly ops-only and sanitized.
-- Expose replay, rebuild, enqueue, settle, attribute, and export actions as
-  operator tools, not hidden side effects inside read APIs.
+- Expose replay, rebuild, enqueue, and export actions as operator tools, not
+  hidden side effects inside read APIs.
 - Treat model output as typed analysis bound to evidence, never as a material
   fact unless a domain service validates and persists it.
 
@@ -130,14 +124,11 @@ Tooling should be safe by default:
 | Domain | Responsibility |
 | --- | --- |
 | `ingestion` | Provider event normalization, source lifecycle, snapshot gates, and ingest entrypoint. |
-| `evidence` | Canonical event model, entity extraction, material evidence, and transactional persistence. |
-| `asset_market` | Asset identity, discovery, profiles, token images, market ticks, capture tiers, and live market fan-out. |
+| `evidence` | Canonical event model, entity extraction, material evidence, transactional persistence, and Watchlist reads. |
+| `asset_market` | Asset identity, discovery, profiles, token images, market facts, transactionally maintained current ticks, and post-commit live updates. |
 | `token_intel` | Token evidence, deterministic resolution, Token Radar scoring, search, factor snapshots, and signal diagnostics. |
-| `narrative_intel` | Deterministic token-window narrative admission, currentness, coverage, and evidence gaps. |
-| `news_intel` | Configured news ingestion, item facts, token/fact extraction, item briefs, source quality, and News page rows. |
-| `cex_market_intel` | Binance-backed CEX universe, derivatives/OI board rows, and CEX detail snapshots. |
+| `news_intel` | Configured news ingestion, canonical facts, token/fact extraction, one story-brief lane, source current health, and News page rows. |
 | `macro_intel` | Macrodata sync, macro observations, deterministic regime/features, and Macro module views. |
-| `watchlist_intel` | Watched-handle timelines, summaries, and account-level signal read models. |
 | `notifications` | Notification rules, candidates, side-effect delivery, and delivery ledger state. |
 
 ## Runtime Names
@@ -226,7 +217,7 @@ uv run parallax config
 uv run parallax db health
 uv run parallax recent --limit 20
 uv run parallax asset-flow --window 1h --scope all --limit 20
-uv run parallax ops worker-status
+uv run parallax ops queue-inspect --status active
 uv run parallax macro status
 ```
 

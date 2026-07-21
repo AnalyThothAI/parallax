@@ -38,8 +38,6 @@ class NewsFetchWorker(WorkerBase):
         telemetry: Any,
         news_settings: NewsIntelSettings,
         feed_client: NewsSourceProvider,
-        wake_waiter: Any | None = None,
-        wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         name: str = "news_fetch",
     ) -> None:
@@ -52,10 +50,8 @@ class NewsFetchWorker(WorkerBase):
             settings=settings,
             db=db,
             telemetry=telemetry,
-            wake_waiter=wake_waiter,
         )
         self.news_settings = news_settings
-        self.wake_emitter = wake_emitter
         self.feed_client = feed_client
         self.clock_ms = clock_ms or _now_ms
         self._sources_reconciled = False
@@ -74,7 +70,6 @@ class NewsFetchWorker(WorkerBase):
     def run_once_sync(self, *, now_ms: int | None = None) -> WorkerResult:
         now = int(now_ms if now_ms is not None else self.clock_ms())
         configured_sources = tuple(self.news_settings.sources or ())
-        metadata_dirty_count = 0
         pruned_successful_fetch_runs = 0
         retention_due = now >= self._next_retention_prune_at_ms
         should_reconcile = not self._sources_reconciled
@@ -110,7 +105,7 @@ class NewsFetchWorker(WorkerBase):
                 if changed_source_ids
                 else []
             )
-            metadata_dirty_count = enqueue_page_reprojection(
+            enqueue_page_reprojection(
                 repos,
                 news_item_ids=changed_item_watermarks,
                 reason="source_metadata_changed",
@@ -127,11 +122,6 @@ class NewsFetchWorker(WorkerBase):
         if should_reconcile:
             self._sources_reconciled = True
             self._terminal_source_errors = _terminal_source_errors(reconciled_sources)
-        _notify_news_page_dirty(
-            self.wake_emitter,
-            count=metadata_dirty_count,
-            reason="source_metadata_changed",
-        )
 
         processed = 0
         failed = 0
@@ -243,8 +233,6 @@ class NewsFetchWorker(WorkerBase):
                         http_status=feed_result.status_code,
                     )
             written = counts["inserted"] + counts["updated"]
-            if written > 0 and self.wake_emitter is not None:
-                self.wake_emitter.notify_news_item_written(source_id=source_id, count=written)
             return WorkerResult(processed=written)
         except NewsSourceProviderError as exc:
             if exc.terminal:
@@ -430,12 +418,6 @@ def _terminal_source_errors(rows: list[Mapping[str, Any]]) -> dict[str, str]:
             raise ValueError("news_fetch_terminal_source_error_required")
         terminal_errors[source_id.strip()] = error.strip()
     return terminal_errors
-
-
-def _notify_news_page_dirty(wake_emitter: Any | None, *, count: int, reason: str) -> None:
-    if count <= 0 or wake_emitter is None:
-        return
-    wake_emitter.notify_news_page_dirty(count=int(count), reason=str(reason))
 
 
 def _metadata_changed_item_watermarks(rows: list[Mapping[str, Any]]) -> dict[str, int]:

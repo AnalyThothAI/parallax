@@ -1,22 +1,19 @@
 from __future__ import annotations
 
-import asyncio
 from typing import Any
 
-from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker
+from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker, unavailable_worker
 from parallax.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from parallax.domains.notifications.runtime.notification_worker import NotificationWorker
 from parallax.domains.notifications.services.account_alert_service import AccountAlertService
 from parallax.domains.notifications.services.notification_rules import NotificationRuleEngine
 from parallax.platform.config.settings import Settings
 from parallax.platform.runtime.worker_base import WorkerBase
-from parallax.platform.validation import require_nonnegative_float
 
 
 def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
     workers = ctx.settings.workers
     constructed: dict[str, WorkerBase] = {}
-    delivery_wake = _LocalWakeWaiter()
     notifications_enabled = bool(ctx.settings.notifications.enabled)
     delivery_channels_enabled = any(
         channel.enabled and (channel.provider == "log" or channel.url)
@@ -29,7 +26,15 @@ def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             "notification_delivery": disabled_worker(ctx, "notification_delivery"),
         }
 
-    if workers.notification_rule.enabled and ctx.hub is not None:
+    if not workers.notification_rule.enabled:
+        constructed["notification_rule"] = disabled_worker(ctx, "notification_rule")
+    elif ctx.hub is None:
+        constructed["notification_rule"] = unavailable_worker(
+            ctx,
+            "notification_rule",
+            "missing_notification_publisher",
+        )
+    else:
         constructed["notification_rule"] = NotificationWorker(
             name="notification_rule",
             settings=workers.notification_rule,
@@ -40,25 +45,24 @@ def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             delivery_channels=ctx.settings.notifications.channels,
             delivery_max_attempts=workers.notification_delivery.max_attempts,
             retention_days=ctx.settings.notifications.retention_days,
-            delivery_wake=delivery_wake,
         )
-    elif workers.notification_rule.enabled:
-        constructed["notification_rule"] = disabled_worker(ctx, "notification_rule")
+
+    if not workers.notification_delivery.enabled:
+        constructed["notification_delivery"] = disabled_worker(ctx, "notification_delivery")
+    elif not delivery_channels_enabled:
+        constructed["notification_delivery"] = unavailable_worker(
+            ctx,
+            "notification_delivery",
+            "missing_notification_delivery_channel",
+        )
     else:
-        constructed["notification_rule"] = disabled_worker(ctx, "notification_rule")
-    if workers.notification_delivery.enabled and delivery_channels_enabled:
         constructed["notification_delivery"] = NotificationDeliveryWorker(
             name="notification_delivery",
             settings=workers.notification_delivery,
             db=ctx.db,
             telemetry=ctx.telemetry,
             channels=ctx.settings.notifications.channels,
-            wake_waiter=delivery_wake,
         )
-    elif workers.notification_delivery.enabled:
-        constructed["notification_delivery"] = disabled_worker(ctx, "notification_delivery")
-    else:
-        constructed["notification_delivery"] = disabled_worker(ctx, "notification_delivery")
 
     return constructed
 
@@ -70,26 +74,3 @@ def _notification_rule_engine(settings: Settings, repos: Any) -> NotificationRul
         account_alerts=AccountAlertService(repos.signals),
         news=repos.news_pages,
     )
-
-
-class _LocalWakeWaiter:
-    def __init__(self) -> None:
-        self._event = asyncio.Event()
-
-    def wake(self) -> None:
-        self._event.set()
-
-    async def async_wait(self, timeout: float) -> bool:  # noqa: ASYNC109 - mirrors WakeWaiter.async_wait(timeout).
-        timeout_seconds = require_nonnegative_float(
-            timeout,
-            error_code="wake_waiter_timeout_seconds_required",
-        )
-        try:
-            await asyncio.wait_for(self._event.wait(), timeout=timeout_seconds)
-        except TimeoutError:
-            return False
-        self._event.clear()
-        return True
-
-    def close(self) -> None:
-        self._event.set()

@@ -46,9 +46,9 @@ describe("WatchlistPage", () => {
     await waitFor(() => expect(screen.getByText("Second source event")).toBeVisible());
 
     expect(requests.some((request) => request.includes("scope="))).toBe(false);
-    expect(
-      requests.some((request) => request.includes("/timeline?cursor=cursor-1&limit=80")),
-    ).toBe(true);
+    expect(requests.some((request) => request.includes("/timeline?cursor=cursor-1&limit=80"))).toBe(
+      true,
+    );
     expect(screen.getByRole("link", { name: "$SOL1 event" })).toHaveAttribute(
       "href",
       "/token/Asset/asset%3Asolana%3Atoken%3ASo11111111111111111111111111111111111111112",
@@ -66,10 +66,7 @@ describe("WatchlistPage", () => {
   });
 });
 
-function installWatchlistApi(
-  requests: string[] = [],
-  options: { sourceOnly?: boolean } = {},
-) {
+function installWatchlistApi(requests: string[] = [], options: { sourceOnly?: boolean } = {}) {
   vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
     const url = new URL(String(input));
     requests.push(`${url.pathname}?${url.searchParams.toString()}`);
@@ -108,14 +105,14 @@ function installWatchlistApi(
                   query: "$SOL",
                   kind: "resolved_token",
                   target_type: "Asset",
-                  target_id:
-                    "asset:solana:token:So11111111111111111111111111111111111111112",
+                  target_id: "asset:solana:token:So11111111111111111111111111111111111111112",
                   symbol: "SOL",
                   source: "token_resolutions",
                 },
               ],
           candidate_mention_clusters: [],
           narrative_clusters: [],
+          clusters_truncated: false,
           risk_notes: [],
         },
       });
@@ -168,10 +165,20 @@ function sourceTimelineItem(eventId: string, text: string) {
     event_id: eventId,
     received_at_ms: eventId === "event-2" ? 900 : 1_000,
     author_handle: "toly",
+    action: "tweet",
     text_clean: text,
+    canonical_url: `https://x.com/toly/status/${eventId}`,
     cashtags: eventId.startsWith("event") ? ["SOL"] : [],
     hashtags: [],
     mentions: [],
+    event: {
+      event_id: eventId,
+      action: "tweet",
+      canonical_url: `https://x.com/toly/status/${eventId}`,
+      received_at_ms: eventId === "event-2" ? 900 : 1_000,
+      author_handle: "toly",
+      text_clean: text,
+    },
     token_resolutions: eventId.startsWith("event")
       ? [
           {

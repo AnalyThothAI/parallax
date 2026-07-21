@@ -30,14 +30,6 @@ class RecordingPublisher:
         self.payloads.append(payload)
 
 
-class RecordingWake:
-    def __init__(self):
-        self.count = 0
-
-    def wake(self):
-        self.count += 1
-
-
 class SingleConnectionDB:
     def __init__(self, conn):
         self.conn = conn
@@ -116,7 +108,7 @@ def news_candidate(
     )
 
 
-def open_worker(tmp_path, *, candidates, publisher=None, delivery_channels=None, delivery_wake=None):
+def open_worker(tmp_path, *, candidates, publisher=None, delivery_channels=None):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     migrate(conn)
     repo = NotificationRepository(conn, running_timeout_ms=300_000, stale_running_terminalization_batch_size=100)
@@ -130,7 +122,6 @@ def open_worker(tmp_path, *, candidates, publisher=None, delivery_channels=None,
         delivery_channels=delivery_channels or {},
         delivery_max_attempts=5,
         retention_days=30,
-        delivery_wake=delivery_wake,
     )
     return conn, repo, worker
 
@@ -436,8 +427,7 @@ def test_process_once_does_not_requeue_suppressed_news_external_delivery(tmp_pat
     assert deliveries[0]["last_error"] == "pushdeer_notify_failed:80501"
 
 
-def test_run_once_returns_result_and_wakes_delivery_after_external_enqueue(tmp_path):
-    wake = RecordingWake()
+def test_run_once_returns_result_after_external_enqueue(tmp_path):
     conn, repo, worker = open_worker(
         tmp_path,
         candidates=[candidate(channels=("in_app", "pushdeer"), severity="high")],
@@ -449,7 +439,6 @@ def test_run_once_returns_result_and_wakes_delivery_after_external_enqueue(tmp_p
                 min_severity="warning",
             )
         },
-        delivery_wake=wake,
     )
     try:
         result = asyncio.run(worker.run_once(now_ms=1_700_000_100_000))
@@ -461,7 +450,6 @@ def test_run_once_returns_result_and_wakes_delivery_after_external_enqueue(tmp_p
     assert result.processed == 1
     assert result.notes["external_deliveries_enqueued"] is True
     assert len(deliveries) == 1
-    assert wake.count == 1
 
 
 def test_process_once_enqueues_log_delivery_without_url(tmp_path):

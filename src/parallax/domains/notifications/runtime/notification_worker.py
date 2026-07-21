@@ -45,7 +45,6 @@ class NotificationWorker(WorkerBase):
         rule_engine_factory: Callable[[Any], Any] | None = None,
         delivery_max_attempts: int,
         retention_days: int,
-        delivery_wake: Any | None = None,
     ) -> None:
         if db is None:
             raise RuntimeError("notification_rule_db_required")
@@ -56,7 +55,6 @@ class NotificationWorker(WorkerBase):
         self.delivery_channels = delivery_channels or {}
         self.delivery_max_attempts = delivery_max_attempts
         self.retention_ms = retention_days * _MILLISECONDS_PER_DAY
-        self.delivery_wake = delivery_wake
         self.batch_limit = settings.batch_size
         self._next_retention_prune_at_ms = 0
 
@@ -83,8 +81,6 @@ class NotificationWorker(WorkerBase):
         if self.publisher is not None:
             for row in result.created:
                 await self.publisher.publish({"type": "notification", "notification": row})
-        if result.external_deliveries_enqueued and self.delivery_wake is not None:
-            self.delivery_wake.wake()
         return result
 
     def _process_once_sync(self, *, now_ms: int) -> NotificationProcessResult:

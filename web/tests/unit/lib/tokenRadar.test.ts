@@ -88,13 +88,12 @@ describe("token radar factor snapshot mapper", () => {
 
   it("accepts nullable event capture metadata in factor snapshot market", () => {
     const row = productionFactorSnapshotRow();
-    row.market = {
-      ...row.market,
+    row.factor_snapshot.market = {
+      ...row.factor_snapshot.market,
       capture_method: null,
       capture_reason: null,
       tick_lag_ms: null,
     };
-    row.factor_snapshot.market = row.market;
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
@@ -173,8 +172,6 @@ describe("token radar factor snapshot mapper", () => {
 
   it("normalizes CEX venue identity from pricefeed-only production rows", () => {
     const row = productionFactorSnapshotRow();
-    delete row.target!.native_market_id;
-    delete row.target!.feed_type;
     row.factor_snapshot.subject = {
       ...row.factor_snapshot.subject,
       pricefeed_id: "pricefeed:cex:okx:swap:ZEC-USDT-SWAP",
@@ -188,11 +185,29 @@ describe("token radar factor snapshot mapper", () => {
   });
 
   it("rejects rows missing material market context", () => {
-    const row = productionFactorSnapshotRow() as Partial<AssetFlowRow> &
-      Pick<AssetFlowRow, "factor_snapshot">;
-    delete row.market;
+    const row = productionFactorSnapshotRow();
+    delete (row.factor_snapshot as unknown as Record<string, unknown>).market;
 
-    expect(() => tokenRadarRowToTokenItem(row as AssetFlowRow, "1h", "all")).toThrow(/market/);
+    expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(/market/);
+  });
+
+  it("rejects legacy identity aliases in factor snapshot subject", () => {
+    const row = productionChainAssetRow();
+    (row.factor_snapshot.subject as unknown as Record<string, unknown>).chain_id = "eip155:1";
+
+    expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(
+      /factor_snapshot\.subject\.chain_id/,
+    );
+  });
+
+  it("rejects unknown backend decisions", () => {
+    const row = productionFactorSnapshotRow();
+    (row.factor_snapshot.composite as unknown as Record<string, unknown>).recommended_decision =
+      "investigate";
+
+    expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(
+      /factor_snapshot\.composite\.recommended_decision/,
+    );
   });
 
   it("keeps usable market cap for chain asset rows", () => {
@@ -208,9 +223,9 @@ describe("token radar factor snapshot mapper", () => {
 
   it("uses event_anchor market metadata for chain asset rows when decision_latest is missing", () => {
     const row = productionChainAssetRow();
-    row.market = {
+    row.factor_snapshot.market = {
       event_anchor: {
-        ...row.market.event_anchor!,
+        ...row.factor_snapshot.market.event_anchor!,
         provider: "gmgn_dex_quote",
         price_usd: 0.1,
         market_cap_usd: 33_000_000,
@@ -220,11 +235,10 @@ describe("token radar factor snapshot mapper", () => {
       },
       decision_latest: null,
       readiness: {
-        ...row.market.readiness,
+        ...row.factor_snapshot.market.readiness,
         latest_status: "missing",
       },
     };
-    row.factor_snapshot.market = row.market;
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
@@ -271,19 +285,18 @@ describe("token radar factor snapshot mapper", () => {
 
   it("derives UI market status from decision_latest readiness", () => {
     const row = productionFactorSnapshotRow();
-    row.market = {
-      ...row.market,
+    row.factor_snapshot.market = {
+      ...row.factor_snapshot.market,
       readiness: {
-        ...row.market.readiness,
+        ...row.factor_snapshot.market.readiness,
         latest_status: "stale",
         stale_fields: ["decision_latest"],
       },
       decision_latest: {
-        ...row.market.decision_latest!,
+        ...row.factor_snapshot.market.decision_latest!,
         observed_at_ms: 1_778_340_040_000,
       },
     };
-    row.factor_snapshot.market = row.market;
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
@@ -305,47 +318,40 @@ function productionFactorSnapshotRow(): AssetFlowRow {
     latestVolume24h: 10_482_890.08,
   });
   return {
-    intent: { intent_id: "intent-zec", display_symbol: "ZEC", display_name: null, evidence: [] },
-    target: {
+    intent: {
+      intent_id: "intent-zec",
+      event_id: "event-1",
+      display_symbol: "ZEC",
+      display_name: null,
+      evidence: [],
+    },
+    radar: {
+      lane: "resolved",
+      rank: 1,
+      listed_at_ms: 1_778_423_360_921,
+      computed_at_ms: 1_778_426_470_167,
+      source_max_received_at_ms: 1_778_425_132_800,
+    },
+    resolution: {
+      status: "EXACT",
       target_type: "CexToken",
       target_id: "cex_token:ZEC",
-      symbol: "ZEC",
-      native_market_id: "ZEC-USDT",
-      feed_type: "SPOT",
+      pricefeed_id: "pricefeed:cex:okx:spot:ZEC-USDT",
+      reason_codes: [],
+      candidate_ids: [],
+      lookup_keys: [],
+      discovery: [],
     },
-    attention: {
-      mentions_1h: 2,
-      mentions_4h: 6,
-      mentions_5m: 0,
-      mentions_24h: 12,
-      mentions_window: 2,
-      latest_seen_ms: 1_778_425_132_800,
-      unique_authors: 2,
-      watched_mentions: 1,
-      previous_mentions: 0,
-      mention_delta: 2,
-      mention_delta_pct: null,
-      z_score: null,
-      z_ewma: null,
-      robust_z: null,
-      new_burst_score: null,
-      stream_share: 0,
-      baseline_version: "test",
-      baseline_status: "ready",
-      baseline_sample_count: 1,
-      baseline_nonzero_sample_count: 1,
-      zero_slot_count: 0,
-    },
-    market,
-    resolution: { status: "EXACT" },
     factor_snapshot: {
       schema_version: "token_factor_snapshot_v3_social_attention",
       subject: {
         target_type: "CexToken",
         target_id: "cex_token:ZEC",
         symbol: "ZEC",
+        target_market_type: "cex",
         chain: null,
         address: null,
+        pricefeed_id: "pricefeed:cex:okx:spot:ZEC-USDT",
       },
       market,
       gates: {
@@ -429,11 +435,16 @@ function productionFactorSnapshotRow(): AssetFlowRow {
         status: "ranked",
         cohort_status: "ready",
         cohort: { window: "1h" },
-        factor_ranks: {},
+        factor_ranks: {
+          social_heat: 0.8,
+          social_propagation: 0.7,
+          semantic_catalyst: 0.9,
+          timing_risk: 0.5,
+        },
         alpha_rank: 3,
-        cohort_size: 42,
       },
       composite: {
+        raw_alpha_score: 78,
         rank_score: 78,
         recommended_decision: "high_alert",
         family_scores: {
@@ -448,8 +459,7 @@ function productionFactorSnapshotRow(): AssetFlowRow {
         computed_at_ms: 1_778_426_470_167,
       },
     },
-    data_health: { factor_snapshot: "ready", market: "partial", identity: "ready" },
-    source_event_ids: ["event-1", "event-2"],
+    quality: { status: "ready", degraded_reasons: [] },
   };
 }
 
@@ -458,18 +468,18 @@ function productionChainAssetRow(): AssetFlowRow {
   const targetId = `asset:eip155:1:erc20:${PEPE}`;
   row.intent = {
     intent_id: "intent-pepe",
+    event_id: "event-1",
     display_symbol: "PEPE",
     display_name: null,
     evidence: [],
   };
-  row.target = {
+  row.resolution = {
+    ...row.resolution,
     target_type: "Asset",
     target_id: targetId,
-    symbol: "PEPE",
-    chain_id: "eip155:1",
-    address: PEPE,
+    pricefeed_id: null,
   };
-  row.market = marketContext({
+  row.factor_snapshot.market = marketContext({
     targetType: "Asset",
     targetId,
     provider: "gmgn_dex_quote",
@@ -487,10 +497,11 @@ function productionChainAssetRow(): AssetFlowRow {
     target_type: "Asset",
     target_id: targetId,
     symbol: "PEPE",
+    target_market_type: "dex",
     chain: "eip155:1",
     address: PEPE,
+    pricefeed_id: null,
   };
-  row.factor_snapshot.market = row.market;
   return row;
 }
 
@@ -539,7 +550,6 @@ function marketContext({
       holders: null,
       volume_24h_usd: null,
       open_interest_usd: null,
-      raw_payload_hash: null,
     },
     decision_latest: {
       target_type: targetType,
@@ -558,7 +568,6 @@ function marketContext({
       holders: latestHolders,
       volume_24h_usd: latestVolume24h,
       open_interest_usd: null,
-      raw_payload_hash: null,
     },
     readiness: {
       anchor_status: "ready",

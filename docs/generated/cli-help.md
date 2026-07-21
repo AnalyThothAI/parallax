@@ -50,15 +50,15 @@ options:
 
 ```
 usage: parallax ops [-h]
-                    {enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics} ...
+                    {enqueue-token-radar-dirty-targets,rebuild-market-current,projection-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,factor-diagnostics} ...
 
 positional arguments:
-  {enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics}
+  {enqueue-token-radar-dirty-targets,rebuild-market-current,projection-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,factor-diagnostics}
     enqueue-token-radar-dirty-targets
                         enqueue Token Radar dirty targets from persisted facts
-    enqueue-token-capture-tier-rank-set
-                        enqueue Token Capture Tier repair from current Token
-                        Radar rank set
+    rebuild-market-current
+                        rebuild current market rows from persisted market tick
+                        facts
     projection-status   print Token Radar publication state
     queue-inspect       inspect worker queue terminal evidence
     queue-resolve       resolve worker queue terminal evidence
@@ -76,9 +76,6 @@ positional arguments:
     news-dedup-diagnostics
                         print News canonical dedup and OpenNews sync
                         diagnostics
-    rebuild-news-canonical-items
-                        enqueue a bounded rebuild of News canonical item
-                        derived projections
     sync-binance-usdt-perp-universe
                         sync Binance USD-M USDT perpetual contracts into the
                         CEX registry
@@ -108,8 +105,6 @@ positional arguments:
     audit-token-intent  inspect token intent evidence and resolution
     rebuild-token-radar
                         write the current token radar read model
-    audit-token-radar   audit token radar rows for scoring and market-
-                        readiness regressions
     factor-diagnostics  inspect token factor distribution health for latest
                         radar rows
 

@@ -39,60 +39,57 @@ def handle_config(_args: object) -> tuple[int, dict[str, Any]]:
                 "config_path": str(settings.app_home / "config.yaml"),
                 "workers_config_path": str(workers_config_path(settings.app_home)),
                 "api": {
-                    "host": settings.api_host,
-                    "port": settings.api_port,
-                    "replay_limit": settings.replay_limit,
+                    "host": settings.api.host,
+                    "port": settings.api.port,
+                    "replay_limit": settings.api.replay_limit,
                     "ws_token_configured": bool(settings.ws_token),
                 },
                 "store": {
                     "app_home": str(settings.app_home),
                     "engine": "postgresql",
-                    "postgres_dsn": _redacted_postgres_dsn(settings.postgres_dsn),
+                    "postgres_dsn": _redacted_postgres_dsn(settings.storage.postgres.dsn),
                     "postgres_password_file": (
                         str(settings.postgres_password_file) if settings.postgres_password_file else None
                     ),
-                    "pool_min_size": settings.postgres_pool_min_size,
-                    "pool_max_size": settings.postgres_pool_max_size,
+                    "pool_min_size": settings.storage.postgres.pool_min_size,
+                    "pool_max_size": settings.storage.postgres.pool_max_size,
                     "log_file": str(settings.log_file),
                 },
                 "upstream": {
-                    "channels": list(settings.upstream_channels),
-                    "chains": list(settings.upstream_chains),
+                    "channels": list(settings.upstream.channels),
+                    "chains": list(settings.upstream.chains),
                 },
                 "agent_execution": {
                     "llm_configured": settings.llm_configured,
-                    "provider": settings.llm_provider,
-                    "model": settings.agent_runtime_default_model,
-                    "base_url": settings.llm_base_url,
+                    "model": settings.workers.agent_runtime.model,
+                    "provider_family": settings.workers.agent_runtime.capability_profile().provider_family.value,
+                    "base_url": settings.llm.base_url,
                     "backend": "litellm_sdk",
-                    "trace_enabled": settings.llm_trace_enabled,
-                    "trace_export_configured": settings.llm_trace_export_configured,
-                    "trace_include_sensitive_data": settings.llm_trace_include_sensitive_data,
                 },
                 "providers": {
                     "gmgn": {
                         "configured": settings.gmgn_configured,
-                        "openapi_base_url": settings.gmgn_openapi_base_url,
-                        "timeout_seconds": settings.gmgn_timeout_seconds,
-                        "token_info_cache_ttl_seconds": settings.gmgn_token_info_cache_ttl_seconds,
+                        "openapi_base_url": settings.gmgn.openapi_base_url,
+                        "timeout_seconds": settings.gmgn.timeout_seconds,
+                        "token_info_cache_ttl_seconds": settings.gmgn.token_info_cache_ttl_seconds,
                     },
                     "okx": {
-                        "dex_base_url": settings.okx_dex_base_url,
-                        "dex_chain_indexes": list(settings.okx_dex_chain_indexes),
+                        "dex_base_url": settings.providers.okx.dex_base_url,
+                        "dex_chain_indexes": list(settings.providers.okx.dex_chain_indexes),
                         "dex_configured": settings.okx_dex_configured,
                     },
                     "binance": {
-                        "enabled": settings.binance_enabled,
-                        "web3_base_url": settings.binance_web3_base_url,
-                        "cex_profile_base_url": settings.binance_cex_profile_base_url,
-                        "usdm_futures_base_url": settings.binance_usdm_futures_base_url,
-                        "cex_universe_quote_symbol": settings.binance_cex_universe_quote_symbol,
-                        "cex_universe_contract_type": settings.binance_cex_universe_contract_type,
-                        "timeout_seconds": settings.binance_timeout_seconds,
+                        "enabled": settings.providers.binance.enabled,
+                        "web3_base_url": settings.providers.binance.web3_base_url,
+                        "cex_profile_base_url": settings.providers.binance.cex_profile_base_url,
+                        "usdm_futures_base_url": settings.providers.binance.usdm_futures_base_url,
+                        "cex_universe_quote_symbol": settings.providers.binance.cex_universe_quote_symbol,
+                        "cex_universe_contract_type": settings.providers.binance.cex_universe_contract_type,
+                        "timeout_seconds": settings.providers.binance.timeout_seconds,
                     },
                     "macrodata": {
-                        "enabled": settings.macrodata_enabled,
-                        "fred_api_key_env": settings.macrodata_fred_api_key_env,
+                        "enabled": settings.providers.macrodata.enabled,
+                        "fred_api_key_env": settings.providers.macrodata.fred_api_key_env,
                         "fred_api_key_configured": settings.macrodata_fred_api_key_configured,
                     },
                 },
@@ -136,4 +133,4 @@ def _redacted_postgres_dsn(dsn: str) -> str:
             parts["password"] = "********"
         return conninfo.make_conninfo(**parts)
     except Exception:
-        return dsn
+        return "<invalid>"

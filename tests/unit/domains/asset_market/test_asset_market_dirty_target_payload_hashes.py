@@ -8,9 +8,6 @@ import pytest
 from parallax.domains.asset_market.repositories.asset_profile_refresh_target_repository import (
     _payload_hash as asset_profile_refresh_payload_hash,
 )
-from parallax.domains.asset_market.repositories.market_tick_current_dirty_target_repository import (
-    _payload_hash as market_tick_current_payload_hash,
-)
 from parallax.domains.asset_market.repositories.token_image_source_dirty_target_repository import (
     TokenImageSourceDirtyTargetRepository,
 )
@@ -28,7 +25,6 @@ DirtyPayloadHasher = Callable[[dict[Any, Any]], str]
     "payload_hash",
     [
         asset_profile_refresh_payload_hash,
-        market_tick_current_payload_hash,
         token_image_source_payload_hash,
         token_profile_current_payload_hash,
     ],
@@ -44,7 +40,6 @@ def test_asset_market_dirty_payload_hashes_reject_legacy_non_string_keys(
     "payload_hash",
     [
         asset_profile_refresh_payload_hash,
-        market_tick_current_payload_hash,
         token_image_source_payload_hash,
         token_profile_current_payload_hash,
     ],

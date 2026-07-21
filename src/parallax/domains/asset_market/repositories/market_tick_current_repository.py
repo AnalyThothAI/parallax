@@ -3,9 +3,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, cast
 
-from psycopg.types.json import Jsonb
-
-from parallax.platform.db.json_safety import postgres_safe_json
 from parallax.platform.db.write_contract import returning_mutation_count
 
 
@@ -13,22 +10,19 @@ class MarketTickCurrentRepository:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
 
-    def latest_tick_for_target(self, *, target_type: str, target_id: str) -> dict[str, Any] | None:
+    def get(self, *, target_type: str, target_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             """
             SELECT *
-            FROM market_ticks
-            WHERE target_type = %(target_type)s
-              AND target_id = %(target_id)s
-            ORDER BY observed_at_ms DESC, received_at_ms DESC, tick_id DESC
-            LIMIT 1
+            FROM market_tick_current
+            WHERE target_type = %s AND target_id = %s
             """,
-            {"target_type": str(target_type), "target_id": str(target_id)},
+            (str(target_type), str(target_id)),
         ).fetchone()
         return cast("dict[str, Any] | None", row)
 
-    def upsert_current_from_tick(self, tick_row: Mapping[str, Any], *, now_ms: int) -> bool:
-        params = _current_params(tick_row, now_ms=now_ms)
+    def upsert_current_from_tick(self, tick_row: Mapping[str, Any]) -> bool:
+        params = market_tick_current_row(tick_row)
         cursor = self.conn.execute(
             """
             INSERT INTO market_tick_current(
@@ -49,8 +43,6 @@ class MarketTickCurrentRepository:
               open_interest_usd,
               market_cap_usd,
               holders,
-              raw_payload_json,
-              payload_hash,
               updated_at_ms,
               created_at_ms
             )
@@ -72,8 +64,6 @@ class MarketTickCurrentRepository:
               %(open_interest_usd)s,
               %(market_cap_usd)s,
               %(holders)s,
-              %(raw_payload_json)s,
-              %(payload_hash)s,
               %(updated_at_ms)s,
               %(created_at_ms)s
             )
@@ -93,29 +83,59 @@ class MarketTickCurrentRepository:
               open_interest_usd = EXCLUDED.open_interest_usd,
               market_cap_usd = EXCLUDED.market_cap_usd,
               holders = EXCLUDED.holders,
-              raw_payload_json = EXCLUDED.raw_payload_json,
-              payload_hash = EXCLUDED.payload_hash,
               updated_at_ms = EXCLUDED.updated_at_ms,
               created_at_ms = EXCLUDED.created_at_ms
-            WHERE market_tick_current.tick_id IS DISTINCT FROM EXCLUDED.tick_id
-               OR market_tick_current.tick_observed_at_ms IS DISTINCT FROM EXCLUDED.tick_observed_at_ms
-               OR market_tick_current.source_tier IS DISTINCT FROM EXCLUDED.source_tier
-               OR market_tick_current.source_provider IS DISTINCT FROM EXCLUDED.source_provider
-               OR market_tick_current.chain IS DISTINCT FROM EXCLUDED.chain
-               OR market_tick_current.token_address IS DISTINCT FROM EXCLUDED.token_address
-               OR market_tick_current.exchange IS DISTINCT FROM EXCLUDED.exchange
-               OR market_tick_current.instrument IS DISTINCT FROM EXCLUDED.instrument
-               OR market_tick_current.pricefeed_id IS DISTINCT FROM EXCLUDED.pricefeed_id
-               OR market_tick_current.price_usd IS DISTINCT FROM EXCLUDED.price_usd
-               OR market_tick_current.liquidity_usd IS DISTINCT FROM EXCLUDED.liquidity_usd
-               OR market_tick_current.volume_24h_usd IS DISTINCT FROM EXCLUDED.volume_24h_usd
-               OR market_tick_current.open_interest_usd IS DISTINCT FROM EXCLUDED.open_interest_usd
-               OR market_tick_current.market_cap_usd IS DISTINCT FROM EXCLUDED.market_cap_usd
-               OR market_tick_current.holders IS DISTINCT FROM EXCLUDED.holders
-               OR market_tick_current.raw_payload_json IS DISTINCT FROM EXCLUDED.raw_payload_json
-               OR market_tick_current.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-               OR market_tick_current.updated_at_ms IS DISTINCT FROM EXCLUDED.updated_at_ms
-               OR market_tick_current.created_at_ms IS DISTINCT FROM EXCLUDED.created_at_ms
+            WHERE (
+              EXCLUDED.tick_observed_at_ms,
+              EXCLUDED.updated_at_ms,
+              EXCLUDED.tick_id
+            ) > (
+              market_tick_current.tick_observed_at_ms,
+              market_tick_current.updated_at_ms,
+              market_tick_current.tick_id
+            )
+            OR (
+              (
+                EXCLUDED.tick_observed_at_ms,
+                EXCLUDED.updated_at_ms,
+                EXCLUDED.tick_id
+              ) = (
+                market_tick_current.tick_observed_at_ms,
+                market_tick_current.updated_at_ms,
+                market_tick_current.tick_id
+              )
+              AND ROW(
+                market_tick_current.source_tier,
+                market_tick_current.source_provider,
+                market_tick_current.chain,
+                market_tick_current.token_address,
+                market_tick_current.exchange,
+                market_tick_current.instrument,
+                market_tick_current.pricefeed_id,
+                market_tick_current.price_usd,
+                market_tick_current.liquidity_usd,
+                market_tick_current.volume_24h_usd,
+                market_tick_current.open_interest_usd,
+                market_tick_current.market_cap_usd,
+                market_tick_current.holders,
+                market_tick_current.created_at_ms
+              ) IS DISTINCT FROM ROW(
+                EXCLUDED.source_tier,
+                EXCLUDED.source_provider,
+                EXCLUDED.chain,
+                EXCLUDED.token_address,
+                EXCLUDED.exchange,
+                EXCLUDED.instrument,
+                EXCLUDED.pricefeed_id,
+                EXCLUDED.price_usd,
+                EXCLUDED.liquidity_usd,
+                EXCLUDED.volume_24h_usd,
+                EXCLUDED.open_interest_usd,
+                EXCLUDED.market_cap_usd,
+                EXCLUDED.holders,
+                EXCLUDED.created_at_ms
+              )
+            )
             RETURNING true AS changed
             """,
             params,
@@ -124,7 +144,7 @@ class MarketTickCurrentRepository:
         return _single_returning_changed(cursor, row)
 
 
-def _current_params(tick_row: Mapping[str, Any], *, now_ms: int) -> dict[str, Any]:
+def market_tick_current_row(tick_row: Mapping[str, Any]) -> dict[str, Any]:
     return {
         "target_type": str(tick_row["target_type"]),
         "target_id": str(tick_row["target_id"]),
@@ -143,11 +163,8 @@ def _current_params(tick_row: Mapping[str, Any], *, now_ms: int) -> dict[str, An
         "open_interest_usd": tick_row.get("open_interest_usd"),
         "market_cap_usd": tick_row.get("market_cap_usd"),
         "holders": tick_row.get("holders"),
-        "raw_payload_json": Jsonb(postgres_safe_json(tick_row.get("raw_payload_json") or {})),
-        "payload_hash": str(tick_row["payload_hash"]),
         "updated_at_ms": int(tick_row["received_at_ms"]),
         "created_at_ms": int(tick_row["created_at_ms"]),
-        "now_ms": int(now_ms),
     }
 
 

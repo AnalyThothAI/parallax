@@ -1,7 +1,9 @@
 import { getApi } from "@lib/api/client";
-import type { MacroAssetCorrelationData, MacroAssetCorrelationWindow } from "@lib/types";
+import type { MacroAssetCorrelationWindow } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
 import { useQuery } from "@tanstack/react-query";
+
+import { requireMacroAssetCorrelationData } from "../model/macroCurrentContract";
 
 export function useMacroAssetCorrelationQuery({
   token,
@@ -13,11 +15,11 @@ export function useMacroAssetCorrelationQuery({
   return useQuery({
     queryKey: queryKeys.macroAssetCorrelation(window),
     queryFn: async () => {
-      const response = await getApi<MacroAssetCorrelationData>("/api/macro/assets/correlation", {
+      const response = await getApi<unknown>("/api/macro/assets/correlation", {
         params: { window },
         token,
       });
-      return response.data;
+      return requireMacroAssetCorrelationData(response.data);
     },
     enabled: Boolean(token),
     refetchInterval: 60_000,

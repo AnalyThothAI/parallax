@@ -57,7 +57,10 @@ describe("Macro chart primitives", () => {
 
   it("returns no time-series chrome when the chart has no drawable series", () => {
     const { container } = render(
-      <MacroTimeSeriesChart chart={{ id: "empty_chart", series: [] }} title="Empty chart" />,
+      <MacroTimeSeriesChart
+        chart={{ id: "empty_chart", min_points: 2, series: [] }}
+        title="Empty chart"
+      />,
     );
 
     expect(container).toBeEmptyDOMElement();
@@ -71,6 +74,7 @@ describe("Macro chart primitives", () => {
       <MacroTimeSeriesChart
         chart={{
           id: "equity_proxy_performance",
+          min_points: 2,
           status: "insufficient_history",
           status_label: "历史样本不足：无法计算 60 日变化",
           series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, point_count: 1 }],
@@ -106,6 +110,7 @@ describe("Macro chart primitives", () => {
       <MacroTimeSeriesChart
         chart={{
           id: "mixed_history_chart",
+          min_points: 2,
           series: [
             { concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" },
             { concept_key: "rates:dgs10", label: "10Y", latest: 4.1, unit: "percent" },
@@ -143,6 +148,7 @@ describe("Macro chart primitives", () => {
       <MacroTimeSeriesChart
         chart={{
           id: "equity_proxy_performance",
+          min_points: 2,
           status: "insufficient_history",
           series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, point_count: 1 }],
         }}
@@ -172,6 +178,7 @@ describe("Macro chart primitives", () => {
       <MacroTimeSeriesChart
         chart={{
           id: "equity_proxy_performance",
+          min_points: 2,
           series: [
             {
               concept_key: "asset:spx",
@@ -197,6 +204,7 @@ describe("Macro chart primitives", () => {
       <MacroTimeSeriesChart
         chart={{
           id: "payload_metadata_chart",
+          min_points: 2,
           series: [{ concept_key: "rates:dgs10", label: "10Y", latest: 4.1 }],
         }}
         seriesData={{
@@ -337,6 +345,7 @@ describe("Macro chart primitives", () => {
 function chartFixture(chartId = "equity_proxy_performance"): MacroModuleChart {
   return {
     id: chartId,
+    min_points: 2,
     series: [{ concept_key: "asset:spx", label: "S&P 500", latest: 110, unit: "index" }],
   };
 }

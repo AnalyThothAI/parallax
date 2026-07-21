@@ -46,7 +46,6 @@ export function useShellChromeData(session: AppSession): ShellChromeData {
   const windowKey = liveRoute.window;
   const notificationsController = useNotificationsController({
     enabled: true,
-    fallbackSummary: null,
     socketNotifications: socketSnapshot.notificationItems,
     token,
   });

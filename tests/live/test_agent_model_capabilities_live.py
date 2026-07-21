@@ -6,11 +6,9 @@ import os
 import pytest
 from pydantic import BaseModel
 
-from parallax.app.runtime.llm_gateway import LLMGateway
 from parallax.integrations.model_execution.execution_gateway import AgentExecutionGateway
 from parallax.platform.agent_execution import (
-    AgentLanePolicy,
-    AgentRuntimeDefaultsPolicy,
+    AGENT_RUNTIME_LANE,
     AgentRuntimePolicy,
     AgentStageSpec,
 )
@@ -30,36 +28,29 @@ def test_live_deepseek_v4_flash_json_object_strategy() -> None:
 
     async def scenario() -> None:
         settings = load_settings(require_ws_token=False)
-        llm_gateway = LLMGateway.create(settings)
         gateway = AgentExecutionGateway(
-            llm_gateway=llm_gateway,
-            base_url=settings.llm_base_url,
-            trace_enabled=False,
-            trace_include_sensitive_data=False,
+            api_key=settings.llm.api_key or "",
+            base_url=settings.llm.base_url,
             policy=AgentRuntimePolicy(
-                defaults=AgentRuntimeDefaultsPolicy(model="deepseek-v4-flash"),
-                global_max_concurrency=1,
-                global_rpm_limit=60,
-                lanes={"probe.deepseek": AgentLanePolicy(timeout_seconds=45)},
+                model="deepseek-v4-flash",
+                max_concurrency=1,
+                rpm_limit=60,
+                timeout_seconds=45,
             ),
         )
-        try:
-            result = await gateway.execute(
-                AgentStageSpec(
-                    lane="probe.deepseek",
-                    stage="probe",
-                    instructions="Return JSON with ok=true and label='probe'.",
-                    input_payload={"label": "probe"},
-                    output_type=ProbePayload,
-                    prompt_version="probe-v1",
-                    schema_version="probe-v1",
-                    workflow_name="parallax.probe",
-                    agent_name="ProbeAgent",
-                )
+        result = await gateway.execute(
+            AgentStageSpec(
+                lane=AGENT_RUNTIME_LANE,
+                stage="probe",
+                instructions="Return JSON with ok=true and label='probe'.",
+                input_payload={"label": "probe"},
+                output_type=ProbePayload,
+                prompt_version="probe-v1",
+                schema_version="probe-v1",
+                workflow_name="parallax.probe",
+                agent_name="ProbeAgent",
             )
-        finally:
-            await gateway.aclose()
-            await llm_gateway.aclose()
+        )
 
         assert result.final_output == ProbePayload(ok=True, label="probe")
         assert result.audit.model == "deepseek-v4-flash"

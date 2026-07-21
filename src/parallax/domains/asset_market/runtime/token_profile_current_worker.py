@@ -15,12 +15,8 @@ from parallax.domains.asset_market.services.token_profile_current_projection imp
 from parallax.platform.runtime.worker_base import WorkerBase
 from parallax.platform.runtime.worker_result import WorkerResult
 
-SINGLE_WRITER_KEY = 2026051702
-
 
 class TokenProfileCurrentWorker(WorkerBase):
-    SINGLE_WRITER_KEY = SINGLE_WRITER_KEY
-
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         observed_at_ms = int(now_ms if now_ms is not None else time.time() * 1000)
         result = await asyncio.to_thread(self._rebuild_once, observed_at_ms)

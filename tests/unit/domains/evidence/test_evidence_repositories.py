@@ -1,15 +1,22 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from dataclasses import replace
 from types import SimpleNamespace
 from typing import Any
 
 import pytest
 from psycopg import pq
+from psycopg.types.json import Jsonb
 
 from parallax.domains.evidence.interfaces import EVM_QUERY_CHAINS
 from parallax.domains.evidence.repositories.entity_repository import EntityRepository
-from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository, event_to_row
+from parallax.domains.evidence.repositories.evidence_repository import (
+    EvidenceRepository,
+    decode_event_row,
+    event_to_row,
+    materialize_event,
+)
 from parallax.domains.evidence.types.entity import ExtractedEntity
 from tests.factories import make_event
 
@@ -64,6 +71,32 @@ def test_recent_events_zero_limit_returns_empty_without_sql() -> None:
 
     assert rows == []
     assert conn.executions == []
+
+
+def test_event_read_is_one_flat_shape_and_preserves_source_timestamp() -> None:
+    event = replace(
+        make_event("event-read", received_at_ms=1_700_000_000_000),
+        timestamp=1_600_000_000,
+    )
+    row, materialized = materialize_event(event, is_watched=True, now_ms=NOW_MS)
+    database_row = {key: value.obj if isinstance(value, Jsonb) else value for key, value in row.items()}
+
+    decoded = decode_event_row(database_row)
+
+    assert decoded == materialized
+    assert decoded["timestamp_ms"] == 1_600_000_000_000
+    assert decoded["received_at_ms"] == 1_700_000_000_000
+    assert not ({"author", "source", "content"} & set(decoded))
+
+
+def test_event_read_rejects_string_json_compatibility_shape() -> None:
+    event = make_event("event-read-invalid", received_at_ms=1_700_000_000_000)
+    row, _materialized = materialize_event(event, is_watched=True, now_ms=NOW_MS)
+    database_row = {key: value.obj if isinstance(value, Jsonb) else value for key, value in row.items()}
+    database_row["urls_json"] = "[]"
+
+    with pytest.raises(TypeError, match="event_read_urls_json_string_list_required"):
+        decode_event_row(database_row)
 
 
 @pytest.mark.parametrize("limit", [-1, True, "12"])

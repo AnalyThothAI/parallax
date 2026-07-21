@@ -6,6 +6,8 @@ import type {
   MacroSeriesPoint,
 } from "@lib/types";
 
+import { requireMacroArray, requireMacroFiniteNumber } from "./macroCurrentContract";
+
 export type MacroChartPoint = {
   dataQuality: string | null;
   sourceName: string | null;
@@ -91,7 +93,7 @@ export function buildMacroTimeSeriesModel(
       series: [],
     };
   }
-  const chartSeries = Array.isArray(chart.series) ? chart.series : [];
+  const chartSeries = requireMacroArray<MacroSemanticRecord>(chart.series, "primary_chart.series");
   return {
     chartId: id,
     minPoints: chartMinPoints(chart),
@@ -128,7 +130,7 @@ export function buildMacroYieldCurveModel(chart: MacroModuleChart): MacroYieldCu
   if (!id) {
     return { chartId: "", points: [] };
   }
-  const chartSeries = Array.isArray(chart.series) ? chart.series : [];
+  const chartSeries = requireMacroArray<MacroSemanticRecord>(chart.series, "primary_chart.series");
   const points = chartSeries
     .map((series) => {
       const key = conceptKey(series);
@@ -160,7 +162,7 @@ export function formatMacroChartValue(value: number, unit?: string | null): stri
 function buildSeriesModel(
   series: MacroSemanticRecord,
   payload?: MacroSeriesPayload,
-  minPoints = MACRO_MIN_CHART_POINTS,
+  minPoints: number,
 ): MacroChartSeriesModel | null {
   const key = conceptKey(series);
   if (!isCanonicalMacroConceptKey(key)) {
@@ -170,7 +172,11 @@ function buildSeriesModel(
   if (!label) {
     return null;
   }
-  const normalizedPoints = normalizeSeriesPoints(payload?.points ?? []);
+  const normalizedPoints = normalizeSeriesPoints(
+    payload
+      ? requireMacroArray<MacroSeriesPoint>(payload.points, `series_data.series.${key}.points`)
+      : [],
+  );
   const pointCount = integerValue(series.point_count);
   const status = seriesStatus(series);
   return {
@@ -228,7 +234,11 @@ function chartId(chart: MacroModuleChart): string | null {
 }
 
 function chartMinPoints(chart: MacroModuleChart): number {
-  return Math.max(MACRO_MIN_CHART_POINTS, integerValue(chart.min_points) ?? MACRO_MIN_CHART_POINTS);
+  const minPoints = requireMacroFiniteNumber(chart.min_points, "primary_chart.min_points");
+  if (!Number.isInteger(minPoints) || minPoints < MACRO_MIN_CHART_POINTS) {
+    throw new Error("macro_current_contract:primary_chart.min_points");
+  }
+  return minPoints;
 }
 
 function displayLabel(record: MacroSemanticRecord): string | null {

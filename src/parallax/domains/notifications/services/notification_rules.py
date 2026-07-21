@@ -154,15 +154,9 @@ class NotificationRuleEngine:
             since_ms=since_ms,
         )
         candidates: list[NotificationCandidate] = []
-        seen_semantic_signatures: set[str] = set()
         seen_external_push_signatures: set[str] = set()
         for row in rows:
-            if row.latest_at_ms < since_ms:
-                continue
             semantic_signature = _news_semantic_signature(row)
-            if semantic_signature in seen_semantic_signatures:
-                continue
-            seen_semantic_signatures.add(semantic_signature)
 
             external_push_eligible, suppression_reason = _news_external_push_readiness(row)
             if not _has_external_channels(rule.channels):

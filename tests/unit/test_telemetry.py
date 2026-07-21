@@ -17,16 +17,16 @@ def test_telemetry_registries_do_not_collide_and_render_prometheus_text() -> Non
     assert "worker-b" in second_text
 
 
-def test_telemetry_records_pool_wait_samples_and_returns_p99_by_pool() -> None:
+def test_telemetry_records_pool_wait_histogram() -> None:
     telemetry = TelemetryRegistry()
 
     telemetry.record_pool_wait("worker", 10)
     telemetry.record_pool_wait("worker", 20)
     telemetry.record_pool_wait("api", 100)
 
-    assert telemetry.pool_wait_p99_ms("worker") == 20
-    assert telemetry.pool_wait_p99_ms("api") == 100
-    assert telemetry.pool_wait_p99_ms("missing") is None
+    text = telemetry.render_prometheus_text()
+    assert 'gmgn_db_pool_wait_ms_count{pool="worker"} 2.0' in text
+    assert 'gmgn_db_pool_wait_ms_count{pool="api"} 1.0' in text
 
 
 def test_telemetry_exposes_agent_execution_metrics() -> None:

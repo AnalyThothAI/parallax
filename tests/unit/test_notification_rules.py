@@ -260,14 +260,7 @@ def test_news_display_title_has_one_explicit_fallback_chain(
     assert emitted.title == expected
 
 
-def test_news_rule_defensively_skips_stale_projected_rows() -> None:
-    notifications = NotificationsConfig(news_high_signal_recency_window_ms=10_000)
-    stale = _news_candidate(latest_at_ms=NOW_MS - 10_001)
-
-    assert _news_candidates(_engine(news=FakeNews([stale]), notifications=notifications)) == []
-
-
-def test_news_semantic_dedup_ignores_title_summary_and_projection_row_churn() -> None:
+def test_news_semantic_dedup_is_deferred_to_the_persisted_dedup_key() -> None:
     first = _news_candidate()
     refreshed = replace(
         first,
@@ -278,8 +271,10 @@ def test_news_semantic_dedup_ignores_title_summary_and_projection_row_churn() ->
 
     candidates = _news_candidates(_engine(news=FakeNews([first, refreshed])))
 
-    assert len(candidates) == 1
-    assert candidates[0].source_id == first.row_id
+    assert len(candidates) == 2
+    assert {candidate.dedup_key for candidate in candidates} == {candidates[0].dedup_key}
+    assert [candidate.source_id for candidate in candidates] == [first.row_id, refreshed.row_id]
+    assert candidates[1].payload["external_push_suppression_reason"] == "external_signature_duplicate"
 
 
 def test_distinct_stories_keep_distinct_external_delivery_identity() -> None:

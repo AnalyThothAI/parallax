@@ -76,7 +76,6 @@ class EventAnchorBackfillWorker(WorkerBase):
         pool_bundle: Any | None = None,
         capture_service: Any | None = None,
         providers: Any | None = None,
-        wake_emitter: Any | None = None,
         clock: Any | None = None,
         name: str = "event_anchor_backfill",
         settings: EventAnchorBackfillWorkerSettings,
@@ -99,7 +98,6 @@ class EventAnchorBackfillWorker(WorkerBase):
                 now_ms=lambda: int(self.clock()),
             )
         self._capture_service = capture_service
-        self.wake_emitter = wake_emitter
         self.batch_size = settings.batch_size
         self.concurrency = settings.concurrency
         self.max_attempts = settings.max_attempts
@@ -154,8 +152,6 @@ class EventAnchorBackfillWorker(WorkerBase):
             reschedules=reschedules,
             now_ms=now_ms,
         )
-        for tick in attached_ticks:
-            _emit_wake(self.wake_emitter, target_type=tick.target_type, target_id=tick.target_id)
         attached = len(attached_ticks)
         return WorkerResult(
             processed=attached,
@@ -323,9 +319,8 @@ class EventAnchorBackfillWorker(WorkerBase):
                     with repos.transaction():
                         tick_inserted = 0
                         if attach.insert_tick:
-                            tick_result = persistence.insert_ticks_and_enqueue_current_dirty(
+                            tick_result = persistence.persist_ticks(
                                 [attach.tick],
-                                reason="event_anchor_backfill_attached",
                                 now_ms=now_ms,
                             )
                             tick_inserted = tick_result.inserted
@@ -390,26 +385,7 @@ class EventAnchorBackfillWorker(WorkerBase):
 
 
 def _resolution_from_row(row: Mapping[str, Any]) -> dict[str, Any]:
-    target_type = str(row["target_type"])
-    target_id = str(row["target_id"])
-    resolution: dict[str, Any] = {"target_type": target_type, "target_id": target_id}
-    if target_type == "chain_token":
-        chain_id, _, token_address = target_id.rpartition(":")
-        if chain_id:
-            resolution["chain_id"] = chain_id.strip()
-            resolution["token_address"] = token_address.strip()
-    elif target_type == "cex_symbol":
-        exchange, _, instrument = target_id.partition(":")
-        if exchange:
-            resolution["exchange"] = exchange.strip()
-            resolution["instrument"] = instrument.strip()
-    return resolution
-
-
-def _emit_wake(wake_emitter: Any, *, target_type: str, target_id: str) -> None:
-    if wake_emitter is None:
-        return
-    wake_emitter.notify_market_tick_written(target_type=target_type, target_id=target_id)
+    return {"target_type": str(row["target_type"]), "target_id": str(row["target_id"])}
 
 
 def _market_tick_from_row(row: Mapping[str, Any]) -> MarketTick:

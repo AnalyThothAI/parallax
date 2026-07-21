@@ -8,7 +8,7 @@ from typing import Any
 
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
 from parallax.app.runtime.ops_cli_queries import token_profile_image_repair_targets
-from parallax.app.runtime.provider_wiring import wire_asset_market_providers
+from parallax.app.runtime.provider_wiring.asset_market import wire_asset_market
 from parallax.app.runtime.provider_wiring.types import AssetMarketProviders
 from parallax.app.runtime.telemetry import TelemetryRegistry
 from parallax.app.runtime.worker_factories import construct_worker
@@ -160,9 +160,7 @@ async def _compose_worker(
     asset_market: AssetMarketProviders | None = None
     worker: WorkerBase | None = None
     try:
-        asset_market = (
-            wire_asset_market_providers(one_shot_settings) if worker_name in _ASSET_PROVIDER_WORKERS else None
-        )
+        asset_market = wire_asset_market(one_shot_settings) if worker_name in _ASSET_PROVIDER_WORKERS else None
         worker = construct_worker(
             worker_name=worker_name,
             settings=one_shot_settings,
@@ -173,7 +171,6 @@ async def _compose_worker(
             hub=None,
             collector=None,
             collector_enabled=False,
-            wake_bus=db.wake_emitter(),
             collector_start_requested=False,
         )
         if worker.effective_status == "unavailable":

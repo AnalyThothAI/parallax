@@ -5,6 +5,7 @@ from datetime import date
 
 import pytest
 
+from parallax.domains.macro_intel.observation_identity import macro_observation_fact_payload_hash
 from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
     _macro_projection_dirty_change_payload_hash,
@@ -286,6 +287,40 @@ def test_upsert_observation_updates_only_when_fact_payload_hash_changes() -> Non
     assert "noop" in source
     assert "ingested_at_ms = excluded.ingested_at_ms" in source
     assert "WHERE macro_observations.fact_payload_hash IS DISTINCT FROM excluded.fact_payload_hash" in normalized_source
+
+
+def test_upsert_observation_hashes_and_persists_the_same_canonical_raw_payload() -> None:
+    observation = {
+        "source_name": "nyfed",
+        "concept_key": "liquidity:sofr",
+        "series_key": "nyfed:SOFR",
+        "source_priority": 100,
+        "observed_at": "2026-05-28",
+        "value_numeric": 3.51,
+        "unit": "percent",
+        "frequency": "daily",
+        "data_quality": "ok",
+        "source_ts": "2026-05-28",
+        "raw_payload": {"series_key": "nyfed:SOFR", "value": 3.51},
+        "ingested_at_ms": 1_779_000_000_000,
+    }
+    conn = FakeConnection(
+        rows=[
+            {
+                "observation_id": "macro-observation:test",
+                "status": "inserted",
+                "concept_key": "liquidity:sofr",
+                "observed_at": date(2026, 5, 28),
+                "fact_payload_hash": macro_observation_fact_payload_hash(observation),
+            }
+        ]
+    )
+
+    MacroIntelRepository(conn).upsert_observation(observation)
+
+    _, params = conn.executions[0]
+    assert params["raw_payload_json"].obj == observation["raw_payload"]
+    assert params["fact_payload_hash"] == macro_observation_fact_payload_hash(observation)
 
 
 def test_upsert_observation_requires_explicit_data_quality_without_default_ok() -> None:

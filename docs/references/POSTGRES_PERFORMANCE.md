@@ -15,8 +15,8 @@ these invariants:
 - Material facts remain the only business truth.
 - Each rebuildable read model has exactly one runtime writer.
 - Dirty target tables are control plane, not business facts.
-- `NOTIFY` is only a wake hint; runtime workers still claim durable dirty work
-  and pass due gates.
+- Runtime workers claim durable dirty work on bounded intervals and pass due
+  gates without a message-delivery dependency.
 - Runtime fixes must be observable through PostgreSQL evidence, not intuition.
 
 The 2026-05-26 hard cut proved the pattern: first make the pressure visible,
@@ -99,7 +99,7 @@ Start every production diagnosis with redacted config and readiness context:
 ```bash
 uv run parallax config
 curl -sS http://127.0.0.1:8765/readyz \
-  | jq '{ok,reasons,worker_count:(.workers|length), worker_lanes:.worker_lanes}'
+  | jq '{ok,reasons,db,composition}'
 docker compose ps --all
 ```
 
