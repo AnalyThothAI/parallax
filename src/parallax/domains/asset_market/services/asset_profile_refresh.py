@@ -72,7 +72,7 @@ def _write_ready_profile(
     next_refresh_at_ms: int,
 ) -> None:
     repos.asset_profiles.upsert_ready_profile(
-        asset_id=str(row["asset_id"]),
+        asset_id=str(row["target_id"]),
         provider=provider,
         symbol=profile.symbol,
         name=profile.name,
@@ -96,7 +96,7 @@ def _write_missing_profile(
     *, repos: Any, provider: str, row: dict[str, Any], now_ms: int, next_refresh_at_ms: int
 ) -> None:
     repos.asset_profiles.upsert_status(
-        asset_id=str(row["asset_id"]),
+        asset_id=str(row["target_id"]),
         provider=provider,
         status="missing",
         observed_at_ms=int(now_ms),
@@ -116,7 +116,7 @@ def _write_error_profile(
     next_refresh_at_ms: int,
 ) -> None:
     repos.asset_profiles.upsert_status(
-        asset_id=str(row["asset_id"]),
+        asset_id=str(row["target_id"]),
         provider=provider,
         status="error",
         observed_at_ms=int(now_ms),

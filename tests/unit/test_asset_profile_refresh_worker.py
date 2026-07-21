@@ -85,6 +85,47 @@ def test_asset_profile_refresh_worker_run_once_records_result_and_uses_session_a
     assert write_calls[0]["next_refresh_at_ms"] == 1_700_000_001_000
 
 
+@pytest.mark.parametrize("outcome", ("ready", "missing", "error"))
+def test_asset_profile_refresh_writes_use_formal_claim_target_id(outcome: str) -> None:
+    row = claim_row("gmgn_dex_profile")
+    assert "asset_id" not in row
+    asset_profiles = RecordingAssetProfiles()
+    repos = SimpleNamespace(asset_profiles=asset_profiles)
+    common = {
+        "repos": repos,
+        "provider": "gmgn_dex_profile",
+        "row": row,
+        "now_ms": 1_700_000_000_000,
+        "next_refresh_at_ms": 1_700_000_001_000,
+    }
+
+    if outcome == "ready":
+        module.write_ready_asset_profile(
+            **common,
+            profile=DexTokenProfile(
+                chain_id="solana",
+                address="abc",
+                symbol="ABC",
+                name="ABC",
+                logo_url=None,
+                banner_url=None,
+                website=None,
+                twitter_username=None,
+                telegram=None,
+                gmgn_url=None,
+                geckoterminal_url=None,
+                description=None,
+                raw={},
+            ),
+        )
+    elif outcome == "missing":
+        module.write_missing_asset_profile(**common)
+    else:
+        module.write_error_asset_profile(**common, exc=RuntimeError("provider failed"))
+
+    assert asset_profiles.calls[0]["asset_id"] == row["target_id"]
+
+
 def test_asset_profile_refresh_worker_uses_formal_ready_missing_and_error_refresh_policies(monkeypatch):
     now_ms = 1_700_000_000_000
     ready_row = claim_row("gmgn_dex_profile", target_id="asset-ready")
@@ -543,12 +584,22 @@ class ClosableProvider:
         self.closed = True
 
 
+class RecordingAssetProfiles:
+    def __init__(self) -> None:
+        self.calls: list[dict] = []
+
+    def upsert_ready_profile(self, **kwargs):
+        self.calls.append(dict(kwargs))
+
+    def upsert_status(self, **kwargs):
+        self.calls.append(dict(kwargs))
+
+
 def claim_row(provider: str, *, target_id: str = "asset-1") -> dict:
     return {
         "provider": provider,
         "target_type": "Asset",
         "target_id": target_id,
-        "asset_id": target_id,
         "chain_id": "solana",
         "address": "abc",
         "payload_hash": f"hash:{provider}:asset-1",

@@ -265,7 +265,7 @@ def _enqueue_profile_current(*, repos: Any, row: dict[str, Any], now_ms: int) ->
         [
             {
                 "target_type": "Asset",
-                "target_id": str(row.get("asset_id") or row.get("target_id") or ""),
+                "target_id": str(row["target_id"]),
                 "source_watermark_ms": source_watermark_ms,
                 "priority": 40,
             }
