@@ -164,7 +164,6 @@ def test_token_radar_downstream_dirty_target_repositories_are_required_without_o
     projection_service = _text("src/parallax/domains/token_intel/services/token_radar_projection.py")
 
     forbidden_tokens = (
-        'getattr(self.repos, "pulse_trigger_dirty_targets", None)',
         'getattr(self.repos, "narrative_admission_dirty_targets", None)',
         'getattr(self.repos, "token_profile_current_dirty_targets", None)',
         'getattr(self.repos, "asset_profile_refresh_targets", None)',
@@ -172,7 +171,6 @@ def test_token_radar_downstream_dirty_target_repositories_are_required_without_o
         "if repo is None:",
     )
     required_tokens = (
-        "self.repos.pulse_trigger_dirty_targets",
         "self.repos.narrative_admission_dirty_targets",
         "self.repos.token_profile_current_dirty_targets",
         "self.repos.asset_profile_refresh_targets",

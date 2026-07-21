@@ -30,7 +30,6 @@ class DBPoolBundle:
     api_pool: Any
     worker_pool: Any
     wake_pool: Any
-    pulse_job_running_timeout_ms: int
     notification_delivery_running_timeout_ms: int
     notification_delivery_stale_running_terminalization_batch_size: int
     tool_pool: Any | None = None
@@ -111,7 +110,6 @@ class DBPoolBundle:
             api_pool=api_pool,
             worker_pool=worker_pool,
             wake_pool=wake_pool,
-            pulse_job_running_timeout_ms=int(settings.workers.pulse_candidate.job_running_timeout_ms),
             notification_delivery_running_timeout_ms=int(settings.workers.notification_delivery.running_timeout_ms),
             notification_delivery_stale_running_terminalization_batch_size=int(
                 settings.workers.notification_delivery.stale_running_terminalization_batch_size
@@ -128,7 +126,6 @@ class DBPoolBundle:
         with self._checkout(self.api_pool, pool_name="api") as conn:
             yield repositories_for_connection(
                 conn,
-                pulse_job_running_timeout_ms=self.pulse_job_running_timeout_ms,
                 notification_delivery_running_timeout_ms=self.notification_delivery_running_timeout_ms,
                 notification_delivery_stale_running_terminalization_batch_size=(
                     self.notification_delivery_stale_running_terminalization_batch_size
@@ -152,7 +149,6 @@ class DBPoolBundle:
             try:
                 yield repositories_for_connection(
                     conn,
-                    pulse_job_running_timeout_ms=self.pulse_job_running_timeout_ms,
                     notification_delivery_running_timeout_ms=self.notification_delivery_running_timeout_ms,
                     notification_delivery_stale_running_terminalization_batch_size=(
                         self.notification_delivery_stale_running_terminalization_batch_size

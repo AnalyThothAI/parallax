@@ -1,28 +1,13 @@
 import { getApi } from "@lib/api/client";
-import type { ScopeKey, WindowKey } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 
 import type { OpsDiagnostics, OpsQueueData } from "../model/opsDiagnostics";
 
-export function useOpsDiagnosticsQuery({
-  scope,
-  sinceHours = 4,
-  token,
-  window,
-}: {
-  scope: ScopeKey;
-  sinceHours?: number;
-  token: string;
-  window: WindowKey;
-}) {
+export function useOpsDiagnosticsQuery({ token }: { token: string }) {
   return useQuery({
-    queryKey: queryKeys.opsDiagnostics(window, scope, sinceHours),
-    queryFn: () =>
-      getApi<OpsDiagnostics>("/api/ops/diagnostics", {
-        params: { scope, since_hours: sinceHours, window },
-        token,
-      }),
+    queryKey: queryKeys.opsDiagnostics(),
+    queryFn: () => getApi<OpsDiagnostics>("/api/ops/diagnostics", { token }),
     enabled: Boolean(token),
     refetchInterval: 12_000,
   });

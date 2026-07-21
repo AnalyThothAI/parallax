@@ -32,7 +32,6 @@ class QueueHealthAdapterSpec:
 
 
 STATUS_QUEUE_SPECS: dict[str, StatusQueueSpec] = {
-    "pulse_agent_jobs": StatusQueueSpec(table="pulse_agent_jobs"),
     "notification_deliveries": StatusQueueSpec(table="notification_deliveries"),
     "event_anchor_backfill_jobs": StatusQueueSpec(
         table="event_anchor_backfill_jobs",
@@ -67,10 +66,6 @@ QUEUE_HEALTH_ADAPTER_SPECS: dict[str, QueueHealthAdapterSpec] = {
         kind="status_queue",
         status_queue=STATUS_QUEUE_SPECS["notification_deliveries"],
     ),
-    "pulse_agent_jobs": QueueHealthAdapterSpec(
-        table="pulse_agent_jobs", kind="status_queue", status_queue=STATUS_QUEUE_SPECS["pulse_agent_jobs"]
-    ),
-    "pulse_trigger_dirty_targets": QueueHealthAdapterSpec(table="pulse_trigger_dirty_targets", kind="dirty_target"),
     "token_capture_tier_dirty_targets": QueueHealthAdapterSpec(
         table="token_capture_tier_dirty_targets", kind="dirty_target"
     ),

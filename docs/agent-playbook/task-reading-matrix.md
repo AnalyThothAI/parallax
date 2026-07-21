@@ -85,7 +85,7 @@ Answer must separate:
 
 ## Product LLM Agent Run
 
-Use for Pulse, News item brief, Narrative semantics/digest, agent cost guard, model capability, schema validation, or agent audit problems.
+Use for News item/story briefs, model capability, schema validation, shared execution, or agent audit problems.
 
 Required reading:
 

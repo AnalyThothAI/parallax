@@ -124,7 +124,6 @@ class TokenCaseData(ApiSchema):
     timeline: JsonObject
     posts: JsonObject
     narrative_admission: NarrativeAdmissionData
-    pulse_overlay: JsonObject | None = None
     market_live: JsonObject
     cex_detail: JsonObject | None = None
 
@@ -428,119 +427,6 @@ class NotificationReadData(ApiSchema):
 
 class NotificationReadAllData(ApiSchema):
     updated_count: int
-
-
-class SignalPulseBullBearView(ApiSchema):
-    strength: str
-    thesis_zh: str
-    supporting_event_ids: list[str]
-
-
-class SignalPulsePlaybook(ApiSchema):
-    has_playbook: bool
-    watch_signals: list[str]
-    exit_triggers: list[str]
-    monitoring_horizon: str
-
-
-class SignalPulseDecision(ApiSchema):
-    route: str | None
-    recommendation: str | None
-    confidence: float | None
-    summary_zh: str | None
-    abstain_reason: str | None
-    narrative_archetype: str | None
-    narrative_thesis_zh: str | None
-    bull_view: SignalPulseBullBearView | None
-    bear_view: SignalPulseBullBearView | None
-    playbook: SignalPulsePlaybook | None
-    evidence_event_ids: list[str]
-    supporting_evidence_refs: list[str] = Field(default_factory=list)
-    risk_evidence_refs: list[str] = Field(default_factory=list)
-    data_gap_refs: list[str] = Field(default_factory=list)
-    evidence_event_urls: dict[str, str]
-    invalidation_conditions: list[str]
-    residual_risks: list[str]
-
-
-class SignalPulseHealth(ApiSchema):
-    pulse_ready: bool | None = None
-    public_ready: bool | None = None
-    candidate_count: int | None = None
-    public_candidate_count: int | None = None
-    hidden_candidate_count: int | None = None
-    blocked_low_information_count: int | None = None
-    dead_job_count: int | None = None
-    market_ready_rate: float | None = None
-    window: str | None = None
-    scope: str | None = None
-    since_hours: int | None = None
-    publish_status: str | None = None
-    reasons: list[str] = Field(default_factory=list)
-    latest_packet_created_at_ms: int | None = None
-    latest_agent_run_finished_at_ms: int | None = None
-    latest_public_candidate_updated_at_ms: int | None = None
-    latest_hidden_hold_candidate_updated_at_ms: int | None = None
-    due_jobs: int | None = None
-    claimed_jobs: int | None = None
-    failed_jobs_4h: int | None = None
-    agent_runs_4h: int | None = None
-    agent_failed_4h: int | None = None
-    agent_failure_rate_4h: float | None = None
-    unknown_ref_failures_4h: int | None = None
-    unknown_ref_failure_rate_4h: float | None = None
-    unsupported_claim_failures_4h: int | None = None
-    unsupported_claim_failure_rate_4h: float | None = None
-    hidden_abstain_4h: int | None = None
-    hidden_hold_publish_4h: int | None = None
-    hidden_insufficient_evidence_4h: int | None = None
-    public_candidates_4h: int | None = None
-
-
-class SignalPulseItem(ApiSchema):
-    candidate_id: str | None = None
-    candidate_type: str | None = None
-    subject_key: str | None = None
-    subject: JsonObject | None = None
-    target_type: str | None = None
-    target_id: str | None = None
-    symbol: str | None = None
-    window: str | None = None
-    scope: str | None = None
-    evidence_status: str | None = None
-    decision_status: str | None = None
-    display_status: str | None = None
-    evidence_packet_hash: str | None = None
-    verdict: str | None = None
-    social_phase: str | None = None
-    candidate_score: float | None = None
-    score_band: str | None = None
-    gate_reasons: list[str] = Field(default_factory=list)
-    risk_reasons: list[str] = Field(default_factory=list)
-    evidence_event_ids: list[str] = Field(default_factory=list)
-    source_event_ids: list[str] = Field(default_factory=list)
-    factor_snapshot: JsonObject | None = None
-    decision: SignalPulseDecision | None = None
-    gate: JsonObject | None = None
-    fact_card: JsonObject | None = None
-    pulse_version: str | None = None
-    gate_version: str | None = None
-    prompt_version: str | None = None
-    schema_version: str | None = None
-    created_at_ms: int | None = None
-    updated_at_ms: int | None = None
-    playbooks: list[JsonObject] = Field(default_factory=list)
-
-
-class SignalPulseData(ApiSchema):
-    query: JsonObject | None = None
-    health: SignalPulseHealth | None = None
-    summary: JsonObject | None = None
-    items: list[SignalPulseItem] = Field(default_factory=list)
-    next_cursor: str | None = None
-    has_more: bool | None = None
-    total_count: int | None = None
-    returned_count: int | None = None
 
 
 class SourceEventDetail(ApiSchema):

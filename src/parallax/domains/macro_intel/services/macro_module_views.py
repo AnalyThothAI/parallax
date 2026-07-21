@@ -18,14 +18,8 @@ from parallax.domains.macro_intel.services.macro_module_catalog import (
     get_macro_module_config,
 )
 
-TRADE_MAP_RELIABILITY_CONCEPTS = ("asset:ndx", "crypto:btc", "asset:gld", "asset:spx", "asset:tlt")
-TRADE_MAP_RELIABILITY_WINDOW_DAYS = 60
-TRADE_MAP_PAPER_NOTIONAL_USD = 10_000
-
 type _ReferenceGapRule = tuple[str, str, tuple[str, ...], str]
 type _ReferenceGapRules = tuple[_ReferenceGapRule, ...]
-
-_TRADE_MAP_HOLDING_PERIODS = (("1d", "1D", 1), ("5d", "5D", 5), ("20d", "20D", 20))
 
 _ASSET_CHANGE_WINDOWS = (
     ("1w", "change_1w_pct", 7),
@@ -247,45 +241,6 @@ _REAL_RATE_INFLATION_ROWS = (
     {"key": "breakeven_10y", "label": "10Y Breakeven", "concept_key": "inflation:10y_breakeven"},
     {"key": "forward_5y5y", "label": "5Y5Y Forward", "concept_key": "inflation:5y5y_forward"},
 )
-
-_TRADE_MAP_RELIABILITY_ASSETS = (
-    {"asset": "NDX", "label": "纳斯达克", "concept_key": "asset:ndx"},
-    {"asset": "BTC", "label": "比特币", "concept_key": "crypto:btc"},
-    {"asset": "GOLD", "label": "黄金", "concept_key": "asset:gld"},
-    {"asset": "SPX", "label": "标普500", "concept_key": "asset:spx"},
-    {"asset": "TLT", "label": "长债", "concept_key": "asset:tlt"},
-)
-
-_TRADE_MAP_EXPECTATIONS = {
-    "risk_down_credit_sensitive": {
-        "NDX": ("down", "回避"),
-        "BTC": ("down", "回避"),
-        "GOLD": ("up", "防守"),
-        "SPX": ("down", "回避"),
-        "TLT": ("up", "防守"),
-    },
-    "duration_pressure_quality_over_growth": {
-        "NDX": ("down", "回避"),
-        "BTC": ("down", "回避"),
-        "GOLD": ("down", "低配"),
-        "SPX": ("down", "回避"),
-        "TLT": ("down", "低配"),
-    },
-    "credit_beta_underweight": {
-        "NDX": ("down", "低配"),
-        "BTC": ("down", "低配"),
-        "GOLD": ("up", "防守"),
-        "SPX": ("down", "低配"),
-        "TLT": ("up", "防守"),
-    },
-    "risk_on_liquidity_beta": {
-        "NDX": ("up", "做多"),
-        "BTC": ("up", "做多"),
-        "GOLD": ("up", "顺势"),
-        "SPX": ("up", "做多"),
-        "TLT": ("down", "低配"),
-    },
-}
 
 
 def build_macro_module_view(
@@ -5266,8 +5221,7 @@ def _decision_console(
 ) -> dict[str, Any]:
     quality_blockers = _required_scenario_mapping_list(scenario, "quality_blockers", allow_empty=True)
     trade_map = [
-        _trade_map_item(item, observations)
-        for item in _required_scenario_mapping_list(scenario, "trade_map", allow_empty=True)
+        _trade_map_item(item) for item in _required_scenario_mapping_list(scenario, "trade_map", allow_empty=True)
     ]
     compact_quality_blockers = [_compact_quality_blocker(item) for item in quality_blockers]
     payload = {
@@ -5284,9 +5238,6 @@ def _decision_console(
     )
     if watchlist_alerts:
         payload["watchlist_alerts"] = watchlist_alerts
-    judgement_review = _judgement_review(trade_map)
-    if judgement_review:
-        payload["judgement_review"] = judgement_review
     scenario_cases = _required_scenario_mapping_list(scenario, "scenario_cases")
     payload["scenario_cases"] = [dict(item) for item in scenario_cases]
     liquidity_pressure = _liquidity_pressure(feature_map)
@@ -5921,107 +5872,12 @@ def _data_credibility_row(concept_key: str, feature: Mapping[str, Any]) -> dict[
     }
 
 
-def _judgement_review(trade_map: Sequence[Mapping[str, Any]]) -> dict[str, Any] | None:
-    review_items = [
-        item for item in trade_map if _mapping_list(_mapping(item.get("holding_period_review")).get("rows"))
-    ]
-    rows = [_judgement_review_row(item) for item in review_items]
-    if not rows:
-        return None
-    return {
-        "label": "昨日判断复盘",
-        "item_count": len(rows),
-        "item_count_label": f"{len(rows)} 条",
-        "rows": rows[:4],
-    }
-
-
-def _judgement_review_row(item: Mapping[str, Any]) -> dict[str, Any]:
-    expression = _required_trade_map_item_text(item, "expression")
-    label = _required_trade_map_item_text(item, "label")
-    holding_rows = _mapping_list(_mapping(item.get("holding_period_review")).get("rows"))
-    if not holding_rows:
-        raise ValueError("macro_judgement_review_rows_required")
-    windows = [_judgement_review_window(row) for row in holding_rows]
-    trust_summary = str(_mapping(item.get("historical_trust")).get("summary") or "")
-    return {
-        "key": f"{expression}:holding_periods",
-        "expression": expression,
-        "label": label,
-        "reliability_summary": trust_summary,
-        "windows": windows,
-    }
-
-
-def _judgement_review_window(row: Mapping[str, Any]) -> dict[str, Any]:
-    horizon = _required_judgement_review_window_text(row, "horizon")
-    label = _required_judgement_review_window_text(row, "label")
-    status = _required_judgement_review_window_text(row, "status")
-    status_label = _required_judgement_review_window_text(row, "status_label")
-    sample_count = _required_judgement_review_window_int(row, "sample_count", positive=True)
-    hit_count = _required_judgement_review_window_int(row, "hit_count")
-    win_rate_label = _required_judgement_review_window_text(row, "win_rate_label")
-    pnl_usd = _required_judgement_review_window_number(row, "pnl_usd")
-    average_signed_return_pct = _required_judgement_review_window_number(row, "average_signed_return_pct")
-    return {
-        "horizon": horizon,
-        "label": label,
-        "status": status,
-        "status_label": status_label,
-        "sample_count": sample_count,
-        "hit_count": hit_count,
-        "win_rate_label": win_rate_label,
-        "pnl_usd": pnl_usd,
-        "average_signed_return_pct": average_signed_return_pct,
-    }
-
-
-def _required_judgement_review_window_text(row: Mapping[str, Any], field_name: str) -> str:
-    if field_name not in row or row.get(field_name) is None:
-        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
-    value = str(row.get(field_name)).strip()
-    if not value:
-        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
-    return value
-
-
-def _required_judgement_review_window_int(
-    row: Mapping[str, Any],
-    field_name: str,
-    *,
-    positive: bool = False,
-) -> int:
-    if field_name not in row or row.get(field_name) is None:
-        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
-    value = _int_or_none(row.get(field_name))
-    if value is None or (positive and value <= 0):
-        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
-    return value
-
-
-def _required_judgement_review_window_number(row: Mapping[str, Any], field_name: str) -> float:
-    if field_name not in row or row.get(field_name) is None:
-        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
-    value = _number(row.get(field_name))
-    if value is None:
-        raise ValueError(f"macro_judgement_review_window_{field_name}_required")
-    return value
-
-
-def _trade_map_item(item: Mapping[str, Any], observations: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _trade_map_item(item: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(item)
-    expression = _required_trade_map_item_text(payload, "expression")
+    _required_trade_map_item_text(payload, "expression")
     _required_trade_map_item_text(payload, "label")
-    historical_review = _trade_map_historical_review(expression, observations)
-    if historical_review:
-        payload["historical_review"] = historical_review
-        portfolio_review = _trade_map_portfolio_review(historical_review)
-        payload["portfolio_review"] = portfolio_review
-        payload["action_checklist"] = _trade_map_action_checklist(payload, portfolio_review)
-        holding_review = _trade_map_holding_period_review(expression, observations)
-        if holding_review:
-            payload["holding_period_review"] = holding_review
-            payload["historical_trust"] = _trade_map_historical_trust(holding_review)
+    if "action_checklist" in payload:
+        payload["action_checklist"] = _trade_map_action_checklist(payload)
     return payload
 
 
@@ -6034,183 +5890,7 @@ def _required_trade_map_item_text(item: Mapping[str, Any], field_name: str) -> s
     return value
 
 
-def _trade_map_historical_review(
-    expression: str,
-    observations: Sequence[Mapping[str, Any]],
-) -> dict[str, Any] | None:
-    expectations = _TRADE_MAP_EXPECTATIONS.get(expression)
-    if not expectations:
-        return None
-    observations_by_concept = _trade_map_observations_by_concept(observations)
-    rows: list[dict[str, Any]] = []
-    for asset in _TRADE_MAP_RELIABILITY_ASSETS:
-        asset_key = str(asset["asset"])
-        expected = expectations.get(asset_key)
-        if expected is None:
-            continue
-        points = observations_by_concept.get(str(asset["concept_key"])) or []
-        row = _trade_map_historical_row(asset, points, expected_direction=expected[0], action=expected[1])
-        if row is not None:
-            rows.append(row)
-    if not rows:
-        return None
-    hit_count = len([row for row in rows if row["outcome"] == "hit"])
-    average_return = sum(float(row["return_pct"]) for row in rows) / len(rows)
-    max_adverse = min(float(row["mae_pct"]) for row in rows)
-    return {
-        "label": f"五资产 {TRADE_MAP_RELIABILITY_WINDOW_DAYS}日验证",
-        "window": f"{TRADE_MAP_RELIABILITY_WINDOW_DAYS}d",
-        "sample_count": len(rows),
-        "hit_count": hit_count,
-        "win_rate": round(hit_count / len(rows), 2),
-        "win_rate_label": f"{hit_count}/{len(rows)}",
-        "average_return_pct": _round_pct(average_return),
-        "max_adverse_excursion_pct": _round_pct(max_adverse),
-        "rows": rows,
-    }
-
-
-def _trade_map_observations_by_concept(
-    observations: Sequence[Mapping[str, Any]],
-) -> dict[str, list[tuple[str, float]]]:
-    supported = set(TRADE_MAP_RELIABILITY_CONCEPTS)
-    grouped: dict[str, dict[str, float]] = {}
-    for observation in observations:
-        concept_key = str(observation.get("concept_key") or "")
-        if concept_key not in supported:
-            continue
-        value = _number(observation.get("value_numeric"))
-        observed_at = _date_string(observation.get("observed_at"))
-        if value is None or observed_at is None:
-            continue
-        grouped.setdefault(concept_key, {})[observed_at] = value
-    return {
-        concept_key: sorted(points.items(), key=lambda item: item[0])
-        for concept_key, points in grouped.items()
-        if len(points) >= 2
-    }
-
-
-def _trade_map_historical_row(
-    asset: Mapping[str, str],
-    points: Sequence[tuple[str, float]],
-    *,
-    expected_direction: str,
-    action: str,
-) -> dict[str, Any] | None:
-    if len(points) < 2:
-        return None
-    start_value = points[0][1]
-    if start_value == 0:
-        return None
-    returns = [((value / start_value) - 1.0) * 100.0 for _observed_at, value in points]
-    return_pct = returns[-1]
-    outcome = "hit" if _trade_map_outcome_hit(return_pct, expected_direction) else "miss"
-    mfe_pct, mae_pct = _trade_map_excursions(returns, expected_direction)
-    return {
-        "asset": str(asset["asset"]),
-        "label": str(asset["label"]),
-        "concept_key": str(asset["concept_key"]),
-        "expected_direction": expected_direction,
-        "action": action,
-        "return_pct": _round_pct(return_pct),
-        "mfe_pct": _round_pct(mfe_pct),
-        "mae_pct": _round_pct(mae_pct),
-        "outcome": outcome,
-        "outcome_label": _trade_map_outcome_label(outcome),
-    }
-
-
-def _trade_map_excursions(returns: Sequence[float], expected_direction: str) -> tuple[float, float]:
-    if expected_direction == "down":
-        return -min(returns), -max(returns)
-    return max(returns), min(returns)
-
-
-def _trade_map_outcome_hit(return_pct: float, expected_direction: str) -> bool:
-    if expected_direction == "up":
-        return return_pct > 0
-    if expected_direction == "down":
-        return return_pct < 0
-    return abs(return_pct) < 0.5
-
-
-def _trade_map_outcome_label(outcome: str) -> str:
-    label = {"hit": "命中", "miss": "未中"}.get(outcome)
-    if label:
-        return label
-    raise ValueError(f"Missing macro trade-map outcome label metadata: {outcome or '<missing>'}")
-
-
-def _trade_map_portfolio_review(review: Mapping[str, Any]) -> dict[str, Any]:
-    rows = _mapping_list(review.get("rows"))
-    notional = float(TRADE_MAP_PAPER_NOTIONAL_USD)
-    per_asset = notional / len(rows) if rows else 0.0
-    pnl = 0.0
-    max_adverse = 0.0
-    for row in rows:
-        return_pct = _required_trade_map_review_number(row, "return_pct")
-        direction = _required_trade_map_review_text(row, "expected_direction")
-        signed_return_pct = return_pct if direction == "up" else -return_pct if direction == "down" else 0.0
-        pnl += per_asset * signed_return_pct / 100.0
-        max_adverse += per_asset * _required_trade_map_review_number(row, "mae_pct") / 100.0
-    hit_count = _required_trade_map_review_int(review, "hit_count")
-    sample_count = _required_trade_map_review_int(review, "sample_count")
-    risk_temperature = _trade_map_risk_temperature(hit_count, sample_count, max_adverse / notional if notional else 0.0)
-    pnl_pct = pnl / notional * 100.0 if notional else 0.0
-    win_rate_label = _required_trade_map_review_text(review, "win_rate_label")
-    return {
-        "label": "$10K 纸面映射",
-        "notional_usd": TRADE_MAP_PAPER_NOTIONAL_USD,
-        "deployed_usd": TRADE_MAP_PAPER_NOTIONAL_USD if rows else 0,
-        "pnl_usd": round(pnl, 2),
-        "pnl_pct": _round_pct(pnl_pct),
-        "max_adverse_usd": round(max_adverse, 2),
-        "risk_temperature": risk_temperature,
-        "summary": f"{_format_usd(notional)} · P&L {_format_usd(pnl, signed=True)} · 胜率 {win_rate_label}",
-    }
-
-
-def _required_trade_map_review_number(row: Mapping[str, Any], field_name: str) -> float:
-    if field_name not in row or row.get(field_name) is None:
-        raise ValueError(f"macro_trade_map_review_row_{field_name}_required")
-    value = _number(row.get(field_name))
-    if value is None:
-        raise ValueError(f"macro_trade_map_review_row_{field_name}_required")
-    return value
-
-
-def _required_trade_map_review_int(review: Mapping[str, Any], field_name: str) -> int:
-    if field_name not in review or review.get(field_name) is None:
-        raise ValueError(f"macro_trade_map_review_{field_name}_required")
-    value = _int_or_none(review.get(field_name))
-    if value is None:
-        raise ValueError(f"macro_trade_map_review_{field_name}_required")
-    return value
-
-
-def _required_trade_map_review_text(payload: Mapping[str, Any], field_name: str) -> str:
-    if field_name not in payload or payload.get(field_name) is None:
-        raise ValueError(f"macro_trade_map_review_{field_name}_required")
-    value = str(payload.get(field_name)).strip()
-    if not value:
-        raise ValueError(f"macro_trade_map_review_{field_name}_required")
-    return value
-
-
-def _trade_map_risk_temperature(hit_count: int, sample_count: int, adverse_ratio: float) -> str:
-    win_rate = hit_count / sample_count if sample_count else 0.0
-    if win_rate >= 0.6 and adverse_ratio > -0.05:
-        return "低"
-    if win_rate >= 0.4 and adverse_ratio > -0.12:
-        return "中"
-    return "高"
-
-
-def _trade_map_action_checklist(
-    item: Mapping[str, Any],
-    portfolio_review: Mapping[str, Any],
-) -> list[dict[str, str]]:
+def _trade_map_action_checklist(item: Mapping[str, Any]) -> list[dict[str, str]]:
     checklist: list[dict[str, str]] = []
     for row in _trade_map_action_checklist_rows(item):
         kind = _required_trade_map_action_checklist_text(row, "kind")
@@ -6218,16 +5898,6 @@ def _trade_map_action_checklist(
         label = _required_trade_map_action_checklist_text(row, "label")
         description = _required_trade_map_action_checklist_text(row, "description")
         checklist.append({"kind": kind, "kind_label": kind_label, "label": label, "description": description})
-    summary = str(portfolio_review.get("summary") or "")
-    if summary:
-        checklist.append(
-            {
-                "kind": "position_review",
-                "kind_label": "纸面仓位",
-                "label": "纸面仓位复盘",
-                "description": summary,
-            }
-        )
     return checklist
 
 
@@ -6254,158 +5924,11 @@ def _required_trade_map_action_checklist_text(row: Mapping[str, Any], field_name
     return value
 
 
-def _trade_map_holding_period_review(
-    expression: str,
-    observations: Sequence[Mapping[str, Any]],
-) -> dict[str, Any] | None:
-    expectations = _TRADE_MAP_EXPECTATIONS.get(expression)
-    if not expectations:
-        return None
-    observations_by_concept = _trade_map_observations_by_concept(observations)
-    rows: list[dict[str, Any]] = []
-    for horizon, label, days in _TRADE_MAP_HOLDING_PERIODS:
-        horizon_rows: list[dict[str, Any]] = []
-        for asset in _TRADE_MAP_RELIABILITY_ASSETS:
-            expected = expectations.get(str(asset["asset"]))
-            if expected is None:
-                continue
-            points = observations_by_concept.get(str(asset["concept_key"])) or []
-            holding_row = _trade_map_holding_asset_row(points, expected_direction=expected[0], days=days)
-            if holding_row is not None:
-                horizon_rows.append(holding_row)
-        if horizon_rows:
-            rows.append(_trade_map_holding_period_row(horizon, label, horizon_rows))
-    return {"label": "持有期复盘", "rows": rows} if rows else None
-
-
-def _trade_map_holding_asset_row(
-    points: Sequence[tuple[str, float]],
-    *,
-    expected_direction: str,
-    days: int,
-) -> dict[str, float | str] | None:
-    if len(points) < 2:
-        return None
-    start_date = _parse_date(points[0][0])
-    start_value = points[0][1]
-    if start_date is None or start_value == 0:
-        return None
-    target_date = start_date + timedelta(days=days)
-    target_value = None
-    for observed_at, value in points[1:]:
-        observed_date = _parse_date(observed_at)
-        if observed_date is not None and observed_date >= target_date:
-            target_value = value
-            break
-    if target_value is None:
-        return None
-    return_pct = ((target_value / start_value) - 1.0) * 100.0
-    signed_return_pct = _trade_map_signed_return(return_pct, expected_direction)
-    return {
-        "signed_return_pct": _round_pct(signed_return_pct),
-        "outcome": "hit" if signed_return_pct > 0 else "miss",
-    }
-
-
-def _trade_map_holding_period_row(
-    horizon: str,
-    label: str,
-    rows: Sequence[Mapping[str, Any]],
-) -> dict[str, Any]:
-    if not rows:
-        raise ValueError("macro_trade_map_holding_rows_required")
-    sample_count = len(rows)
-    hit_count = len([row for row in rows if row.get("outcome") == "hit"])
-    win_rate = round(hit_count / sample_count, 2)
-    per_asset = float(TRADE_MAP_PAPER_NOTIONAL_USD) / len(_TRADE_MAP_RELIABILITY_ASSETS)
-    signed_returns = [_required_trade_map_holding_number(row, "signed_return_pct") for row in rows]
-    pnl = sum(per_asset * value / 100.0 for value in signed_returns)
-    average_signed_return = sum(signed_returns) / sample_count
-    return {
-        "horizon": horizon,
-        "label": label,
-        "status": _trade_map_holding_status(sample_count),
-        "status_label": _trade_map_holding_status_label(sample_count),
-        "sample_count": sample_count,
-        "hit_count": hit_count,
-        "win_rate": win_rate,
-        "win_rate_label": f"{hit_count}/{sample_count}",
-        "pnl_usd": round(pnl, 2),
-        "average_signed_return_pct": _round_pct(average_signed_return),
-    }
-
-
-def _trade_map_holding_status(sample_count: int) -> str:
-    if sample_count >= len(_TRADE_MAP_RELIABILITY_ASSETS):
-        return "complete"
-    return "partial" if sample_count else "observing"
-
-
-def _trade_map_holding_status_label(sample_count: int) -> str:
-    return {"complete": "已完成", "partial": "部分样本", "observing": "观察中"}[_trade_map_holding_status(sample_count)]
-
-
-def _required_trade_map_holding_number(row: Mapping[str, Any], field_name: str) -> float:
-    if field_name not in row or row.get(field_name) is None:
-        raise ValueError(f"macro_trade_map_holding_{field_name}_required")
-    value = _number(row.get(field_name))
-    if value is None:
-        raise ValueError(f"macro_trade_map_holding_{field_name}_required")
-    return value
-
-
-def _trade_map_historical_trust(review: Mapping[str, Any]) -> dict[str, Any]:
-    rows = _mapping_list(review.get("rows"))
-    sample_count = sum(_required_trade_map_historical_trust_int(row, "sample_count") for row in rows)
-    hit_count = sum(_required_trade_map_historical_trust_int(row, "hit_count") for row in rows)
-    score_pct = round(hit_count / sample_count * 100.0, 1) if sample_count else 0.0
-    quality = _trade_map_trust_quality(score_pct)
-    return {
-        "label": "历史可信度",
-        "score_pct": score_pct,
-        "quality": quality,
-        "sample_count": sample_count,
-        "hit_count": hit_count,
-        "summary": f"历史可信度 {score_pct:.1f}% · {quality} · {sample_count} 个样本",
-    }
-
-
-def _required_trade_map_historical_trust_int(row: Mapping[str, Any], field_name: str) -> int:
-    if field_name not in row or row.get(field_name) is None:
-        raise ValueError(f"macro_trade_map_historical_trust_{field_name}_required")
-    value = _int_or_none(row.get(field_name))
-    if value is None:
-        raise ValueError(f"macro_trade_map_historical_trust_{field_name}_required")
-    return value
-
-
-def _trade_map_trust_quality(score_pct: float) -> str:
-    if score_pct >= 70.0:
-        return "高"
-    if score_pct >= 50.0:
-        return "中"
-    return "低"
-
-
-def _trade_map_signed_return(return_pct: float, expected_direction: str) -> float:
-    if expected_direction == "up":
-        return return_pct
-    if expected_direction == "down":
-        return -return_pct
-    return 0.0
-
-
 def _parse_date(value: str) -> date | None:
     try:
         return date.fromisoformat(value)
     except ValueError:
         return None
-
-
-def _format_usd(value: float, *, signed: bool = False) -> str:
-    rounded = round(float(value))
-    sign = "+" if signed and rounded > 0 else "-" if signed and rounded < 0 else ""
-    return f"{sign}${abs(rounded):,}"
 
 
 def _event_catalyst_candidates(observations: Sequence[Mapping[str, Any]]) -> list[dict[str, Any]]:
@@ -8207,4 +7730,4 @@ _TABLE_TITLES = {
 }
 
 
-__all__ = ["TRADE_MAP_RELIABILITY_CONCEPTS", "TRADE_MAP_RELIABILITY_WINDOW_DAYS", "build_macro_module_view"]
+__all__ = ["build_macro_module_view"]

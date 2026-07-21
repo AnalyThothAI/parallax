@@ -39,7 +39,7 @@ def test_removed_token_radar_storage_ops_commands_are_not_registered() -> None:
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "rebuild-token-radar-rank-inputs", "--execute", "--reason", "manual"])
     with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "enqueue-runtime-worker-dirty-targets", "--work", "pulse_trigger"])
+        parser.parse_args(["ops", "enqueue-runtime-worker-dirty-targets", "--work", "retired_work"])
 
 
 def test_ops_mirror_token_images_parser_accepts_limits() -> None:

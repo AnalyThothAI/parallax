@@ -25,7 +25,7 @@
 - **Owner**: parent
 - **Depends on**: none
 - **Touch set**: `tests/architecture/test_agent_playbook_contracts.py`
-- **Conflict set**: coordinate with `2026-06-11-executable-harness-followup` for shared agent playbook tests and generated index.
+- **Conflict set**: coordinate with `2026-06-11-executable-harness-followup` for shared agent playbook tests and generated index; coordinate with `2026-07-21-signal-pulse-hard-cut` for shared generated SDD index.
 - **Failing test first**: `tests/architecture/test_agent_playbook_contracts.py::test_agent_playbook_has_task_examples_and_read_model_checklist` — asserts examples/checklist presence before implementation.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated

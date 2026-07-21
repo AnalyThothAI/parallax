@@ -466,14 +466,10 @@ function chainIcon(icon: ChainLane["icon"]) {
 
 function runtimeChain(diagnostics: OpsDiagnostics): ChainLane[] {
   const collectorDetails = objectValue(diagnostics.collector.details);
-  const pulse = objectValue(diagnostics.domains.pulse);
-  const narrative = objectValue(diagnostics.domains.narrative);
   const agentExecution = diagnostics.agent_execution
     ? objectValue(diagnostics.agent_execution)
     : { status: "disabled" };
   const agentExecutionStatus = statusString(agentExecution.status) ?? "disabled";
-  const queues = diagnostics.queues;
-  const pulseQueue = queues.find((item) => item.queue_name === "pulse_agent_jobs");
   const providerState = worstStatus(diagnostics.providers);
   const workerState = worstStatus(diagnostics.workers);
 
@@ -495,24 +491,12 @@ function runtimeChain(diagnostics: OpsDiagnostics): ChainLane[] {
       icon: "database",
     },
     {
-      title: "Narrative / News",
-      status: worstStatus([diagnostics.domains.narrative, diagnostics.domains.news]),
-      intent: "Semantics、digests 和 news read models 解释 token 为什么重要。",
-      primary: `${numberString(narrative.pending_digest_count)} 个摘要待处理`,
-      secondary: `新闻${statusLabel(statusTone(diagnostics.domains.news?.status))}`,
+      title: "News & Agent",
+      status: worstStatus([diagnostics.domains.news, { status: agentExecutionStatus }]),
+      intent: "News read models 与 Agent 执行状态保持各自可审计。",
+      primary: `${numberString(diagnostics.domains.news?.source_count)} 个新闻来源`,
+      secondary: `新闻${statusLabel(statusTone(diagnostics.domains.news?.status))} / Agent ${statusLabel(agentExecutionStatus)}`,
       icon: "workflow",
-    },
-    {
-      title: "Pulse / Agent",
-      status: worstStatus([
-        diagnostics.domains.pulse,
-        { status: agentExecutionStatus },
-        pulseQueue ?? {},
-      ]),
-      intent: "Pulse 与 Agent lanes 把候选信号变成可审计决策。",
-      primary: `${numberString(pulse.dead_jobs)} 个 Pulse 死信`,
-      secondary: `${numberString(pulseQueue?.due_count)} 个待执行 / Agent ${statusLabel(agentExecutionStatus)}`,
-      icon: "server",
     },
     {
       title: "Delivery",
@@ -597,12 +581,6 @@ function incidentSummary(diagnostics: OpsDiagnostics, visibleCount: number): str
 }
 
 function domainIncidentDetail(name: string, payload: OpsJson): string {
-  if (name === "pulse") {
-    return `${numberString(payload.dead_jobs)} 个死信任务，${numberString(payload.due_jobs)} 个待执行任务。`;
-  }
-  if (name === "narrative") {
-    return `${numberString(payload.pending_digest_count)} 个摘要待处理，${numberString(payload.total_pending)} 个语义积压。`;
-  }
   if (name === "news") {
     return `${numberString(payload.source_count)} 个来源，检查失败来源状态。`;
   }
@@ -705,8 +683,6 @@ function domainLabel(value: string): string {
       return "News";
     case "notifications":
       return "Notifications";
-    case "pulse":
-      return "Pulse";
     case "token_radar":
       return "Token Radar";
     case "watchlist":

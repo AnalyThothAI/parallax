@@ -50,7 +50,6 @@ def test_project_uses_domain_package_src_layout():
         "routes_news.py",
         "routes_notifications.py",
         "routes_ops.py",
-        "routes_pulse.py",
         "routes_radar.py",
         "routes_search.py",
         "routes_status.py",
@@ -63,7 +62,6 @@ def test_project_uses_domain_package_src_layout():
         "db.py",
         "macro.py",
         "ops.py",
-        "pulse_replay.py",
         "queue_ops.py",
         "read_models.py",
         "serve.py",
@@ -74,7 +72,6 @@ def test_project_uses_domain_package_src_layout():
         "asset_market",
         "token_intel",
         "notifications",
-        "pulse_lab",
         "account_quality",
     ):
         assert (base / "domains" / domain / "__init__.py").is_file()
@@ -97,7 +94,6 @@ def test_api_and_cli_surface_roots_stay_thin_dispatchers():
     assert "@app." not in http_source
     assert http_source.count("include_router(") == len(list(api.glob("routes_*.py")))
     assert "routes_search" in http_source
-    assert "routes_pulse" in http_source
 
     assert "ArgumentParser" not in cli_main_source
     assert "def handle_" not in cli_main_source
@@ -154,57 +150,6 @@ def test_legacy_token_resolution_runtime_modules_stay_removed():
 def test_trading_attention_service_has_been_hard_deleted():
     assert not (ROOT / "src" / "parallax" / "retrieval" / "trading_attention_service.py").exists()
     assert not (ROOT / "tests" / "test_trading_attention_service.py").exists()
-
-
-def test_pulse_agent_repository_has_no_dual_name_compatibility_arguments():
-    pulse_repo_path = ROOT / "src" / "parallax" / "domains" / "pulse_lab" / "repositories" / "pulse_runs_repository.py"
-    text = pulse_repo_path.read_text(encoding="utf-8")
-    forbidden = {
-        "context: dict[str, Any]",
-        "request: dict[str, Any]",
-        "response: dict[str, Any]",
-        "trace_metadata: dict[str, Any]",
-        "usage: dict[str, Any]",
-        "thesis: dict[str, Any]",
-        "radar_score: dict[str, Any]",
-        "market_context: dict[str, Any]",
-        "gate_reasons: list[Any]",
-        "risk_reasons: list[Any]",
-        "evidence_event_ids: list[Any]",
-        "source_event_ids: list[Any]",
-    }
-    for item in forbidden:
-        assert item not in text
-
-
-def test_pulse_repository_monolith_and_session_facade_stay_removed():
-    this_file = Path(__file__).resolve()
-    active_paths = [
-        path
-        for base in (ROOT / "src", ROOT / "tests")
-        for path in base.rglob("*.py")
-        if "platform/db/alembic/versions" not in path.as_posix() and path.resolve() != this_file
-    ]
-    text_by_path = {path: path.read_text(encoding="utf-8") for path in active_paths}
-
-    assert not (ROOT / "src" / "parallax" / "domains" / "pulse_lab" / "repositories" / "pulse_repository.py").exists()
-    class_name = "Pulse" + "Repository"
-    import_text = f"from parallax.domains.pulse_lab.repositories.pulse_repository import {class_name}"
-    for path, text in text_by_path.items():
-        assert f"class {class_name}" not in text, path
-        assert f"{class_name}(" not in text, path
-        assert re.search(r"repos\\.pulse\\b", text) is None, path
-        assert import_text not in text, path
-
-
-def test_pulse_repository_split_keeps_read_sql_and_jobs_out_of_shared_admission():
-    repo_dir = ROOT / "src" / "parallax" / "domains" / "pulse_lab" / "repositories"
-    shared_text = (repo_dir / "_pulse_repository_shared.py").read_text(encoding="utf-8")
-    admission_text = (repo_dir / "pulse_admission_repository.py").read_text(encoding="utf-8")
-
-    assert "social_event_extractions" not in shared_text
-    assert "LEFT JOIN events" not in shared_text
-    assert "PulseJobsRepository" not in admission_text
 
 
 def test_current_token_radar_runtime_does_not_import_old_token_market_paths():

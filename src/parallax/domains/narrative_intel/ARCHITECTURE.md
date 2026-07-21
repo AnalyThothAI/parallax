@@ -76,7 +76,7 @@ The following runtime and storage surfaces are removed, not disabled:
   and digest dirty-target tables;
 - Narrative model-provider/client and prompt wiring;
 - digest/currentness compatibility readers and per-post semantic hydration;
-- Pulse evidence-packet Narrative digest dependencies;
+- downstream evidence-packet Narrative digest dependencies;
 - `ops rebuild-narrative-intel` and other repair shims for removed lanes.
 
 Do not reintroduce aliases, shadow queues, ghost payload fields, or tests that

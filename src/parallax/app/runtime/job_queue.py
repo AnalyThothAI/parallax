@@ -16,12 +16,6 @@ class JobQueueDescriptor:
     delivered_at_column: str | None = None
 
 
-PULSE_AGENT_JOBS = JobQueueDescriptor(
-    name="pulse_agent_jobs",
-    table="pulse_agent_jobs",
-    id_column="job_id",
-    priority_order="priority DESC, next_run_at_ms ASC, created_at_ms ASC, job_id ASC",
-)
 NOTIFICATION_DELIVERIES = JobQueueDescriptor(
     name="notification_deliveries",
     table="notification_deliveries",
@@ -32,6 +26,4 @@ NOTIFICATION_DELIVERIES = JobQueueDescriptor(
     delivered_at_column="delivered_at_ms",
 )
 
-JOB_QUEUE_DESCRIPTORS: Mapping[str, JobQueueDescriptor] = {
-    descriptor.name: descriptor for descriptor in (PULSE_AGENT_JOBS, NOTIFICATION_DELIVERIES)
-}
+JOB_QUEUE_DESCRIPTORS: Mapping[str, JobQueueDescriptor] = {NOTIFICATION_DELIVERIES.name: NOTIFICATION_DELIVERIES}

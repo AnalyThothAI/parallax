@@ -21,7 +21,7 @@ def test_narrative_llm_workers_are_hard_removed_from_runtime_contract() -> None:
     assert "token_discussion_digest" not in settings_fields
     assert "narrative.mention_semantics" not in lanes
     assert "narrative.discussion_digest" not in lanes
-    assert {"pulse.decision", "news.item_brief", "news.story_brief"}.issubset(lanes)
+    assert {"news.item_brief", "news.story_brief"}.issubset(lanes)
 
 
 def test_narrative_llm_provider_client_and_prompts_are_removed() -> None:

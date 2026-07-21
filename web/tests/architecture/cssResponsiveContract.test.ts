@@ -37,7 +37,6 @@ describe("responsive CSS contract", () => {
       ".mobile-task-nav",
       ".mobile-task-radar",
       ".mobile-task-tape",
-      ".mobile-task-lab",
       "[data-mobile-task-panel",
     ];
     const offenders = findRules(shellCss).flatMap((rule) =>
@@ -76,7 +75,7 @@ describe("responsive CSS contract", () => {
     ).not.toBe(-1);
   });
 
-  it("keeps mobile LivePage from using overlay navigation or the desktop bottom-deck grid", () => {
+  it("keeps mobile LivePage from using overlay navigation or the desktop two-row grid", () => {
     const liveCssPath = join(srcRoot, "features/live/ui/live.css");
     const liveCss = readFileSync(liveCssPath, "utf8");
     const mobileBlocks = findMobileMediaBlocks(liveCss);
@@ -96,7 +95,7 @@ describe("responsive CSS contract", () => {
           declarationValue(rule.body, "grid-template-rows") === "minmax(0, 1fr) auto" &&
           declarationValue(rule.body, "overflow") === "hidden",
       ),
-      "mobile .live-page must replace the desktop two-row bottom-deck grid with content + task-nav rows",
+      "mobile .live-page must replace the desktop two-row grid with content + task-nav rows",
     ).toBe(true);
     expect(
       radarPanelMobileRules.some(
@@ -155,7 +154,6 @@ describe("responsive CSS contract", () => {
       "[data-mobile-task-panel",
       ".mobile-task-radar",
       ".mobile-task-tape",
-      ".mobile-task-lab",
     ];
     const offenders = collectFiles(join(srcRoot, "features"))
       .filter(isCssFile)

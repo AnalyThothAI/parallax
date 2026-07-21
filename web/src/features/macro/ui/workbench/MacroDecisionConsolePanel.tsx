@@ -40,9 +40,6 @@ export function MacroDecisionConsolePanel({
           <FutureCatalystSection items={consoleModel.futureCatalysts} />
         ) : null}
         <TradeSection items={consoleModel.tradeMap} />
-        {consoleModel.judgementReview ? (
-          <JudgementReviewSection review={consoleModel.judgementReview} />
-        ) : null}
         <ScenarioCasesSection items={consoleModel.scenarioCases} />
         {consoleModel.watchlistAlerts ? (
           <WatchlistAlertsSection alerts={consoleModel.watchlistAlerts} />
@@ -205,34 +202,6 @@ function DataCredibilitySection({
   );
 }
 
-function JudgementReviewSection({
-  review,
-}: {
-  review: NonNullable<MacroDecisionConsole["judgementReview"]>;
-}) {
-  return (
-    <section aria-label={review.label} className="macro-workbench-decision-section">
-      <h4>{review.label}</h4>
-      <ul className="macro-workbench-decision-list">
-        {review.itemCountLabel ? (
-          <li>
-            <span>复盘条目</span>
-            <b>{review.itemCountLabel}</b>
-            <small>基于 Trade Map 持有期证据</small>
-          </li>
-        ) : null}
-        {review.rows.map((item) => (
-          <li key={item.key}>
-            <span>{item.meta}</span>
-            <b>{item.label}</b>
-            <small>{item.detail}</small>
-          </li>
-        ))}
-      </ul>
-    </section>
-  );
-}
-
 function ScenarioCasesSection({ items }: { items: MacroDecisionConsole["scenarioCases"] }) {
   if (items.length === 0) {
     return null;
@@ -313,23 +282,9 @@ function TradeSection({ items }: { items: MacroDecisionConsole["tradeMap"] }) {
           <li key={item.key}>
             {item.window ? <span>{item.window}</span> : null}
             <b>{item.label}</b>
-            {item.legs.length > 0 ? (
-              <TradeDetailBlock lines={item.legs} title="当前表达" variant="legs" />
-            ) : null}
-            {item.history.length > 0 ? (
-              <TradeDetailBlock lines={item.history} title="五资产雷达" variant="history" />
-            ) : null}
-            {item.portfolio.length > 0 ? (
-              <TradeDetailBlock lines={item.portfolio} title="组合复盘" variant="portfolio" />
-            ) : null}
-            {item.trust.length > 0 ? (
-              <TradeDetailBlock lines={item.trust} title="历史可信度" variant="trust" />
-            ) : null}
-            {item.holding.length > 0 ? (
-              <TradeDetailBlock lines={item.holding} title="持有期复盘" variant="holding" />
-            ) : null}
+            {item.legs.length > 0 ? <TradeDetailBlock lines={item.legs} title="当前表达" /> : null}
             {item.checklist.length > 0 ? (
-              <TradeDetailBlock lines={item.checklist} title="行动清单" variant="checklist" />
+              <TradeDetailBlock lines={item.checklist} title="行动清单" />
             ) : null}
           </li>
         ))}
@@ -338,17 +293,9 @@ function TradeSection({ items }: { items: MacroDecisionConsole["tradeMap"] }) {
   );
 }
 
-function TradeDetailBlock({
-  lines,
-  title,
-  variant,
-}: {
-  lines: string[];
-  title: string;
-  variant: "checklist" | "history" | "holding" | "legs" | "portfolio" | "trust";
-}) {
+function TradeDetailBlock({ lines, title }: { lines: string[]; title: string }) {
   return (
-    <div className={`macro-workbench-trade-block macro-workbench-trade-${variant}`}>
+    <div className="macro-workbench-trade-block">
       <h5>{title}</h5>
       <div className="macro-workbench-trade-block-lines">
         {lines.map((line) => (
@@ -365,7 +312,6 @@ function decisionMeta(consoleModel: MacroDecisionConsole): string {
     consoleModel.contradictions.length +
     (consoleModel.dataCredibility ? consoleModel.dataCredibility.rows.length : 0) +
     consoleModel.futureCatalysts.length +
-    (consoleModel.judgementReview ? consoleModel.judgementReview.rows.length : 0) +
     (consoleModel.liquidityPressure ? 1 : 0) +
     consoleModel.scenarioCases.length +
     consoleModel.topChanges.length +

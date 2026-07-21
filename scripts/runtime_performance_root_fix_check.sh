@@ -129,22 +129,6 @@ echo "${old_token_radar_source_populate_calls}"
 assert_zero_new_or_cumulative_calls "old token radar target-wide source population" \
   "${old_token_radar_source_populate_calls}" "${OLD_TOKEN_RADAR_SOURCE_POPULATE_CALLS_BEFORE:-}"
 
-echo "== pulse candidate target-wide timeline calls =="
-pulse_target_wide_timeline_calls="$(
-  psql_cmd -Atc "
-SELECT COALESCE(sum(calls), 0)
-FROM pg_stat_statements
-WHERE query ILIKE 'WITH matched AS (%'
-  AND query ILIKE '%FROM token_intent_resolutions tir%'
-  AND query ILIKE '%JOIN events ON events.event_id = tir.event_id%'
-  AND query ILIKE '%ORDER BY received_at_ms DESC, event_id DESC%'
-  AND query NOT ILIKE '%requested_events%'
-  AND query NOT ILIKE '%unnest(%::text[])%';"
-)"
-echo "${pulse_target_wide_timeline_calls}"
-assert_zero_new_or_cumulative_calls "pulse_candidate target-wide timeline_rows/WITH matched fingerprint" \
-  "${pulse_target_wide_timeline_calls}" "${PULSE_TARGET_WIDE_TIMELINE_CALLS_BEFORE:-}"
-
 echo "== token radar rank source mean proxy =="
 rank_source_mean_proxy="$(
   psql_cmd -Atc "

@@ -138,7 +138,7 @@ function tokenSearchCase(data: SearchInspectData, result: SearchTokenResult): Se
       value: officialName,
     },
     market: marketFact(result),
-    narrative: tokenDigestNarrative(result),
+    narrative: tokenAdmissionNarrative(result),
     resolver: resolverFact(data),
     resultKind: data.query.result_kind,
     subtitle: identityLine(target, searchMarketCandles(result)),
@@ -189,30 +189,32 @@ function agentNarrative(value?: string | null): SearchCaseFact {
   };
 }
 
-function tokenDigestNarrative(result: SearchTokenResult): SearchCaseFact {
-  const digest = result.discussion_digest;
-  const dominant = digest.dominant_narrative;
-  const coverage = digest.coverage?.semantic_coverage;
-  const coverageDetail =
-    typeof coverage === "number" && Number.isFinite(coverage)
-      ? `${Math.round(coverage * 100)}% semantic coverage`
-      : digest.status.replaceAll("_", " ");
+function tokenAdmissionNarrative(result: SearchTokenResult): SearchCaseFact {
+  const admission = result.narrative_admission;
+  const coverageDetail = `${compactNumber(admission.coverage.source_mentions)} mentions · ${compactNumber(
+    admission.coverage.independent_authors,
+  )} authors`;
   return {
-    detail:
-      cleanText(dominant?.summary_zh) ?? narrativeGapLabel(digest.data_gaps[0]) ?? coverageDetail,
+    detail: narrativeGapLabel(admission.data_gaps[0]) ?? coverageDetail,
     label: "Narrative",
     source: "social",
-    tone: digest.status === "ready" ? "health" : "info",
-    value: cleanText(dominant?.title) ?? digestStatusLabel(digest.status),
+    tone:
+      admission.status === "admitted" && admission.currentness.display_status === "current"
+        ? "health"
+        : "info",
+    value:
+      admission.currentness.display_status === "unsupported_window"
+        ? "Narrative unsupported"
+        : admissionStatusLabel(admission.status),
   };
 }
 
-function digestStatusLabel(status: string): string {
+function admissionStatusLabel(status: string): string {
   const labels: Record<string, string> = {
-    insufficient: "Narrative insufficient",
-    pending: "Narrative pending",
-    ready: "Narrative ready",
-    semantic_unavailable: "Narrative unavailable",
+    admitted: "Narrative admitted",
+    missing: "Narrative not ready",
+    suppressed: "Narrative suppressed",
+    unsupported_window: "Narrative unsupported",
   };
   return labels[status] ?? status.replaceAll("_", " ");
 }

@@ -230,9 +230,7 @@ def test_asset_profile_refresh_worker_empty_queue_does_not_run_read_model_discov
     assert result.processed == 0
     assert result.skipped == 1
     assert result.notes["result"]["source_rows_scanned"] == 0
-    assert result.notes["result"]["sources"]["gmgn_dex_profile"]["reason"] == (
-        "no_due_asset_profile_refresh_targets"
-    )
+    assert result.notes["result"]["sources"]["gmgn_dex_profile"]["reason"] == ("no_due_asset_profile_refresh_targets")
     assert db.refresh_targets.claim_calls == [
         {
             "provider": "gmgn_dex_profile",

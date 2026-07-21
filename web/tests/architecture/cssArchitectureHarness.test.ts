@@ -41,7 +41,6 @@ const featureClassPrefixes: Record<string, string[]> = {
     "ws-status-beacon",
   ],
   live: [
-    "bottom-deck",
     "listed-fact",
     "live-",
     "market-",
@@ -57,7 +56,6 @@ const featureClassPrefixes: Record<string, string[]> = {
   notifications: ["notification-", "watchlist-notification-dot"],
   ops: ["ops-"],
   search: ["search-"],
-  "signal-lab": ["filter-cell", "signal-"],
   stocks: ["stock-", "stocks-"],
   watchlist: ["watchlist-"],
 };
@@ -101,7 +99,6 @@ const modifierClassNames = new Set([
   "listed",
   "liquidity",
   "market",
-  "mobile-task-lab",
   "mobile-task-radar",
   "mobile-task-tape",
   "neutral",

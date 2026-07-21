@@ -415,55 +415,28 @@ def test_okx_bundle_wiring_preserves_original_error_when_partial_cleanup_fails(m
     assert "quote close failed" in notes
 
 
-def test_litellm_providers_receive_agent_execution_gateway(monkeypatch) -> None:
+def test_litellm_news_provider_receives_agent_execution_gateway(monkeypatch) -> None:
     gateway = object()
-    created: list[object] = []
-
-    def fake_pulse_client(**kwargs):
-        client = SimpleNamespace(
-            provider="litellm",
-            timeout_seconds=120.0,
-            artifact_version_hash="artifact:pulse",
-            runtime_contract=SimpleNamespace(
-                stage_names=("pulse_decision",),
-            ),
-            _agent_gateway=kwargs["agent_gateway"],
-        )
-        created.append(client)
-        return client
 
     def fake_news_item_brief_client(**kwargs):
-        client = SimpleNamespace(provider="litellm", _agent_gateway=kwargs["agent_gateway"])
-        created.append(client)
-        return client
+        return SimpleNamespace(provider="litellm", _agent_gateway=kwargs["agent_gateway"])
 
-    monkeypatch.setattr(model_execution_wiring, "LiteLLMPulseDecisionClient", fake_pulse_client)
     monkeypatch.setattr(model_execution_wiring, "LiteLLMNewsItemBriefClient", fake_news_item_brief_client)
 
     providers = providers_wiring.wire_providers(
-        _settings_with_all_llm_models(),
+        _settings_with_news_llm_models(),
         start_collector=True,
         agent_execution_gateway=gateway,
     )
 
-    assert providers.pulse_lab.decision_provider is not None
-    contract = providers.pulse_lab.decision_provider.runtime_contract
-    assert contract.stage_names == ("pulse_decision",)
-    assert not hasattr(contract, "safety_net_enabled")
     assert providers.news_intel.brief_provider is not None
     assert providers.news_intel.brief_provider._agent_gateway is gateway
-    assert all(getattr(client, "_agent_gateway", None) is gateway for client in created)
-
-
-def test_litellm_pulse_provider_rejects_removed_tool_budget_config() -> None:
-    settings = _settings_with_all_llm_models()
-    assert not hasattr(settings.workers.pulse_candidate, "investigator_max_tool_calls")
 
 
 def test_litellm_provider_wiring_requires_agent_execution_gateway() -> None:
     with pytest.raises(RuntimeError, match="AgentExecutionGateway is required"):
         providers_wiring.wire_providers(
-            _settings_with_all_llm_models(),
+            _settings_with_news_llm_models(),
             start_collector=True,
             agent_execution_gateway=None,
         )
@@ -871,7 +844,7 @@ def _settings_with_okx_dex_credentials() -> Settings:
     )
 
 
-def _settings_with_all_llm_models() -> Settings:
+def _settings_with_news_llm_models() -> Settings:
     return Settings(
         ws_token="secret",
         llm={
@@ -881,11 +854,11 @@ def _settings_with_all_llm_models() -> Settings:
             "agent_runtime": {
                 "defaults": {"model": "gpt-enrich"},
                 "lanes": {
-                    "pulse.decision": {"model": "gpt-pulse"},
                     "news.item_brief": {"model": "gpt-news"},
                     "news.story_brief": {"model": "gpt-story"},
                 },
             },
+            "news_item_brief": {"enabled": True},
         },
     )
 

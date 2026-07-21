@@ -516,7 +516,6 @@ def test_upsert_current_from_tick_repairs_created_at_once_then_becomes_unchanged
 def test_repository_session_exposes_market_tick_current_repository() -> None:
     session = repositories_for_connection(
         _ScriptedConnection([]),
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )

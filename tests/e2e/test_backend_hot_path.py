@@ -10,30 +10,16 @@ from fastapi.testclient import TestClient
 
 from parallax.app.runtime.app import create_app
 from parallax.app.runtime.providers_wiring import AssetMarketProviders
-from parallax.app.runtime.worker_factories.notifications import _notification_rule_engine
-from parallax.domains.asset_market.repositories.token_profile_current_repository import (
-    TokenProfileCurrentRepository,
-)
 from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
-from parallax.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
-from parallax.domains.notifications.runtime.notification_worker import NotificationWorker
-from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import (
-    PulseCandidateWorker,
-    PulseTriggerThresholds,
-)
-from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
 from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from tests.postgres_test_utils import connect_postgres_test, prepare_postgres_database
 from tests.support.db_seeds import (
     assert_count_at_least,
-    first_row,
     hot_path_counts,
-    promote_latest_token_radar_row_for_pulse,
 )
 from tests.support.fake_providers import (
     FakeDexQuoteProvider,
     FakeGmgnUpstreamClient,
-    FakePulseDecisionProvider,
     RecordingWakeEmitter,
 )
 from tests.support.hot_path_runtime import (
@@ -51,7 +37,7 @@ from tests.support.provider_fixtures import load_provider_fixture
 
 
 @pytest.mark.e2e
-def test_complete_backend_hot_path_without_notify_dependency(
+def test_complete_backend_hot_path_to_token_radar(
     tmp_path,
     monkeypatch: pytest.MonkeyPatch,
     e2e_postgres: str,
@@ -119,56 +105,6 @@ def test_complete_backend_hot_path_without_notify_dependency(
         )
         assert radar_result.notes["rows_written"] >= 1
         _assert_counts({"token_radar_current_rows": 1})
-        _promote_single_fixture_radar_row_for_pulse()
-        _seed_profile_for_pulse_evidence()
-
-        pulse_client = FakePulseDecisionProvider()
-        pulse_result = asyncio.run(
-            PulseCandidateWorker(
-                name="pulse_candidate",
-                settings=runtime.settings.workers.pulse_candidate,
-                db=runtime.db,
-                telemetry=runtime.telemetry,
-                decision_client=pulse_client,
-                trigger_thresholds=PulseTriggerThresholds(min_rank_score=0),
-                gate_thresholds=PulseGateThresholds(
-                    trade_candidate_min=0,
-                    token_watch_min=0,
-                    high_info_rejection_min=0,
-                    high_conviction_min=0,
-                ),
-            ).run_once(now_ms=FIXED_NOW_MS + 3_000)
-        )
-        assert pulse_result.notes["scan"]["asset_enqueued"] >= 1
-        assert pulse_result.notes["process"]["processed"] >= 1
-        assert pulse_client.contexts, _pulse_debug()
-        _assert_counts({"pulse_agent_jobs": 1, "pulse_agent_runs": 1, "pulse_candidates": 1})
-
-        notification_worker = NotificationWorker(
-            name="notification_rule",
-            settings=runtime.settings.workers.notification_rule,
-            db=runtime.db,
-            telemetry=runtime.telemetry,
-            rule_engine_factory=lambda repos: _notification_rule_engine(runtime.settings, repos),
-            publisher=runtime.hub,
-            delivery_channels=runtime.settings.notifications.channels,
-            delivery_max_attempts=runtime.settings.workers.notification_delivery.max_attempts,
-        )
-        notification_result = asyncio.run(notification_worker.run_once(now_ms=FIXED_NOW_MS + 4_000))
-        assert notification_result.processed == 1
-        _assert_counts({"notifications": 1, "notification_deliveries": 1})
-
-        delivery_result = asyncio.run(
-            NotificationDeliveryWorker(
-                name="notification_delivery",
-                settings=runtime.settings.workers.notification_delivery,
-                db=runtime.db,
-                telemetry=runtime.telemetry,
-                channels=runtime.settings.notifications.channels,
-            ).run_once(now_ms=_wall_now_ms())
-        )
-        assert delivery_result.processed == 1
-        _assert_counts({"delivered_notifications": 1})
 
         _assert_http_surfaces(client)
         _assert_websocket_surfaces(client, runtime)
@@ -185,68 +121,6 @@ def _assert_counts(expected_minimums: dict[str, int]) -> dict[str, int]:
     return counts
 
 
-def _promote_single_fixture_radar_row_for_pulse() -> None:
-    conn = connect_postgres_test(read_only=False)
-    try:
-        promote_latest_token_radar_row_for_pulse(conn, target_id=MARKET_TARGET_ID)
-    finally:
-        conn.close()
-
-
-def _seed_profile_for_pulse_evidence() -> None:
-    conn = connect_postgres_test(read_only=False)
-    try:
-        TokenProfileCurrentRepository(conn).upsert_current(
-            {
-                "target_type": MARKET_TARGET_TYPE,
-                "target_id": MARKET_TARGET_ID,
-                "status": "ready",
-                "profile_provider": "fixture",
-                "source_kind": "fixture",
-                "source_ref": f"fixture:{EVENT_ID}",
-                "symbol": SYMBOL,
-                "name": f"{SYMBOL} Fixture Token",
-                "quality_flags_json": [],
-                "source_payload_json": {},
-                "observed_at_ms": FIXED_NOW_MS + 2_500,
-                "computed_at_ms": FIXED_NOW_MS + 2_500,
-                "updated_at_ms": FIXED_NOW_MS + 2_500,
-            },
-            commit=True,
-        )
-    finally:
-        conn.close()
-
-
-def _pulse_debug() -> dict[str, Any]:
-    conn = connect_postgres_test(read_only=False)
-    try:
-        runs = conn.execute(
-            """
-            SELECT decision_route,
-                   outcome,
-                   request_json->'evidence_gate' AS evidence_gate,
-                   request_json->'evidence_packet'->'data_gaps' AS data_gaps,
-                   request_json->'evidence_packet'->'allowed_evidence_refs' AS allowed_refs,
-                   error
-            FROM pulse_agent_runs
-            ORDER BY started_at_ms DESC
-            LIMIT 3
-            """
-        ).fetchall()
-        candidates = conn.execute(
-            """
-            SELECT pulse_status, decision_recommendation, gate_reasons_json, risk_reasons_json
-            FROM pulse_candidates
-            ORDER BY updated_at_ms DESC
-            LIMIT 3
-            """
-        ).fetchall()
-        return {"runs": [dict(row) for row in runs], "candidates": [dict(row) for row in candidates]}
-    finally:
-        conn.close()
-
-
 def _assert_http_surfaces(client: TestClient) -> None:
     ready = client.get("/readyz")
     assert ready.status_code == 200, ready.text
@@ -261,19 +135,9 @@ def _assert_http_surfaces(client: TestClient) -> None:
     radar_text = json.dumps(radar.json(), default=str)
     assert SYMBOL in radar_text
 
-    pulse = client.get(
-        "/api/signal-lab/pulse",
-        params={"window": "1h", "scope": "all", "status": "trade_candidate", "limit": 10},
-        headers=auth_headers(),
-    )
-    assert pulse.status_code == 200, pulse.text
-    pulse_text = json.dumps(pulse.json(), default=str)
-    assert "trade_candidate" in pulse_text
-    assert SYMBOL in pulse_text
-
     notifications = client.get("/api/notifications", params={"limit": 10}, headers=auth_headers())
     assert notifications.status_code == 200, notifications.text
-    assert "signal_pulse_candidate" in json.dumps(notifications.json(), default=str)
+    assert notifications.json()["data"]["items"] == []
 
 
 def _assert_websocket_surfaces(client: TestClient, runtime: Any) -> None:
@@ -306,33 +170,6 @@ def _assert_websocket_surfaces(client: TestClient, runtime: Any) -> None:
         market_update = ws.receive_json()
         assert market_update["type"] == "live_market_update"
         assert market_update["target_id"] == MARKET_TARGET_ID
-
-    conn = connect_postgres_test(read_only=False)
-    try:
-        notification = first_row(
-            conn,
-            """
-            SELECT notification_id, rule_id, title
-            FROM notifications
-            WHERE rule_id = 'signal_pulse_candidate'
-            ORDER BY created_at_ms DESC
-            LIMIT 1
-            """,
-        )
-    finally:
-        conn.close()
-
-    with client.websocket_connect("/ws") as ws:
-        ws.send_json({"type": "auth", "token": WS_TOKEN})
-        assert ws.receive_json()["type"] == "ready"
-        ws.send_json({"type": "subscribe", "notifications": True, "replay": 0})
-        client.portal.call(
-            runtime.hub.publish,
-            {"type": "notification", "notification": notification},
-        )
-        pushed = ws.receive_json()
-        assert pushed["type"] == "notification"
-        assert pushed["notification"]["rule_id"] == "signal_pulse_candidate"
 
 
 def _receive_matching(ws: Any, predicate: Any) -> dict[str, Any]:

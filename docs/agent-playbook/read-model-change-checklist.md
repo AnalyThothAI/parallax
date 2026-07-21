@@ -1,6 +1,6 @@
 # Read Model Change Checklist
 
-Use this checklist for any Parallax change that creates, rewrites, republishes, or reviews a derived read model. It applies to Token Radar, Pulse, News, Macro, Watchlist, CEX, Narrative, and future read-side projections.
+Use this checklist for any Parallax change that creates, rewrites, republishes, or reviews a derived read model. It applies to Token Radar, News, Macro, Watchlist, CEX, Narrative, and future read-side projections.
 
 ## Truth Boundary
 

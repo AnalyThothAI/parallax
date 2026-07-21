@@ -358,13 +358,7 @@ function FactEvidence({ facts }: { facts: NewsFactLane[] }) {
   );
 }
 
-function AgentBriefState({
-  item,
-  brief,
-}: {
-  item: NewsItemDetail;
-  brief?: NewsAgentBrief | null;
-}) {
+function AgentBriefState({ item, brief }: { item: NewsItemDetail; brief?: NewsAgentBrief | null }) {
   return (
     <section className="news-evidence-section">
       <SectionHeading icon={Activity} title="Agent state" tag={brief?.status || "absent"} />

@@ -14,7 +14,7 @@ from parallax.app.runtime.ops_diagnostics import (
 from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
 from parallax.app.surfaces.api.responses import _json
-from parallax.app.surfaces.api.validators import _limit, _scope, _window
+from parallax.app.surfaces.api.validators import _limit
 
 router = APIRouter()
 
@@ -25,17 +25,11 @@ router = APIRouter()
 )
 def ops_diagnostics(
     request: Request,
-    since_hours: Annotated[int, Query(ge=1, le=168)] = 4,
-    window: Annotated[str, Query()] = "1h",
-    scope: Annotated[str, Query()] = "all",
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     data = ops_diagnostics_payload(
         runtime,
         now_ms=_now_ms(),
-        since_hours=since_hours,
-        window=_window(window),
-        scope=_scope(scope),
     )
     return _json({"ok": True, "data": data})
 

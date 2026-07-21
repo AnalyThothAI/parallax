@@ -4,13 +4,9 @@ import { useState } from "react";
 import { useShellRouteContext } from "./shellRouteContext";
 
 export function Component() {
-  const { scope, token, windowKey } = useShellRouteContext();
+  const { token } = useShellRouteContext();
   const [selectedQueueName, setSelectedQueueName] = useState<string | null>(null);
-  const diagnosticsQuery = useOpsDiagnosticsQuery({
-    scope,
-    token,
-    window: windowKey,
-  });
+  const diagnosticsQuery = useOpsDiagnosticsQuery({ token });
   const queueQuery = useOpsQueueQuery({
     enabled: Boolean(selectedQueueName),
     queueName: selectedQueueName,

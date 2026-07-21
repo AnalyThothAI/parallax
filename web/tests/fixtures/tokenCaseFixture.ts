@@ -94,6 +94,7 @@ export function tokenCaseFixture(): TokenCaseDossier {
     narrative_admission: {
       status: "admitted",
       reason: "hot_rank",
+      is_current: true,
       computed_at_ms: BASE_MS - 30_000,
       currentness: {
         display_status: "current",
@@ -105,7 +106,6 @@ export function tokenCaseFixture(): TokenCaseDossier {
       },
       data_gaps: [],
     },
-    pulse_overlay: null,
     market_live: {
       status: "missing",
       target_type: "Asset",

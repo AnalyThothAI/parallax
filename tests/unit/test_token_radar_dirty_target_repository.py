@@ -762,7 +762,6 @@ def test_market_current_target_candidate_counts_are_read_only() -> None:
 def test_repository_session_exposes_token_radar_dirty_targets() -> None:
     session = repositories_for_connection(
         _ScriptedConnection([]),
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )

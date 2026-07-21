@@ -77,6 +77,8 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
 
   await expect(page.locator(".detail-task-panel")).toHaveCount(0);
   await expect(page.locator(".detail-drawer")).toHaveCount(0);
+  await expect(page.getByRole("heading", { name: "实时信号 Tape" })).toBeVisible();
+  await expect(page.getByRole("button", { name: "Lab" })).toHaveCount(0);
 });
 
 test("radar row click reaches token detail without hit-test interception", async ({ page }) => {

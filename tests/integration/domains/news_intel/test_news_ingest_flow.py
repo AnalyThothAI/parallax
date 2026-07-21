@@ -180,7 +180,6 @@ class _SingleConnectionWorkerDB:
         assert statement_timeout_seconds == 30
         yield repositories_for_connection(
             self.conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )

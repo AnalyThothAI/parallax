@@ -558,13 +558,14 @@ def test_worker_manifest_validation_rejects_agent_queue_tables_as_side_effect_le
 ) -> None:
     manifests = list(all_worker_manifests())
     agent_index = next(
-        index
-        for index, manifest in enumerate(manifests)
-        if manifest.kind == WorkerKind.AGENT_SIDE_EFFECT and manifest.queue_depth_table is not None
+        index for index, manifest in enumerate(manifests) if manifest.kind == WorkerKind.AGENT_SIDE_EFFECT
     )
-    queue_table = manifests[agent_index].queue_depth_table
-    assert queue_table is not None
-    manifests[agent_index] = replace(manifests[agent_index], side_effect_ledgers=(queue_table,))
+    queue_table = "synthetic_agent_queue"
+    manifests[agent_index] = replace(
+        manifests[agent_index],
+        queue_depth_table=queue_table,
+        side_effect_ledgers=(queue_table,),
+    )
     monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
 
     with pytest.raises(ValueError, match="agent queue tables declared as side-effect ledgers"):

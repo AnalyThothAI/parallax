@@ -75,7 +75,6 @@ export type MacroDecisionConsole = {
   contradictions: MacroDecisionConsoleItem[];
   dataCredibility: MacroDecisionDataCredibility | null;
   futureCatalysts: MacroDecisionFutureCatalystItem[];
-  judgementReview: MacroDecisionJudgementReview | null;
   liquidityPressure: MacroDecisionLiquidityPressureItem | null;
   qualityBlockers: MacroDecisionConsoleItem[];
   scenarioCases: MacroDecisionScenarioCaseItem[];
@@ -135,13 +134,6 @@ export type MacroDecisionLiquidityPressureItem = {
   meta: string | null;
 };
 
-export type MacroDecisionJudgementReview = {
-  itemCountLabel: string | null;
-  key: string;
-  label: string;
-  rows: MacroDecisionConsoleItem[];
-};
-
 export type MacroDecisionScenarioCaseItem = {
   detail: string;
   entry: string;
@@ -155,13 +147,9 @@ export type MacroDecisionScenarioCaseItem = {
 
 export type MacroDecisionTradeMapItem = {
   checklist: string[];
-  history: string[];
-  holding: string[];
   key: string;
   label: string;
   legs: string[];
-  portfolio: string[];
-  trust: string[];
   window: string | null;
 };
 
@@ -307,7 +295,6 @@ export function buildMacroDecisionConsole(module: MacroModuleView): MacroDecisio
       .slice(0, 3),
     dataCredibility: dataCredibilityItem(objectValue(consolePayload?.data_credibility)),
     futureCatalysts: futureCatalystItems(objectValue(consolePayload?.future_catalysts)),
-    judgementReview: judgementReviewItem(objectValue(consolePayload?.judgement_review)),
     liquidityPressure: liquidityPressureItem(objectValue(consolePayload?.liquidity_pressure)),
     topChanges: recordList(consolePayload?.top_changes)
       .map((item) => decisionItem(item))
@@ -412,7 +399,6 @@ export function hasMacroDecisionConsole(consoleModel: MacroDecisionConsole): boo
     consoleModel.contradictions.length > 0 ||
     consoleModel.dataCredibility !== null ||
     consoleModel.futureCatalysts.length > 0 ||
-    consoleModel.judgementReview !== null ||
     consoleModel.liquidityPressure !== null ||
     consoleModel.scenarioCases.length > 0 ||
     consoleModel.topChanges.length > 0 ||
@@ -1046,71 +1032,6 @@ function liquidityPressureMeta(item: MacroSemanticRecord): string | null {
   return parts.length > 0 ? parts.join(" · ") : null;
 }
 
-function judgementReviewItem(
-  item: MacroSemanticRecord | null,
-): MacroDecisionJudgementReview | null {
-  if (!item) {
-    return null;
-  }
-  const key = stringValue(item.key);
-  const label = stringValue(item.label);
-  if (!key || !label) {
-    return null;
-  }
-  const rows = recordList(item.rows)
-    .map((row) => judgementReviewRow(row))
-    .filter((row): row is MacroDecisionConsoleItem => row !== null)
-    .slice(0, 4);
-  if (rows.length === 0) {
-    return null;
-  }
-  return {
-    itemCountLabel: stringValue(item.item_count_label),
-    key,
-    label,
-    rows,
-  };
-}
-
-function judgementReviewRow(item: MacroSemanticRecord): MacroDecisionConsoleItem | null {
-  const key = stringValue(item.key);
-  if (!key) {
-    return null;
-  }
-  const label = stringValue(item.label);
-  const detail = judgementReviewDetail(item);
-  if (!label || !detail) {
-    return null;
-  }
-  return {
-    detail,
-    key,
-    label,
-    meta: stringValue(item.reliability_summary),
-  };
-}
-
-function judgementReviewDetail(item: MacroSemanticRecord): string | null {
-  const rows = recordList(item.windows)
-    .map(judgementReviewWindowDetail)
-    .filter((detail): detail is string => detail !== null);
-  return rows.length > 0 ? rows.join(" / ") : null;
-}
-
-function judgementReviewWindowDetail(item: MacroSemanticRecord): string | null {
-  const label = stringValue(item.label);
-  const status = stringValue(item.status_label);
-  const winRate = stringValue(item.win_rate_label);
-  const pnl = numberValue(item.pnl_usd);
-  const averageReturn = numberValue(item.average_signed_return_pct);
-  if (!label || !status || !winRate || pnl === null || averageReturn === null) {
-    return null;
-  }
-  return `${label} ${status} · ${winRate} · P&L ${formatSignedUsd(
-    pnl,
-  )} · 均值 ${formatSignedPercent(averageReturn)}`;
-}
-
 function marketEventFlowItem(item: MacroSemanticRecord): MacroMarketEventFlowItem | null {
   const key = stringValue(item.key);
   const label = stringValue(item.label);
@@ -1311,15 +1232,11 @@ function tradeMapItem(item: MacroSemanticRecord): MacroDecisionTradeMapItem | nu
   }
   return {
     checklist: tradeMapChecklist(item),
-    history: tradeMapHistory(item),
-    holding: tradeMapHolding(item),
     key: expression,
     label,
     legs: recordList(item.legs)
       .map(tradeLegLabel)
       .filter((leg): leg is string => Boolean(leg)),
-    portfolio: tradeMapPortfolio(item),
-    trust: tradeMapTrust(item),
     window: stringValue(item.time_window_label),
   };
 }
@@ -1334,56 +1251,6 @@ function tradeLegLabel(item: MacroSemanticRecord): string | null {
   return symbol ? `${symbol} · ${label} · ${action}` : `${label} · ${action}`;
 }
 
-function tradeMapHistory(item: MacroSemanticRecord): string[] {
-  const review = objectValue(item.historical_review);
-  if (!review) {
-    return [];
-  }
-  const label = stringValue(review.label);
-  if (!label) {
-    return [];
-  }
-  const header = [
-    label,
-    stringValue(review.win_rate_label) ? `胜率 ${stringValue(review.win_rate_label)}` : null,
-    percentPart("均值", numberValue(review.average_return_pct)),
-    percentPart("最大逆风", numberValue(review.max_adverse_excursion_pct)),
-  ].filter((part): part is string => Boolean(part));
-  const rows = recordList(review.rows)
-    .map(tradeMapHistoryRow)
-    .filter((row): row is string => Boolean(row))
-    .slice(0, 5);
-  return [header.join(" · "), ...rows].filter((line) => line.length > 0);
-}
-
-function tradeMapHistoryRow(item: MacroSemanticRecord): string | null {
-  const asset = stringValue(item.asset);
-  const label = stringValue(item.label);
-  const returnPct = numberValue(item.return_pct);
-  const outcomeLabel = stringValue(item.outcome_label);
-  if (!asset || !label || returnPct === null || !outcomeLabel) {
-    return null;
-  }
-  return `${asset} ${label} ${formatSignedPercent(returnPct)} ${outcomeLabel}`;
-}
-
-function tradeMapPortfolio(item: MacroSemanticRecord): string[] {
-  const review = objectValue(item.portfolio_review);
-  if (!review) {
-    return [];
-  }
-  const label = stringValue(review.label);
-  if (!label) {
-    return [];
-  }
-  const summary = stringValue(review.summary);
-  if (!summary) {
-    return [];
-  }
-  const risk = stringValue(review.risk_temperature);
-  return [`${label} · ${summary}${risk ? ` · 风险温度 ${risk}` : ""}`];
-}
-
 function tradeMapChecklist(item: MacroSemanticRecord): string[] {
   return recordList(item.action_checklist)
     .map((entry) => {
@@ -1396,46 +1263,6 @@ function tradeMapChecklist(item: MacroSemanticRecord): string[] {
       return `${kindLabel} · ${label} · ${description}`;
     })
     .filter((line): line is string => Boolean(line));
-}
-
-function tradeMapTrust(item: MacroSemanticRecord): string[] {
-  const trust = objectValue(item.historical_trust);
-  const summary = stringValue(trust?.summary);
-  return summary ? [summary] : [];
-}
-
-function tradeMapHolding(item: MacroSemanticRecord): string[] {
-  const review = objectValue(item.holding_period_review);
-  return recordList(review?.rows)
-    .map((row) => {
-      const label = stringValue(row.label);
-      const status = stringValue(row.status_label);
-      const winRate = stringValue(row.win_rate_label);
-      const pnl = numberValue(row.pnl_usd);
-      const averageReturn = numberValue(row.average_signed_return_pct);
-      if (!label || !status || !winRate || pnl === null || averageReturn === null) {
-        return null;
-      }
-      return `${label} ${status} · ${winRate} · P&L ${formatSignedUsd(
-        pnl,
-      )} · 均值 ${formatSignedPercent(averageReturn)}`;
-    })
-    .filter((line): line is string => Boolean(line));
-}
-
-function percentPart(label: string, value: number | null): string | null {
-  return value === null ? null : `${label} ${formatSignedPercent(value)}`;
-}
-
-function formatSignedPercent(value: number): string {
-  const prefix = value > 0 ? "+" : "";
-  return `${prefix}${value.toFixed(2)}%`;
-}
-
-function formatSignedUsd(value: number): string {
-  const rounded = Math.round(value);
-  const prefix = rounded > 0 ? "+" : rounded < 0 ? "-" : "";
-  return `${prefix}$${Math.abs(rounded).toLocaleString("en-US")}`;
 }
 
 function formatCompactNumber(value: number): string {

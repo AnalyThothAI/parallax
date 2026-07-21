@@ -1,7 +1,6 @@
-import type { LiveMobileTask } from "@features/live";
 import type { NotificationItem, NotificationLivePayload, NotificationSummary } from "@lib/types";
 import { queryKeys } from "@shared/query/queryKeys";
-import { livePath, searchPath, watchlistPath } from "@shared/routing/paths";
+import { searchPath, watchlistPath } from "@shared/routing/paths";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useCallback, useEffect, useState } from "react";
 import { useNavigate } from "react-router-dom";
@@ -17,7 +16,6 @@ import {
 type UseNotificationsControllerArgs = {
   enabled?: boolean;
   fallbackSummary?: NotificationSummary | null;
-  setMobileTask: (task: LiveMobileTask) => void;
   socketNotifications: NotificationLivePayload[];
   token: string;
 };
@@ -25,7 +23,6 @@ type UseNotificationsControllerArgs = {
 export function useNotificationsController({
   enabled = true,
   fallbackSummary,
-  setMobileTask,
   socketNotifications,
   token,
 }: UseNotificationsControllerArgs) {
@@ -88,24 +85,16 @@ export function useNotificationsController({
   const openNotification = (notification: NotificationItem) => {
     markReadMutation.mutate(notification.notification_id);
     setDrawerOpen(false);
-    if (isSignalPulseNotification(notification)) {
-      navigate(livePath());
-      setMobileTask("lab");
-      return;
-    }
     if (notification.symbol) {
       navigate(searchPath({ q: notification.symbol }));
-      setMobileTask("radar");
       return;
     }
     if (notification.author_handle) {
       navigate(watchlistPath({ handle: normalizedHandle(notification.author_handle) }));
-      setMobileTask("radar");
       return;
     }
     if (notification.event_id) {
       navigate(searchPath({ q: notification.event_id }));
-      setMobileTask("radar");
     }
   };
 
@@ -133,15 +122,6 @@ export function useNotificationsController({
 
 function normalizedHandle(handle: string): string {
   return handle.trim().replace(/^@/, "").toLowerCase();
-}
-
-function isSignalPulseNotification(notification: NotificationItem): boolean {
-  return (
-    notification.entity_type === "pulse_candidate" ||
-    notification.entity_type === "signal_pulse" ||
-    notification.source_table === "pulse_candidates" ||
-    notification.source_table === "signal_pulse_candidates"
-  );
 }
 
 function summaryFromSocketNotifications(

@@ -8,14 +8,13 @@ decisions.
 
 - `cex_oi_radar_rows` and `cex_oi_radar_publication_state` power the
   market-wide Binance USDT perpetual OI/radar board as current-only rows.
-- `cex_detail_snapshots` powers single-token CEX detail pages and Signal Pulse
-  market evidence for CEX targets.
+- `cex_detail_snapshots` powers single-token CEX detail pages.
 
 ## Writer Ownership
 
 `CexOiRadarBoardWorker` is the runtime writer for `cex_oi_radar_rows`,
 `cex_oi_radar_publication_state`, and the v1 `cex_detail_snapshots` projection.
-API routes, Token Case, and Pulse evidence builders only read these tables.
+API routes and Token Case only read these tables.
 The worker writes board rows, publication state, detail snapshots, and
 attempt-state updates inside `RepositorySession.transaction` with
 caller-owned repository writes. Repository-owned CEX read-model writes require
@@ -73,9 +72,8 @@ a callable connection transaction before SQL and do not fall back to naked
    `cex_token:unknown` are malformed identity, not fallback targets.
    Missing CoinGlass fields are represented as `coinglass_status='unavailable'`
    or `partial` plus degraded reasons.
-5. `/api/token-case`, `/api/search/inspect`, `/api/cex/detail`, and Signal
-   Pulse read snapshots from PostgreSQL. They never call Binance or CoinGlass
-   on the request path.
+5. `/api/token-case`, `/api/search/inspect`, and `/api/cex/detail` read snapshots
+   from PostgreSQL. They never call Binance or CoinGlass on the request path.
 
 ## Product Contract
 
@@ -147,10 +145,10 @@ cannot rely on timestamp equality to recover a missing source. The repository
 also requires `level_bands`, `degraded_reasons`, and `source_refs` to be present
 and list-shaped before payload hashing or SQL; missing list fields are
 malformed writer output, not empty arrays.
-If a snapshot has fresh Binance baseline data but no CoinGlass enrichment,
-frontend displays a partial CEX panel and Pulse caps the route at `token_watch`.
-Only fresh baseline plus derivative/level enrichment can unlock a complete CEX
-market contract for trade-candidate analysis.
+If a snapshot has fresh Binance baseline data but no CoinGlass enrichment, the
+frontend displays a partial CEX panel and preserves the missing derivatives as
+an explicit gap. Only fresh baseline plus derivative/level enrichment forms a
+complete CEX market contract.
 
 Token Case and Search Inspect require the `cex_detail_snapshots.latest_snapshot`
 repository contract for `CexToken` dossiers. A missing snapshot row is product

@@ -7,6 +7,8 @@
 **Approved by**: delegated goal
 **Approved at**: 2026-06-12
 
+> **Signal Pulse supersession (2026-07-21):** Pulse-named tasks, paths, tests, and commands below are retired historical evidence and MUST NOT be resumed. The current hard-delete SDD is `docs/sdd/features/active/2026-07-21-signal-pulse-hard-cut/`.
+
 ## Gate Compliance
 
 | Gate | Evidence |
@@ -25,7 +27,7 @@
 - **Owner**: parent
 - **Depends on**: none
 - **Touch set**: `tests/architecture/test_api_read_paths_provider_free.py`, `tests/unit/test_stocks_radar_service.py`, `tests/integration/test_api_http.py`
-- **Conflict set**: `src/parallax/app/surfaces/api/routes_radar.py`, `src/parallax/domains/token_intel/read_models/stocks_radar_service.py`
+- **Conflict set**: `src/parallax/app/surfaces/api/routes_radar.py`, `src/parallax/domains/token_intel/read_models/stocks_radar_service.py`; coordinate with `2026-07-21-signal-pulse-hard-cut` for Signal Pulse deletion and shared current-main files
 - **Failing test first**: `tests/architecture/test_api_read_paths_provider_free.py::test_stocks_radar_api_is_provider_free` - asserts the route does not wire a runtime quote provider.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -274,10 +276,10 @@
 
 ### Task 13 - Add Pulse JSONB expansion guard
 
-- **File(s)**: `tests/integration/test_pulse_repositories.py`
+- **File(s)**: `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `tests/architecture/test_signal_pulse_hard_delete.py`
 - **Owner**: parent
 - **Depends on**: Task 12
-- **Touch set**: `tests/integration/test_pulse_repositories.py`
+- **Touch set**: `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `tests/architecture/test_signal_pulse_hard_delete.py`
 - **Conflict set**: `src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py`, `docs/CONTRACTS.md`, `web/src`
 - **Failing test first**: `tests/integration/test_pulse_repositories.py::test_pulse_handle_filter_does_not_expand_jsonb_event_arrays` - rejects `jsonb_array_elements_text` in Pulse read SQL.
 - **Subagent handoff**: not delegated
@@ -295,10 +297,10 @@
 
 ### Task 14 - Remove Pulse JSONB handle expansion
 
-- **File(s)**: `src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py`, `docs/CONTRACTS.md`, `web/src`
+- **File(s)**: `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/CONTRACTS.md`, `tests/architecture/test_signal_pulse_hard_delete.py`
 - **Owner**: parent
 - **Depends on**: Task 13
-- **Touch set**: `src/parallax/domains/pulse_lab/repositories/pulse_read_repository.py`, `docs/CONTRACTS.md`, `web/src`
+- **Touch set**: `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/CONTRACTS.md`, `tests/architecture/test_signal_pulse_hard_delete.py`
 - **Conflict set**: `tests/integration/test_pulse_repositories.py`, `docs/FRONTEND.md`
 - **Failing test first**: `tests/integration/test_pulse_repositories.py::test_pulse_handle_filter_does_not_expand_jsonb_event_arrays` - rejects JSONB expansion.
 - **Subagent handoff**: not delegated
@@ -316,10 +318,10 @@
 
 ### Task 15 - Remove Signal Pulse worker runtime state from public contract
 
-- **File(s)**: `src/parallax/app/surfaces/api/routes_pulse.py`, `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`, `src/parallax/app/surfaces/api/schemas.py`, `docs/CONTRACTS.md`, `tests/architecture/test_api_read_paths_provider_free.py`, `tests/contract/test_openapi_drift.py`, `tests/unit/test_signal_pulse_service.py`, `tests/unit/test_api_signal_pulse_contract.py`, `docs/generated/openapi.json`, `web/src/lib/types/openapi.ts`, `web/src/lib/types/frontend-contracts.ts`
+- **File(s)**: `src/parallax/app/surfaces/api/schemas.py`, `docs/CONTRACTS.md`, `tests/architecture/test_api_read_paths_provider_free.py`, `tests/architecture/test_signal_pulse_hard_delete.py`, `tests/contract/test_openapi_drift.py`, `docs/generated/openapi.json`, `web/src/lib/types/openapi.ts`, `web/src/lib/types/frontend-contracts.ts`
 - **Owner**: parent
 - **Depends on**: Task 14
-- **Touch set**: `src/parallax/app/surfaces/api/routes_pulse.py`, `src/parallax/domains/pulse_lab/read_models/signal_pulse_service.py`, `src/parallax/app/surfaces/api/schemas.py`, `docs/CONTRACTS.md`, `tests/architecture/test_api_read_paths_provider_free.py`, `tests/contract/test_openapi_drift.py`, `tests/unit/test_signal_pulse_service.py`, `tests/unit/test_api_signal_pulse_contract.py`, `docs/generated/openapi.json`, `web/src/lib/types/openapi.ts`, `web/src/lib/types/frontend-contracts.ts`, `web/tests`
+- **Touch set**: `src/parallax/app/surfaces/api/schemas.py`, `docs/CONTRACTS.md`, `tests/architecture/test_api_read_paths_provider_free.py`, `tests/architecture/test_signal_pulse_hard_delete.py`, `tests/contract/test_openapi_drift.py`, `docs/generated/openapi.json`, `web/src/lib/types/openapi.ts`, `web/src/lib/types/frontend-contracts.ts`, `web/tests`
 - **Conflict set**: `src/parallax/app/surfaces/api/routes_pulse.py`, `src/parallax/app/surfaces/api/schemas.py`, `web/src/lib/types/openapi.ts`
 - **Failing test first**: `tests/architecture/test_api_read_paths_provider_free.py::test_signal_pulse_public_read_path_does_not_expose_worker_runtime_state` - rejects `_worker_running` and `agent_worker_running` in the Signal Pulse public read path.
 - **Subagent handoff**: not delegated
@@ -505,10 +507,10 @@
 
 ### Task 24 - Require Pulse low-information hide contract
 
-- **File(s)**: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`, `tests/architecture/test_pulse_no_compat.py`, `tests/unit/test_pulse_candidate_worker.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/WORKER_FLOW.md`, `docs/WORKERS.md`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
+- **File(s)**: `tests/architecture/test_signal_pulse_hard_delete.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/WORKER_FLOW.md`, `docs/WORKERS.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
 - **Owner**: parent
 - **Depends on**: Task 23
-- **Touch set**: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`, `tests/architecture/test_pulse_no_compat.py`, `tests/unit/test_pulse_candidate_worker.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/WORKER_FLOW.md`, `docs/WORKERS.md`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
+- **Touch set**: `tests/architecture/test_signal_pulse_hard_delete.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/WORKER_FLOW.md`, `docs/WORKERS.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
 - **Conflict set**: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`, `tests/unit/test_pulse_candidate_worker.py`
 - **Failing test first**: `tests/architecture/test_pulse_no_compat.py::test_pulse_low_information_hide_requires_repository_contract_without_optional_fallback` and `tests/unit/test_pulse_candidate_worker.py::test_low_information_hide_requires_repository_contract` - reject optional low-information hide fallback and prove missing hide support fails dirty triggers.
 - **Subagent handoff**: not delegated
@@ -610,10 +612,10 @@
 
 ### Task 29 - Require Pulse dirty-trigger control-plane repository contracts
 
-- **File(s)**: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`, `tests/architecture/test_pulse_no_compat.py`, `tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `docs/WORKERS.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
+- **File(s)**: `tests/architecture/test_signal_pulse_hard_delete.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/WORKERS.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
 - **Owner**: parent
 - **Depends on**: Task 28
-- **Touch set**: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`, `tests/architecture/test_pulse_no_compat.py`, `tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `docs/WORKERS.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
+- **Touch set**: `tests/architecture/test_signal_pulse_hard_delete.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/WORKERS.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
 - **Conflict set**: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`, `tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py`
 - **Failing test first**: `tests/architecture/test_pulse_no_compat.py::test_pulse_dirty_trigger_state_contracts_are_not_optional_fallbacks` and `tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py::test_missing_pulse_job_state_contract_fails_dirty_trigger_instead_of_marking_done` - reject optional dirty-trigger state/capacity/queue-depth fallbacks and prove missing job-state support fails/retries the dirty trigger.
 - **Subagent handoff**: not delegated
@@ -694,10 +696,10 @@
 
 ### Task 33 - Require Pulse candidate job service session transaction
 
-- **File(s)**: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`, `tests/architecture/test_pulse_no_compat.py`, `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`, `tests/unit/test_pulse_candidate_worker.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
+- **File(s)**: `tests/architecture/test_signal_pulse_hard_delete.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
 - **Owner**: parent
 - **Depends on**: Task 32
-- **Touch set**: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`, `tests/architecture/test_pulse_no_compat.py`, `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`, `tests/unit/test_pulse_candidate_worker.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
+- **Touch set**: `tests/architecture/test_signal_pulse_hard_delete.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
 - **Conflict set**: `src/parallax/domains/pulse_lab/services/pulse_candidate_job_service.py`, `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py`, `tests/unit/test_pulse_candidate_worker.py`
 - **Failing test first**: `tests/architecture/test_pulse_no_compat.py::test_pulse_candidate_job_service_requires_session_transaction_without_nullcontext_fallback` and `tests/unit/domains/pulse_lab/test_pulse_candidate_job_service.py::test_run_job_requires_repository_session_transaction_contract` - reject optional session transaction/nullcontext/raw connection fallback and prove missing session transaction fails before Pulse agent/candidate/job rows are written.
 - **Subagent handoff**: not delegated
@@ -736,10 +738,10 @@
 
 ### Task 35 - Require Pulse candidate worker session transaction
 
-- **File(s)**: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`, `tests/architecture/test_pulse_no_compat.py`, `tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py`, `tests/unit/test_pulse_candidate_worker.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
+- **File(s)**: `tests/architecture/test_signal_pulse_hard_delete.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
 - **Owner**: parent
 - **Depends on**: Task 34
-- **Touch set**: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`, `tests/architecture/test_pulse_no_compat.py`, `tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py`, `tests/unit/test_pulse_candidate_worker.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
+- **Touch set**: `tests/architecture/test_signal_pulse_hard_delete.py`, `docs/reviews/kappa-cqrs-root-cause-analysis-zh-2026-06-12.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`
 - **Conflict set**: `src/parallax/domains/pulse_lab/runtime/pulse_candidate_worker.py`, `tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py`, `tests/unit/test_pulse_candidate_worker.py`
 - **Failing test first**: `tests/architecture/test_pulse_no_compat.py::test_pulse_candidate_worker_requires_session_transaction_without_conn_fallback` and `tests/unit/domains/pulse_lab/test_pulse_candidate_worker_dirty_triggers.py::test_worker_requires_repository_session_transaction_before_claiming_dirty_targets` - reject raw connection transaction fallback and prove missing session transaction fails before Pulse dirty target claim/write.
 - **Subagent handoff**: not delegated
@@ -841,10 +843,10 @@
 
 ### Task 40 - Final SDD verification, worker inventory guard, and work index
 
-- **File(s)**: `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix/spec.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix/plan.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix/tasks.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix/verification.md`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `src/parallax/platform/db/queue_terminal.py`, `src/parallax/app/runtime/projection_dirty_targets.py`, `src/parallax/domains/asset_market/ARCHITECTURE.md`, `src/parallax/domains/asset_market/repositories/discovery_repository.py`, `src/parallax/domains/news_intel/ARCHITECTURE.md`, `src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`, `src/parallax/app/surfaces/api/routes_events.py`, `src/parallax/app/surfaces/api/schemas.py`, `src/parallax/domains/account_quality/ARCHITECTURE.md`, `src/parallax/domains/account_quality/read_models/account_quality_service.py`, `src/parallax/domains/account_quality/services/account_quality_backfill_service.py`, `src/parallax/domains/narrative_intel/ARCHITECTURE.md`, `src/parallax/domains/narrative_intel/read_models/narrative_read_model.py`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`, `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`, `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`, `tests/architecture/test_api_read_paths_provider_free.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`, `tests/architecture/test_news_intel_kiss_simplification.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `tests/architecture/test_pulse_no_compat.py`, `tests/unit/test_ops_projection_dirty_targets.py`, `tests/unit/test_queue_terminal.py`, `tests/unit/test_cli_queue_ops.py`, `tests/unit/test_discovery_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_read_model.py`, `tests/unit/domains/news_intel/test_news_projection_dirty_targets.py`, `tests/unit/domains/news_intel/test_news_workers.py`, `tests/unit/domains/news_intel/test_news_item_brief_worker.py`, `tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py`
+- **File(s)**: `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix/spec.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix/plan.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix/tasks.md`, `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix/verification.md`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `src/parallax/platform/db/queue_terminal.py`, `src/parallax/app/runtime/projection_dirty_targets.py`, `src/parallax/domains/asset_market/ARCHITECTURE.md`, `src/parallax/domains/asset_market/repositories/discovery_repository.py`, `src/parallax/domains/news_intel/ARCHITECTURE.md`, `src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py`, `src/parallax/app/surfaces/api/routes_events.py`, `src/parallax/app/surfaces/api/schemas.py`, `src/parallax/domains/account_quality/ARCHITECTURE.md`, `src/parallax/domains/account_quality/read_models/account_quality_service.py`, `src/parallax/domains/account_quality/services/account_quality_backfill_service.py`, `src/parallax/domains/narrative_intel/ARCHITECTURE.md`, `src/parallax/domains/narrative_intel/read_models/narrative_read_model.py`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`, `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`, `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`, `tests/architecture/test_api_read_paths_provider_free.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`, `tests/architecture/test_news_intel_kiss_simplification.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `tests/architecture/test_signal_pulse_hard_delete.py`, `tests/unit/test_ops_projection_dirty_targets.py`, `tests/unit/test_queue_terminal.py`, `tests/unit/test_cli_queue_ops.py`, `tests/unit/test_discovery_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_read_model.py`, `tests/unit/domains/news_intel/test_news_projection_dirty_targets.py`, `tests/unit/domains/news_intel/test_news_workers.py`, `tests/unit/domains/news_intel/test_news_item_brief_worker.py`
 - **Owner**: parent
 - **Depends on**: Tasks 1-39
-- **Touch set**: `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `src/parallax/platform/db/queue_terminal.py`, `src/parallax/app/runtime/projection_dirty_targets.py`, `src/parallax/domains/asset_market/ARCHITECTURE.md`, `src/parallax/domains/asset_market/repositories/discovery_repository.py`, `src/parallax/domains/news_intel/ARCHITECTURE.md`, `src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`, `src/parallax/app/surfaces/api/routes_events.py`, `src/parallax/app/surfaces/api/schemas.py`, `src/parallax/domains/account_quality/ARCHITECTURE.md`, `src/parallax/domains/account_quality/read_models/account_quality_service.py`, `src/parallax/domains/account_quality/services/account_quality_backfill_service.py`, `src/parallax/domains/narrative_intel/ARCHITECTURE.md`, `src/parallax/domains/narrative_intel/read_models/narrative_read_model.py`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`, `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`, `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`, `tests/architecture/test_api_read_paths_provider_free.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`, `tests/architecture/test_news_intel_kiss_simplification.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `tests/architecture/test_pulse_no_compat.py`, `tests/unit/test_ops_projection_dirty_targets.py`, `tests/unit/test_queue_terminal.py`, `tests/unit/test_cli_queue_ops.py`, `tests/unit/test_discovery_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_read_model.py`, `tests/unit/domains/news_intel/test_news_projection_dirty_targets.py`, `tests/unit/domains/news_intel/test_news_workers.py`, `tests/unit/domains/news_intel/test_news_item_brief_worker.py`, `tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py`
+- **Touch set**: `docs/sdd/features/active/2026-06-12-kappa-cqrs-governance-root-fix`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `src/parallax/platform/db/queue_terminal.py`, `src/parallax/app/runtime/projection_dirty_targets.py`, `src/parallax/domains/asset_market/ARCHITECTURE.md`, `src/parallax/domains/asset_market/repositories/discovery_repository.py`, `src/parallax/domains/news_intel/ARCHITECTURE.md`, `src/parallax/domains/news_intel/repositories/news_projection_dirty_target_repository.py`, `src/parallax/app/surfaces/api/routes_events.py`, `src/parallax/app/surfaces/api/schemas.py`, `src/parallax/domains/account_quality/ARCHITECTURE.md`, `src/parallax/domains/account_quality/read_models/account_quality_service.py`, `src/parallax/domains/account_quality/services/account_quality_backfill_service.py`, `src/parallax/domains/narrative_intel/ARCHITECTURE.md`, `src/parallax/domains/narrative_intel/read_models/narrative_read_model.py`, `src/parallax/domains/narrative_intel/repositories/narrative_repository.py`, `src/parallax/domains/news_intel/runtime/news_fetch_worker.py`, `src/parallax/domains/news_intel/runtime/news_item_process_worker.py`, `src/parallax/domains/news_intel/runtime/news_item_brief_worker.py`, `tests/architecture/test_api_read_paths_provider_free.py`, `tests/architecture/test_worker_inventory_contract.py`, `tests/architecture/test_worker_manifest_static_contracts.py`, `tests/architecture/test_worker_runtime_contracts.py`, `tests/architecture/test_news_intel_kiss_simplification.py`, `tests/architecture/test_runtime_worker_constraint_hard_cut.py`, `tests/architecture/test_signal_pulse_hard_delete.py`, `tests/unit/test_ops_projection_dirty_targets.py`, `tests/unit/test_queue_terminal.py`, `tests/unit/test_cli_queue_ops.py`, `tests/unit/test_discovery_repository.py`, `tests/unit/domains/narrative_intel/test_narrative_read_model.py`, `tests/unit/domains/news_intel/test_news_projection_dirty_targets.py`, `tests/unit/domains/news_intel/test_news_workers.py`, `tests/unit/domains/news_intel/test_news_item_brief_worker.py`
 - **Additional Root40 files**: `src/parallax/domains/pulse_lab/repositories/_pulse_repository_shared.py`, `src/parallax/domains/pulse_lab/repositories/pulse_admission_repository.py`, `tests/unit/domains/pulse_lab/test_pulse_admission_repository.py`
 - **Additional Root41 files**: `src/parallax/domains/macro_intel/repositories/macro_intel_repository.py`, `src/parallax/domains/macro_intel/ARCHITECTURE.md`, `tests/unit/domains/macro_intel/test_macro_generation_swap.py`, `tests/architecture/test_macro_no_compatibility_contract.py`
 - **Additional Root42 files**: `src/parallax/domains/pulse_lab/repositories/pulse_jobs_repository.py`, `src/parallax/domains/pulse_lab/ARCHITECTURE.md`, `tests/unit/domains/pulse_lab/test_pulse_jobs_repository.py`, `tests/architecture/test_pulse_no_compat.py`

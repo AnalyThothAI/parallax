@@ -86,7 +86,6 @@ class FakeDB:
         self.tool_pool = FakePool()
         self.lock_pool = FakePool()
         self.wake_pool = FakePool()
-        self.pulse_job_running_timeout_ms = 120_000
         self.notification_delivery_running_timeout_ms = 120_000
         self.notification_delivery_stale_running_terminalization_batch_size = 100
 
@@ -110,19 +109,6 @@ class FakeDB:
     async def aclose(self) -> None:
         for pool in (self.api_pool, self.worker_pool, self.lock_pool, self.tool_pool, self.wake_pool):
             pool.close()
-
-
-class FakePulseProvider:
-    provider = "fake"
-    timeout_seconds = 1.0
-    artifact_version_hash = "artifact:gpt-pulse"
-
-    def __init__(self, *, model):
-        self.model = model
-        self.closed = 0
-
-    async def aclose(self) -> None:
-        self.closed += 1
 
 
 class FakeClosableProvider:
@@ -273,9 +259,6 @@ def fake_wired_providers(
             stream_dex_market=None,
             discovery_chain_ids=(),
         ),
-        pulse_lab=SimpleNamespace(
-            decision_provider=FakePulseProvider(model=settings.agent_runtime_model_for_lane("pulse.decision"))
-        ),
         narrative_intel=SimpleNamespace(narrative_provider=None),
         news_intel=news_intel or SimpleNamespace(feed_client=None, brief_provider=None),
         agent_execution_gateway=agent_execution_gateway,
@@ -362,7 +345,6 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         "asset_profile_refresh",
         "resolution_refresh",
         "live_price_gateway",
-        "pulse_agent",
         "token_resolution",
         "provider_status",
     }
@@ -370,7 +352,6 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
     assert set(payload["workers"]) >= {
         "collector",
         "token_radar_projection",
-        "pulse_candidate",
         "event_anchor_backfill",
     }
     assert payload["workers"]["collector"]["enabled"] is False
@@ -654,33 +635,6 @@ def test_readiness_marks_database_probe_failure_unhealthy(tmp_path):
     assert "database_unhealthy" in payload["reasons"]
 
 
-def test_bootstrap_creates_pulse_worker_when_enabled_and_configured(monkeypatch, tmp_path):
-    settings = Settings(
-        ws_token="secret",
-        storage={"postgres": {"dsn": "postgresql://fake/db", "password_file": None}},
-        llm={
-            "api_key": "test-key",
-        },
-        workers={
-            "agent_runtime": {"lanes": {"pulse.decision": {"model": "gpt-pulse"}}},
-            "pulse_candidate": {"batch_size": 7},
-        },
-        notifications={"enabled": False},
-    )
-    settings.set_config_dir(tmp_path / "app-home")
-    patch_runtime_dependencies(monkeypatch)
-
-    runtime = bootstrap(settings, start_collector=False)
-
-    try:
-        pulse = runtime.workers["pulse_candidate"]
-        assert pulse.status_payload()["enabled"] is True
-        assert pulse.decision_client.model == "gpt-pulse"
-        assert pulse.batch_size == settings.workers.pulse_candidate.batch_size
-    finally:
-        close_runtime(runtime)
-
-
 def test_disabled_workers_are_present_but_not_started(monkeypatch, tmp_path):
     settings = Settings(
         ws_token="secret",
@@ -827,7 +781,7 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
         "global_max_concurrency": 4,
         "global_in_flight": 0,
         "lanes": {
-            "pulse.decision_maker": {
+            "news.item_brief": {
                 "max_concurrency": 1,
                 "in_flight": 0,
                 "circuit_state": "closed",
@@ -844,7 +798,7 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
         agent_execution_gateway=SimpleNamespace(status_snapshot=lambda: agent_execution),
         scheduler=SimpleNamespace(
             status_payload=lambda: {
-                "pulse_candidate": {
+                "news_item_brief": {
                     "enabled": True,
                     "running": True,
                     "last_started_at_ms": 1_000,
@@ -869,10 +823,9 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
     payload, status_code = _readiness_payload(runtime)
 
     assert status_code == 200
-    assert payload["workers"]["pulse_candidate"]["running"] is True
-    assert payload["workers"]["pulse_candidate"]["last_result"] == {"processed": 1}
+    assert payload["workers"]["news_item_brief"]["running"] is True
+    assert payload["workers"]["news_item_brief"]["last_result"] == {"processed": 1}
     assert payload["agent_execution"] == agent_execution
-    assert "pulse_agent" not in payload
 
 
 def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):

@@ -184,7 +184,10 @@ function admissionTone(admission: NarrativeAdmission | null | undefined): string
   if (admission?.status === "admitted" && admission.currentness.display_status === "current") {
     return "health";
   }
-  if (admission?.status === "suppressed" || admission?.currentness.display_status === "out_of_frontier") {
+  if (
+    admission?.status === "suppressed" ||
+    admission?.currentness.display_status === "out_of_frontier"
+  ) {
     return "warn";
   }
   return "info";

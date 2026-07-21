@@ -196,12 +196,7 @@
     border-left: 2px solid rgba(125, 211, 252, 0.38);
   }
 
-  .macro-workbench-trade-block,
-  .macro-workbench-trade-history,
-  .macro-workbench-trade-portfolio,
-  .macro-workbench-trade-trust,
-  .macro-workbench-trade-holding,
-  .macro-workbench-trade-checklist {
+  .macro-workbench-trade-block {
     display: grid;
     gap: 5px;
     min-width: 0;
@@ -223,16 +218,6 @@
     display: grid;
     gap: 3px;
     min-width: 0;
-  }
-
-  .macro-workbench-trade-portfolio small {
-    color: var(--text-primary, #f8fafc);
-    font-weight: 700;
-  }
-
-  .macro-workbench-trade-trust small {
-    color: var(--accent-green, #a7f3d0);
-    font-weight: 700;
   }
 
   .macro-workbench-evidence-grid,

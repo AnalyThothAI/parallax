@@ -40,17 +40,6 @@ describe("watchlist navigation", () => {
       if (path === "/api/token-radar") {
         return ok({ targets: [], attention: [], projection: {} });
       }
-      if (path === "/api/signal-lab/pulse") {
-        return ok({
-          query: {},
-          health: {},
-          summary: {},
-          items: [],
-          returned_count: 0,
-          has_more: false,
-          next_cursor: null,
-        } as any);
-      }
       if (path === "/api/notification-summary") {
         return ok({});
       }
@@ -144,17 +133,6 @@ describe("watchlist navigation", () => {
       }
       if (path === "/api/token-radar") {
         return ok({ targets: [], attention: [], projection: {} });
-      }
-      if (path === "/api/signal-lab/pulse") {
-        return ok({
-          query: {},
-          health: {},
-          summary: {},
-          items: [],
-          returned_count: 0,
-          has_more: false,
-          next_cursor: null,
-        } as any);
       }
       if (path === "/api/notification-summary") {
         return ok({});

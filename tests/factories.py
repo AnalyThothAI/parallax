@@ -95,7 +95,6 @@ def open_runtime(tmp_path):
     migrate(conn)
     repos = repositories_for_connection(
         conn,
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )

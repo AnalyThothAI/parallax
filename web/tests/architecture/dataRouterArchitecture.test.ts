@@ -54,7 +54,6 @@ describe("data router architecture", () => {
       "@features/live",
       "@features/news",
       "@features/search",
-      "@features/signal-lab",
       "@features/stocks",
       "@features/token-case",
       "@features/watchlist",
@@ -77,7 +76,6 @@ describe("data router architecture", () => {
 
   it("keeps eager shell dependencies from importing page-exporting search barrels", () => {
     const eagerShellSources = [
-      "features/live/useLiveSelection.ts",
       "features/live/model/tokenRadarDetailLink.ts",
       "features/live/shell.ts",
       "routes/shellChromeData.ts",

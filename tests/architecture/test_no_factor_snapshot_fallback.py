@@ -10,41 +10,6 @@ ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = ROOT / "src" / "parallax"
 WEB_SRC_ROOT = ROOT / "web" / "src"
 
-LEGACY_BACKEND_PATTERNS = (
-    "PulseThesis",
-    "write_thesis",
-    "thesis_provider",
-    "thesis_client",
-    "pulse_thesis",
-    "radar_score_json",
-    "market_context_json",
-    "thesis_json",
-    "confirmation_triggers_zh",
-    "top_risks",
-    "why_now_zh",
-    "bull_case_zh",
-    "bear_case_zh",
-    "pulse_agent_asset_heat_min",
-    "pulse_agent_asset_propagation_min",
-    "pulse_agent_trade_heat_min",
-    "pulse_agent_trade_quality_min",
-    "pulse_agent_trade_propagation_min",
-    "pulse_agent_tradeability_min",
-    "pulse_agent_timing_min",
-    "pulse_agent_confidence_min",
-    "pulse_agent_token_watch_signal_min",
-)
-
-LEGACY_FRONTEND_PATTERNS = (
-    "item.summary_zh",
-    "why_now_zh",
-    "radar_score_json",
-    "market_context_json",
-    "thesis_json",
-    "confirmation_triggers_zh",
-    "top_risks",
-)
-
 LEGACY_MARKET_OVERLAY_BACKEND_PATTERNS = (
     "_overlay_" + "live_market",
     "token_market_price_" + "baselines",
@@ -68,8 +33,6 @@ FACTOR_SNAPSHOT_PRODUCER_FILES = (
     SRC_ROOT / "domains" / "token_intel" / "scoring" / "factor_cohort.py",
     SRC_ROOT / "domains" / "token_intel" / "services" / "token_radar_projection.py",
 )
-TOKEN_FACTOR_EVALUATION_SERVICE = SRC_ROOT / "domains" / "token_intel" / "services" / "token_factor_evaluation.py"
-
 FACTOR_SNAPSHOT_FALLBACK_PATTERNS = (
     "token_factor_snapshot_v1",
     "hard_gates",
@@ -99,25 +62,6 @@ LEGACY_SCORING_VERSION_PATTERNS = (
     "social_opportunity_v4",
     "timing_v5",
 )
-
-
-def test_runtime_has_no_legacy_pulse_thesis_or_score_fallback_paths() -> None:
-    offenders = _matches(
-        _python_runtime_files(),
-        patterns=LEGACY_BACKEND_PATTERNS,
-    )
-
-    assert offenders == []
-    assert not (SRC_ROOT / "domains" / "pulse_lab" / "types" / "pulse_thesis.py").exists()
-
-
-def test_frontend_runtime_has_no_legacy_signal_pulse_fallback_fields() -> None:
-    offenders = _matches(
-        _frontend_runtime_files(),
-        patterns=LEGACY_FRONTEND_PATTERNS,
-    )
-
-    assert offenders == []
 
 
 def test_no_runtime_legacy_market_payload_fallbacks() -> None:
@@ -166,112 +110,6 @@ def test_factor_snapshot_contract_requires_core_score_decision_fields(section: s
         require_token_factor_snapshot(snapshot)
 
 
-def test_token_factor_evaluation_requires_formal_snapshot_rank_score_without_zero_default() -> None:
-    source = TOKEN_FACTOR_EVALUATION_SERVICE.read_text()
-    forbidden = (
-        'float(composite.get("rank_score") or 0.0)',
-        "return 0.0",
-        "max(0, int(limit))",
-    )
-    required = (
-        "require_token_factor_snapshot",
-        'field_name="factor_snapshot_json"',
-        'composite["rank_score"]',
-        "token_factor_evaluation_limit_required",
-    )
-
-    assert [token for token in forbidden if token in source] == []
-    assert [token for token in required if token not in source] == []
-
-
-def test_token_factor_evaluation_uses_snapshot_subject_identity_without_row_fallback() -> None:
-    source = TOKEN_FACTOR_EVALUATION_SERVICE.read_text()
-    forbidden = (
-        'subject.get("target_type") or row.get("target_type")',
-        'subject.get("target_id") or row.get("target_id")',
-        "_market_tick_target(row=row",
-        'snapshot = _mapping(row.get("factor_snapshot_json"))',
-        'subject_type in {"chain_token", "cex_symbol"}',
-    )
-    required = (
-        "_subject_identity(subject)",
-        "factor_snapshot_json.subject.target_type is required",
-        "factor_snapshot_json.subject.target_id is required",
-        "factor_snapshot_json.subject.target_type is invalid",
-        "_market_tick_target(subject=subject)",
-    )
-
-    assert [token for token in forbidden if token in source] == []
-    assert [token for token in required if token not in source] == []
-
-
-def test_token_factor_evaluation_uses_snapshot_provenance_time_without_zero_default() -> None:
-    source = TOKEN_FACTOR_EVALUATION_SERVICE.read_text()
-    forbidden = (
-        'int(row.get("computed_at_ms") or 0)',
-        'row.get("computed_at_ms") or 0',
-    )
-    required = (
-        "_snapshot_computed_at_ms(snapshot)",
-        'snapshot["provenance"]',
-        'provenance["computed_at_ms"]',
-    )
-
-    assert [token for token in forbidden if token in source] == []
-    assert [token for token in required if token not in source] == []
-
-
-def test_token_factor_evaluation_reads_family_scores_from_formal_families_without_composite_alias() -> None:
-    source = TOKEN_FACTOR_EVALUATION_SERVICE.read_text()
-    forbidden = (
-        'composite.get("family_scores")',
-        'snapshot.get("composite")',
-    )
-    required = (
-        'snapshot["families"]',
-        "_family_score(families, family)",
-        'family_block["score"]',
-    )
-
-    assert [token for token in forbidden if token in source] == []
-    assert [token for token in required if token not in source] == []
-
-
-def test_token_factor_evaluation_uses_cex_subject_market_identity_without_market_context_or_alias_fallback() -> None:
-    source = TOKEN_FACTOR_EVALUATION_SERVICE.read_text()
-    forbidden = (
-        'decision_latest = _mapping(market.get("decision_latest"))',
-        'subject.get("provider") or decision_latest.get("provider")',
-        'subject.get("native_market_id") or subject.get("instrument")',
-        'subject.get("instrument")',
-    )
-    required = (
-        'provider = _clean(subject.get("provider"))',
-        'native_market_id = _clean(subject.get("native_market_id"))',
-        'return "cex_symbol", f"{provider}:{native_market_id}"',
-    )
-
-    assert [token for token in forbidden if token in source] == []
-    assert [token for token in required if token not in source] == []
-
-
-def test_token_factor_evaluation_uses_asset_subject_market_identity_without_alias_fallback() -> None:
-    source = TOKEN_FACTOR_EVALUATION_SERVICE.read_text()
-    forbidden = (
-        'subject.get("chain") or subject.get("chain_id")',
-        'subject.get("address") or subject.get("asset_address")',
-        'subject.get("chain_id")',
-        'subject.get("asset_address")',
-    )
-    required = (
-        'chain = _clean(subject.get("chain"))',
-        'address = _clean(subject.get("address"))',
-    )
-
-    assert [token for token in forbidden if token in source] == []
-    assert [token for token in required if token not in source] == []
-
-
 def test_python_runtime_has_no_stale_factor_snapshot_validator_names() -> None:
     offenders = _matches(
         _python_runtime_files(),
@@ -301,11 +139,6 @@ def test_runtime_has_no_legacy_scoring_version_literals() -> None:
     )
 
     assert offenders == []
-
-
-def test_pulse_worker_uses_token_radar_factor_family_constant_as_single_source() -> None:
-    worker_path = SRC_ROOT / "domains" / "pulse_lab" / "runtime" / "pulse_candidate_worker.py"
-    assert "V2_ALPHA_FAMILIES" not in worker_path.read_text()
 
 
 def _python_runtime_files() -> list[Path]:

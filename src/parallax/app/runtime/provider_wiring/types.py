@@ -16,7 +16,6 @@ from parallax.domains.asset_market.providers import (
 from parallax.domains.cex_market_intel.providers import CexOiMarketProvider, CoinglassDerivativesProvider
 from parallax.domains.ingestion.providers import UpstreamClientProtocol
 from parallax.domains.news_intel.providers import NewsItemBriefProvider, NewsSourceProvider
-from parallax.domains.pulse_lab.providers import PulseDecisionProvider
 
 UpstreamClientFactory = Callable[[Callable[[str], Awaitable[None]]], UpstreamClientProtocol | None]
 
@@ -84,18 +83,6 @@ class OkxProviderBundle:
 
 
 @dataclass(frozen=True, slots=True)
-class PulseLabProviders:
-    decision_provider: PulseDecisionProvider | None = None
-
-    async def aclose(self) -> None:
-        errors: list[Exception] = []
-        seen: set[int] = set()
-        await _close_async_provider(errors, seen, self.decision_provider)
-        if errors:
-            raise ExceptionGroup("pulse_lab_provider_cleanup_failed", errors)
-
-
-@dataclass(frozen=True, slots=True)
 class NewsIntelProviders:
     feed_client: NewsSourceProvider | None = None
     brief_provider: NewsItemBriefProvider | None = None
@@ -115,7 +102,6 @@ class WiredProviders:
     asset_market: AssetMarketProviders
     cex_market_intel: CexMarketIntelProviders
     news_intel: NewsIntelProviders
-    pulse_lab: PulseLabProviders
     agent_execution_gateway: object | None = None
 
     async def aclose(self) -> None:
@@ -125,7 +111,6 @@ class WiredProviders:
             self.asset_market,
             self.cex_market_intel,
             self.news_intel,
-            self.pulse_lab,
         ):
             try:
                 await providers.aclose()
@@ -167,7 +152,6 @@ __all__ = [
     "IngestionProviders",
     "NewsIntelProviders",
     "OkxProviderBundle",
-    "PulseLabProviders",
     "UpstreamClientFactory",
     "WiredProviders",
 ]

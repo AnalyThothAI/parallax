@@ -367,7 +367,6 @@ def test_ready_lookup_filters_non_ready_sources_and_supports_image_id(tmp_path):
         missing_by_image = repo.ready_by_image_id(_sha256(SECOND_SOURCE_URL))
         repos = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )

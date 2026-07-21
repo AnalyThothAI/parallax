@@ -4,9 +4,9 @@ News Intel owns configured news source ingestion, raw news item facts,
 deterministic entity and token mention observations, fact candidates,
 market-wide item-scoped agent briefs, and the independent News page read model.
 
-The bounded context does not own Token Radar, Pulse, or market facts. News
-workers never write Token Radar current/history/audit read models, Signal Pulse tables, or price tick
-tables. Token identity is read only through domain interfaces; unresolved,
+The bounded context does not own Token Radar or market facts. News workers never
+write Token Radar current/history/audit read models or price tick tables. Token
+identity is read only through domain interfaces; unresolved,
 unknown, or ambiguous mentions remain in attention state instead of being
 forced into a resolved asset.
 
@@ -297,8 +297,7 @@ enum.
 
 ## Boundaries
 
-- News workers never write Token Radar rows, Pulse candidate state, or market
-  tick facts.
+- News workers never write Token Radar rows or market tick facts.
 - API handlers are read-only. They do not fetch feeds, run entity extraction,
   resolve token identity, execute projection workers, or run agents.
 - The News agent adapter is behind the `NewsItemBriefProvider` contract for

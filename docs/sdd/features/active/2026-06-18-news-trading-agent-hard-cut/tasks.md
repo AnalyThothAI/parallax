@@ -25,7 +25,7 @@
 - **Owner**: parent
 - **Depends on**: none
 - **Touch set**: `docs/references/news-agent-trading-research-2026-06-18.md`, `docs/sdd/features/active/2026-06-18-news-trading-agent-hard-cut`
-- **Conflict set**: coordinate with docs/sdd/features/active for active SDD edits.
+- **Conflict set**: coordinate with docs/sdd/features/active for active SDD edits; coordinate with 2026-07-21-signal-pulse-hard-cut for shared contracts, generated artifacts and shell files.
 - **Failing test first**: `tests/architecture/test_projection_worker_idle_cost_contract.py::test_agent_brief_workers_claim_dirty_targets_instead_of_scanning_candidates` — anchors the current worker/dirty-target pattern reviewed by this planning task.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated

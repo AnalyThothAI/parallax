@@ -217,7 +217,6 @@ def test_same_canonical_item_enqueues_one_story_brief_target(tmp_path) -> None:
         migrate(conn)
         repos = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )

@@ -446,40 +446,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/signal-lab/pulse": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Signal Lab Pulse */
-        get: operations["signal_lab_pulse_api_signal_lab_pulse_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/signal-lab/pulse/{candidate_id}": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Signal Lab Pulse By Id */
-        get: operations["signal_lab_pulse_by_id_api_signal_lab_pulse__candidate_id__get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/status": {
         parameters: {
             query?: never;
@@ -930,30 +896,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** ApiEnvelope[SignalPulseData] */
-        ApiEnvelope_SignalPulseData_: {
-            data?: components["schemas"]["SignalPulseData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        } & {
-            [key: string]: unknown;
-        };
-        /** ApiEnvelope[SignalPulseItem] */
-        ApiEnvelope_SignalPulseItem_: {
-            data?: components["schemas"]["SignalPulseItem"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        } & {
-            [key: string]: unknown;
-        };
         /** ApiEnvelope[SourceEventsByIdsData] */
         ApiEnvelope_SourceEventsByIdsData_: {
             data?: components["schemas"]["SourceEventsByIdsData"] | null;
@@ -1105,68 +1047,53 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** NarrativeAdmissionData */
+        NarrativeAdmissionData: {
+            /** Computed At Ms */
+            computed_at_ms?: number | null;
+            coverage?: components["schemas"]["NarrativeCoverageData"];
+            currentness: components["schemas"]["NarrativeCurrentnessData"];
+            /** Data Gaps */
+            data_gaps?: unknown[];
+            /**
+             * Is Current
+             * @default false
+             */
+            is_current: boolean;
+            /** Reason */
+            reason: string;
+            /**
+             * Status
+             * @enum {string}
+             */
+            status: "admitted" | "suppressed" | "missing";
+        } & {
+            [key: string]: unknown;
+        };
+        /** NarrativeCoverageData */
+        NarrativeCoverageData: {
+            /**
+             * Independent Authors
+             * @default 0
+             */
+            independent_authors: number;
+            /**
+             * Source Mentions
+             * @default 0
+             */
+            source_mentions: number;
+        } & {
+            [key: string]: unknown;
+        };
         /** NarrativeCurrentnessData */
         NarrativeCurrentnessData: {
-            /**
-             * Current Source Event Count
-             * @default 0
-             */
-            current_source_event_count: number;
-            /** Current Source Fingerprint */
-            current_source_fingerprint?: string | null;
-            /**
-             * Delta Independent Author Count
-             * @default 0
-             */
-            delta_independent_author_count: number;
-            /** Delta Since Ms */
-            delta_since_ms?: number | null;
-            /**
-             * Delta Source Event Count
-             * @default 0
-             */
-            delta_source_event_count: number;
             /**
              * Display Status
              * @enum {string}
              */
-            display_status: "current" | "updating" | "stale" | "not_ready" | "out_of_frontier" | "unsupported_window";
-            /** Epoch Id */
-            epoch_id?: string | null;
-            /** Epoch Policy Version */
-            epoch_policy_version?: string | null;
-            /** Last Ready Computed At Ms */
-            last_ready_computed_at_ms?: number | null;
-            /** Next Refresh Due At Ms */
-            next_refresh_due_at_ms?: number | null;
-            /**
-             * Ready Source Event Count
-             * @default 0
-             */
-            ready_source_event_count: number;
-            /** Ready Source Fingerprint */
-            ready_source_fingerprint?: string | null;
+            display_status: "current" | "not_ready" | "out_of_frontier" | "unsupported_window";
             /** Reason */
             reason: string;
-        } & {
-            [key: string]: unknown;
-        };
-        /** NarrativeDeltaData */
-        NarrativeDeltaData: {
-            /**
-             * Delta Independent Author Count
-             * @default 0
-             */
-            delta_independent_author_count: number;
-            /**
-             * Delta Source Event Count
-             * @default 0
-             */
-            delta_source_event_count: number;
-            /** Display Status */
-            display_status: string;
-            /** Label */
-            label?: string | null;
         } & {
             [key: string]: unknown;
         };
@@ -1876,237 +1803,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** SignalPulseBullBearView */
-        SignalPulseBullBearView: {
-            /** Strength */
-            strength: string;
-            /** Supporting Event Ids */
-            supporting_event_ids: string[];
-            /** Thesis Zh */
-            thesis_zh: string;
-        } & {
-            [key: string]: unknown;
-        };
-        /** SignalPulseData */
-        SignalPulseData: {
-            /** Has More */
-            has_more?: boolean | null;
-            health?: components["schemas"]["SignalPulseHealth"] | null;
-            /** Items */
-            items?: components["schemas"]["SignalPulseItem"][];
-            /** Next Cursor */
-            next_cursor?: string | null;
-            /** Query */
-            query?: {
-                [key: string]: unknown;
-            } | null;
-            /** Returned Count */
-            returned_count?: number | null;
-            /** Summary */
-            summary?: {
-                [key: string]: unknown;
-            } | null;
-            /** Total Count */
-            total_count?: number | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /** SignalPulseDecision */
-        SignalPulseDecision: {
-            /** Abstain Reason */
-            abstain_reason: string | null;
-            bear_view: components["schemas"]["SignalPulseBullBearView"] | null;
-            bull_view: components["schemas"]["SignalPulseBullBearView"] | null;
-            /** Confidence */
-            confidence: number | null;
-            /** Data Gap Refs */
-            data_gap_refs?: string[];
-            /** Evidence Event Ids */
-            evidence_event_ids: string[];
-            /** Evidence Event Urls */
-            evidence_event_urls: {
-                [key: string]: string;
-            };
-            /** Invalidation Conditions */
-            invalidation_conditions: string[];
-            /** Narrative Archetype */
-            narrative_archetype: string | null;
-            /** Narrative Thesis Zh */
-            narrative_thesis_zh: string | null;
-            playbook: components["schemas"]["SignalPulsePlaybook"] | null;
-            /** Recommendation */
-            recommendation: string | null;
-            /** Residual Risks */
-            residual_risks: string[];
-            /** Risk Evidence Refs */
-            risk_evidence_refs?: string[];
-            /** Route */
-            route: string | null;
-            /** Summary Zh */
-            summary_zh: string | null;
-            /** Supporting Evidence Refs */
-            supporting_evidence_refs?: string[];
-        } & {
-            [key: string]: unknown;
-        };
-        /** SignalPulseHealth */
-        SignalPulseHealth: {
-            /** Agent Failed 4H */
-            agent_failed_4h?: number | null;
-            /** Agent Failure Rate 4H */
-            agent_failure_rate_4h?: number | null;
-            /** Agent Runs 4H */
-            agent_runs_4h?: number | null;
-            /** Blocked Low Information Count */
-            blocked_low_information_count?: number | null;
-            /** Candidate Count */
-            candidate_count?: number | null;
-            /** Claimed Jobs */
-            claimed_jobs?: number | null;
-            /** Dead Job Count */
-            dead_job_count?: number | null;
-            /** Due Jobs */
-            due_jobs?: number | null;
-            /** Failed Jobs 4H */
-            failed_jobs_4h?: number | null;
-            /** Hidden Abstain 4H */
-            hidden_abstain_4h?: number | null;
-            /** Hidden Candidate Count */
-            hidden_candidate_count?: number | null;
-            /** Hidden Hold Publish 4H */
-            hidden_hold_publish_4h?: number | null;
-            /** Hidden Insufficient Evidence 4H */
-            hidden_insufficient_evidence_4h?: number | null;
-            /** Latest Agent Run Finished At Ms */
-            latest_agent_run_finished_at_ms?: number | null;
-            /** Latest Hidden Hold Candidate Updated At Ms */
-            latest_hidden_hold_candidate_updated_at_ms?: number | null;
-            /** Latest Packet Created At Ms */
-            latest_packet_created_at_ms?: number | null;
-            /** Latest Public Candidate Updated At Ms */
-            latest_public_candidate_updated_at_ms?: number | null;
-            /** Market Ready Rate */
-            market_ready_rate?: number | null;
-            /** Public Candidate Count */
-            public_candidate_count?: number | null;
-            /** Public Candidates 4H */
-            public_candidates_4h?: number | null;
-            /** Public Ready */
-            public_ready?: boolean | null;
-            /** Publish Status */
-            publish_status?: string | null;
-            /** Pulse Ready */
-            pulse_ready?: boolean | null;
-            /** Reasons */
-            reasons?: string[];
-            /** Scope */
-            scope?: string | null;
-            /** Since Hours */
-            since_hours?: number | null;
-            /** Unknown Ref Failure Rate 4H */
-            unknown_ref_failure_rate_4h?: number | null;
-            /** Unknown Ref Failures 4H */
-            unknown_ref_failures_4h?: number | null;
-            /** Unsupported Claim Failure Rate 4H */
-            unsupported_claim_failure_rate_4h?: number | null;
-            /** Unsupported Claim Failures 4H */
-            unsupported_claim_failures_4h?: number | null;
-            /** Window */
-            window?: string | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /** SignalPulseItem */
-        SignalPulseItem: {
-            /** Candidate Id */
-            candidate_id?: string | null;
-            /** Candidate Score */
-            candidate_score?: number | null;
-            /** Candidate Type */
-            candidate_type?: string | null;
-            /** Created At Ms */
-            created_at_ms?: number | null;
-            decision?: components["schemas"]["SignalPulseDecision"] | null;
-            /** Decision Status */
-            decision_status?: string | null;
-            /** Display Status */
-            display_status?: string | null;
-            /** Evidence Event Ids */
-            evidence_event_ids?: string[];
-            /** Evidence Packet Hash */
-            evidence_packet_hash?: string | null;
-            /** Evidence Status */
-            evidence_status?: string | null;
-            /** Fact Card */
-            fact_card?: {
-                [key: string]: unknown;
-            } | null;
-            /** Factor Snapshot */
-            factor_snapshot?: {
-                [key: string]: unknown;
-            } | null;
-            /** Gate */
-            gate?: {
-                [key: string]: unknown;
-            } | null;
-            /** Gate Reasons */
-            gate_reasons?: string[];
-            /** Gate Version */
-            gate_version?: string | null;
-            /** Playbooks */
-            playbooks?: {
-                [key: string]: unknown;
-            }[];
-            /** Prompt Version */
-            prompt_version?: string | null;
-            /** Pulse Version */
-            pulse_version?: string | null;
-            /** Risk Reasons */
-            risk_reasons?: string[];
-            /** Schema Version */
-            schema_version?: string | null;
-            /** Scope */
-            scope?: string | null;
-            /** Score Band */
-            score_band?: string | null;
-            /** Social Phase */
-            social_phase?: string | null;
-            /** Source Event Ids */
-            source_event_ids?: string[];
-            /** Subject */
-            subject?: {
-                [key: string]: unknown;
-            } | null;
-            /** Subject Key */
-            subject_key?: string | null;
-            /** Symbol */
-            symbol?: string | null;
-            /** Target Id */
-            target_id?: string | null;
-            /** Target Type */
-            target_type?: string | null;
-            /** Updated At Ms */
-            updated_at_ms?: number | null;
-            /** Verdict */
-            verdict?: string | null;
-            /** Window */
-            window?: string | null;
-        } & {
-            [key: string]: unknown;
-        };
-        /** SignalPulsePlaybook */
-        SignalPulsePlaybook: {
-            /** Exit Triggers */
-            exit_triggers: string[];
-            /** Has Playbook */
-            has_playbook: boolean;
-            /** Monitoring Horizon */
-            monitoring_horizon: string;
-            /** Watch Signals */
-            watch_signals: string[];
-        } & {
-            [key: string]: unknown;
-        };
         /** SourceEventDetail */
         SourceEventDetail: {
             /** Action */
@@ -2278,26 +1974,17 @@ export interface components {
             cex_detail?: {
                 [key: string]: unknown;
             } | null;
-            discussion_digest: components["schemas"]["TokenDiscussionDigestData"];
             /** Market Live */
             market_live: {
                 [key: string]: unknown;
             };
-            /** Narrative Clusters */
-            narrative_clusters?: {
-                [key: string]: unknown;
-            }[];
-            narrative_delta?: components["schemas"]["NarrativeDeltaData"];
+            narrative_admission: components["schemas"]["NarrativeAdmissionData"];
             /** Posts */
             posts: {
                 [key: string]: unknown;
             };
             /** Profile */
             profile?: {
-                [key: string]: unknown;
-            } | null;
-            /** Pulse Overlay */
-            pulse_overlay?: {
                 [key: string]: unknown;
             } | null;
             /** Target */
@@ -2308,23 +1995,6 @@ export interface components {
             timeline: {
                 [key: string]: unknown;
             };
-        } & {
-            [key: string]: unknown;
-        };
-        /** TokenDiscussionDigestData */
-        TokenDiscussionDigestData: {
-            /** Coverage */
-            coverage?: {
-                [key: string]: unknown;
-            };
-            currentness: components["schemas"]["NarrativeCurrentnessData"];
-            /** Data Gaps */
-            data_gaps?: unknown[];
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "ready" | "pending" | "insufficient" | "semantic_unavailable" | "stale";
         } & {
             [key: string]: unknown;
         };
@@ -2349,7 +2019,7 @@ export interface components {
         };
         /** TokenRadarRowData */
         TokenRadarRowData: {
-            discussion_digest?: components["schemas"]["TokenDiscussionDigestData"] | null;
+            narrative_admission?: components["schemas"]["NarrativeAdmissionData"] | null;
         } & {
             [key: string]: unknown;
         };
@@ -3243,11 +2913,7 @@ export interface operations {
     };
     ops_diagnostics_api_ops_diagnostics_get: {
         parameters: {
-            query?: {
-                since_hours?: number;
-                window?: string;
-                scope?: string;
-            };
+            query?: never;
             header?: never;
             path?: never;
             cookie?: never;
@@ -3261,15 +2927,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope_OpsDiagnosticsData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3400,77 +3057,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope_SearchInspectData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    signal_lab_pulse_api_signal_lab_pulse_get: {
-        parameters: {
-            query?: {
-                window?: string;
-                scope?: string;
-                status?: string;
-                handle?: string;
-                q?: string;
-                visibility?: string;
-                limit?: number;
-                cursor?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_SignalPulseData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    signal_lab_pulse_by_id_api_signal_lab_pulse__candidate_id__get: {
-        parameters: {
-            query?: {
-                visibility?: string;
-            };
-            header?: never;
-            path: {
-                candidate_id: string;
-            };
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_SignalPulseItem_"];
                 };
             };
             /** @description Validation Error */

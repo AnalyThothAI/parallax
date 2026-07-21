@@ -62,8 +62,6 @@ DEX_DECISION_FLOORS = {
 }
 LIVE_LATEST_MAX_AGE_MS = 90 * 1000
 FRESH_LATEST_MAX_AGE_MS = 5 * 60 * 1000
-PULSE_TRIGGER_WINDOWS = frozenset({"1h", "4h"})
-PULSE_TRIGGER_SCOPES = frozenset({"all", "matched"})
 NARRATIVE_ADMISSION_WINDOWS = frozenset({"1h"})
 NARRATIVE_ADMISSION_SCOPE = "all"
 ASSET_PROFILE_REFRESH_PROVIDERS = ("gmgn_dex_profile", "binance_web3_profile")
@@ -903,14 +901,6 @@ class TokenRadarProjection:
     ) -> None:
         if str(venue) != TOKEN_RADAR_DEFAULT_VENUE:
             return
-        self._enqueue_pulse_triggers_for_rank_changes(
-            window=window,
-            scope=scope,
-            rows=rows,
-            exited_rows=exited_rows,
-            previous_by_key=previous_by_key,
-            computed_at_ms=computed_at_ms,
-        )
         if self.enqueue_narrative_admission:
             self._enqueue_narrative_admission_for_rank_changes(
                 window=window,
@@ -944,53 +934,6 @@ class TokenRadarProjection:
             previous_by_key=previous_by_key,
             computed_at_ms=computed_at_ms,
         )
-
-    def _enqueue_pulse_triggers_for_rank_changes(
-        self,
-        *,
-        window: str,
-        scope: str,
-        rows: list[dict[str, Any]],
-        exited_rows: list[dict[str, Any]],
-        previous_by_key: dict[tuple[str, str, str], dict[str, Any]],
-        computed_at_ms: int,
-    ) -> None:
-        if str(window) not in PULSE_TRIGGER_WINDOWS or str(scope) not in PULSE_TRIGGER_SCOPES:
-            return
-        targets: list[dict[str, Any]] = []
-        for row in rows:
-            previous = previous_by_key.get(_current_key(row))
-            if previous is not None and _rank_change_payload_hash(previous) == _rank_change_payload_hash(row):
-                continue
-            target = _pulse_trigger_target(
-                row,
-                previous=previous,
-                window=window,
-                scope=scope,
-                computed_at_ms=computed_at_ms,
-                exited=False,
-            )
-            if target is not None:
-                targets.append(target)
-        for row in exited_rows:
-            target = _pulse_trigger_target(
-                row,
-                previous=row,
-                window=window,
-                scope=scope,
-                computed_at_ms=computed_at_ms,
-                exited=True,
-            )
-            if target is not None:
-                targets.append(target)
-        if not targets:
-            return
-        repo = self.repos.pulse_trigger_dirty_targets
-        grouped: dict[str, list[dict[str, Any]]] = {}
-        for target in targets:
-            grouped.setdefault(str(target.pop("dirty_reason")), []).append(target)
-        for reason, reason_targets in grouped.items():
-            repo.enqueue_targets(reason_targets, reason=reason, now_ms=computed_at_ms, commit=False)
 
     def _enqueue_narrative_admission_for_rank_changes(
         self,
@@ -1783,49 +1726,6 @@ def _current_row_resolved_target(row: Mapping[str, Any]) -> tuple[str, str] | No
     return target_type, target_id
 
 
-def _pulse_trigger_target(
-    row: Mapping[str, Any],
-    *,
-    previous: Mapping[str, Any] | None,
-    window: str,
-    scope: str,
-    computed_at_ms: int,
-    exited: bool,
-) -> dict[str, Any] | None:
-    resolved_target = _current_row_resolved_target(row)
-    if resolved_target is None:
-        return None
-    target_type, target_id = resolved_target
-    reason = _pulse_trigger_reason(row, previous=previous, exited=exited)
-    source_watermark_ms = _downstream_source_watermark_ms(row)
-    payload = {
-        "target_type": target_type,
-        "target_id": target_id,
-        "window": str(window),
-        "scope": str(scope),
-        "rank": row.get("rank"),
-        "lane": row.get("lane"),
-        "decision": row.get("decision"),
-        "exited": bool(exited),
-        "factor_snapshot_hash": stable_token_radar_payload_hash(row.get("factor_snapshot_json") or {}),
-        "source_event_ids": _json_ready(row.get("source_event_ids_json") or []),
-        "source_watermark_ms": source_watermark_ms,
-        "token_radar_payload_hash": row.get("payload_hash"),
-        "reason": reason,
-    }
-    return {
-        "target_type": target_type,
-        "target_id": target_id,
-        "window": str(window),
-        "scope": str(scope),
-        "dirty_reason": reason,
-        "payload_hash": stable_token_radar_payload_hash(payload),
-        "source_watermark_ms": source_watermark_ms,
-        "priority": 50 if exited else 40,
-        "due_at_ms": int(computed_at_ms),
-    }
-
-
 def _narrative_admission_target(
     row: Mapping[str, Any],
     *,
@@ -1985,23 +1885,6 @@ def _asset_profile_refresh_fields(row: Mapping[str, Any]) -> dict[str, str | Non
 
 def _asset_profile_refresh_symbol(row: Mapping[str, Any], *, subject: Mapping[str, Any]) -> str | None:
     return _first_real_symbol(row.get("asset_symbol"), subject.get("symbol"), row.get("display_symbol"))
-
-
-def _pulse_trigger_reason(
-    row: Mapping[str, Any],
-    *,
-    previous: Mapping[str, Any] | None,
-    exited: bool,
-) -> str:
-    if exited:
-        return "token_radar_exited"
-    if previous is None:
-        return "token_radar_entered"
-    if int(previous.get("rank") or 0) != int(row.get("rank") or 0):
-        return "token_radar_rank_changed"
-    if int(previous.get("source_max_received_at_ms") or 0) != int(row.get("source_max_received_at_ms") or 0):
-        return "token_radar_source_watermark_changed"
-    return "token_radar_changed"
 
 
 def _token_profile_current_reason(

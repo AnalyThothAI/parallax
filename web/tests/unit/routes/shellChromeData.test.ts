@@ -22,7 +22,7 @@ describe("shellChromeData", () => {
 
     expect(shouldRouteTopbarSearchToNews("/")).toBe(false);
     expect(shouldRouteTopbarSearchToNews("/search")).toBe(false);
-    expect(shouldRouteTopbarSearchToNews("/signal-lab")).toBe(false);
+    expect(shouldRouteTopbarSearchToNews("/ops")).toBe(false);
     expect(shouldRouteTopbarSearchToNews("/macro/news-cycle")).toBe(false);
   });
 });

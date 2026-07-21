@@ -6,7 +6,6 @@ from parallax.app.runtime.provider_wiring.types import (
     CexMarketIntelProviders,
     IngestionProviders,
     NewsIntelProviders,
-    PulseLabProviders,
     UpstreamClientFactory,
     WiredProviders,
 )
@@ -16,7 +15,6 @@ __all__ = [
     "CexMarketIntelProviders",
     "IngestionProviders",
     "NewsIntelProviders",
-    "PulseLabProviders",
     "UpstreamClientFactory",
     "WiredProviders",
     "wire_asset_market_providers",

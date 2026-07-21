@@ -383,6 +383,7 @@ class NarrativeRepository:
         ).fetchall()
         return {(str(row["target_type"]), str(row["target_id"])): _row(row) for row in rows}
 
+
 def _admission_state(
     admission: dict[str, Any] | None,
     *,

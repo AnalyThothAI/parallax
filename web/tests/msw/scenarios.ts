@@ -4,7 +4,6 @@ import {
   notificationFixture,
   recentReplayFixture,
   searchInspectFixture,
-  signalPulseFixture,
   targetSocialTimelineFixture,
   tokenRadarFixture,
 } from "@tests/fixtures/appRouteFixtures";
@@ -29,7 +28,6 @@ export function mockLiveRadarRoute(apiMock: ApiMock) {
     if (path === "/api/token-radar") return ok(tokenRadarFixture());
     if (path === "/api/stocks-radar") return ok(stocksRadarFixture());
     if (path === "/api/news") return ok(newsRowsFixture());
-    if (path === "/api/signal-lab/pulse") return ok(signalPulseFixture());
     if (path === "/api/token-case") return ok(tokenCaseFixture());
     if (path === "/api/search/inspect") {
       const q = String(requestOptions?.params?.q ?? "$RKC");
@@ -60,7 +58,6 @@ export function mockNotificationRoute(apiMock: ApiMock) {
     if (path === "/api/token-radar") return ok(tokenRadarFixture());
     if (path === "/api/stocks-radar") return ok(stocksRadarFixture());
     if (path === "/api/news") return ok(newsRowsFixture());
-    if (path === "/api/signal-lab/pulse") return ok(signalPulseFixture());
     if (path === "/api/token-case") return ok(tokenCaseFixture());
     if (path === "/api/target-social-timeline") return ok(targetSocialTimelineFixture());
     if (path === "/api/target-posts") return ok(tokenCasePostsFixture());

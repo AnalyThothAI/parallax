@@ -14,7 +14,6 @@ TOKEN_CAPTURE_TIER_DIRTY_REPOSITORY = (
 )
 ASSET_FLOW_SERVICE = SRC / "domains/token_intel/read_models/asset_flow_service.py"
 ASSET_REGISTRY_REPOSITORY = SRC / "domains/asset_market/repositories/registry_repository.py"
-PULSE_POLICY_EVALUATOR = SRC / "domains/pulse_lab/queries/pulse_policy_evaluator.py"
 NARRATIVE_REPOSITORY = SRC / "domains/narrative_intel/repositories/narrative_repository.py"
 
 BANNED_RUNTIME_TOKENS = (
@@ -43,8 +42,6 @@ BANNED_RUNTIME_TOKENS = (
 ONLINE_PATHS = (
     SRC / "app/surfaces/api/routes_radar.py",
     SRC / "domains/token_intel/read_models/asset_flow_service.py",
-    SRC / "domains/pulse_lab/runtime/pulse_candidate_worker.py",
-    SRC / "domains/pulse_lab/queries/pulse_policy_evaluator.py",
     SRC / "domains/notifications/services/notification_rules.py",
     SRC / "domains/narrative_intel/repositories/narrative_repository.py",
     SRC / "domains/asset_market/repositories/registry_repository.py",
@@ -186,23 +183,6 @@ def test_online_token_radar_paths_do_not_read_private_or_cold_tables() -> None:
     assert violations == []
 
 
-def test_pulse_policy_evaluator_reads_radar_rows_with_single_window_scope_keyset_sql() -> None:
-    source = _function_source(PULSE_POLICY_EVALUATOR, "fetch_radar_rows")
-    forbidden = (
-        "for window in EVALUATED_WINDOWS",
-        "for scope in EVALUATED_SCOPES",
-        'token_radar_current_rows."window" = %s',
-        "token_radar_current_rows.scope = %s",
-    )
-    required = (
-        '"window" = ANY(%s)',
-        "scope = ANY(%s)",
-    )
-
-    assert [token for token in forbidden if token in source] == []
-    assert [token for token in required if token not in source] == []
-
-
 def test_token_radar_product_read_paths_do_not_gate_serving_rows_by_generation_id() -> None:
     forbidden_by_path = {
         TOKEN_RADAR_REPOSITORY: {
@@ -218,10 +198,6 @@ def test_token_radar_product_read_paths_do_not_gate_serving_rows_by_generation_i
             "current_generation =",
             "current_rows_for_generation(",
             "projection_generation_mismatch",
-        },
-        PULSE_POLICY_EVALUATOR: {
-            "state.current_generation_id = current_rows.generation_id",
-            "state.current_generation_id = token_radar_current_rows.generation_id",
         },
         NARRATIVE_REPOSITORY: {
             "latest.current_generation_id = token_radar_current_rows.generation_id",
@@ -554,7 +530,7 @@ def test_token_radar_projection_requires_formal_asset_identity_for_resolved_asse
 
 def test_token_radar_projection_downstream_current_key_requires_formal_identity_without_fallback() -> None:
     source = TOKEN_RADAR_PROJECTION.read_text(encoding="utf-8")
-    current_key_source = source.split("def _current_key", 1)[1].split("\ndef _pulse_trigger_target", 1)[0]
+    current_key_source = source.split("def _current_key", 1)[1].split("\ndef _required_projection_row_text", 1)[0]
     forbidden = (
         'row.get("target_type_key") or row.get("target_type")',
         'row.get("identity_id") or row.get("target_id")',
@@ -823,10 +799,12 @@ def test_token_radar_first_seen_write_count_uses_cursor_rowcount_without_candida
 def test_token_radar_downstream_fanout_uses_formal_current_identity_without_alias_override() -> None:
     source = TOKEN_RADAR_PROJECTION.read_text(encoding="utf-8")
     fanout_source = "\n".join(
-        (
-            source.split("def _pulse_trigger_target", 1)[1].split("\ndef _pulse_trigger_reason", 1)[0],
-            source.split("def _capture_tier_rank_payload", 1)[1].split("\ndef _capture_tier_fields_from_target", 1)[0],
-            source.split("def _capture_tier_target_key", 1)[1].split("\ndef _rank_subject", 1)[0],
+        _function_source(TOKEN_RADAR_PROJECTION, name)
+        for name in (
+            "_narrative_admission_target",
+            "_token_profile_current_target",
+            "_capture_tier_rank_payload",
+            "_capture_tier_target_key",
         )
     )
     forbidden = (

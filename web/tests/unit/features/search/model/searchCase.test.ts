@@ -13,7 +13,8 @@ describe("buildSearchCaseView", () => {
     expect(view.official.source).toBe("official");
     expect(view.community.value).toBe("73 posts · 18 authors");
     expect(view.narrative.source).toBe("social");
-    expect(view.narrative.value).toBe("RKC rotation");
+    expect(view.narrative.value).toBe("Narrative admitted");
+    expect(view.narrative.detail).toBe("12 mentions · 9 authors");
     expect(view.market.value).toBe("$51M");
     expect(view.resolver.value).toBe("94%");
     expect(view.evidence.value).toBe("12 events");
@@ -21,7 +22,7 @@ describe("buildSearchCaseView", () => {
 
   it("keeps topic and ambiguous search narratives on the agent brief boundary", () => {
     const data = searchInspectFixture();
-    const topicBrief = data.token_result!.discussion_digest;
+    const tokenAdmission = data.token_result!.narrative_admission;
     data.query.result_kind = "topic_result";
     data.token_result = null;
     data.topic_result = {
@@ -48,28 +49,49 @@ describe("buildSearchCaseView", () => {
 
     const view = buildSearchCaseView(data);
 
-    expect(topicBrief.status).toBe("ready");
+    expect(tokenAdmission.status).toBe("admitted");
     expect(view.narrative.source).toBe("agent");
     expect(view.narrative.value).toBe("Topic agent memo");
   });
 
-  it("normalizes structured token digest data gaps", () => {
+  it("normalizes structured narrative admission data gaps", () => {
     const data = searchInspectFixture();
-    data.token_result!.discussion_digest = {
-      status: "pending",
+    data.token_result!.narrative_admission = {
+      status: "missing",
+      reason: "no_current_admission",
+      is_current: false,
       currentness: {
         display_status: "not_ready",
-        reason: "no_ready_digest",
-        delta_source_event_count: 0,
-        delta_independent_author_count: 0,
+        reason: "no_current_admission",
       },
-      data_gaps: [{ reason: "no_ready_digest" }],
+      coverage: { source_mentions: 0, independent_authors: 0 },
+      data_gaps: [{ reason: "no_current_admission" }],
     };
 
     const view = buildSearchCaseView(data);
 
-    expect(view.narrative.value).toBe("Narrative pending");
-    expect(view.narrative.detail).toBe("叙事待生成");
+    expect(view.narrative.value).toBe("Narrative not ready");
+    expect(view.narrative.detail).toBe("not admitted");
+  });
+
+  it("shows unsupported narrative windows from currentness rather than missing status", () => {
+    const data = searchInspectFixture();
+    data.token_result!.narrative_admission = {
+      status: "missing",
+      reason: "narrative_not_supported_for_window",
+      is_current: false,
+      currentness: {
+        display_status: "unsupported_window",
+        reason: "narrative_not_supported_for_window",
+      },
+      coverage: { source_mentions: 0, independent_authors: 0 },
+      data_gaps: ["narrative_not_supported_for_window"],
+    };
+
+    const view = buildSearchCaseView(data);
+
+    expect(view.narrative.value).toBe("Narrative unsupported");
+    expect(view.narrative.detail).toBe("admission unsupported");
   });
 
   it("reads token market facts from market_live instead of market candle metadata", () => {
@@ -133,25 +155,18 @@ function searchInspectFixture(): SearchInspectData {
       target_candidates: [],
     },
     token_result: {
-      discussion_digest: {
-        status: "ready",
+      narrative_admission: {
+        status: "admitted",
+        reason: "radar_row",
+        is_current: true,
+        computed_at_ms: 1_700_000_000_000,
         currentness: {
           display_status: "current",
-          reason: "fingerprint_match",
-          delta_source_event_count: 0,
-          delta_independent_author_count: 0,
-          last_ready_computed_at_ms: 1_700_000_000_000,
+          reason: "radar_row",
         },
-        dominant_narrative: {
-          title: "RKC rotation",
-          summary_zh: "Runtime narrative",
-          evidence_refs: [{ ref_type: "event", event_id: "e1" }],
-        },
-        coverage: { semantic_coverage: 0.76, labeled_mentions: 9, source_mentions: 12 },
+        coverage: { source_mentions: 12, independent_authors: 9 },
         data_gaps: [],
       },
-      narrative_clusters: [],
-      pulse_overlay: null,
       market_live: {
         status: "ready",
         target_type: "Asset",

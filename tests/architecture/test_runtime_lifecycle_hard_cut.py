@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 
 import pytest
@@ -25,25 +24,6 @@ CANONICAL_LIFECYCLE_DOCS = (
 
 @pytest.mark.architecture
 def test_no_runtime_compatibility_fallbacks_for_agent_contracts() -> None:
-    source = (SRC / "domains/pulse_lab/services/pulse_candidate_job_service.py").read_text()
-
-    assert "DEFAULT_PULSE_AGENT_RUNTIME_CONTRACT" not in source
-    assert re.search(r"\bclient\.model\b", source) is None
-    assert 'getattr(self.decision_client, "model"' not in source
-    assert 'getattr(client, "model_for_lane", None)' not in source
-    assert 'getattr(client, "_agent_gateway", None)' not in source
-    assert "fallback" not in source.lower()
-
-    pulse_provider_sources = "\n".join(
-        (
-            (SRC / "app/runtime/provider_wiring/model_execution.py").read_text(),
-            (SRC / "integrations/model_execution/pulse_decision_agent_client.py").read_text(),
-        )
-    )
-    assert "return self.model" not in pulse_provider_sources
-    assert 'getattr(gateway, "model_for_lane", None)' not in pulse_provider_sources
-    assert 'getattr(client, "model_for_lane", None)' not in pulse_provider_sources
-
     assert not (SRC / "domains/narrative_intel/runtime/mention_semantics_worker.py").exists()
     assert not (SRC / "domains/narrative_intel/runtime/token_discussion_digest_worker.py").exists()
     agent_worker_sources = (SRC / "domains/news_intel/runtime/news_item_brief_worker.py").read_text()

@@ -413,7 +413,6 @@ def test_queue_depth_counts_due_unleased_and_expired_leases() -> None:
 def test_repository_session_exposes_news_projection_dirty_targets() -> None:
     session = repositories_for_connection(
         _ScriptedConnection([]),
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )

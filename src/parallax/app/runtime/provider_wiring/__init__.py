@@ -5,7 +5,6 @@ from parallax.app.runtime.provider_wiring.types import (
     CexMarketIntelProviders,
     IngestionProviders,
     NewsIntelProviders,
-    PulseLabProviders,
     WiredProviders,
 )
 from parallax.platform.config.settings import Settings
@@ -38,19 +37,7 @@ def wire_providers(
             brief_provider=model_execution.litellm_news_item_brief_provider(
                 agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
             )
-            if (
-                settings.news_intel.enabled
-                and (settings.workers.news_item_brief.enabled or settings.workers.news_story_brief.enabled)
-                and (settings.news_item_brief_configured or settings.news_story_brief_configured)
-            )
-            else None,
-        ),
-        pulse_lab=PulseLabProviders(
-            decision_provider=model_execution.litellm_pulse_decision_provider(
-                settings,
-                agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
-            )
-            if settings.workers.pulse_candidate.enabled and settings.pulse_agent_configured
+            if settings.news_agent_execution_enabled
             else None,
         ),
         agent_execution_gateway=agent_execution_gateway,
@@ -74,7 +61,6 @@ __all__ = [
     "CexMarketIntelProviders",
     "IngestionProviders",
     "NewsIntelProviders",
-    "PulseLabProviders",
     "WiredProviders",
     "wire_asset_market_providers",
     "wire_providers",

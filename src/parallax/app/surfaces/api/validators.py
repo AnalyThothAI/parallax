@@ -1,16 +1,12 @@
 from __future__ import annotations
 
 from parallax.app.surfaces.api.exceptions import ApiBadRequest
-from parallax.domains.pulse_lab.services.pulse_horizon_policy import SIGNAL_PULSE_WINDOW_SET
 
 WINDOWS = {"5m", "1h", "4h", "24h"}
-SIGNAL_PULSE_WINDOWS = set(SIGNAL_PULSE_WINDOW_SET)
 SCOPES = {"all", "matched"}
 TOKEN_RADAR_VENUES = {"all", "sol", "eth", "base", "bsc", "cex"}
 ALERT_TYPES = {"account_token", "token"}
 DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
-PUBLIC_SIGNAL_PULSE_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
-SIGNAL_PULSE_VISIBILITIES = {"public", "hidden"}
 WATCHLIST_TIMELINE_SCOPES = {"signal", "all"}
 
 
@@ -65,12 +61,6 @@ def _window(value: str) -> str:
     raise ApiBadRequest("invalid_window", field="window")
 
 
-def _signal_pulse_window(value: str) -> str:
-    if value in SIGNAL_PULSE_WINDOWS:
-        return value
-    raise ApiBadRequest("invalid_window", field="window")
-
-
 def _post_range(value: str) -> str:
     if value in {"current_window", "since_ignition", "all_history"}:
         return value
@@ -83,22 +73,6 @@ def _target_type(value: str) -> str | None:
 
 def _alert_type(value: str | None) -> str | None:
     return value if value in ALERT_TYPES else None
-
-
-def _signal_pulse_public_status(value: str) -> str | None:
-    if not value:
-        return None
-    if value in PUBLIC_SIGNAL_PULSE_STATUSES:
-        return value
-    raise ApiBadRequest("invalid_status", field="status")
-
-
-def _signal_pulse_visibility(value: str) -> str:
-    if not value:
-        return "public"
-    if value in SIGNAL_PULSE_VISIBILITIES:
-        return value
-    raise ApiBadRequest("invalid_visibility", field="visibility")
 
 
 def _delivery_status(value: str | None) -> str | None:

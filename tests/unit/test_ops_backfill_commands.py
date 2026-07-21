@@ -32,7 +32,7 @@ def test_removed_token_radar_partition_ops_commands_are_not_registered() -> None
     assert main(["ops", "ensure-postgres-partitions", "--execute"], stdout=io.StringIO()) == 2
     assert main(["ops", "drop-expired-postgres-partitions", "--execute"], stdout=io.StringIO()) == 2
     assert main(["ops", "reset-token-radar-postgres-hard-cut", "--dry-run"], stdout=io.StringIO()) == 2
-    assert main(["ops", "enqueue-runtime-worker-dirty-targets", "--work", "pulse_trigger"], stdout=io.StringIO()) == 2
+    assert main(["ops", "enqueue-runtime-worker-dirty-targets", "--work", "retired_work"], stdout=io.StringIO()) == 2
 
 
 def test_reconcile_event_anchor_jobs_dispatches_to_operator_repository(monkeypatch) -> None:

@@ -10,12 +10,6 @@ from typing import Any
 from parallax.app.runtime.job_queue import JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor
 from parallax.app.runtime.worker_status import effective_worker_status, workers_status_payload
 from parallax.domains.asset_market.providers import ProviderHealth
-from parallax.domains.pulse_lab.queries.pulse_freshness_health_queries import (
-    fetch_pulse_health_candidates,
-    fetch_pulse_health_clocks,
-    fetch_pulse_health_jobs,
-    fetch_pulse_health_runs,
-)
 from parallax.domains.token_intel.repositories.projection_repository import ProjectionRepository
 from parallax.platform.db.postgres_client import postgres_health_check
 from parallax.platform.db.postgres_migrations import latest_migration_version
@@ -82,22 +76,9 @@ AGENT_EXECUTION_COUNTER_KEYS = {
 def ops_diagnostics_payload(
     runtime: Any,
     *,
-    since_hours: int,
-    window: str,
-    scope: str,
     now_ms: int | None = None,
 ) -> dict[str, Any]:
     generated_at_ms = int(now_ms if now_ms is not None else _now_ms())
-    since_ms = (
-        generated_at_ms
-        - _required_positive_int(
-            since_hours,
-            "ops_diagnostics_since_hours_required",
-        )
-        * 60
-        * 60
-        * 1000
-    )
     database = _section("database", lambda: _database_payload(runtime))
     collector = _section("collector", lambda: _collector_payload(runtime))
     providers = _providers_payload(runtime)
@@ -106,13 +87,7 @@ def ops_diagnostics_payload(
     worker_lanes = worker_status["worker_lanes"]
     queues = _queues_payload(runtime, now_ms=generated_at_ms)
     agent_execution = _agent_execution_payload(runtime, now_ms=generated_at_ms)
-    domains = _domains_payload(
-        runtime,
-        now_ms=generated_at_ms,
-        since_ms=since_ms,
-        window=window,
-        scope=scope,
-    )
+    domains = _domains_payload(runtime)
     payload = {
         "schema_version": OPS_DIAGNOSTICS_SCHEMA_VERSION,
         "generated_at_ms": generated_at_ms,
@@ -399,9 +374,7 @@ def _worker_group(name: str) -> str:
         return "ingestion"
     if name.startswith(("token_", "resolution", "asset_", "market_", "anchor_")):
         return "asset_market"
-    if name.startswith(("pulse", "signal")):
-        return "pulse"
-    if name.startswith(("narrative", "mention", "token_discussion")):
+    if name.startswith("narrative"):
         return "narrative"
     if name.startswith("news"):
         return "news"
@@ -552,25 +525,13 @@ def _queue_reason(*, status: str, dead_count: int, failed_count: int, due_count:
 def _queue_worker_name(queue_name: str) -> str:
     return {
         "notification_deliveries": "notification_delivery",
-        "pulse_agent_jobs": "pulse_candidate",
     }.get(queue_name, queue_name)
 
 
-def _domains_payload(
-    runtime: Any,
-    *,
-    now_ms: int,
-    since_ms: int,
-    window: str,
-    scope: str,
-) -> dict[str, Any]:
+def _domains_payload(runtime: Any) -> dict[str, Any]:
     return {
         "token_radar": _section("token_radar", lambda: _token_radar_domain(runtime)),
         "asset_market": _section("asset_market", lambda: _asset_market_domain(runtime)),
-        "pulse": _section(
-            "pulse",
-            lambda: _pulse_domain(runtime, now_ms=now_ms, since_ms=since_ms, window=window, scope=scope),
-        ),
         "news": _section("news", lambda: _news_domain(runtime)),
         "watchlist": _section("watchlist", lambda: _watchlist_domain(runtime)),
         "notifications": _section("notifications", lambda: _notifications_domain(runtime)),
@@ -595,17 +556,6 @@ def _asset_market_domain(runtime: Any) -> dict[str, Any]:
         "configured_provider_count": len(configured),
         "provider_count": len(providers),
     }
-
-
-def _pulse_domain(runtime: Any, *, now_ms: int, since_ms: int, window: str, scope: str) -> dict[str, Any]:
-    with runtime.db.api_pool.connection() as conn:
-        payload = {}
-        payload.update(fetch_pulse_health_clocks(conn, window=window, scope=scope))
-        payload.update(fetch_pulse_health_jobs(conn, window=window, scope=scope, now_ms=now_ms, since_ms=since_ms))
-        payload.update(fetch_pulse_health_runs(conn, window=window, scope=scope, since_ms=since_ms))
-        payload.update(fetch_pulse_health_candidates(conn, window=window, scope=scope, since_ms=since_ms))
-    status = "blocked" if int(payload.get("dead_jobs") or 0) > 0 else "ok"
-    return {"status": status, **payload}
 
 
 def _news_domain(runtime: Any) -> dict[str, Any]:
@@ -892,12 +842,6 @@ def _age_ms(now_ms: int, timestamp_ms: Any) -> int | None:
         return max(0, int(now_ms) - int(timestamp_ms))
     except (TypeError, ValueError):
         return None
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _is_secret_key(key: str) -> bool:

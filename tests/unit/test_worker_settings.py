@@ -5,7 +5,6 @@ from pydantic import ValidationError
 from parallax.platform.agent_execution import AgentRuntimePolicy
 from parallax.platform.config.settings import (
     NarrativeAdmissionWorkerSettings,
-    PulseCandidateWorkerSettings,
     Settings,
     WorkersSettings,
     default_config_yaml,
@@ -35,7 +34,6 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.defaults.hard_timeout_seconds == 180
     assert settings.defaults.backoff.kind == "exponential"
     assert settings.agent_runtime.defaults.model == "deepseek-v4-flash"
-    assert settings.agent_runtime.lanes["pulse.decision"].model is None
     assert settings.collector.mode == "continuous"
     assert settings.collector.soft_timeout_seconds == 0
     assert settings.collector.hard_timeout_seconds == 0
@@ -104,25 +102,6 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert "token_discussion_digest" not in payload
     assert not hasattr(settings, "mention_semantics")
     assert not hasattr(settings, "token_discussion_digest")
-    assert settings.pulse_candidate.soft_timeout_seconds == 540
-    assert settings.pulse_candidate.hard_timeout_seconds == 660
-    assert settings.pulse_candidate.max_enqueues_per_cycle == 25
-    assert settings.pulse_candidate.max_pending_jobs_global == 100
-    assert settings.pulse_candidate.max_pending_jobs_per_window_scope == 25
-    assert settings.pulse_candidate.trigger_lease_ms == 60_000
-    assert settings.pulse_candidate.trigger_capacity_retry_ms == 30_000
-    assert settings.pulse_candidate.trigger_error_retry_ms == 60_000
-    assert settings.pulse_candidate.target_edge_budget_per_hour == 3
-    assert settings.pulse_candidate.candidate_edge_budget_per_hour == 3
-    assert settings.pulse_candidate.failure_circuit_per_hour == 3
-    assert settings.pulse_candidate.failure_circuit_reasons == ("schema_validation_failed", "unknown_evidence_id")
-    assert settings.pulse_candidate.timeline_debounce_seconds == 600
-    assert settings.pulse_candidate.evidence_market_freshness_ms == 3_600_000
-    assert settings.pulse_candidate.statement_timeout_seconds == 30
-    assert settings.pulse_candidate.windows == ("1h", "4h")
-    assert settings.pulse_candidate.stale_job_ttl_by_window_seconds == {"1h": 3600, "4h": 14400}
-    assert settings.pulse_candidate.trigger_thresholds.min_rank_score == 45
-    assert settings.pulse_candidate.gate_thresholds.high_conviction_min == 78
     assert settings.macro_sync.enabled is True
     assert settings.macro_sync.interval_seconds == 900.0
     assert settings.macro_sync.batch_size == 3
@@ -243,6 +222,7 @@ def test_narrative_runtime_rejects_non_1h_windows() -> None:
     with pytest.raises(ValidationError, match=r"narrative_admission.windows"):
         WorkersSettings(**payload)
 
+
 def test_worker_settings_reject_unknown_worker_key():
     payload = yaml.safe_load(default_workers_yaml())
     payload["surprise_worker"] = {"enabled": True}
@@ -277,8 +257,6 @@ def test_agent_runtime_settings_default_lanes() -> None:
     assert settings.agent_runtime.defaults.model == "deepseek-v4-flash"
     assert settings.agent_runtime.defaults.disable_thinking is True
     assert settings.agent_runtime.defaults.include_usage is True
-    assert settings.agent_runtime.lanes["pulse.decision"].priority == "high"
-    assert settings.agent_runtime.lanes["pulse.decision"].timeout_seconds == 240
     assert "narrative.discussion_digest" not in settings.agent_runtime.lanes
     assert "narrative.mention_semantics" not in settings.agent_runtime.lanes
     assert settings.agent_runtime.lanes["news.item_brief"].priority == "low"
@@ -297,9 +275,9 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
             "global_max_concurrency": 2,
             "global_rpm_limit": 30,
             "lanes": {
-                "pulse.decision": {
+                "news.item_brief": {
                     "priority": "high",
-                    "model": "gpt-pulse",
+                    "model": "gpt-news",
                     "max_concurrency": 1,
                     "timeout_seconds": 90,
                     "circuit_breaker": {
@@ -312,14 +290,13 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
         }
     )
 
-    lane = settings.agent_runtime.lanes["pulse.decision"]
+    lane = settings.agent_runtime.lanes["news.item_brief"]
     assert settings.agent_runtime.global_max_concurrency == 2
     assert settings.agent_runtime.global_rpm_limit == 30
-    assert lane.model == "gpt-pulse"
+    assert lane.model == "gpt-news"
     assert lane.timeout_seconds == 90
     assert lane.circuit_breaker.failure_threshold == 3
     assert "narrative.mention_semantics" not in settings.agent_runtime.lanes
-    assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
     assert settings.agent_runtime.lanes["news.story_brief"].timeout_seconds == 180
 
 
@@ -374,7 +351,7 @@ def test_agent_runtime_settings_reject_unknown_lane_key() -> None:
         WorkersSettings(
             agent_runtime={
                 "lanes": {
-                    "pulse.signal-analyst": {
+                    "unknown.agent_lane": {
                         "priority": "high",
                         "max_concurrency": 1,
                         "timeout_seconds": 90,
@@ -384,31 +361,6 @@ def test_agent_runtime_settings_reject_unknown_lane_key() -> None:
         )
 
 
-def test_worker_settings_reject_zero_pulse_candidate_budgets():
-    payload = yaml.safe_load(default_workers_yaml())
-    payload["pulse_candidate"]["max_enqueues_per_cycle"] = 0
-
-    with pytest.raises(ValidationError):
-        WorkersSettings(**payload)
-
-
-def test_worker_settings_reject_zero_pulse_candidate_trigger_policies():
-    for field_name in (
-        "trigger_lease_ms",
-        "trigger_capacity_retry_ms",
-        "trigger_error_retry_ms",
-        "target_edge_budget_per_hour",
-        "candidate_edge_budget_per_hour",
-        "failure_circuit_per_hour",
-        "evidence_market_freshness_ms",
-    ):
-        payload = yaml.safe_load(default_workers_yaml())
-        payload["pulse_candidate"][field_name] = 0
-
-        with pytest.raises(ValidationError):
-            WorkersSettings(**payload)
-
-
 def test_worker_settings_reject_zero_asset_profile_refresh_policies():
     for field_name in ("provider_retry_ms", "ready_refresh_ms", "missing_refresh_ms", "error_refresh_ms"):
         payload = yaml.safe_load(default_workers_yaml())
@@ -416,30 +368,6 @@ def test_worker_settings_reject_zero_asset_profile_refresh_policies():
 
         with pytest.raises(ValidationError):
             WorkersSettings(**payload)
-
-
-def test_worker_settings_reject_empty_pulse_failure_circuit_reasons():
-    payload = yaml.safe_load(default_workers_yaml())
-    payload["pulse_candidate"]["failure_circuit_reasons"] = []
-
-    with pytest.raises(ValidationError, match="failure_circuit_reasons"):
-        WorkersSettings(**payload)
-
-
-def test_worker_settings_reject_zero_pulse_job_running_timeout_ms():
-    payload = yaml.safe_load(default_workers_yaml())
-    payload["pulse_candidate"]["job_running_timeout_ms"] = 0
-
-    with pytest.raises(ValidationError):
-        WorkersSettings(**payload)
-
-
-def test_worker_settings_reject_zero_pulse_stale_running_terminalization_batch_size():
-    payload = yaml.safe_load(default_workers_yaml())
-    payload["pulse_candidate"]["stale_running_terminalization_batch_size"] = 0
-
-    with pytest.raises(ValidationError):
-        WorkersSettings(**payload)
 
 
 def test_worker_settings_reject_zero_notification_delivery_running_policies():
@@ -458,18 +386,10 @@ def test_worker_settings_reject_zero_notification_delivery_running_policies():
 
 def test_worker_settings_reject_zero_hard_timeout_for_non_continuous_workers() -> None:
     payload = yaml.safe_load(default_workers_yaml())
-    payload["pulse_candidate"]["hard_timeout_seconds"] = 0
+    payload["news_fetch"]["hard_timeout_seconds"] = 0
 
     with pytest.raises(ValidationError, match="hard_timeout_seconds"):
         WorkersSettings(**payload)
-
-
-def test_pulse_candidate_settings_reject_removed_windows() -> None:
-    with pytest.raises(ValidationError, match=r"pulse_candidate\.windows"):
-        PulseCandidateWorkerSettings(windows=("5m",))
-
-    with pytest.raises(ValidationError, match=r"pulse_candidate\.windows"):
-        PulseCandidateWorkerSettings(windows=("24h",))
 
 
 def test_worker_settings_reject_legacy_live_gateway_fields():
@@ -538,7 +458,6 @@ def test_agent_runtime_capability_fields_default_to_model_registry() -> None:
     assert settings.agent_runtime.defaults.provider_family is None
     assert settings.agent_runtime.defaults.client_validation_retries is None
     assert settings.agent_runtime.defaults.max_tokens is None
-    assert settings.agent_runtime.lanes["pulse.decision"].max_tokens is None
     assert settings.agent_runtime.lanes["news.item_brief"].max_tokens == 2200
     assert settings.agent_runtime.lanes["news.story_brief"].max_tokens == 2200
 
@@ -547,7 +466,7 @@ def test_agent_runtime_default_model_uses_registered_capability_profile() -> Non
     settings = WorkersSettings(agent_runtime={"defaults": {"model": "deepseek-v4-flash"}})
     policy = AgentRuntimePolicy.model_validate(settings.agent_runtime.model_dump(mode="json"))
 
-    profile = policy.capability_for_lane("pulse.decision")
+    profile = policy.capability_for_lane("news.item_brief")
 
     assert profile.provider_family.value == "deepseek"
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}

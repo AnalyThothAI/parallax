@@ -23,7 +23,7 @@ def test_watchlist_and_social_agent_lanes_are_not_configurable() -> None:
     assert "news.item_brief" in lanes
 
 
-def test_agent_provider_wiring_only_builds_news_pulse_and_narrative_agents() -> None:
+def test_agent_provider_wiring_only_builds_current_news_agents() -> None:
     provider_wiring = (SRC / "app/runtime/provider_wiring/__init__.py").read_text(encoding="utf-8")
     model_execution = (SRC / "app/runtime/provider_wiring/model_execution.py").read_text(encoding="utf-8")
 

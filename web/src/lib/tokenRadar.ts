@@ -422,7 +422,6 @@ export function tokenRadarRowToTokenItem(
     },
     profile: row.profile ?? null,
     narrative_admission: row.narrative_admission ?? null,
-    pulse_overlay: row.pulse_overlay ?? null,
     factor_data_health: dataHealth,
     factor_gates: gates,
     factor_normalization: normalization,

@@ -5651,7 +5651,6 @@ def test_repository_session_exposes_news_repository(tmp_path) -> None:
 def _repositories_for_test_connection(conn):
     return repositories_for_connection(
         conn,
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )

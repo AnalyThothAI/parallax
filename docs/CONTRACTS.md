@@ -38,10 +38,9 @@ settings. It must not contain worker runtime knobs.
   `asset_profiles`; Binance CEX profiles write `cex_token_profiles`; Binance
   USD-M feeds own the CEX route, quote, candle, and OI/radar lane.
 
-Worker `enabled`, `interval_seconds`, `batch_size`, `concurrency`,
-`lease_ms`, `max_attempts`, advisory-lock, timeout, wake-channel, Pulse
-trigger/gate, and Watchlist summary queue/gate settings are rejected from
-`config.yaml`.
+Worker `enabled`, `interval_seconds`, `batch_size`, `concurrency`, `lease_ms`,
+`max_attempts`, advisory-lock, timeout, wake-channel, and Watchlist summary
+queue/gate settings are rejected from `config.yaml`.
 
 ### Worker Runtime Config (`workers.yaml`)
 
@@ -60,7 +59,7 @@ order:
 `news_item_brief`, `news_story_brief`, `news_page_projection`,
 `news_source_quality_projection`, `cex_oi_radar_board`,
 `macro_sync`, `macro_view_projection`, `macro_daily_brief_projection`,
-`pulse_candidate`, `notification_rule`, and `notification_delivery`.
+`notification_rule`, and `notification_delivery`.
 
 The schema is `WorkersSettings`; its worker fields and the generated default
 `workers.yaml` must match manifest names exactly. Unknown worker keys hard fail
@@ -68,8 +67,8 @@ startup instead of being ignored or aliased.
 
 `workers.agent_runtime` configures the shared agent execution plane. It
 contains the global default model, global concurrency/RPM limits, and default
-lane policies. Default lane keys are `pulse.decision`, `news.item_brief`, and
-`news.story_brief`. Each lane may override `model`; otherwise it inherits
+lane policies. Default lane keys are `news.item_brief` and `news.story_brief`.
+Each lane may override `model`; otherwise it inherits
 `agent_runtime.defaults.model`.
 
 Agent runtime uses one structured-output path: provider JSON object mode
@@ -135,8 +134,8 @@ Runtime health/status contract:
 - `/readyz` and `/api/status` expose worker state under
   `data.workers` / `workers` as a map keyed by manifest worker name, plus
   lane aggregate state under `data.worker_lanes` / `worker_lanes`.
-  Top-level worker sections such as `collector`,
-  `token_radar_projection`, or `pulse_candidate` are not part of the contract.
+  Top-level worker sections such as `collector` or `token_radar_projection` are
+  not part of the contract.
 - `worker_lanes` is keyed by manifest lane (`ingest`,
   `identity_market_fact`, `projection`, `agent`, `notification`,
   `maintenance_cache`) and reports enabled/running/failed counts, timeout
@@ -149,8 +148,8 @@ Runtime health/status contract:
   manifest-declared job queues, delivery queues, status queues, and dirty
   target tables; it does not change claim/retry semantics.
   `app/runtime/job_queue.py` contributes only descriptor metadata for these
-  diagnostics; it is not a generic executor for `pulse_agent_jobs` or
-  `notification_deliveries` and must not own claim, finalize, retry, lease, or
+  diagnostics; it is not a generic executor for `notification_deliveries` and
+  must not own claim, finalize, retry, lease, or
   stale-running SQL for those tables.
 - `workers.collector.details` carries collector counters such as
   `frames_received`, `matched_twitter_events`, parse/duplicate counts,
@@ -330,7 +329,7 @@ Token Radar market contract:
   `factor_snapshot_json`. The block contains `event_anchor`, `decision_latest`,
   and `readiness`.
 - `/api/token-radar` rows expose `narrative_admission` from the persisted
-  admission read model and may expose a read-only public `pulse_overlay`.
+  admission read model.
   Narrative hydration reads target identity from the row's formal nested
   `target.target_type` / `target.target_id` object; API routes do not synthesize
   temporary top-level target identity fields for hydration.
@@ -354,8 +353,8 @@ Token Radar market contract:
 - `market.event_anchor` is the event-time response object for the social signal.
   It may be `null` when inline capture could not establish an event-adjacent
   tick.
-- `market.decision_latest` is the latest response object available to ranking,
-  UI, and Signal Pulse from persisted market ticks. Provider raw frames are not
+- `market.decision_latest` is the latest response object available to ranking
+  and UI from persisted market ticks. Provider raw frames are not
   public facts and are not serialized into Token Radar rows unless they became
   `market_ticks`. Market tick creation/conflict state is classified from
   PostgreSQL rowcount evidence matching `RETURNING tick_id`, not from raw
@@ -642,8 +641,6 @@ Search V2 contract:
   - `data.narrative_admission`: admission-derived status, reason, currentness,
     source/author coverage, computation time, and data gaps. It contains no
     generated narrative prose or per-post semantic state.
-  - `data.pulse_overlay`: optional public Signal Pulse overlay; it is
-    display-gated and never changes Radar rank or Token Case narrative.
   - `data.market_live`: persisted latest-market-tick snapshot with `status`
     (`ready`, `missing`, `unsupported`, `stale`, or `error`), provider
     metadata, and nullable price, market-cap, liquidity, open-interest, holder,
@@ -703,47 +700,6 @@ Market Tick Current dirty-target enqueue and done/error accounting requires
 PostgreSQL `cursor.rowcount` evidence. Missing or invalid rowcount is malformed
 repository/driver state, not zero changed market-current work, and enqueue
 paths must not report candidate `len(records)` as write evidence.
-Pulse trigger dirty-target done/error/reschedule accounting requires PostgreSQL
-`cursor.rowcount` evidence. Missing or invalid rowcount is malformed
-repository/driver state, not zero changed dirty-trigger work.
-Pulse agent run and run-step audit writes that use `RETURNING` require
-PostgreSQL `cursor.rowcount` evidence. Required insert/upsert paths must return
-exactly one row with rowcount=1; finish paths validate rowcount against returned
-row presence after the run existence check. Missing, invalid, or mismatched
-rowcount fails before agent audit rows are returned.
-Pulse agent runtime-version, eval-case, and eval-result writes that use
-`RETURNING` are required single-row audit writes and must fail on missing,
-invalid, or mismatched rowcount before eval audit rows are returned.
-Pulse evidence packet persistence is a required single-row `RETURNING` write.
-`PulseEvidenceRepository.upsert_packet(...)` must validate PostgreSQL
-`cursor.rowcount=1` with a returned packet row before updating the associated
-`pulse_agent_runs` evidence packet id/hash. The associated
-`UPDATE pulse_agent_runs` is a separate required single-row mutation and must
-validate rowcount=1 before the run-link is trusted.
-Pulse public candidate upsert and low-information hide writes that use
-`RETURNING` require PostgreSQL `cursor.rowcount` evidence. Unchanged candidate
-upserts and no-op hide attempts are valid only as rowcount=0 with no returned
-row; changed candidate writes require rowcount=1 with a returned row. Repository
-code must not restore candidate success through fallback `SELECT` or returned-row
-presence alone.
-Pulse admission edge-state and candidate edge-budget writes that use single-row
-`RETURNING` require PostgreSQL `cursor.rowcount` evidence. The rowcount must be
-valid 0/1 and match returned-row presence before edge rows, optional state rows,
-or budget booleans are reported; missing, invalid, or mismatched rowcount is
-malformed repository/driver state, not returned-row success.
-Pulse playbook snapshot writes also require PostgreSQL `cursor.rowcount`
-evidence before playbook rows are returned. No-change writes are valid only as
-rowcount=0 with no row and must not be restored through fallback `SELECT`;
-changed snapshot writes require rowcount=1 with a returned row. The retired
-playbook-outcome table and writer are not public or runtime contracts.
-Pulse stale agent-run timeout cleanup requires PostgreSQL `cursor.rowcount`
-evidence. Missing or invalid rowcount fails before the repository reports zero
-stale `pulse_agent_runs` updated.
-Pulse job terminal/dead batch transitions over `pulse_agent_jobs` use
-`UPDATE ... RETURNING` and must validate PostgreSQL `cursor.rowcount` before
-terminal ledger writes. The cursor rowcount must match the returned rows;
-missing, invalid, or mismatched rowcount is malformed repository/driver state,
-not zero or returned-row-count terminalized jobs.
 Discovery terminal lookup-claim transitions over `token_discovery_dirty_lookup_keys`
 use `DELETE ... RETURNING` and must validate PostgreSQL `cursor.rowcount` before
 `worker_queue_terminal_events` writes. The cursor rowcount must match returned
@@ -944,114 +900,7 @@ Before running them against real data, operators must first run
 
 `projection_version` and `factor_version` are bumped on any Token Radar factor
 or ranking-contract change. Current runtime explanations come from
-`factor_snapshot_json`; public Signal Pulse payloads expose `factor_snapshot`,
-`decision`, `gate`, and `fact_card`, not old score/thesis JSON fields.
-When a `pulse_candidates` row is present and displayable, its public mapper
-requires `decision_json` to be mapping-shaped and the public reason/event JSON
-fields to be list-shaped; malformed rows fail instead of being repaired into
-empty decision text, empty reason arrays, or empty event id arrays.
-Downstream evaluation services filter by version, otherwise A/B comparisons
-silently mix populations. No black-box scores.
-
-Signal Pulse list/detail endpoints are Pulse-specific, not a generic Token
-Radar window mirror:
-
-- `/api/signal-lab/pulse` accepts `window=1h|4h`; missing `window` defaults to
-  `4h`. Explicit `5m` and `24h` are rejected with `invalid_window`.
-- `visibility=public|hidden` controls the publication lane. Missing
-  `visibility` defaults to `public`, which returns only candidates that passed
-  public display gates. `visibility=hidden` returns authenticated diagnostic
-  rows whose `display_status` starts with `hidden_`; public status filters are
-  ignored in this lane. `/api/signal-lab/pulse/{candidate_id}` uses the same
-  visibility rule, so hidden detail reads require `visibility=hidden`.
-- `scope=all` is the default discovery lane. `scope=matched` is watchlist
-  alert/context: it can explain why a watched source matters, but matched or
-  watched evidence alone does not bypass independent-source display quality.
-  Malformed scope values fail with `invalid_scope` rather than being coerced to
-  `matched`.
-- `handle=@name` filters by the candidate/job normalized `subject_key` only.
-  It does not expand candidate event-id arrays or join back to event authors on
-  the public read path.
-- The frontend default query is `4h/all`; `1h` is the early-confirmation lane.
-  Token Radar may still expose `5m` outside Signal Pulse.
-- Public Signal Pulse list/detail payloads do not expose run identity or
-  run-step audit fields such as `agent_run_id`, `run_id`, or `stages`. Those
-  remain in `pulse_agent_runs` / `pulse_agent_run_steps` for operator replay.
-- Public Signal Pulse `health` fields are derived from persisted candidate
-  summaries and bounded freshness queries. They do not expose scheduler or
-  worker liveness; runtime worker status belongs to `/api/status` and ops
-  diagnostics.
-
-Signal Pulse `decision` blocks are the runtime contract for agent output:
-
-```json
-{
-  "route": "meme",
-  "recommendation": "watchlist",
-  "confidence": 0.72,
-  "abstain_reason": null,
-  "stage_count": 3,
-  "summary_zh": "社交热度有效，但 DEX floor 仍需继续确认。",
-  "narrative_archetype": "kol-ignition",
-  "narrative_thesis_zh": "独立作者扩散到第三方 KOL，价格未跟上但叙事处于点火期。",
-  "bull_view": {
-    "strength": "moderate",
-    "thesis_zh": "watched/independent 作者比扩大，叙事尚未饱和。",
-    "supporting_event_ids": ["event-1"]
-  },
-  "bear_view": {
-    "strength": "weak",
-    "thesis_zh": "DEX 流动性仍在最低阈值附近，扩散后续可能熄火。",
-    "supporting_event_ids": ["event-2"]
-  },
-  "playbook": {
-    "has_playbook": true,
-    "watch_signals": ["独立作者 4h 仍上升", "DEX 流动性翻倍"],
-    "exit_triggers": ["watched-author 比例回落", "DEX 流动性跌破入场水平"],
-    "monitoring_horizon": "4h"
-  },
-  "evidence_event_urls": {"event-1": "https://x.com/foo/status/123"},
-  "invalidation_conditions": ["market response stale or liquidity below floor"],
-  "residual_risks": ["单一 KOL 驱动，缺少多源确认"],
-  "evidence_event_ids": ["event-1"]
-}
-```
-
-Decision block field semantics:
-
-- `stage_count` is opaque audit metadata. Readers must never infer UI ordering,
-  run completeness, or public display state from this number alone. Detailed
-  stage order, prompts, responses, latency, and attempts are audit-ledger data,
-  not public Signal Pulse contract fields.
-- `narrative_archetype` is a short (≤ 20 chars) free-text tag the
-  `pulse_decision` stage assigns to the run; empty string when no archetype
-  applies. Phase 2 may tighten to a Literal enum.
-- `narrative_thesis_zh` is a 30–300 char one-paragraph thesis written by
-  the `pulse_decision` stage. Required for non-abstain decisions.
-- `bull_view` / `bear_view` are symmetric two-sided opinions
-  (`{strength, thesis_zh, supporting_event_ids}`). `strength` is one of
-  `absent | weak | moderate | strong`; `absent` requires empty
-  `thesis_zh` and empty `supporting_event_ids` so UI can degrade
-  deterministically.
-- `playbook` carries the monitoring instructions (not order
-  instructions): `has_playbook` is `false` for abstain/ignore — in that
-  case both `watch_signals` and `exit_triggers` must be empty.
-  `monitoring_horizon` is one of `1h | 4h | 24h`. The playbook never
-  contains price targets, sizing, stop-loss, take-profit, or any other
-  trading execution language; see `RELIABILITY.md` Pulse Agent Audit
-  Ledger.
-- `evidence_event_urls` is an optional `{event_id: url}` map populated
-  for the events listed in `evidence_event_ids` so frontends can
-  hyperlink without a separate lookup.
-- `high_conviction` decisions additionally require
-  `len(evidence_event_ids) >= 3` and both `bull_view.strength` and
-  `bear_view.strength` to be `moderate` or `strong`.
-
-Default Signal Pulse listings hide rows where `decision.recommendation =
-"abstain"` or `display_status = "hidden_source_quality"`. Abstain is decision
-semantics, not a public display bucket; hidden source-quality rows are audit
-state for matched/watchlist context that lacks enough independent public
-confirmation.
+`factor_snapshot_json`.
 
 Current factor snapshots use `schema_version =
 "token_factor_snapshot_v3_social_attention"` only. Runtime readers reject old
@@ -1199,15 +1048,9 @@ explicitly and fail malformed direct-call input instead of restoring compatible
 defaults. This applies to read-model services, runtime diagnostics payloads,
 projection helpers, and operator repair helpers.
 
-`/api/ops/diagnostics` keeps the user-facing defaults on the route:
-`since_hours=4`, `window=1h`, and `scope=all`. The route validates `window` and
-`scope` before calling `ops_diagnostics_payload(...)`; the runtime helper does
-not define its own `1h` or `all` fallback.
-
-Signal Pulse public freshness health currently uses a 4h health horizon from
-the public read model service. That horizon is passed explicitly into the
-repository/service health contract; lower layers do not restore `since_hours=4`
-for direct callers.
+`/api/ops/diagnostics` exposes the current runtime aggregate without
+feature-specific query dimensions. `ops_diagnostics_payload(...)` receives only
+the runtime root and optional evaluation clock.
 
 Macro asset correlation defaults to `window=60d` at the API route. The
 correlation builder receives that validated window explicitly and does not

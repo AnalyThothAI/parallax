@@ -4,7 +4,6 @@ import type {
   NotificationSummary,
   RecentData,
   SearchInspectData,
-  SignalPulseData,
   StatusData,
   TokenPostsData,
   TokenSocialTimelineData,
@@ -74,7 +73,6 @@ export function appStatusFixture(overrides: Partial<StatusData> = {}): StatusDat
         running: true,
         details: { configured: true, subscription_limit: 200 },
       }),
-      pulse_candidate: workerStatusFixture(),
       handle_summary: workerStatusFixture(),
       notification_rule: workerStatusFixture({ enabled: true, running: true }),
       notification_delivery: workerStatusFixture({ enabled: true, running: true, queue_depth: 0 }),
@@ -138,29 +136,6 @@ export function tokenRadarFixture(overrides: Partial<AssetFlowData> = {}): Asset
       source_rows: 0,
       computed_at_ms: NOW,
     },
-    ...overrides,
-  };
-}
-
-export function signalPulseFixture(overrides: Partial<SignalPulseData> = {}): SignalPulseData {
-  return {
-    query: { window: "1h", scope: "all" },
-    health: {
-      pulse_ready: true,
-      candidate_count: 0,
-      blocked_low_information_count: 0,
-      dead_job_count: 0,
-      market_ready_rate: 1,
-    },
-    summary: {
-      trade_candidate: 0,
-      token_watch: 0,
-      risk_rejected_high_info: 0,
-    },
-    items: [],
-    returned_count: 0,
-    has_more: false,
-    next_cursor: null,
     ...overrides,
   };
 }
@@ -233,22 +208,23 @@ export function notificationFixture(overrides: Partial<NotificationItem> = {}): 
   return {
     notification_id: "notification-route-1",
     dedup_key: "route:notification:1",
-    rule_id: "signal_pulse",
+    rule_id: "watched_account_token_alert",
     severity: "high",
-    title: "Signal Pulse",
-    body: "$RKC moved into watch",
-    entity_type: "signal_pulse",
-    entity_key: "candidate:rkc",
+    title: "Watched token alert",
+    body: "$RKC was mentioned by a watched account",
+    entity_type: "token",
+    entity_key: "token:rkc",
+    author_handle: "traderpow",
     symbol: "RKC",
-    source_table: "signal_pulse_candidates",
-    source_id: "candidate:rkc",
+    source_table: "events",
+    source_id: "event:rkc",
     occurrence_count: 1,
     first_seen_at_ms: NOW,
     last_seen_at_ms: NOW,
     created_at_ms: NOW,
     updated_at_ms: NOW,
     read_at_ms: null,
-    payload: { route: "/" },
+    payload: { event_id: "event:rkc" },
     channels: ["in_app"],
     ...overrides,
   };

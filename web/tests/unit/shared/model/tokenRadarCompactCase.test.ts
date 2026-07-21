@@ -32,6 +32,7 @@ describe("buildTokenRadarCompactCase", () => {
       narrative_admission: {
         status: "suppressed",
         reason: "out_of_frontier",
+        is_current: false,
         currentness: {
           display_status: "out_of_frontier",
           reason: "out_of_frontier",
@@ -50,8 +51,9 @@ describe("buildTokenRadarCompactCase", () => {
     const view = buildTokenRadarCompactCase({
       ...tokenFlowFixture(),
       narrative_admission: {
-        status: "unsupported_window",
+        status: "missing",
         reason: "narrative_not_supported_for_window",
+        is_current: false,
         currentness: {
           display_status: "unsupported_window",
           reason: "narrative_not_supported_for_window",
@@ -223,6 +225,7 @@ function tokenFlowFixture(): TokenFlowItem {
     narrative_admission: {
       status: "admitted",
       reason: "hot_rank",
+      is_current: true,
       currentness: {
         display_status: "current",
         reason: "hot_rank",

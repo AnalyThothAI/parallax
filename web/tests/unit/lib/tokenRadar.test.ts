@@ -136,11 +136,12 @@ describe("token radar factor snapshot mapper", () => {
     expect((item as { profile?: unknown }).profile).toEqual(profile);
   });
 
-  it("preserves hydrated narrative admission and pulse overlays from asset flow rows", () => {
+  it("preserves hydrated narrative admission from asset flow rows", () => {
     const row = productionFactorSnapshotRow();
     row.narrative_admission = {
       status: "admitted",
       reason: "rank_score",
+      is_current: true,
       currentness: {
         display_status: "current",
         reason: "rank_score",
@@ -148,16 +149,9 @@ describe("token radar factor snapshot mapper", () => {
       coverage: { source_mentions: 5, independent_authors: 3 },
       data_gaps: [],
     };
-    row.pulse_overlay = {
-      status: "ready",
-      pulse_status: "trade_candidate",
-      verdict: "agent confirms",
-    };
-
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
     expect(item.narrative_admission).toEqual(row.narrative_admission);
-    expect(item.pulse_overlay).toEqual(row.pulse_overlay);
   });
 
   it("preserves radar row metadata for ranking and listed-at UI", () => {

@@ -1,6 +1,5 @@
 import type {
   ScopeKey,
-  SignalPulseVisibilityFilter,
   TokenPostRange,
   TokenPostServerSort,
   WatchlistTimelineScope,
@@ -23,13 +22,6 @@ export const queryKeys = {
     scope: TokenCaseScope,
     postsLimit: number,
   ) => ["token-case", targetKey, window, scope, postsLimit] as const,
-  signalLabOverview: (window: WindowKey, scope: ScopeKey) =>
-    ["signal-lab-overview", window, scope] as const,
-  signalPulseCompact: (
-    scope: ScopeKey,
-    window: WindowKey,
-    visibility: SignalPulseVisibilityFilter,
-  ) => ["signal-lab-pulse-compact", scope, window, visibility] as const,
   searchInspect: (token: string, q: string, window: WindowKey, scope: ScopeKey) =>
     ["search-inspect", token, q, window, scope] as const,
   stocksRadar: (window: WindowKey, scope: ScopeKey, limit: number) =>
@@ -76,8 +68,7 @@ export const queryKeys = {
   accountQuality: (handles: string) => ["account-quality", handles] as const,
   notifications: () => ["notifications"] as const,
   notificationSummary: () => ["notification-summary"] as const,
-  opsDiagnostics: (window: WindowKey, scope: ScopeKey, sinceHours: number) =>
-    ["ops-diagnostics", window, scope, sinceHours] as const,
+  opsDiagnostics: () => ["ops-diagnostics"] as const,
   opsQueue: (queueName: string | null, status: string | null, limit: number) =>
     ["ops-queue", queueName ?? "", status ?? "", limit] as const,
   watchlistHandlesOverview: () => ["watchlist-handles-overview"] as const,

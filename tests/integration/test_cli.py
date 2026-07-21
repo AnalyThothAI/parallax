@@ -77,7 +77,6 @@ def seed_postgres(db_path: Path) -> None:
         migrate(conn)
         repos = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
@@ -326,7 +325,6 @@ class CliTests(unittest.TestCase):
         )
         self.assertEqual(payload["data"]["workers"]["collector"]["mode"], "continuous")
         self.assertTrue(payload["data"]["workers"]["collector"]["enabled"])
-        self.assertEqual(payload["data"]["workers"]["pulse_candidate"]["batch_size"], 10)
 
     def test_config_redacts_notification_channel_urls(self):
         with tempfile.TemporaryDirectory() as tmpdir:

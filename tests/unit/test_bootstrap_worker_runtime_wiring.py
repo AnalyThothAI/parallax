@@ -13,7 +13,6 @@ from parallax.app.runtime.provider_wiring.types import (
     CexMarketIntelProviders,
     IngestionProviders,
     NewsIntelProviders,
-    PulseLabProviders,
     WiredProviders,
 )
 from parallax.app.runtime.worker_base import WorkerBase
@@ -899,7 +898,6 @@ def test_provider_cleanup_uses_formal_roots_without_provider_graph_fallback() ->
         asset_market=AssetMarketProviders(),
         cex_market_intel=CexMarketIntelProviders(),
         news_intel=NewsIntelProviders(),
-        pulse_lab=PulseLabProviders(),
         agent_execution_gateway=alias,
     )
 
@@ -969,7 +967,6 @@ def _settings(
             "cex_oi_radar_board": {"enabled": cex_oi_radar_board_enabled},
             "macro_view_projection": {"enabled": macro_view_projection_enabled},
             "narrative_admission": {"enabled": narrative_admission_enabled},
-            "pulse_candidate": {"enabled": False},
             "notification_rule": {"enabled": notifications_enabled},
             "notification_delivery": {"enabled": notifications_enabled},
             "news_item_brief": {"enabled": news_item_brief_configured},
@@ -1002,7 +999,6 @@ class FakeProviders:
             oi_market=object() if cex_oi_market is _UNSET else cex_oi_market,
             coinglass_derivatives=coinglass_derivatives,
         )
-        self.pulse_lab = SimpleNamespace(decision_provider=None)
         self.ingestion = SimpleNamespace(upstream_client_factory=upstream_client_factory)
         self.news_intel = SimpleNamespace(feed_client=object(), brief_provider=brief_provider)
 

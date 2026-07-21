@@ -359,78 +359,78 @@ def test_insert_notification_creates_new_news_row_when_semantic_signature_change
     }
 
 
-def test_insert_notification_suppresses_same_pulse_signature_only(tmp_path):
+def test_insert_notification_suppresses_same_semantic_signature_only(tmp_path):
     repo = repository(tmp_path)
 
     first = repo.insert_notification(
-        dedup_key="signal_pulse_candidate:pulse-1:sha256:first",
-        rule_id="signal_pulse_candidate",
+        dedup_key="watched_account_token_alert:alert-1:sha256:first",
+        rule_id="watched_account_token_alert",
         severity="high",
         title="$SLOP token watch",
-        body="Signal Pulse",
-        entity_type="pulse_candidate",
-        entity_key="pulse_candidate:pulse-1",
+        body="Token alert",
+        entity_type="token",
+        entity_key="token:SLOP",
         symbol="SLOP",
-        source_table="pulse_candidates",
-        source_id="pulse-1",
+        source_table="token_alerts",
+        source_id="alert-1",
         occurrence_at_ms=1_700_000_000_000,
         payload={
-            "candidate_id": "pulse-1",
-            "pulse_status": "token_watch",
+            "alert_id": "alert-1",
+            "status": "token_watch",
             "symbol": "SLOP",
             "semantic_signature": "sha256:first",
         },
         channels=["in_app", "pushdeer"],
     )
     same_signature = repo.insert_notification(
-        dedup_key="signal_pulse_candidate:pulse-1:sha256:first",
-        rule_id="signal_pulse_candidate",
+        dedup_key="watched_account_token_alert:alert-1:sha256:first",
+        rule_id="watched_account_token_alert",
         severity="high",
         title="$SLOP token watch",
-        body="Signal Pulse",
-        entity_type="pulse_candidate",
-        entity_key="pulse_candidate:pulse-1",
+        body="Token alert",
+        entity_type="token",
+        entity_key="token:SLOP",
         symbol="SLOP",
-        source_table="pulse_candidates",
-        source_id="pulse-1",
+        source_table="token_alerts",
+        source_id="alert-1",
         occurrence_at_ms=1_700_000_060_000,
         payload={
-            "candidate_id": "pulse-1",
-            "pulse_status": "token_watch",
+            "alert_id": "alert-1",
+            "status": "token_watch",
             "symbol": "SLOP",
             "semantic_signature": "sha256:first",
         },
         channels=["in_app", "pushdeer"],
     )
     changed_signature = repo.insert_notification(
-        dedup_key="signal_pulse_candidate:pulse-1:sha256:second",
-        rule_id="signal_pulse_candidate",
+        dedup_key="watched_account_token_alert:alert-1:sha256:second",
+        rule_id="watched_account_token_alert",
         severity="high",
         title="$SLOP token watch",
-        body="Signal Pulse",
-        entity_type="pulse_candidate",
-        entity_key="pulse_candidate:pulse-1",
+        body="Token alert",
+        entity_type="token",
+        entity_key="token:SLOP",
         symbol="SLOP",
-        source_table="pulse_candidates",
-        source_id="pulse-1",
+        source_table="token_alerts",
+        source_id="alert-1",
         occurrence_at_ms=1_700_000_120_000,
         payload={
-            "candidate_id": "pulse-1",
-            "pulse_status": "token_watch",
+            "alert_id": "alert-1",
+            "status": "token_watch",
             "symbol": "SLOP",
             "semantic_signature": "sha256:second",
         },
         channels=["in_app", "pushdeer"],
     )
 
-    rows = repo.list_notifications(limit=10, rule_id="signal_pulse_candidate")
+    rows = repo.list_notifications(limit=10, rule_id="watched_account_token_alert")
 
     assert first is not None
     assert same_signature is None
     assert changed_signature is not None
     assert len(rows) == 2
-    assert rows[0]["dedup_key"] == "signal_pulse_candidate:pulse-1:sha256:second"
-    assert rows[1]["dedup_key"] == "signal_pulse_candidate:pulse-1:sha256:first"
+    assert rows[0]["dedup_key"] == "watched_account_token_alert:alert-1:sha256:second"
+    assert rows[1]["dedup_key"] == "watched_account_token_alert:alert-1:sha256:first"
     assert rows[0]["occurrence_count"] == 1
 
 

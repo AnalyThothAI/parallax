@@ -61,7 +61,7 @@ Macrodata bundles       DEX / CEX / market-data providers
   Token Radar / Search / Token Case / Watchlist / News / Macro / CEX OI
          |
          v
-  audited agent runtime: Narrative, News briefs, Signal Pulse, summaries
+  audited agent runtime: Narrative, News briefs, summaries
          |
          v
   decisions, settlements, attribution, diagnostics, notifications
@@ -93,7 +93,7 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 
 | Surface | Role |
 | --- | --- |
-| React console | Operator workbench for Radar, Search, Token Case, Signal Pulse, Stocks/CEX, News, Macro, Watchlist, Ops, and notifications. |
+| React console | Operator workbench for Radar, Search, Token Case, Stocks/CEX, News, Macro, Watchlist, Ops, and notifications. |
 | HTTP API | Authenticated `/api/*` read surfaces, health checks, bootstrap, token images, status, and diagnostics. |
 | WebSocket | Authenticated `/ws` replay/live stream for events, subscriptions, notifications, and live market updates. |
 | JSON CLI | Scriptable local/operator interface for config, DB health, read-model queries, macro sync/status, and ops repair commands. |
@@ -107,7 +107,7 @@ than a generic chat pane:
 | Panel | Purpose |
 | --- | --- |
 | Flow Tape | Chronological social, news, macro, market, and watchlist events with provenance and data-health badges. |
-| Candidate Board | Deterministic gates and ranked targets before agent execution: why a target entered Radar, Pulse, News, or Watchlist workflows. |
+| Candidate Board | Deterministic gates and ranked targets before agent execution: why a target entered Radar, News, or Watchlist workflows. |
 | Evidence Dossier | One selected target with source posts, resolved identity, market ticks, profiles, narrative digest, news facts, macro context, and CEX context. |
 | Agent Run Trace | Stage-by-stage run ledger with route, prompt/schema/artifact versions, input/output hashes, trace id, validation status, usage, timeout, and abstain reason. |
 | Decision Ledger | Persisted decisions, confidence, data gaps, risk flags, and why-not explanations. No decision should appear without an audit row. |
@@ -133,8 +133,7 @@ Tooling should be safe by default:
 | `evidence` | Canonical event model, entity extraction, material evidence, and transactional persistence. |
 | `asset_market` | Asset identity, discovery, profiles, token images, market ticks, capture tiers, and live market fan-out. |
 | `token_intel` | Token evidence, deterministic resolution, Token Radar scoring, search, factor snapshots, and signal diagnostics. |
-| `narrative_intel` | Per-mention semantics and token-window discussion digests with evidence references. |
-| `pulse_lab` | Signal Pulse candidate gate, route policy, agent run ledger, decisions, abstains, and outcome attribution. |
+| `narrative_intel` | Deterministic token-window narrative admission, currentness, coverage, and evidence gaps. |
 | `news_intel` | Configured news ingestion, item facts, token/fact extraction, item briefs, source quality, and News page rows. |
 | `cex_market_intel` | Binance-backed CEX universe, derivatives/OI board rows, and CEX detail snapshots. |
 | `macro_intel` | Macrodata sync, macro observations, deterministic regime/features, and Macro module views. |

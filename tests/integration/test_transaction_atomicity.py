@@ -22,7 +22,6 @@ def _worker_pool_bundle(pool: Any) -> DBPoolBundle:
         api_pool=None,
         worker_pool=pool,
         wake_pool=None,
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )
@@ -98,7 +97,6 @@ def test_repository_session_transaction_alias_uses_unit_of_work() -> None:
     conn = FakeTransactionConnection()
     repos = repositories_for_connection(
         conn,
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )

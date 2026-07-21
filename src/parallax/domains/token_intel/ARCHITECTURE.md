@@ -28,7 +28,7 @@ GMGN frame
       → token_radar_target_features
       → token_radar_current_rows.factor_snapshot_json
       → token_radar_publication_state
-  → read models / Signal Pulse / notifications
+  → read models / notifications
   → HTTP / WebSocket / CLI / frontend
 ```
 
@@ -73,13 +73,13 @@ scoring fields inside the snapshot are formal too: `composite.rank_score`,
 `composite.recommended_decision`, and `gates.max_decision` must already exist
 before payload hashing or SQL, and missing values are not repaired to `0.0` or
 `discard`.
-Pulse, Narrative Admission, Token Profile Current, Asset Profile Refresh, and Token Capture Tier
-downstream dirty targets derive `source_watermark_ms` only from the current
+Narrative Admission, Token Profile Current, Asset Profile Refresh, and Token
+Capture Tier downstream dirty targets derive `source_watermark_ms` only from the current
 row's positive `source_max_received_at_ms`; missing or invalid watermarks fail
 closed instead of falling back to `computed_at_ms`, `0`, or projection runtime
-time. Pulse Trigger and Narrative Admission dirty repositories also reject
-missing, zero, negative, boolean, or string producer watermarks before queue SQL
-and keep no zero-watermark enqueue compatibility branch. Capture-tier rank-set
+time. The Narrative Admission dirty repository also rejects missing, zero,
+negative, boolean, or string producer watermarks before queue SQL and keeps no
+zero-watermark enqueue compatibility branch. Capture-tier rank-set
 repair may read bounded current rows, but those rows must also carry positive
 source watermarks before enqueue.
 Rank-set selection requires each rank input to expose a non-negative
@@ -253,9 +253,7 @@ not reconstruct legacy top-level market fields or process-local live market
 fallbacks. Legacy score-centered JSON fields, v1 snapshot fields, and old
 current-market refresh snapshots are not runtime fallback sources. `profile`
 comes from the asset-level `token_profile_current` read model and is intentionally
-outside the scoring snapshot. Signal Lab Pulse decisions consume v3 factor
-snapshots, the public `market.decision_latest` response key, and deterministic
-gates.
+outside the scoring snapshot.
 
 Latest read models read `token_radar_current_rows`. Online readiness and
 last-failure semantics come only
@@ -358,10 +356,6 @@ symbol remains `None` rather than falling back to the mention symbol.
   clean duplication only removes that penalty.
 - Token Radar target display uses current identity. Intent display symbol is
   preserved separately as what the tweet mentioned.
-- Signal Pulse reads v3 `factor_snapshot_json`, first-class `decision_*`
-  columns, `decision_json`, and deterministic gate output. Product decisions
-  must not fall back to legacy Signal Pulse thesis, radar-score, or
-  market-context JSON payloads.
 - Token Radar online consumers read `token_radar_current_rows` plus
   `token_radar_publication_state` only. Failed publications must surface
   `stale` or `failed`; they must never be wrapped as `fresh` because older

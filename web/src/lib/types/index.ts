@@ -18,8 +18,6 @@ export type OpenApiNotificationSummary = components["schemas"]["NotificationSumm
 export type OpenApiNotificationsData = components["schemas"]["NotificationsData"];
 export type OpenApiNotificationReadData = components["schemas"]["NotificationReadData"];
 export type OpenApiNotificationReadAllData = components["schemas"]["NotificationReadAllData"];
-export type OpenApiSignalPulseData = components["schemas"]["SignalPulseData"];
-export type OpenApiSignalPulseItem = components["schemas"]["SignalPulseItem"];
 
 // frontend-contracts: these UI/domain shapes still encode frontend-specific view models
 // that are richer than the current extensible OpenAPI response schemas.
@@ -76,7 +74,6 @@ export type {
   NotificationLivePayload,
   NotificationSummary,
   NotificationsData,
-  PulseOverlay,
   RadarSortMode,
   RecentData,
   ScopeKey,
@@ -90,11 +87,6 @@ export type {
   SearchTokenResult,
   ScoreBlock,
   ScoreContribution,
-  SignalPulseData,
-  SignalPulseItem,
-  SignalPulseStatus,
-  SignalPulseStatusFilter,
-  SignalPulseVisibilityFilter,
   SourceEventDetail,
   SourceEventsByIdsData,
   StatusData,
@@ -103,7 +95,6 @@ export type {
   TimelineBucket,
   TimingBlock,
   TokenDetailMode,
-  TokenDetailTab,
   TokenCaseDossier,
   TokenCaseApiScope,
   TokenCasePostsData,

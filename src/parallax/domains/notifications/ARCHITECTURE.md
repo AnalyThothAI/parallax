@@ -14,7 +14,7 @@ Public HTTP and WebSocket reads never call providers.
 | State | Category | Runtime writer |
 |---|---|---|
 | `events`, `account_token_alerts` | upstream material facts | collector through the evidence ingest transaction |
-| `pulse_candidates`, `news_page_rows` | upstream rebuildable current read models | owning Pulse/News projection workers |
+| `news_page_rows` | upstream rebuildable current read model | owning News projection worker |
 | `notifications` | rebuildable notification serving projection | `NotificationWorker` (`notification_rule`) |
 | `notification_reads` | material operator read state | notification command/API surface |
 | `notification_deliveries` | durable external-delivery state machine | enqueue: `NotificationWorker`; claim/complete/fail: `NotificationDeliveryWorker` |

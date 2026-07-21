@@ -41,11 +41,6 @@ class RuntimeWorkerHardCutContract:
 
 RUNTIME_WORKER_CONTRACTS: tuple[RuntimeWorkerHardCutContract, ...] = (
     RuntimeWorkerHardCutContract(
-        path=SRC / "domains/pulse_lab/runtime/pulse_candidate_worker.py",
-        banned_calls=("latest_current_rows",),
-        control_claim_markers=("pulse_trigger_dirty_targets.claim_due",),
-    ),
-    RuntimeWorkerHardCutContract(
         path=SRC / "domains/narrative_intel/runtime/narrative_admission_worker.py",
         banned_calls=("admitted_radar_rows", "admissions_for_window_scope", "delete_admissions_outside_frontier"),
         control_claim_markers=("narrative_admission_dirty_targets.claim_due",),
@@ -92,7 +87,6 @@ BROAD_DISCOVERY_CALLS = frozenset(call for contract in RUNTIME_WORKER_CONTRACTS 
 
 CONTROL_PLANE_TABLES = frozenset(
     {
-        "pulse_trigger_dirty_targets",
         "narrative_admission_dirty_targets",
         "token_profile_current_dirty_targets",
         "token_image_source_dirty_targets",
@@ -103,9 +97,6 @@ CONTROL_PLANE_TABLES = frozenset(
 
 BUSINESS_OUTPUT_TABLES = frozenset(
     {
-        "pulse_candidates",
-        "pulse_agent_runs",
-        "pulse_agent_run_steps",
         "narrative_admissions",
         "token_profile_current",
         "token_image_assets",
@@ -171,18 +162,12 @@ ASSET_PROFILE_REFRESH_TARGET_REPOSITORY_PATH = (
 ASSET_PROFILE_REPOSITORY_PATH = SRC / "domains/asset_market/repositories/asset_profile_repository.py"
 ASSET_PROFILE_REFRESH_SERVICE_PATH = SRC / "domains/asset_market/services/asset_profile_refresh.py"
 CEX_TOKEN_PROFILE_REPOSITORY_PATH = SRC / "domains/asset_market/repositories/cex_token_profile_repository.py"
-PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY_PATH = (
-    SRC / "domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py"
-)
 NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH = (
     SRC / "domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py"
 )
 NARRATIVE_REPOSITORY_PATH = SRC / "domains/narrative_intel/repositories/narrative_repository.py"
 MACRO_REPOSITORY_PATH = SRC / "domains/macro_intel/repositories/macro_intel_repository.py"
 MACRO_SYNC_SERVICE_PATH = SRC / "domains/macro_intel/services/macro_sync_service.py"
-PULSE_CANDIDATE_JOB_SERVICE_PATH = SRC / "domains/pulse_lab/services/pulse_candidate_job_service.py"
-PULSE_DECISION_RUNTIME_SERVICE_PATH = SRC / "domains/pulse_lab/services/pulse_decision_runtime.py"
-PULSE_JOBS_REPOSITORY_PATH = SRC / "domains/pulse_lab/repositories/pulse_jobs_repository.py"
 MACRO_ROUTE_PATH = SRC / "app/surfaces/api/routes_macro.py"
 QUEUE_TERMINAL_PATH = SRC / "platform/db/queue_terminal.py"
 POSTGRES_CLIENT_PATH = SRC / "platform/db/postgres_client.py"
@@ -579,7 +564,6 @@ def test_terminal_ledger_callers_do_not_default_attempt_count_before_platform_co
     paths = (
         EVENT_ANCHOR_JOB_REPOSITORY_PATH,
         DISCOVERY_REPOSITORY_PATH,
-        SRC / "domains/pulse_lab/repositories/pulse_jobs_repository.py",
     )
     banned = 'attempt_count=int(row.get("attempt_count") or 0)'
 
@@ -642,7 +626,6 @@ def test_queue_ops_retry_transitions_require_repository_contracts_without_option
         'getattr(discovery, "enqueue_lookup_keys", None)',
         'getattr(repos, "event_anchor_jobs", None)',
         'getattr(repo, "retry_terminal_job_from_snapshot", None)',
-        'getattr(repos, "pulse_jobs", None)',
         'getattr(repo, "enqueue_macro_projection_dirty_target", None)',
         'getattr(repo, "enqueue_macro_projection_dirty_targets_for_changes", None)',
     )
@@ -650,7 +633,6 @@ def test_queue_ops_retry_transitions_require_repository_contracts_without_option
     assert "signals_connection_required" in queue_ops_text
     assert "discovery_repository_required" in queue_ops_text
     assert "event_anchor_job_repository_required" in queue_ops_text
-    assert "pulse_jobs_repository_required" in queue_ops_text
     assert "macro_intel_repository_required" in queue_ops_text
     assert all(token not in queue_ops_text for token in forbidden)
 
@@ -1596,12 +1578,8 @@ def test_token_capture_tier_dirty_enqueue_source_watermark_has_no_row_or_runtime
 
 
 @pytest.mark.architecture
-def test_pulse_and_narrative_dirty_enqueue_source_watermarks_have_no_zero_fallback() -> None:
+def test_narrative_dirty_enqueue_source_watermarks_have_no_zero_fallback() -> None:
     repositories = {
-        "pulse": (
-            PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY_PATH,
-            "pulse_trigger_dirty_target_source_watermark_required",
-        ),
         "narrative": (
             NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH,
             "narrative_admission_dirty_target_source_watermark_required",
@@ -2153,6 +2131,12 @@ def test_token_image_asset_lifecycle_writes_require_real_cursor_rowcount() -> No
 @pytest.mark.architecture
 def test_identity_evidence_repository_uses_connection_transaction_without_manual_commit_fallback() -> None:
     repository_text = IDENTITY_EVIDENCE_REPOSITORY_PATH.read_text(encoding="utf-8")
+    tree = _parse(IDENTITY_EVIDENCE_REPOSITORY_PATH)
+    mutation_functions = {
+        node.name: _function_source(IDENTITY_EVIDENCE_REPOSITORY_PATH, node)
+        for node in ast.walk(tree)
+        if isinstance(node, ast.FunctionDef) and node.name in {"upsert_identity_evidence", "recompute_current_identity"}
+    }
 
     forbidden = (
         "self.conn.commit()",
@@ -2162,7 +2146,8 @@ def test_identity_evidence_repository_uses_connection_transaction_without_manual
 
     assert "def _transaction(conn: Any)" in repository_text
     assert "identity_evidence_repository_transaction_required" in repository_text
-    assert repository_text.count("_transaction(self.conn)") == 3
+    assert set(mutation_functions) == {"upsert_identity_evidence", "recompute_current_identity"}
+    assert all("with _transaction(self.conn):" in source for source in mutation_functions.values())
     assert all(token not in repository_text for token in forbidden)
 
 
@@ -2578,7 +2563,6 @@ def test_dirty_completion_keys_require_claim_lease_owner_contract_without_defaul
         "discovery": SRC / "domains/asset_market/repositories/discovery_repository.py",
         "narrative_admission": SRC
         / "domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py",
-        "pulse_trigger": SRC / "domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py",
         "event_anchor_backfill": SRC / "domains/asset_market/runtime/event_anchor_backfill_worker.py",
     }
     forbidden = (
@@ -2620,7 +2604,6 @@ def test_dirty_completion_keys_require_claim_payload_hash_contract_without_defau
         "discovery": SRC / "domains/asset_market/repositories/discovery_repository.py",
         "narrative_admission": SRC
         / "domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py",
-        "pulse_trigger": SRC / "domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py",
     }
     forbidden = (
         'payload_hash = str(claim.get("payload_hash") or "")',
@@ -2661,19 +2644,6 @@ def test_discovery_terminalization_requires_deleted_source_payload_hash_without_
 
     assert [token for token in forbidden if token in source] == []
     assert "_terminal_source_payload_hash(row)" in source
-
-
-@pytest.mark.architecture
-def test_pulse_candidate_exit_suppression_requires_claim_payload_hash_without_default() -> None:
-    worker = SRC / "domains/pulse_lab/runtime/pulse_candidate_worker.py"
-    source = worker.read_text(encoding="utf-8")
-    forbidden = (
-        'str(claim.get("payload_hash") or "")',
-        'claim.get("payload_hash") or ""',
-    )
-
-    assert [token for token in forbidden if token in source] == []
-    assert 'claim["payload_hash"]' in source
 
 
 @pytest.mark.architecture
@@ -2720,11 +2690,8 @@ def test_token_radar_dirty_claim_completion_identity_requires_formal_fields_with
 
 
 @pytest.mark.architecture
-def test_pulse_job_and_macro_sync_attempt_contracts_require_claim_fields_without_defaults() -> None:
+def test_macro_sync_attempt_contract_requires_claim_fields_without_defaults() -> None:
     source_paths = {
-        "pulse_candidate_job_service": PULSE_CANDIDATE_JOB_SERVICE_PATH,
-        "pulse_decision_runtime": PULSE_DECISION_RUNTIME_SERVICE_PATH,
-        "pulse_jobs_repository": PULSE_JOBS_REPOSITORY_PATH,
         "macro_sync_service": MACRO_SYNC_SERVICE_PATH,
     }
     forbidden = (
@@ -2745,12 +2712,6 @@ def test_pulse_job_and_macro_sync_attempt_contracts_require_claim_fields_without
     }
 
     assert violations == {name: [] for name in source_paths}
-    for path in (
-        PULSE_CANDIDATE_JOB_SERVICE_PATH,
-        PULSE_DECISION_RUNTIME_SERVICE_PATH,
-        PULSE_JOBS_REPOSITORY_PATH,
-    ):
-        assert 'job["attempt_count"]' in path.read_text(encoding="utf-8")
     assert 'window["attempt_count"]' in MACRO_SYNC_SERVICE_PATH.read_text(encoding="utf-8")
 
 
@@ -3150,22 +3111,15 @@ def test_macro_asset_correlation_builder_requires_explicit_window_without_60d_de
 
 
 def test_dirty_claim_window_scope_dimensions_are_formal_worker_contracts() -> None:
-    pulse_source = (SRC / "domains/pulse_lab/runtime/pulse_candidate_worker.py").read_text(encoding="utf-8")
     narrative_source = (SRC / "domains/narrative_intel/runtime/narrative_admission_worker.py").read_text(
         encoding="utf-8"
     )
 
-    assert "_required_configured_claim_dimension(" in pulse_source
-    assert 'field="window"' in pulse_source
-    assert 'field="scope"' in pulse_source
-    assert 'error_prefix="pulse_trigger_dirty_target"' in pulse_source
     assert "narrative_admission_dirty_target_invalid_window" in narrative_source
     assert '_required_claim_member(claim, "window", self.windows)' in narrative_source
     assert '_required_claim_member(claim, "scope", self.scopes)' in narrative_source
     assert ".get(window, 86_400_000)" not in narrative_source
-    assert 'watched_only=scope == "matched"' not in pulse_source
     assert 'watched_only=scope == "matched"' not in narrative_source
-    assert "PULSE_SCOPE_WATCHED_ONLY[scope]" in pulse_source
     assert "NARRATIVE_SCOPE_WATCHED_ONLY[scope]" in narrative_source
     assert "NARRATIVE_WINDOW_MS_BY_KEY[window]" in narrative_source
 
@@ -3256,7 +3210,6 @@ def test_dirty_target_claim_due_returning_rows_require_cursor_rowcount_match() -
         "token_profile_current": (TOKEN_PROFILE_CURRENT_DIRTY_TARGET_REPOSITORY_PATH, "claim_due"),
         "macro_projection": (MACRO_REPOSITORY_PATH, "claim_macro_projection_dirty_targets"),
         "narrative_admission": (NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH, "claim_due"),
-        "pulse_trigger": (PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY_PATH, "claim_due"),
     }
 
     for name, (path, function_name) in claim_functions.items():
@@ -3277,7 +3230,6 @@ def test_bulk_dirty_target_enqueue_counts_use_database_rowcount_not_input_length
         "token_image_source": TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH,
         "token_profile_current": TOKEN_PROFILE_CURRENT_DIRTY_TARGET_REPOSITORY_PATH,
         "narrative_admission": NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH,
-        "pulse_trigger": PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY_PATH,
     }
 
     for name, path in enqueue_repositories.items():

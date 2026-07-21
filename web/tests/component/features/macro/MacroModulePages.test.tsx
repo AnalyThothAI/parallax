@@ -95,7 +95,6 @@ describe("Macro module pages", () => {
       "流动性压力",
       "未来 24/72h 催化剂",
       "交易映射",
-      "昨日判断复盘",
       "未来 2 周情景",
       "Watchlist 与触发提醒",
       "数据可信度层",
@@ -169,50 +168,11 @@ describe("Macro module pages", () => {
     expect(within(tradeMap).getByText("BIL · 现金/短债 · 做多/防守")).toBeInTheDocument();
     expect(within(tradeMap).getByText("QQQ · 纳斯达克 · 回避/做空代理")).toBeInTheDocument();
     expect(within(tradeMap).getByText("HYG · 高收益信用 · 低配")).toBeInTheDocument();
-    expect(within(tradeMap).getByRole("heading", { name: "五资产雷达" })).toBeInTheDocument();
-    expect(within(tradeMap).getByRole("heading", { name: "组合复盘" })).toBeInTheDocument();
-    expect(within(tradeMap).getByRole("heading", { name: "历史可信度" })).toBeInTheDocument();
-    expect(within(tradeMap).getByRole("heading", { name: "持有期复盘" })).toBeInTheDocument();
     expect(within(tradeMap).getByRole("heading", { name: "行动清单" })).toBeInTheDocument();
-    expect(
-      within(decisionConsole).getByText(
-        "五资产 60日验证 · 胜率 4/5 · 均值 -2.60% · 最大逆风 -4.00%",
-      ),
-    ).toBeInTheDocument();
-    expect(within(decisionConsole).getByText("NDX 纳斯达克 -6.00% 命中")).toBeInTheDocument();
-    expect(within(decisionConsole).getByText("BTC 比特币 +3.00% 未中")).toBeInTheDocument();
-    expect(
-      within(decisionConsole).getByText(
-        "$10K 纸面映射 · $10,000 · P&L +$460 · 胜率 4/5 · 风险温度 低",
-      ),
-    ).toBeInTheDocument();
     expect(
       within(decisionConsole).getByText(
         "确认 · HY OAS 5日走阔 · 观察 HY OAS 5日走阔 是否继续确认。",
       ),
-    ).toBeInTheDocument();
-    expect(
-      within(decisionConsole).getByText("纸面仓位 · 纸面仓位复盘 · $10,000 · P&L +$460 · 胜率 4/5"),
-    ).toBeInTheDocument();
-    expect(within(tradeMap).getByText("历史可信度 73.3% · 中 · 15 个样本")).toBeInTheDocument();
-    expect(
-      within(tradeMap).getByText("1D 已完成 · 5/5 · P&L +$100 · 均值 +1.00%"),
-    ).toBeInTheDocument();
-    expect(
-      within(tradeMap).getByText("20D 观察中 · 2/5 · P&L -$80 · 均值 -0.80%"),
-    ).toBeInTheDocument();
-    const judgementReview = within(decisionConsole).getByRole("region", {
-      name: "昨日判断复盘",
-    });
-    expect(within(judgementReview).getByText("1 条")).toBeInTheDocument();
-    expect(within(judgementReview).getByText("风险降档 / 信用敏感")).toBeInTheDocument();
-    expect(
-      within(judgementReview).getByText(
-        "1D 已完成 · 5/5 · P&L +$100 · 均值 +1.00% / 5D 已完成 · 4/5 · P&L +$220 · 均值 +2.20% / 20D 观察中 · 2/5 · P&L -$80 · 均值 -0.80%",
-      ),
-    ).toBeInTheDocument();
-    expect(
-      within(judgementReview).getByText("历史可信度 73.3% · 中 · 15 个样本"),
     ).toBeInTheDocument();
     const scenarioCases = within(decisionConsole).getByRole("region", {
       name: "未来 2 周情景",

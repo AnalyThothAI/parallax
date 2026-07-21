@@ -561,16 +561,6 @@ def test_macro_overview_module_api_loads_event_concepts_for_market_event_flow() 
     repo = FakeMacroIntelRepository(
         snapshot=snapshot,
         observations=[
-            _macro_observation("asset:ndx", "2026-05-01", 100.0),
-            _macro_observation("asset:ndx", "2026-05-20", 94.0),
-            _macro_observation("crypto:btc", "2026-05-01", 100.0),
-            _macro_observation("crypto:btc", "2026-05-20", 90.0),
-            _macro_observation("asset:gld", "2026-05-01", 100.0),
-            _macro_observation("asset:gld", "2026-05-20", 104.0),
-            _macro_observation("asset:spx", "2026-05-01", 100.0),
-            _macro_observation("asset:spx", "2026-05-20", 98.0),
-            _macro_observation("asset:tlt", "2026-05-01", 100.0),
-            _macro_observation("asset:tlt", "2026-05-20", 101.0),
             {
                 **_macro_observation("event:fomc_decision_next", "2026-06-17", 1),
                 "series_key": "official_calendar:fomc_decision_next",
@@ -608,11 +598,11 @@ def test_macro_overview_module_api_loads_event_concepts_for_market_event_flow() 
     assert "event:fed_speech" in repo.observations_for_concepts_call["concept_keys"]
     assert "event:bea_gdp_next" in repo.observations_for_concepts_call["concept_keys"]
     assert "event:treasury_auction_10y_bid_to_cover" in repo.observations_for_concepts_call["concept_keys"]
-    assert "asset:ndx" in repo.observations_for_concepts_call["concept_keys"]
-    assert "crypto:btc" in repo.observations_for_concepts_call["concept_keys"]
-    assert "asset:gld" in repo.observations_for_concepts_call["concept_keys"]
+    assert "asset:ndx" not in repo.observations_for_concepts_call["concept_keys"]
+    assert "crypto:btc" not in repo.observations_for_concepts_call["concept_keys"]
+    assert "asset:gld" not in repo.observations_for_concepts_call["concept_keys"]
     assert "asset:spx" in repo.observations_for_concepts_call["concept_keys"]
-    assert "asset:tlt" in repo.observations_for_concepts_call["concept_keys"]
+    assert "asset:tlt" not in repo.observations_for_concepts_call["concept_keys"]
     payload = response.json()
     assert "event_catalysts" not in payload["data"]["module_read"]["decision_console"]
     assert "event_heatmap" not in payload["data"]["module_read"]["decision_console"]
@@ -636,10 +626,15 @@ def test_macro_overview_module_api_loads_event_concepts_for_market_event_flow() 
             "watch": "利率路径和流动性定价。",
         }
     ]
-    assert (
-        payload["data"]["module_read"]["decision_console"]["trade_map"][0]["historical_review"]["win_rate_label"]
-        == "5/5"
-    )
+    decision_console = payload["data"]["module_read"]["decision_console"]
+    assert decision_console["trade_map"] == [
+        {
+            "expression": "risk_down_credit_sensitive",
+            "label": "风险降档 / 信用敏感",
+            "time_window": "1w",
+        }
+    ]
+    assert "judgement_review" not in decision_console
 
 
 def test_macro_overview_module_api_loads_news_rows_for_market_event_flow() -> None:

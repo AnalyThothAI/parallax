@@ -32,7 +32,6 @@ def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tm
         projection = TokenRadarProjection(
             repos=repositories_for_connection(
                 conn,
-                pulse_job_running_timeout_ms=300_000,
                 notification_delivery_running_timeout_ms=300_000,
                 notification_delivery_stale_running_terminalization_batch_size=100,
             )
@@ -80,7 +79,6 @@ def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tm
 def _enqueue_radar_repair_targets(conn: Any, *, now_ms: int) -> int:
     repos = repositories_for_connection(
         conn,
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )

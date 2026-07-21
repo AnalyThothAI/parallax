@@ -66,9 +66,7 @@ def test_search_inspect_hydrates_only_token_result(monkeypatch) -> None:
     monkeypatch.setattr(routes_search, "NarrativeReadModel", lambda **kwargs: _NarrativeReadModel(calls, **kwargs))
 
     token_data = _body(routes_search.search_inspect(_request(), q="$HANSA", window="24h", scope="all"))["data"]
-    topic_data = _body(
-        routes_search.search_inspect(_request(), q="narrative topic", window="24h", scope="all")
-    )["data"]
+    topic_data = _body(routes_search.search_inspect(_request(), q="narrative topic", window="24h", scope="all"))["data"]
 
     assert token_data["token_result"]["narrative_admission"] == _admission()
     assert topic_data["topic_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
@@ -122,7 +120,7 @@ class _NarrativeReadModel:
     def hydrate_token_case(self, data: dict[str, Any], *, window: str, scope: str) -> dict[str, Any]:
         assert "agent_brief" not in data
         self.calls.append({"method": "case", "window": window, "scope": scope})
-        return {**data, "narrative_admission": _admission(), "pulse_overlay": {"status": "absent"}}
+        return {**data, "narrative_admission": _admission()}
 
     def hydrate_token_radar(self, data: dict[str, Any], *, window: str, scope: str) -> dict[str, Any]:
         self.calls.append({"method": "radar", "window": window, "scope": scope})
@@ -174,7 +172,6 @@ def _runtime() -> SimpleNamespace:
         token_radar=object(),
         token_targets=object(),
         narratives=object(),
-        pulse_read=object(),
         cex_detail_snapshots=object(),
     )
     return SimpleNamespace(repositories=lambda: nullcontext(repos), workers={})

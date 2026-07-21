@@ -9,7 +9,6 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, field_validator, model_validator
 
-from parallax.platform.agent_execution import PULSE_DECISION_LANE
 from parallax.platform.paths.runtime_paths import app_home, app_log_path, config_path, workers_config_path
 
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
@@ -19,16 +18,8 @@ NOTIFICATION_SEVERITIES = ("info", "warning", "high", "critical")
 NOTIFICATION_RULE_IDS = (
     "watched_account_activity",
     "watched_account_token_alert",
-    "signal_pulse_candidate",
     "news_high_signal",
 )
-PULSE_CANDIDATE_WINDOWS = ("1h", "4h")
-PULSE_CANDIDATE_WINDOW_SET = frozenset(PULSE_CANDIDATE_WINDOWS)
-PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS = {"1h": 3600, "4h": 14400}
-SIGNAL_PULSE_NOTIFICATION_SCOPES = ("all", "matched")
-SIGNAL_PULSE_NOTIFICATION_SCOPE_SET = frozenset(SIGNAL_PULSE_NOTIFICATION_SCOPES)
-SIGNAL_PULSE_NOTIFICATION_STATUSES = ("trade_candidate", "token_watch", "risk_rejected_high_info")
-SIGNAL_PULSE_NOTIFICATION_STATUS_SET = frozenset(SIGNAL_PULSE_NOTIFICATION_STATUSES)
 NARRATIVE_REALTIME_WINDOWS = ("1h",)
 NARRATIVE_REALTIME_WINDOW_SET = frozenset(NARRATIVE_REALTIME_WINDOWS)
 NARRATIVE_REALTIME_SCOPES = ("all",)
@@ -392,29 +383,12 @@ class NotificationRuleConfig(BaseModel):
     enabled: bool = True
     channels: tuple[str, ...] = ("in_app",)
     cooldown_seconds: int = Field(default=0, ge=0)
-    window: str | None = None
-    scopes: tuple[str, ...] | None = None
-    statuses: tuple[str, ...] | None = None
 
     @field_validator("channels", mode="before")
     @classmethod
     def parse_channels(cls, value: Any) -> tuple[str, ...]:
         parsed = tuple(_split_values(value))
         return parsed or ("in_app",)
-
-    @field_validator("scopes", "statuses", mode="before")
-    @classmethod
-    def parse_optional_tuple(cls, value: Any) -> tuple[str, ...] | None:
-        parsed = tuple(_split_values(value))
-        return parsed or None
-
-    @field_validator("window", mode="before")
-    @classmethod
-    def parse_optional_window(cls, value: Any) -> str | None:
-        if value is None:
-            return None
-        normalized = str(value).strip()
-        return normalized or None
 
 
 class NotificationChannelConfig(BaseModel):
@@ -459,7 +433,6 @@ class NotificationsConfig(BaseModel):
     news_high_signal_recency_window_ms: int = Field(default=7_200_000, ge=1)
     news_high_signal_query_min_limit: int = Field(default=500, ge=1)
     news_high_signal_query_multiplier: int = Field(default=20, ge=1)
-    signal_pulse_max_pages: int = Field(default=5, ge=1)
     retention_days: int = 30
     rules: dict[str, NotificationRuleConfig] = Field(
         default_factory=lambda: {
@@ -489,46 +462,8 @@ class NotificationsConfig(BaseModel):
                 payload = raw_payload
             if not isinstance(payload, Mapping):
                 raise ValueError(f"notifications.rules.{key} must be a mapping")
-            if key == "signal_pulse_candidate":
-                forbidden = {"combined_score_min"}
-                present = sorted(forbidden.intersection(payload))
-                if present:
-                    joined = ", ".join(present)
-                    raise ValueError(f"notifications.rules.{key} does not accept news thresholds: {joined}")
-            if key in {"watched_account_activity", "watched_account_token_alert"}:
-                forbidden = {"scopes", "statuses", "window"}
-                present = sorted(forbidden.intersection(payload))
-                if present:
-                    joined = ", ".join(present)
-                    raise ValueError(f"notifications.rules.{key} only accepts delivery settings: {joined}")
-            if key == "news_high_signal":
-                forbidden = {"combined_score_min", "external_score_min", "scopes", "statuses", "window"}
-                present = sorted(forbidden.intersection(payload))
-                if present:
-                    joined = ", ".join(present)
-                    raise ValueError(f"notifications.rules.{key} only accepts delivery settings: {joined}")
             merged[key] = {**merged[key], **dict(payload)}
         return merged
-
-    @model_validator(mode="after")
-    def validate_signal_pulse_rule_query_dimensions(self) -> NotificationsConfig:
-        rule = self.rules["signal_pulse_candidate"]
-        if not rule.window:
-            raise ValueError("notifications.rules.signal_pulse_candidate.window is required")
-        if rule.window not in PULSE_CANDIDATE_WINDOW_SET:
-            allowed = ", ".join(PULSE_CANDIDATE_WINDOWS)
-            raise ValueError(f"unsupported Signal Pulse notification window: {rule.window}; allowed: {allowed}")
-        if not rule.scopes:
-            raise ValueError("notifications.rules.signal_pulse_candidate.scopes are required")
-        unsupported_scopes = sorted(set(rule.scopes) - SIGNAL_PULSE_NOTIFICATION_SCOPE_SET)
-        if unsupported_scopes:
-            raise ValueError(f"unsupported Signal Pulse scopes: {unsupported_scopes}")
-        if not rule.statuses:
-            raise ValueError("notifications.rules.signal_pulse_candidate.statuses are required")
-        unsupported_statuses = sorted(set(rule.statuses) - SIGNAL_PULSE_NOTIFICATION_STATUS_SET)
-        if unsupported_statuses:
-            raise ValueError(f"unsupported Signal Pulse statuses: {unsupported_statuses}")
-        return self
 
 
 class OkxProviderConfig(BaseModel):
@@ -793,11 +728,6 @@ class AgentLaneSettings(BaseModel):
 
 def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
     return {
-        PULSE_DECISION_LANE: AgentLaneSettings(
-            priority="high",
-            max_concurrency=1,
-            timeout_seconds=240.0,
-        ),
         "news.item_brief": AgentLaneSettings(
             priority="low",
             max_concurrency=1,
@@ -1078,89 +1008,6 @@ class MacroSyncWorkerSettings(PerWorkerSettings):
         return parsed
 
 
-class PulseCandidateTriggerThresholds(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    min_rank_score: int = 45
-
-
-class PulseCandidateGateThresholds(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    trade_candidate_min: int = 72
-    token_watch_min: int = 45
-    high_info_rejection_min: int = 30
-    high_conviction_min: int = 78
-
-
-class PulseCandidateWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=60.0, ge=0)
-    soft_timeout_seconds: float = Field(default=540.0, ge=0)
-    hard_timeout_seconds: float = Field(default=660.0, ge=0)
-    batch_size: int = Field(default=10, ge=1)
-    max_agent_jobs_per_cycle: int = Field(default=2, ge=1)
-    max_attempts: int = Field(default=3, ge=1)
-    max_enqueues_per_cycle: int = Field(default=25, ge=1)
-    max_pending_jobs_global: int = Field(default=100, ge=1)
-    max_pending_jobs_per_window_scope: int = Field(default=25, ge=1)
-    job_running_timeout_ms: int = Field(default=300_000, ge=1)
-    stale_running_terminalization_batch_size: int = Field(default=100, ge=1)
-    trigger_lease_ms: int = Field(default=60_000, ge=1)
-    trigger_capacity_retry_ms: int = Field(default=30_000, ge=1)
-    trigger_error_retry_ms: int = Field(default=60_000, ge=1)
-    target_edge_budget_per_hour: int = Field(default=3, ge=1)
-    candidate_edge_budget_per_hour: int = Field(default=3, ge=1)
-    failure_circuit_per_hour: int = Field(default=3, ge=1)
-    failure_circuit_reasons: tuple[str, ...] = ("schema_validation_failed", "unknown_evidence_id")
-    timeline_debounce_seconds: int = Field(default=600, ge=0)
-    evidence_market_freshness_ms: int = Field(default=3_600_000, ge=1)
-    statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    stale_job_ttl_by_window_seconds: dict[str, int] = Field(
-        default_factory=lambda: dict(PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS)
-    )
-    advisory_lock_key: int = 2026051502
-    windows: tuple[str, ...] = PULSE_CANDIDATE_WINDOWS
-    scopes: tuple[str, ...] = ("all", "matched")
-    trigger_thresholds: PulseCandidateTriggerThresholds = Field(default_factory=PulseCandidateTriggerThresholds)
-    gate_thresholds: PulseCandidateGateThresholds = Field(default_factory=PulseCandidateGateThresholds)
-
-    @field_validator("windows", "scopes", "failure_circuit_reasons", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
-
-    @field_validator("windows", mode="after")
-    @classmethod
-    def validate_windows(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        if not value:
-            raise ValueError("pulse_candidate.windows must include 1h or 4h")
-        invalid = tuple(window for window in value if window not in PULSE_CANDIDATE_WINDOW_SET)
-        if invalid:
-            allowed = ", ".join(PULSE_CANDIDATE_WINDOWS)
-            rejected = ", ".join(invalid)
-            raise ValueError(f"pulse_candidate.windows must contain only {allowed}; got: {rejected}")
-        return value
-
-    @field_validator("failure_circuit_reasons", mode="after")
-    @classmethod
-    def validate_failure_circuit_reasons(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        if not value:
-            raise ValueError("pulse_candidate.failure_circuit_reasons must not be empty")
-        return value
-
-    @field_validator("stale_job_ttl_by_window_seconds", mode="after")
-    @classmethod
-    def validate_stale_ttl_windows(cls, value: dict[str, int]) -> dict[str, int]:
-        invalid = tuple(window for window in value if window not in PULSE_CANDIDATE_WINDOW_SET)
-        if invalid:
-            allowed = ", ".join(PULSE_CANDIDATE_WINDOWS)
-            rejected = ", ".join(invalid)
-            raise ValueError(
-                f"pulse_candidate.stale_job_ttl_by_window_seconds keys must contain only {allowed}; got: {rejected}"
-            )
-        return value
-
-
 class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     soft_timeout_seconds: float = Field(default=180.0, ge=0)
@@ -1313,7 +1160,6 @@ class WorkersSettings(BaseModel):
         default_factory=MacroDailyBriefProjectionWorkerSettings
     )
     narrative_admission: NarrativeAdmissionWorkerSettings = Field(default_factory=NarrativeAdmissionWorkerSettings)
-    pulse_candidate: PulseCandidateWorkerSettings = Field(default_factory=PulseCandidateWorkerSettings)
     notification_rule: NotificationRuleWorkerSettings = Field(default_factory=NotificationRuleWorkerSettings)
     notification_delivery: NotificationDeliveryWorkerSettings = Field(
         default_factory=NotificationDeliveryWorkerSettings
@@ -1440,18 +1286,6 @@ class Settings(BaseModel):
         return self.llm.timeout_seconds
 
     @property
-    def pulse_agent_configured(self) -> bool:
-        return bool(self.llm_api_key and self.agent_runtime_default_model)
-
-    @property
-    def news_item_brief_configured(self) -> bool:
-        return bool(self.llm_api_key and self.agent_runtime_default_model)
-
-    @property
-    def news_story_brief_configured(self) -> bool:
-        return bool(self.llm_api_key and self.agent_runtime_default_model)
-
-    @property
     def llm_trace_enabled(self) -> bool:
         return bool(self.llm.trace_enabled)
 
@@ -1470,6 +1304,14 @@ class Settings(BaseModel):
     @property
     def llm_configured(self) -> bool:
         return bool(self.llm_api_key and self.agent_runtime_default_model)
+
+    @property
+    def news_agent_execution_enabled(self) -> bool:
+        return bool(
+            self.news_intel.enabled
+            and self.llm_configured
+            and (self.workers.news_item_brief.enabled or self.workers.news_story_brief.enabled)
+        )
 
     @property
     def gmgn_api_key(self) -> str | None:
@@ -1750,7 +1592,6 @@ notifications:
   news_high_signal_recency_window_ms: 7200000
   news_high_signal_query_min_limit: 500
   news_high_signal_query_multiplier: 20
-  signal_pulse_max_pages: 5
   retention_days: 30
   rules:
     watched_account_activity:
@@ -1759,13 +1600,6 @@ notifications:
     watched_account_token_alert:
       enabled: true
       channels: ["in_app"]
-    signal_pulse_candidate:
-      enabled: true
-      channels: ["in_app"]
-      window: "1h"
-      scopes: ["all", "matched"]
-      statuses: ["trade_candidate", "token_watch", "risk_rejected_high_info"]
-      cooldown_seconds: 0
     news_high_signal:
       enabled: true
       channels: ["in_app", "pushdeer"]
@@ -1813,10 +1647,6 @@ agent_runtime:
   global_max_concurrency: 4
   global_rpm_limit: 60
   lanes:
-    pulse.decision:
-      priority: "high"
-      max_concurrency: 1
-      timeout_seconds: 240.0
     news.item_brief:
       priority: "low"
       max_concurrency: 1
@@ -2038,42 +1868,6 @@ news_source_quality_projection:
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052201
   windows: ["24h", "7d"]
-pulse_candidate:
-  enabled: true
-  interval_seconds: 60.0
-  soft_timeout_seconds: 540.0
-  hard_timeout_seconds: 660.0
-  batch_size: 10
-  max_agent_jobs_per_cycle: 2
-  max_attempts: 3
-  max_enqueues_per_cycle: 25
-  max_pending_jobs_global: 100
-  max_pending_jobs_per_window_scope: 25
-  job_running_timeout_ms: 300000
-  stale_running_terminalization_batch_size: 100
-  trigger_lease_ms: 60000
-  trigger_capacity_retry_ms: 30000
-  trigger_error_retry_ms: 60000
-  target_edge_budget_per_hour: 3
-  candidate_edge_budget_per_hour: 3
-  failure_circuit_per_hour: 3
-  failure_circuit_reasons: ["schema_validation_failed", "unknown_evidence_id"]
-  timeline_debounce_seconds: 600
-  evidence_market_freshness_ms: 3600000
-  statement_timeout_seconds: 30.0
-  stale_job_ttl_by_window_seconds:
-    1h: 3600
-    4h: 14400
-  advisory_lock_key: 2026051502
-  windows: ["1h", "4h"]
-  scopes: ["all", "matched"]
-  trigger_thresholds:
-    min_rank_score: 45
-  gate_thresholds:
-    trade_candidate_min: 72
-    token_watch_min: 45
-    high_info_rejection_min: 30
-    high_conviction_min: 78
 notification_rule:
   enabled: true
   interval_seconds: 5.0
@@ -2154,14 +1948,6 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
             "enabled": True,
             "channels": ("in_app",),
             "cooldown_seconds": 900,
-        },
-        "signal_pulse_candidate": {
-            "enabled": True,
-            "channels": ("in_app",),
-            "window": "1h",
-            "scopes": SIGNAL_PULSE_NOTIFICATION_SCOPES,
-            "statuses": SIGNAL_PULSE_NOTIFICATION_STATUSES,
-            "cooldown_seconds": 0,
         },
         "news_high_signal": {
             "enabled": True,

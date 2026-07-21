@@ -26,7 +26,7 @@
 - **Owner**: parent agent
 - **Depends on**: none
 - **Touch set**: `docs/sdd/features/active/2026-06-16-macro-decision-console/verification.md`
-- **Conflict set**: `src/**; web/src/**; coordinate with macrodata-cli for external macrodata files; coordinate with 2026-06-12-kappa-cqrs-governance-root-fix for active macro overlap`
+- **Conflict set**: `src/**; web/src/**; coordinate with macrodata-cli for external macrodata files; coordinate with 2026-06-12-kappa-cqrs-governance-root-fix for active macro overlap; coordinate with 2026-07-21-signal-pulse-hard-cut for shared runtime, contracts, generated artifacts and shell files`
 - **Failing test first**: `uv run pytest tests/architecture/test_macro_no_compatibility_contract.py -q`
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated

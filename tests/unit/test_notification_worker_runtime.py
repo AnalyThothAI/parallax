@@ -17,15 +17,7 @@ from parallax.domains.notifications.runtime.notification_delivery import Notific
 from parallax.domains.notifications.runtime.notification_worker import NotificationWorker
 from parallax.domains.notifications.types import NotificationCandidate
 from parallax.platform.config.settings import NotificationDeliveryWorkerSettings, NotificationRuleWorkerSettings
-from tests.unit.test_notification_rules import (
-    NOW_MS,
-    FakePulse,
-    _signal_pulse_notifications,
-    pulse_candidate,
-)
-from tests.unit.test_notification_rules import (
-    engine as notification_rule_engine,
-)
+from tests.unit.test_notification_rules import NOW_MS
 
 
 def _rule_settings(**overrides: object) -> NotificationRuleWorkerSettings:
@@ -117,94 +109,6 @@ def test_notification_worker_is_worker_base_and_run_once_returns_result():
     assert isinstance(result, WorkerResult)
     assert result.skipped == 1
     assert result.notes["created"] == 0
-
-
-def test_worker_does_not_swallow_later_signal_pulse_external_identity():
-    notifications = _signal_pulse_notifications(channels=["in_app", "pushdeer"], statuses=["token_watch"])
-    in_app_only = _only_signal_pulse_candidate(
-        pulse_candidate("pulse-watch", status="token_watch", edge_events=["score_band_crossed"]),
-        notifications=notifications,
-    )
-    external = _only_signal_pulse_candidate(
-        pulse_candidate("pulse-watch", status="token_watch", edge_events=["pulse_status_changed"]),
-        notifications=notifications,
-    )
-    repository = DedupConflictNotificationRepository()
-    worker = NotificationWorker(
-        name="notification_rule",
-        settings=_rule_settings(batch_size=10),
-        db=SimpleNamespace(worker_session=lambda *_args, **_kwargs: repository_session(repository)),
-        telemetry=SimpleNamespace(),
-        rule_engine=SequenceRuleEngine([[in_app_only], [external]]),
-        delivery_max_attempts=5,
-        delivery_channels={
-            "pushdeer": SimpleNamespace(
-                enabled=True,
-                provider="pushdeer",
-                url="https://push.example",
-                min_severity="info",
-            )
-        },
-    )
-
-    first = asyncio.run(worker.process_once(now_ms=NOW_MS))
-    second = asyncio.run(worker.process_once(now_ms=NOW_MS + 1))
-
-    assert in_app_only.payload["semantic_signature"] == external.payload["semantic_signature"]
-    assert in_app_only.payload["external_push_signature"] is None
-    assert external.payload["external_push_signature"]
-    assert len(first) == 1
-    assert len(second) == 1
-    assert len(repository.deliveries) == 1
-    assert repository.deliveries[0]["notification_id"] == second[0]["notification_id"]
-
-
-def test_worker_suppresses_delivery_when_external_signature_already_exists_for_new_in_app_signature():
-    notifications = _signal_pulse_notifications(channels=["in_app", "pushdeer"], statuses=["token_watch"])
-    first = _only_signal_pulse_candidate(
-        pulse_candidate("pulse-watch", status="token_watch", edge_events=["pulse_status_changed"]),
-        notifications=notifications,
-    )
-    changed = pulse_candidate("pulse-watch", status="token_watch", edge_events=["pulse_status_changed"])
-    changed["decision_json"] = {
-        **changed["decision_json"],
-        "playbook": {
-            "has_playbook": True,
-            "monitoring_horizon": "4h",
-            "watch_signals": ["新增独立作者"],
-            "exit_triggers": ["讨论降温"],
-        },
-    }
-    second = _only_signal_pulse_candidate(changed, notifications=notifications)
-    repository = InMemoryNotificationRepository()
-    worker = NotificationWorker(
-        name="notification_rule",
-        settings=_rule_settings(batch_size=10),
-        db=SimpleNamespace(worker_session=lambda *_args, **_kwargs: repository_session(repository)),
-        telemetry=SimpleNamespace(),
-        rule_engine=SequenceRuleEngine([[first], [second]]),
-        delivery_max_attempts=5,
-        delivery_channels={
-            "pushdeer": SimpleNamespace(
-                enabled=True,
-                provider="pushdeer",
-                url="https://push.example",
-                min_severity="info",
-            )
-        },
-    )
-
-    first_created = asyncio.run(worker.process_once(now_ms=NOW_MS))
-    second_created = asyncio.run(worker.process_once(now_ms=NOW_MS + 1))
-
-    assert first.payload["semantic_signature"] != second.payload["semantic_signature"]
-    assert first.payload["external_push_signature"] == second.payload["external_push_signature"]
-    assert first_created[0]["channels_json"] == ["in_app", "pushdeer"]
-    assert first_created[0]["payload_json"]["external_push_eligible"] is True
-    assert second_created[0]["channels_json"] == ["in_app"]
-    assert second_created[0]["payload_json"]["external_push_eligible"] is False
-    assert second_created[0]["payload_json"]["external_push_suppression_reason"] == "external_cooldown_duplicate"
-    assert [delivery["notification_id"] for delivery in repository.deliveries] == [first_created[0]["notification_id"]]
 
 
 def test_worker_batch_limit_counts_created_rows_not_duplicate_candidates():
@@ -477,32 +381,6 @@ def test_delivery_worker_rejects_malformed_delivery_attempt_contract_without_def
     ]
     assert transaction_state.enter_count == 1
     assert transaction_state.exit_count == 1
-
-
-def test_signal_pulse_duplicate_lookup_uses_semantic_and_external_signatures():
-    class RecordingConn:
-        def __init__(self):
-            self.calls = []
-
-        def execute(self, sql, params):
-            self.calls.append((sql, params))
-            return SimpleNamespace(fetchone=lambda: {"notification_id": "existing"})
-
-    conn = RecordingConn()
-    repo = _notification_repository(conn)
-
-    row = repo._semantic_signature_duplicate(
-        rule_id="signal_pulse_candidate",
-        payload={"semantic_signature": "sha256:in-app", "external_push_signature": "sha256:external"},
-    )
-
-    assert row == {"notification_id": "existing"}
-    sql, params = conn.calls[-1]
-    assert "payload_json->>'semantic_signature' = %s" in sql
-    assert "in_app_signature" not in sql
-    assert "COALESCE(payload_json->>'external_push_signature', 'in_app')" in sql
-    assert "notification_signature" not in sql
-    assert params == ("signal_pulse_candidate", "sha256:in-app", "sha256:external")
 
 
 def test_notification_repository_writes_require_connection_transaction_before_sql_when_committing():
@@ -1518,13 +1396,6 @@ def missing_transaction_delivery_session(repository):
 @contextmanager
 def fake_unit_of_work():
     yield None
-
-
-def _only_signal_pulse_candidate(row: dict, *, notifications):
-    candidates = notification_rule_engine(pulse=FakePulse([row]), notifications=notifications).evaluate(now_ms=NOW_MS)
-    pulse_candidates = [item for item in candidates if item.rule_id == "signal_pulse_candidate"]
-    assert len(pulse_candidates) == 1
-    return pulse_candidates[0]
 
 
 def _notification_candidate(dedup_key: str, *, rule_id: str) -> NotificationCandidate:

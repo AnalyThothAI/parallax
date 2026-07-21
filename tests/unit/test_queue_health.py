@@ -45,7 +45,7 @@ class _QueueHealthConn:
                     {"status": "dead", "count": 2},
                 ]
             )
-        if "FROM pulse_agent_jobs" in sql:
+        if "FROM notification_deliveries" in sql:
             return _Rows(
                 [
                     {
@@ -99,7 +99,7 @@ class _DirtyTargetConn:
 
 def test_fetch_status_queue_health_uses_terminal_projection_for_terminal_backlog() -> None:
     conn = _QueueHealthConn()
-    health = fetch_queue_table_health(conn, "pulse_agent_jobs", now_ms=1_000)
+    health = fetch_queue_table_health(conn, "notification_deliveries", now_ms=1_000)
 
     assert health["available"] is True
     assert health["kind"] == "status_queue"
@@ -232,11 +232,8 @@ def test_fill_worker_queue_healths_attaches_all_manifest_queue_tables() -> None:
 
     assert workers["token_radar_projection"]["queue_depth"] == 2
     assert "token_radar_dirty_targets" in workers["token_radar_projection"]["queue_health"]["tables"]
-    assert workers["pulse_candidate"]["queue_depth"] == 2
-    assert set(workers["pulse_candidate"]["queue_health"]["tables"]) == {
-        "pulse_agent_jobs",
-        "pulse_trigger_dirty_targets",
-    }
+    assert workers["notification_delivery"]["queue_depth"] == 1
+    assert set(workers["notification_delivery"]["queue_health"]["tables"]) == {"notification_deliveries"}
     assert workers["event_anchor_backfill"]["queue_depth"] == 1
     assert set(workers["event_anchor_backfill"]["queue_health"]["tables"]) == {"event_anchor_backfill_jobs"}
 
@@ -324,7 +321,7 @@ def test_terminal_evidence_query_failure_is_adapter_error() -> None:
                 ]
             )
 
-    health = fetch_queue_table_health(Conn(), "pulse_agent_jobs", now_ms=1_000)
+    health = fetch_queue_table_health(Conn(), "notification_deliveries", now_ms=1_000)
 
     assert health["available"] is False
     assert health["kind"] == "status_queue"
@@ -391,9 +388,9 @@ def test_connection_context_enter_failure_is_reported_on_manifest_workers() -> N
 
     fill_worker_queue_healths(workers, runtime, now_ms=1_000)
 
-    health = workers["pulse_candidate"]["queue_health"]
+    health = workers["notification_delivery"]["queue_health"]
     assert health["status"] == "unavailable"
-    assert health["unavailable_table_count"] == 2
+    assert health["unavailable_table_count"] == 1
     assert {table_health["error_code"] for table_health in health["tables"].values()} == {
         "connection_context_enter_failure"
     }

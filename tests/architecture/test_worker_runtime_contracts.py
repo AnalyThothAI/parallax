@@ -54,13 +54,6 @@ ASSET_PROFILE_REFRESH_WORKER = SRC / "domains" / "asset_market" / "runtime" / "a
 EVENT_ANCHOR_BACKFILL_WORKER = SRC / "domains" / "asset_market" / "runtime" / "event_anchor_backfill_worker.py"
 INGEST_SERVICE = SRC / "domains" / "evidence" / "services" / "ingest_service.py"
 RESOLUTION_REFRESH_WORKER = SRC / "domains" / "asset_market" / "runtime" / "resolution_refresh_worker.py"
-PULSE_CANDIDATE_WORKER = SRC / "domains" / "pulse_lab" / "runtime" / "pulse_candidate_worker.py"
-PULSE_CANDIDATE_JOB_SERVICE = SRC / "domains" / "pulse_lab" / "services" / "pulse_candidate_job_service.py"
-PULSE_EVIDENCE_PACKET_BUILDER = SRC / "domains" / "pulse_lab" / "services" / "evidence_packet_builder.py"
-PULSE_EVIDENCE_SOURCE_REPOSITORY = (
-    SRC / "domains" / "pulse_lab" / "repositories" / "pulse_evidence_source_repository.py"
-)
-PULSE_ADMISSION_POLICY = SRC / "domains" / "pulse_lab" / "services" / "pulse_admission_policy.py"
 NEWS_PAGE_PROJECTION_WORKER = SRC / "domains" / "news_intel" / "runtime" / "news_page_projection_worker.py"
 NEWS_ITEM_PROCESS_WORKER = SRC / "domains" / "news_intel" / "runtime" / "news_item_process_worker.py"
 NEWS_ITEM_BRIEF_WORKER = SRC / "domains" / "news_intel" / "runtime" / "news_item_brief_worker.py"
@@ -148,17 +141,6 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     "token_capture_tier": {
         SRC / "domains/asset_market/repositories/token_capture_tier_repository.py",
     },
-    "pulse_candidates": {
-        SRC / "domains/pulse_lab/repositories/pulse_candidates_repository.py",
-    },
-    "pulse_agent_runs": {
-        SRC / "domains/pulse_lab/repositories/pulse_evidence_repository.py",
-        SRC / "domains/pulse_lab/repositories/pulse_jobs_repository.py",
-        SRC / "domains/pulse_lab/repositories/pulse_runs_repository.py",
-    },
-    "pulse_agent_run_steps": {
-        SRC / "domains/pulse_lab/repositories/pulse_runs_repository.py",
-    },
     "narrative_admissions": {
         SRC / "domains/narrative_intel/repositories/narrative_repository.py",
         SRC / "domains/narrative_intel/runtime/narrative_admission_worker.py",
@@ -204,10 +186,6 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
 }
 
 CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
-    "pulse_trigger_dirty_targets": {
-        SRC / "domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py",
-        SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
-    },
     "narrative_admission_dirty_targets": {
         SRC / "domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
@@ -274,7 +252,6 @@ EXPECTED_WORKER_FACTORY_FILES = {
     "narrative_intel.py",
     "news_intel.py",
     "notifications.py",
-    "pulse.py",
     "token_intel.py",
 }
 BOOTSTRAP_RUNTIME_WORKER_IMPORT_ALLOWLIST = {
@@ -1445,205 +1422,6 @@ def test_token_radar_projection_worker_uses_formal_settings_and_wake_contract_wi
 
 
 @pytest.mark.architecture
-def test_pulse_candidate_worker_and_job_service_use_formal_settings_without_runtime_defaults() -> None:
-    worker_source = PULSE_CANDIDATE_WORKER.read_text(encoding="utf-8")
-    job_service_source = PULSE_CANDIDATE_JOB_SERVICE.read_text(encoding="utf-8")
-    evidence_builder_source = PULSE_EVIDENCE_PACKET_BUILDER.read_text(encoding="utf-8")
-    evidence_source_repository_source = PULSE_EVIDENCE_SOURCE_REPOSITORY.read_text(encoding="utf-8")
-    admission_policy_source = PULSE_ADMISSION_POLICY.read_text(encoding="utf-8")
-    init_source = worker_source.split("def __init__", 1)[1].split("\n    async def on_close", 1)[0]
-    job_init_source = job_service_source.split("def __init__", 1)[1].split("\n    async def run_job", 1)[0]
-    settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
-    settings_class = settings_source.split("class PulseCandidateWorkerSettings", 1)[1].split(
-        "\n\nclass NarrativeAdmissionWorkerSettings",
-        1,
-    )[0]
-    factory_source = (WORKER_FACTORIES / "pulse.py").read_text(encoding="utf-8")
-    factory_block = factory_source.split(
-        "worker_name: PulseCandidateWorker(",
-        1,
-    )[1].split(
-        "        )\n",
-        1,
-    )[0]
-    forbidden_worker_tokens = (
-        "DEFAULT_WINDOWS",
-        "DEFAULT_SCOPES",
-        "SIGNAL_PULSE_WINDOWS",
-        'getattr(settings, "windows"',
-        'getattr(settings, "scopes"',
-        'getattr(settings, "batch_size"',
-        'getattr(settings, "max_agent_jobs_per_cycle"',
-        'getattr(settings, "max_attempts"',
-        'getattr(settings, "max_enqueues_per_cycle"',
-        'getattr(settings, "max_pending_jobs_global"',
-        'getattr(settings, "max_pending_jobs_per_window_scope"',
-        'getattr(settings, "trigger_lease_ms"',
-        'getattr(settings, "trigger_capacity_retry_ms"',
-        'getattr(settings, "trigger_error_retry_ms"',
-        'getattr(settings, "target_edge_budget_per_hour"',
-        'getattr(settings, "candidate_edge_budget_per_hour"',
-        'getattr(settings, "failure_circuit_per_hour"',
-        'getattr(settings, "failure_circuit_reasons"',
-        'getattr(settings, "timeline_debounce_seconds"',
-        'getattr(config, "min_rank_score"',
-        'getattr(config, "trade_candidate_min"',
-        'getattr(config, "token_watch_min"',
-        'getattr(config, "high_info_rejection_min"',
-        'getattr(config, "high_conviction_min"',
-        'getattr(self.settings, "statement_timeout_seconds"',
-        'getattr(pulse_jobs, "running_timeout_ms"',
-        '"batch_size", 10',
-        '"max_agent_jobs_per_cycle", 2',
-        '"max_attempts", 3',
-        '"max_enqueues_per_cycle", 10',
-        '"max_pending_jobs_global", 100',
-        '"max_pending_jobs_per_window_scope", 25',
-        "PULSE_EDGE_BUDGET_PER_HOUR",
-        "PULSE_TARGET_EDGE_BUDGET_PER_HOUR",
-        "PULSE_FAILURE_CIRCUIT_PER_HOUR",
-        "PULSE_FAILURE_CIRCUIT_REASONS",
-        "PULSE_TRIGGER_LEASE_MS",
-        "PULSE_TRIGGER_CAPACITY_RETRY_MS",
-        "PULSE_TRIGGER_ERROR_RETRY_MS",
-        "PulseTriggerThresholds()",
-        '"statement_timeout_seconds", None',
-        "300_000) or 300_000",
-    )
-    forbidden_job_service_tokens = (
-        'getattr(self.settings, "statement_timeout_seconds"',
-        'getattr(self.settings, "evidence_market_freshness_ms"',
-        "statement_timeout_seconds=getattr",
-        '"statement_timeout_seconds", None',
-        "PulseEvidenceBuilder(repos.pulse_evidence_sources).build",
-    )
-    forbidden_evidence_builder_tokens = (
-        "market_freshness_ms: int =",
-        "3_600_000",
-    )
-    forbidden_evidence_source_repository_tokens = (
-        "max_age_ms: int =",
-        "now_ms: int | None =",
-        "_now_ms() if now_ms is None",
-        "max(0, int(now_ms) - max(0, int(max_age_ms)))",
-    )
-    violations = (
-        [f"worker:{token}" for token in forbidden_worker_tokens if token in worker_source]
-        + [f"job-service:{token}" for token in forbidden_job_service_tokens if token in job_service_source]
-        + [
-            f"evidence-builder:{token}"
-            for token in forbidden_evidence_builder_tokens
-            if token in evidence_builder_source
-        ]
-        + [
-            f"evidence-source-repository:{token}"
-            for token in forbidden_evidence_source_repository_tokens
-            if token in evidence_source_repository_source
-        ]
-        + [
-            f"policy:{token}"
-            for token in (
-                "recent_failure_count >= 3",
-                "recent_failure_count: int =",
-                "failure_circuit_per_hour: int =",
-                "timeline_debounce_seconds: int =",
-                "recent_failure_count >= max(1, int(failure_circuit_per_hour))",
-                "max(0, int(timeline_debounce_seconds))",
-                '_int(job.get("max_attempts")) or 3',
-                'job.get("max_attempts")) or 3',
-            )
-            if token in admission_policy_source
-        ]
-    )
-
-    assert violations == []
-    assert "pulse_candidate_settings_required" in init_source
-    assert "pulse_candidate_db_required" in init_source
-    assert "pulse_candidate_decision_client_required" in init_source
-    assert "self.windows = tuple(str(window).strip().lower() for window in settings.windows)" in worker_source
-    assert "self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)" in worker_source
-    assert 'self.batch_size = _positive_worker_setting_int(settings, "batch_size", worker_name=name)' in worker_source
-    assert "self.max_agent_jobs_per_cycle = _positive_worker_setting_int(" in worker_source
-    assert (
-        'self.max_attempts = _positive_worker_setting_int(settings, "max_attempts", worker_name=name)' in worker_source
-    )
-    assert "self.max_enqueues_per_cycle = _positive_worker_setting_int(" in worker_source
-    assert "self.max_pending_jobs_global = _positive_worker_setting_int(" in worker_source
-    assert "self.max_pending_jobs_per_window_scope = _positive_worker_setting_int(" in worker_source
-    assert "self.job_running_timeout_ms = _positive_worker_setting_int(" in worker_source
-    assert 'self.trigger_lease_ms = _positive_worker_setting_int(settings, "trigger_lease_ms", worker_name=name)' in (
-        worker_source
-    )
-    assert "self.trigger_capacity_retry_ms = _positive_worker_setting_int(" in worker_source
-    assert "self.trigger_error_retry_ms = _positive_worker_setting_int(" in worker_source
-    assert "self.target_edge_budget_per_hour = _positive_worker_setting_int(" in worker_source
-    assert "self.candidate_edge_budget_per_hour = _positive_worker_setting_int(" in worker_source
-    assert "self.failure_circuit_per_hour = _positive_worker_setting_int(" in worker_source
-    assert "self.timeline_debounce_seconds = _nonnegative_worker_setting_int(" in worker_source
-    assert "settings.failure_circuit_reasons" in worker_source
-    assert "running_timeout_ms=self.job_running_timeout_ms" in worker_source
-    assert "stale_after_ms=int(running_timeout_ms)" in worker_source
-    assert (
-        "return PulseTriggerThresholds(min_rank_score=int(settings.trigger_thresholds.min_rank_score))" in worker_source
-    )
-    assert "trade_candidate_min=int(settings.gate_thresholds.trade_candidate_min)" in worker_source
-    assert "token_watch_min=int(settings.gate_thresholds.token_watch_min)" in worker_source
-    assert "high_info_rejection_min=int(settings.gate_thresholds.high_info_rejection_min)" in worker_source
-    assert "high_conviction_min=int(settings.gate_thresholds.high_conviction_min)" in worker_source
-    assert "lease_ms=self.trigger_lease_ms" in worker_source
-    assert "retry_ms=self.trigger_error_retry_ms" in worker_source
-    assert "retry_ms=self.trigger_capacity_retry_ms" in worker_source
-    assert "target_limit=self.target_edge_budget_per_hour" in worker_source
-    assert "candidate_limit=self.candidate_edge_budget_per_hour" in worker_source
-    assert "failure_circuit_per_hour=self.failure_circuit_per_hour" in worker_source
-    assert "timeline_debounce_seconds=self.timeline_debounce_seconds" in worker_source
-    assert "reasons=failure_circuit_reasons" in worker_source
-    assert "failure_circuit_per_hour: int," in admission_policy_source
-    assert "timeline_debounce_seconds: int," in admission_policy_source
-    assert "pulse_failure_circuit_per_hour_required" in admission_policy_source
-    assert "pulse_timeline_debounce_seconds_required" in admission_policy_source
-    assert "recent_failure_count >= failure_threshold" in admission_policy_source
-    assert 'attempt_count = int(job["attempt_count"])' in admission_policy_source
-    assert 'max_attempts = int(job["max_attempts"])' in admission_policy_source
-    assert "pulse_existing_failed_job_attempt_contract_required" in admission_policy_source
-    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in worker_source
-    assert "pulse_candidate_job_settings_required" in job_init_source
-    assert "pulse_candidate_job_db_required" in job_init_source
-    assert "pulse_candidate_job_decision_client_required" in job_init_source
-    assert "statement_timeout_seconds=self.settings.statement_timeout_seconds" in job_service_source
-    assert "pulse_candidate_evidence_market_freshness_ms_required" in job_service_source
-    assert "max(1, int(self.settings.evidence_market_freshness_ms))" not in job_service_source
-    assert "market_freshness_ms: int," in evidence_builder_source
-    assert "max_age_ms: int," in evidence_source_repository_source
-    assert "now_ms: int," in evidence_source_repository_source
-    assert "pulse_evidence_max_age_ms_required" in evidence_source_repository_source
-    assert "settings=workers.pulse_candidate" in factory_block
-    assert "batch_size: int = Field(default=10, ge=1)" in settings_class
-    assert "max_agent_jobs_per_cycle: int = Field(default=2, ge=1)" in settings_class
-    assert "max_attempts: int = Field(default=3, ge=1)" in settings_class
-    assert "max_enqueues_per_cycle: int = Field(default=25, ge=1)" in settings_class
-    assert "max_pending_jobs_global: int = Field(default=100, ge=1)" in settings_class
-    assert "max_pending_jobs_per_window_scope: int = Field(default=25, ge=1)" in settings_class
-    assert "job_running_timeout_ms: int = Field(default=300_000, ge=1)" in settings_class
-    assert "trigger_lease_ms: int = Field(default=60_000, ge=1)" in settings_class
-    assert "trigger_capacity_retry_ms: int = Field(default=30_000, ge=1)" in settings_class
-    assert "trigger_error_retry_ms: int = Field(default=60_000, ge=1)" in settings_class
-    assert "target_edge_budget_per_hour: int = Field(default=3, ge=1)" in settings_class
-    assert "candidate_edge_budget_per_hour: int = Field(default=3, ge=1)" in settings_class
-    assert "failure_circuit_per_hour: int = Field(default=3, ge=1)" in settings_class
-    assert "timeline_debounce_seconds: int = Field(default=600, ge=0)" in settings_class
-    assert "evidence_market_freshness_ms: int = Field(default=3_600_000, ge=1)" in settings_class
-    assert (
-        'failure_circuit_reasons: tuple[str, ...] = ("schema_validation_failed", "unknown_evidence_id")'
-        in settings_class
-    )
-    assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
-    assert 'scopes: tuple[str, ...] = ("all", "matched")' in settings_class
-    assert "trigger_thresholds: PulseCandidateTriggerThresholds = Field" in settings_class
-    assert "gate_thresholds: PulseCandidateGateThresholds = Field" in settings_class
-
-
-@pytest.mark.architecture
 def test_narrative_admission_worker_uses_formal_settings_contract_without_runtime_defaults() -> None:
     source = NARRATIVE_ADMISSION_WORKER.read_text(encoding="utf-8")
     service_source = NARRATIVE_ADMISSION_SERVICE.read_text(encoding="utf-8")
@@ -1749,7 +1527,7 @@ def test_macro_sync_worker_and_service_use_formal_settings_wake_contract_without
     service_source = MACRO_SYNC_SERVICE.read_text(encoding="utf-8")
     settings_source = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
     settings_class = settings_source.split("class MacroSyncWorkerSettings", 1)[1].split(
-        "\n\nclass PulseCandidateTriggerThresholds",
+        "\n\nclass NarrativeAdmissionWorkerSettings",
         1,
     )[0]
     factory_source = (WORKER_FACTORIES / "macro_intel.py").read_text(encoding="utf-8")
@@ -2445,7 +2223,6 @@ def test_token_resolution_reprocess_helpers_require_explicit_window_and_limits_w
     assert 'TOKEN_REPROCESS_WINDOW = "24h"' in service_source
     assert "window: str," in service_source
     assert "limit: int," in service_source
-    assert "reprocess_limit: int," in service_source
     assert "since_ms = int(now_ms) - WINDOW_MS[window]" in service_source
     assert "since_ms = int(now_ms) - WINDOW_MS[window]" in rebuild_source
 
@@ -2541,31 +2318,18 @@ def test_direct_gmgn_ws_frame_handler_uses_async_collector_contract_without_isaw
 
 @pytest.mark.architecture
 def test_worker_owned_provider_cleanup_uses_formal_lifecycle_contracts() -> None:
-    pulse_source = PULSE_CANDIDATE_WORKER.read_text(encoding="utf-8")
-    pulse_on_close = pulse_source.split("async def on_close", 1)[1].split("\n    async def run_once", 1)[0]
     news_source = NEWS_FETCH_WORKER.read_text(encoding="utf-8")
     news_on_close = news_source.split("async def on_close", 1)[1].split("\n    async def run_once", 1)[0]
 
-    pulse_forbidden = (
-        'getattr(self.decision_client, "aclose", None)',
-        'getattr(self.decision_client, "close", None)',
-        "close_sync",
-        "if close is not None",
-    )
     news_forbidden = (
         'getattr(self.feed_client, "close", None)',
         "isawaitable(",
         "if close is None",
         "await result",
     )
-    violations = [f"pulse:{token}" for token in pulse_forbidden if token in pulse_on_close] + [
-        f"news:{token}" for token in news_forbidden if token in news_on_close
-    ]
+    violations = [f"news:{token}" for token in news_forbidden if token in news_on_close]
 
     assert violations == []
-    assert "aclose = self.decision_client.aclose" in pulse_on_close
-    assert "await aclose()" in pulse_on_close
-    assert "pulse_candidate_decision_client_aclose_required" in pulse_on_close
     assert "close = cast(Callable[[], object | None], self.feed_client.close)" in news_on_close
     assert "result = close()" in news_on_close
     assert "news_fetch_feed_client_close_must_be_sync" in news_on_close
@@ -2684,7 +2448,6 @@ def test_api_worker_dependencies_use_formal_status_payload_contracts() -> None:
     assert "scheduler = runtime.scheduler" in worker_object
     assert "payload = worker.status_payload()" in worker_object
     assert "payload = worker.status_payload()" in source
-    assert "api_status_payload_must_be_dict" in source
     assert "api_worker_status_payload_must_be_dict" in source
 
 
@@ -2863,7 +2626,6 @@ def test_worker_manifest_declares_dirty_target_consumers() -> None:
         "macro_projection_dirty_targets",
         "narrative_admission_dirty_targets",
         "news_projection_dirty_targets",
-        "pulse_trigger_dirty_targets",
         "token_capture_tier_dirty_targets",
         "token_discovery_dirty_lookup_keys",
         "token_image_source_dirty_targets",
@@ -3410,8 +3172,6 @@ def test_no_old_worker_runtime_settings() -> None:
     forbidden_runtime_settings = {
         "enrichment_poll_interval_seconds",
         "enrichment_batch_size",
-        "pulse_agent_batch_size",
-        "pulse_agent_interval_seconds",
         "watchlist_handle_summary_poll_interval_seconds",
         "notification_worker_interval_seconds",
         "notification_delivery_interval_seconds",
@@ -3943,8 +3703,8 @@ def test_token_radar_narrative_read_model_requires_formal_target_identity_withou
     )
 
     assert [token for token in forbidden if token in text] == []
-    assert 'row.get("target_type")' in text
-    assert 'row.get("target_id")' in text
+    assert 'target.get("target_type")' in text
+    assert 'target.get("target_id")' in text
 
 
 @pytest.mark.architecture

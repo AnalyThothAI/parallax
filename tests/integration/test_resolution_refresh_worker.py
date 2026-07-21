@@ -47,7 +47,6 @@ def _dex_candidate(
 def _ingest_service_for_connection(conn) -> IngestService:
     repos = repositories_for_connection(
         conn,
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )
@@ -88,7 +87,6 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_emits_resolution_w
         ingested = ingest.ingest_event(event, is_watched=True)
         repos = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
@@ -227,7 +225,6 @@ def test_resolution_refresh_worker_skips_symbol_lookup_after_retained_candidate_
         second_ingested = ingest.ingest_event(second_event, is_watched=True)
         repos = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
@@ -274,7 +271,6 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
         first = asyncio.run(worker.run_once(now_ms=now_ms + 60_000)).notes["result"]
         before = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         ).intent_resolutions.active_resolution_for_intent(ingested.token_intents[0]["intent_id"])
@@ -296,7 +292,6 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
         second = asyncio.run(worker.run_once(now_ms=now_ms + 120_000)).notes["result"]
         repos = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
@@ -324,7 +319,6 @@ def test_discovery_terminalize_claimed_payload_hash_deletes_active_row(tmp_path)
         migrate(conn)
         repos = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
@@ -532,7 +526,6 @@ def test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_resul
         migrate(conn)
         repos = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
@@ -647,7 +640,6 @@ def test_address_discovery_remains_uncapped(tmp_path):
         _persist_lookup_provider_result(
             repos=repositories_for_connection(
                 conn,
-                pulse_job_running_timeout_ms=300_000,
                 notification_delivery_running_timeout_ms=300_000,
                 notification_delivery_stale_running_terminalization_batch_size=100,
             ),

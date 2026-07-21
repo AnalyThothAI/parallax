@@ -3,8 +3,8 @@ import {
   buildLiveSignalTapeItems,
   useLiveRadarRouteData,
   useLiveRecentQuery,
+  useLiveSelection,
 } from "@features/live/shell";
-import { useSignalLabCompactQuery } from "@features/signal-lab/shell";
 import type { LivePayload } from "@lib/types";
 import { useSocketSnapshot } from "@shared/socket/socketContext";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
@@ -26,10 +26,7 @@ export function Component() {
     token: context.token,
     window: context.windowKey,
   });
-  const signalLabCompact = useSignalLabCompactQuery({
-    enabled: true,
-    token: context.token,
-  });
+  const selection = useLiveSelection({ scope: context.scope });
   const socketSnapshot = useSocketSnapshot();
   const recentReplayItems = recentQuery.data?.data.items;
   const liveItems = useMemo(
@@ -43,19 +40,13 @@ export function Component() {
 
   return (
     <LivePage
-      hiddenSignalLabPulseData={signalLabCompact.hiddenSignalPulseData}
-      hiddenSignalPulseLoading={signalLabCompact.hiddenSignalPulseLoading}
       isRecentLoading={recentQuery.isPending}
       liveSignalTapeItems={liveSignalTapeItems}
-      mobileTask={context.mobileTask}
-      selectedPulseItemId={context.selectedPulseItemId}
-      selectedTapeEventId={context.selectedTapeEventId}
-      signalLabPulseData={signalLabCompact.pulseData ?? null}
-      signalPulseLoading={signalLabCompact.signalPulseColdLoading}
+      mobileTask={selection.mobileTask}
+      selectedTapeEventId={selection.selectedTapeEventId}
       socketStatus={socketSnapshot.status}
-      onMobileTaskChange={context.onMobileTaskChange}
-      onSelectPulse={context.selectPulseItem}
-      onTapeSelect={context.onTapeSelect}
+      onMobileTaskChange={selection.handleMobileTaskChange}
+      onTapeSelect={selection.handleTapeSelect}
     >
       <LiveMarketSubscription targets={liveRadar.marketTargets}>
         <LiveRadar
@@ -68,7 +59,7 @@ export function Component() {
           venueFilter={liveRadar.venueFilter}
           windowKey={context.windowKey}
           onScopeChange={context.updateScope}
-          onSelectToken={context.selectToken}
+          onSelectToken={selection.selectToken}
           onVenueChange={liveRadar.setVenueFilter}
           onWindowChange={context.updateWindow}
         />

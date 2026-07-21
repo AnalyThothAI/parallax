@@ -23,16 +23,16 @@ describe("OpsDiagnosticsPage", () => {
     expect(screen.getByRole("heading", { name: "Worker 状态" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "队列排查" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "运行配置" })).toBeInTheDocument();
-    expect(screen.getByText("pulse_agent_jobs 有 1 个死信任务")).toBeInTheDocument();
+    expect(screen.getByText("notification_deliveries 有 1 个死信任务")).toBeInTheDocument();
     expect(screen.getByText("建议检查 2 项")).toBeInTheDocument();
     expect(screen.getByText("Ingest")).toBeInTheDocument();
     expect(screen.getByText("Facts & Identity")).toBeInTheDocument();
-    expect(screen.getByText("Pulse / Agent")).toBeInTheDocument();
-    expect(screen.getByText("pulse_agent_jobs")).toBeInTheDocument();
+    expect(screen.getByText("News & Agent")).toBeInTheDocument();
+    expect(screen.getByText("notification_deliveries")).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("button", { name: /打开队列 pulse_agent_jobs/i }));
+    fireEvent.click(screen.getByRole("button", { name: /打开队列 notification_deliveries/i }));
 
-    expect(onSelectQueue).toHaveBeenCalledWith("pulse_agent_jobs");
+    expect(onSelectQueue).toHaveBeenCalledWith("notification_deliveries");
   });
 
   it("renders selected queue rows as operator-ready work items", () => {
@@ -40,15 +40,15 @@ describe("OpsDiagnosticsPage", () => {
       <OpsDiagnosticsPage
         diagnostics={fakeDiagnostics}
         loading={false}
-        queue={fakePulseQueue}
-        selectedQueueName="pulse_agent_jobs"
+        queue={fakeNotificationQueue}
+        selectedQueueName="notification_deliveries"
         onSelectQueue={vi.fn()}
       />,
     );
 
-    expect(screen.getByText("pulse-1")).toBeInTheDocument();
+    expect(screen.getByText("delivery-1")).toBeInTheDocument();
     expect(screen.getByText("尝试 2/3")).toBeInTheDocument();
-    expect(screen.getByText("candidate_id: candidate-1")).toBeInTheDocument();
+    expect(screen.getByText("notification_id: notification-1")).toBeInTheDocument();
     expect(screen.getByText("RuntimeError")).toBeInTheDocument();
   });
 });
@@ -97,9 +97,9 @@ const fakeDiagnostics: OpsDiagnostics = {
   ],
   queues: [
     {
-      queue_name: "pulse_agent_jobs",
-      table: "pulse_agent_jobs",
-      worker_name: "pulse_candidate",
+      queue_name: "notification_deliveries",
+      table: "notification_deliveries",
+      worker_name: "notification_delivery",
       counts_by_status: { dead: 1, pending: 2, running: 1 },
       due_count: 2,
       running_count: 0,
@@ -111,8 +111,8 @@ const fakeDiagnostics: OpsDiagnostics = {
     },
   ],
   domains: {
-    pulse: { status: "blocked", dead_jobs: 1 },
     news: { status: "ok", source_count: 3 },
+    notifications: { status: "blocked", dead_jobs: 1 },
   },
   suggested_checks: [
     { id: "inspect_worker_status", label: "inspect worker queues" },
@@ -120,14 +120,14 @@ const fakeDiagnostics: OpsDiagnostics = {
   ],
 };
 
-const fakePulseQueue = {
+const fakeNotificationQueue = {
   schema_version: "ops.queue.v1",
-  queue_name: "pulse_agent_jobs",
+  queue_name: "notification_deliveries",
   counts_by_status: { dead: 1, pending: 2, running: 1 },
   summary: fakeDiagnostics.queues[0],
   items: [
     {
-      id: "pulse-1",
+      id: "delivery-1",
       status: "dead",
       attempt_count: 2,
       max_attempts: 3,
@@ -135,9 +135,8 @@ const fakePulseQueue = {
       next_run_at_ms: 1_700_000_030_000,
       last_error_type: "RuntimeError",
       source: {
-        candidate_id: "candidate-1",
-        window: "1h",
-        scope: "all",
+        notification_id: "notification-1",
+        channel: "in_app",
       },
     },
   ],

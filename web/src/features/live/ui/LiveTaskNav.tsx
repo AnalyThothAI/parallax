@@ -1,4 +1,4 @@
-import { Activity, FlaskConical, ListChecks } from "lucide-react";
+import { Activity, ListChecks } from "lucide-react";
 
 import type { LiveMobileTask } from "../model/liveMobileTask";
 
@@ -14,7 +14,6 @@ const TASKS: Array<{
 }> = [
   { task: "radar", label: "Radar", icon: ListChecks },
   { task: "tape", label: "Tape", icon: Activity },
-  { task: "lab", label: "Lab", icon: FlaskConical },
 ];
 
 export function LiveTaskNav({ activeTask, onTaskChange }: LiveTaskNavProps) {

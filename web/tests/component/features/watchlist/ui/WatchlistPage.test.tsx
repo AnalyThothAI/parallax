@@ -103,7 +103,7 @@ describe("WatchlistPage", () => {
 
     const sourceList = await screen.findByRole("navigation", { name: "Twitter source list" });
     expect(sourceList).toHaveTextContent("@marionawfal");
-    await waitFor(() => expect(sourceList).toHaveTextContent("12 signals"));
+    await waitFor(() => expect(sourceList).toHaveTextContent("42 posts"));
     expect(sourceList).toHaveTextContent("@toly");
     expect(sourceList).toHaveTextContent("@gdb");
     expect(screen.getByRole("link", { name: /@marionawfal/i })).toHaveAttribute(
@@ -120,7 +120,7 @@ describe("WatchlistPage", () => {
         ),
       ).toBe(true),
     );
-    expect(await screen.findByText("marionawfal summary")).toBeInTheDocument();
+    expect(await screen.findByRole("heading", { name: "@marionawfal" })).toBeInTheDocument();
   });
 
   it("appends cursor pages and resets the stream when scope changes", async () => {

@@ -9,6 +9,22 @@ from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
 
+_SIGNAL_PULSE_TABLES = (
+    "pulse_agent_eval_results",
+    "pulse_agent_eval_cases",
+    "pulse_evidence_packets",
+    "pulse_agent_run_steps",
+    "pulse_playbook_snapshots",
+    "pulse_candidates",
+    "pulse_agent_runs",
+    "pulse_agent_jobs",
+    "pulse_agent_runtime_versions",
+    "pulse_candidate_edge_state",
+    "pulse_candidate_run_budget",
+    "pulse_target_run_budget",
+    "pulse_trigger_dirty_targets",
+)
+
 
 def test_postgres_schema_bootstraps_core_tables(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
@@ -81,6 +97,7 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert "token_radar_current_rows" in names
     assert "token_radar_publication_state" in names
     for legacy_table in (
+        "cex_derivative_series",
         "projection_dirty_ranges",
         "token_radar_storage_maintenance_runs",
         "token_radar_publications",
@@ -97,6 +114,19 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
         "schema_migrations",
         "token_aliases",
         "projects",
+        "pulse_agent_eval_cases",
+        "pulse_agent_eval_results",
+        "pulse_agent_jobs",
+        "pulse_agent_run_steps",
+        "pulse_agent_runs",
+        "pulse_agent_runtime_versions",
+        "pulse_candidate_edge_state",
+        "pulse_candidate_run_budget",
+        "pulse_candidates",
+        "pulse_evidence_packets",
+        "pulse_playbook_snapshots",
+        "pulse_target_run_budget",
+        "pulse_trigger_dirty_targets",
         "token_radar_projection_coverage",
         "token_radar_snapshot_audit",
         "token_radar_rank_history",
@@ -138,6 +168,9 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert {
         ("projection_runs", "dirty_ranges_written"),
         ("narrative_admissions", "admission_id"),
+        ("narrative_admissions", "next_semantics_due_at_ms"),
+        ("narrative_admissions", "next_digest_due_at_ms"),
+        ("narrative_admissions", "suppressed_at_ms"),
         ("cex_detail_snapshots", "snapshot_id"),
         ("macro_view_snapshots", "snapshot_id"),
         ("account_quality_snapshots", "snapshot_id"),
@@ -321,6 +354,218 @@ def test_backend_kappa_hard_cut_migrates_nonempty_0182_state(tmp_path):
     assert [tuple(row.values()) for row in retained_registry_rows[1]] == [("cex-1",)]
     assert [tuple(row.values()) for row in retained_registry_rows[2]] == [("feed-1", "asset-1", "cex-1")]
     assert "projects" not in tables
+
+
+def test_signal_pulse_hard_delete_migrates_nonempty_fk_graph_and_preserves_kappa_state(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        # Test-harness reset only. The 0184 upgrade below must drop the populated
+        # FK graph itself and is separately guarded against DROP ... CASCADE.
+        conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        conn.execute("CREATE SCHEMA public")
+        conn.execute("GRANT ALL ON SCHEMA public TO public")
+        conn.commit()
+        config = alembic_config()
+        config.attributes["database_url"] = _test_postgres_dsn()
+        command.upgrade(config, "20260713_0183")
+
+        EvidenceRepository(conn).insert_event(
+            make_event(
+                "event-kappa-retained",
+                text="$KEEP material fact survives the Signal Pulse hard cut",
+                received_at_ms=1_000,
+            ),
+            is_watched=True,
+        )
+        conn.execute(
+            """
+            INSERT INTO token_radar_current_rows(
+              row_id, projection_version, "window", scope, lane, target_type_key, identity_id,
+              computed_at_ms, source_max_received_at_ms, rank, rank_score,
+              event_id, factor_version, decision, source_event_ids_json, payload_hash,
+              listed_at_ms, created_at_ms, generation_id, published_at_ms,
+              source_frontier_ms, quality_status
+            ) VALUES (
+              'radar-kappa-retained', 'token-radar-v13-social-attention', '1h', 'all', 'resolved',
+              'Asset', 'asset-kappa-retained', 1000, 1000, 1, 1.0,
+              'event-kappa-retained', 'factor-v1', 'observe', '["event-kappa-retained"]'::jsonb,
+              'radar-kappa-hash', 1000, 1000, 'generation-kappa', 1000, 1000, 'ready'
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO pulse_agent_runtime_versions(
+              runtime_hash, runtime_version, strategy, provider, model,
+              prompt_version, schema_version, manifest_json, created_at_ms
+            ) VALUES (
+              'runtime-hash', 'runtime-v1', 'single_decision', 'test', 'test-model',
+              'prompt-v1', 'schema-v1', '{}'::jsonb, 1000
+            );
+            INSERT INTO pulse_agent_jobs(
+              job_id, candidate_id, candidate_type, subject_key, "window", scope,
+              trigger_signature, timeline_signature, priority, status,
+              next_run_at_ms, created_at_ms, updated_at_ms
+            ) VALUES (
+              'job-1', 'candidate-1', 'token_target', 'Asset:asset-1', '1h', 'all',
+              'trigger-1', 'timeline-1', 1, 'done', 1000, 1000, 1000
+            );
+            INSERT INTO pulse_agent_runs(
+              run_id, job_id, candidate_id, provider, model, workflow_name, agent_name,
+              artifact_version_hash, prompt_version, schema_version, input_hash,
+              status, request_json, started_at_ms, finished_at_ms, outcome,
+              runtime_version, runtime_hash
+            ) VALUES (
+              'run-1', 'job-1', 'candidate-1', 'test', 'test-model', 'pulse', 'pulse-agent',
+              'artifact-hash', 'prompt-v1', 'schema-v1', 'input-hash',
+              'done', '{}'::jsonb, 1000, 1001, 'completed', 'runtime-v1', 'runtime-hash'
+            );
+            INSERT INTO pulse_candidates(
+              candidate_id, candidate_type, subject_key, target_type, target_id,
+              "window", scope, pulse_status, verdict, social_phase,
+              candidate_score, score_band, trigger_signature, timeline_signature,
+              pulse_version, gate_version, prompt_version, schema_version,
+              created_at_ms, updated_at_ms
+            ) VALUES (
+              'candidate-1', 'token_target', 'Asset:asset-1', 'Asset', 'asset-1',
+              '1h', 'all', 'token_watch', 'watch', 'attention',
+              0.75, 'high', 'trigger-1', 'timeline-1',
+              'pulse-v1', 'gate-v1', 'prompt-v1', 'schema-v1', 1000, 1000
+            );
+            INSERT INTO pulse_playbook_snapshots(
+              playbook_id, candidate_id, target_type, target_id, horizon,
+              decision_time_ms, playbook_status, side, setup_json,
+              confirmation_json, invalidation_json, risk_json,
+              playbook_version, created_at_ms
+            ) VALUES (
+              'playbook-1', 'candidate-1', 'Asset', 'asset-1', '4h',
+              1000, 'watch', 'long', '{}'::jsonb,
+              '{}'::jsonb, '{}'::jsonb, '{}'::jsonb, 'playbook-v1', 1000
+            );
+            INSERT INTO pulse_agent_run_steps(
+              step_id, run_id, stage, route, provider, model,
+              prompt_version, schema_version, status,
+              started_at_ms, finished_at_ms, created_at_ms
+            ) VALUES (
+              'step-1', 'run-1', 'pulse_decision', 'research_only', 'test', 'test-model',
+              'prompt-v1', 'schema-v1', 'ok', 1000, 1001, 1000
+            );
+            INSERT INTO pulse_evidence_packets(
+              evidence_packet_id, run_id, candidate_id, target_type, target_id,
+              "window", scope, schema_version, evidence_packet_hash,
+              packet_json, created_at_ms
+            ) VALUES (
+              'packet-1', 'run-1', 'candidate-1', 'Asset', 'asset-1',
+              '1h', 'all', 'schema-v1', 'packet-hash', '{}'::jsonb, 1000
+            );
+            INSERT INTO pulse_agent_eval_cases(
+              eval_case_id, source_run_id, runtime_hash, eval_type, route,
+              recommendation, status, created_at_ms
+            ) VALUES (
+              'eval-case-1', 'run-1', 'runtime-hash', 'deterministic', 'research_only',
+              'watchlist', 'active', 1000
+            );
+            INSERT INTO pulse_agent_eval_results(
+              eval_result_id, eval_case_id, runtime_hash, status,
+              score, grader_version, created_at_ms
+            ) VALUES (
+              'eval-result-1', 'eval-case-1', 'runtime-hash', 'pass',
+              1.0, 'grader-v1', 1000
+            );
+            INSERT INTO pulse_candidate_edge_state(
+              candidate_id, observed_at_ms, created_at_ms, updated_at_ms
+            ) VALUES ('candidate-1', 1000, 1000, 1000);
+            INSERT INTO pulse_candidate_run_budget(
+              candidate_id, hour_bucket_ms, created_at_ms, updated_at_ms
+            ) VALUES ('candidate-1', 0, 1000, 1000);
+            INSERT INTO pulse_target_run_budget(
+              target_type, target_id, hour_bucket_ms, created_at_ms, updated_at_ms
+            ) VALUES ('Asset', 'asset-1', 0, 1000, 1000);
+            INSERT INTO pulse_trigger_dirty_targets(
+              target_type, target_id, "window", scope, dirty_reason,
+              payload_hash, due_at_ms, first_dirty_at_ms, updated_at_ms
+            ) VALUES (
+              'Asset', 'asset-1', '1h', 'all', 'source_changed',
+              'dirty-hash', 1000, 1000, 1000
+            )
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO notifications(
+              notification_id, dedup_key, rule_id, severity, title, body,
+              entity_type, source_table, source_id,
+              first_seen_at_ms, last_seen_at_ms, created_at_ms, updated_at_ms
+            ) VALUES
+              ('notification-pulse-rule', 'dedup-pulse-rule', 'signal_pulse_candidate',
+               'info', 'pulse', 'pulse', 'token', 'events', 'event-kappa-retained', 1000, 1000, 1000, 1000),
+              ('notification-pulse-source', 'dedup-pulse-source', 'generic',
+               'info', 'pulse', 'pulse', 'token', 'pulse_candidates', 'candidate-1', 1000, 1000, 1000, 1000),
+              ('notification-pulse-entity', 'dedup-pulse-entity', 'generic',
+               'info', 'pulse', 'pulse', 'pulse_candidate', 'events', 'event-kappa-retained',
+               1000, 1000, 1000, 1000),
+              ('notification-kappa-retained', 'dedup-kappa-retained', 'generic',
+               'info', 'kappa', 'kappa', 'event', 'events', 'event-kappa-retained',
+               1000, 1000, 1000, 1000)
+            """
+        )
+        conn.execute(
+            """
+            INSERT INTO worker_queue_terminal_events(
+              terminal_id, worker_name, source_table, target_key,
+              source_row_json, source_row_hash, final_status, final_reason,
+              terminalized_at_ms
+            ) VALUES
+              ('terminal-pulse-worker', 'pulse_candidate', 'events', 'event-kappa-retained',
+               '{}'::jsonb, 'source-hash-1', 'failed', 'seed', 1000),
+              ('terminal-pulse-job', 'generic', 'pulse_agent_jobs', 'job-1',
+               '{}'::jsonb, 'source-hash-2', 'failed', 'seed', 1000),
+              ('terminal-pulse-dirty', 'generic', 'pulse_trigger_dirty_targets', 'Asset:asset-1:1h:all',
+               '{}'::jsonb, 'source-hash-3', 'failed', 'seed', 1000),
+              ('terminal-kappa-retained', 'generic', 'events', 'event-kappa-retained',
+               '{}'::jsonb, 'source-hash-4', 'failed', 'seed', 1000)
+            """
+        )
+        conn.commit()
+
+        pulse_counts_before = {
+            table: conn.execute(f'SELECT count(*) AS count FROM "{table}"').fetchone()["count"]
+            for table in _SIGNAL_PULSE_TABLES
+        }
+
+        command.upgrade(config, "head")
+
+        retired_relations = {
+            table: conn.execute("SELECT to_regclass(%s) AS relation", (f"public.{table}",)).fetchone()["relation"]
+            for table in _SIGNAL_PULSE_TABLES
+        }
+        notification_ids = [
+            row["notification_id"]
+            for row in conn.execute("SELECT notification_id FROM notifications ORDER BY notification_id").fetchall()
+        ]
+        terminal_ids = [
+            row["terminal_id"]
+            for row in conn.execute(
+                "SELECT terminal_id FROM worker_queue_terminal_events ORDER BY terminal_id"
+            ).fetchall()
+        ]
+        retained_event = conn.execute(
+            "SELECT event_id, logical_dedup_key FROM events WHERE event_id = 'event-kappa-retained'"
+        ).fetchone()
+        retained_radar = conn.execute(
+            "SELECT row_id, payload_hash FROM token_radar_current_rows WHERE row_id = 'radar-kappa-retained'"
+        ).fetchone()
+        migration_version = conn.execute("SELECT version_num FROM alembic_version").fetchone()["version_num"]
+    finally:
+        conn.close()
+
+    assert pulse_counts_before == dict.fromkeys(_SIGNAL_PULSE_TABLES, 1)
+    assert retired_relations == dict.fromkeys(_SIGNAL_PULSE_TABLES)
+    assert notification_ids == ["notification-kappa-retained"]
+    assert terminal_ids == ["terminal-kappa-retained"]
+    assert tuple(retained_event.values()) == ("event-kappa-retained", "tweet:event-kappa-retained")
+    assert tuple(retained_radar.values()) == ("radar-kappa-retained", "radar-kappa-hash")
+    assert migration_version == latest_migration_version()
 
 
 def test_postgres_generated_tsvector_matches_inserted_event(tmp_path):
@@ -523,39 +768,6 @@ def test_runtime_schema_drops_retired_product_tables(tmp_path):
         conn.close()
 
     assert deleted_tables.isdisjoint(table_names)
-
-
-def test_runtime_schema_contains_signal_pulse_tables(tmp_path):
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        table_names = {
-            row["table_name"]
-            for row in conn.execute(
-                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
-            ).fetchall()
-        }
-        snapshot_columns = {
-            row["column_name"]
-            for row in conn.execute(
-                """
-                SELECT column_name
-                FROM information_schema.columns
-                WHERE table_schema = 'public'
-                  AND table_name = 'pulse_playbook_snapshots'
-                """
-            ).fetchall()
-        }
-    finally:
-        conn.close()
-
-    assert {
-        "pulse_agent_jobs",
-        "pulse_agent_runs",
-        "pulse_candidates",
-        "pulse_playbook_snapshots",
-    }.issubset(table_names)
-    assert "outcome_status" not in snapshot_columns
 
 
 def test_runtime_schema_drops_dead_token_factor_evaluations_and_keeps_market_fact_indexes(tmp_path):

@@ -142,7 +142,6 @@ class FakeTelemetry:
 
 def _db_bundle(**kwargs: Any) -> DBPoolBundle:
     return DBPoolBundle(
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
         **kwargs,
@@ -153,11 +152,6 @@ def _fake_wake_sizing_workers(**overrides: Any) -> SimpleNamespace:
     worker_settings = {
         manifest.name: SimpleNamespace(enabled=False, concurrency=1) for manifest in all_worker_manifests()
     }
-    pulse_candidate = worker_settings.get("pulse_candidate")
-    if pulse_candidate is None:
-        pulse_candidate = SimpleNamespace(enabled=False, concurrency=1)
-        worker_settings["pulse_candidate"] = pulse_candidate
-    pulse_candidate.job_running_timeout_ms = 300_000
     notification_delivery = worker_settings.get("notification_delivery")
     if notification_delivery is None:
         notification_delivery = SimpleNamespace(enabled=False, concurrency=1)
@@ -192,7 +186,6 @@ def test_create_builds_distinct_pool_roles(monkeypatch) -> None:
 
     assert isinstance(bundle.api_pool, FakePool)
     assert isinstance(bundle.lock_pool, FakePool)
-    assert bundle.pulse_job_running_timeout_ms == 300_000
     assert bundle.notification_delivery_running_timeout_ms == 300_000
     assert bundle.notification_delivery_stale_running_terminalization_batch_size == 100
     assert bundle.wake_pool_max_size == 3
@@ -356,11 +349,11 @@ def test_worker_session_sets_and_restores_application_name(monkeypatch) -> None:
     monkeypatch.setattr(db_pool_bundle, "repositories_for_connection", lambda checkout, **_kwargs: checkout)
     bundle = _db_bundle(api_pool=FakePool(), worker_pool=FakePool(conn), wake_pool=FakePool())
 
-    with bundle.worker_session("pulse_candidate", statement_timeout_seconds=12) as repos:
+    with bundle.worker_session("test_worker", statement_timeout_seconds=12) as repos:
         assert repos is conn
 
     assert conn.executed == [
-        ("SELECT set_config(%s, %s, false)", ("application_name", "worker:pulse_candidate")),
+        ("SELECT set_config(%s, %s, false)", ("application_name", "worker:test_worker")),
         ("SELECT set_config(%s, %s, false)", ("statement_timeout", "12000ms")),
         ("SELECT set_config(%s, %s, false)", ("statement_timeout", "30000ms")),
         ("SELECT set_config(%s, %s, false)", ("application_name", "gmgn_worker")),
@@ -379,12 +372,12 @@ def test_worker_session_rejects_malformed_statement_timeout_without_runtime_repa
 
     with (
         pytest.raises(ValueError, match="db_statement_timeout_seconds_required"),
-        bundle.worker_session("pulse_candidate", statement_timeout_seconds=statement_timeout_seconds),
+        bundle.worker_session("test_worker", statement_timeout_seconds=statement_timeout_seconds),
     ):
         pass
 
     assert conn.executed == [
-        ("SELECT set_config(%s, %s, false)", ("application_name", "worker:pulse_candidate")),
+        ("SELECT set_config(%s, %s, false)", ("application_name", "worker:test_worker")),
     ]
     assert conn.closed is True
     assert pool.put_back == [conn]
@@ -399,7 +392,7 @@ def test_worker_session_preserves_body_error_and_discards_when_reset_fails(monke
     with (
         pytest.raises(RuntimeError, match="body failed"),
         bundle.worker_session(
-            "pulse_candidate",
+            "test_worker",
             statement_timeout_seconds=12,
         ),
     ):
@@ -545,7 +538,7 @@ def test_wake_listener_uses_wake_pool_and_configured_channels() -> None:
     conn = FakeConn()
     bundle = _db_bundle(api_pool=FakePool(), worker_pool=FakePool(), wake_pool=FakePool(conn))
 
-    waiter = bundle.wake_listener("pulse_candidate", channels=("token_radar_updated",))
+    waiter = bundle.wake_listener("token_radar_projection", channels=("token_radar_updated",))
 
     assert isinstance(waiter, WakeWaiter)
     assert waiter.wait(timeout=0.01) is False

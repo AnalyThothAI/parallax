@@ -51,8 +51,6 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     if (path === "/api/token-case") return fulfill(route, tokenCaseData(url));
     if (path.startsWith("/api/token-images/")) return fulfillTokenImage(route);
     if (path === "/api/search/inspect") return fulfill(route, searchInspectData(url));
-    if (path === "/api/signal-lab/pulse") return fulfill(route, signalPulseData(url));
-    if (path.startsWith("/api/signal-lab/pulse/")) return fulfill(route, pulseItem());
     if (path === "/api/events/by-ids") return fulfill(route, socialEventsByIds(url));
     if (path === "/api/target-social-timeline") return fulfill(route, timelineData());
     if (path === "/api/target-posts") return fulfill(route, targetPostsData(url));
@@ -285,7 +283,6 @@ function statusData() {
         running: true,
         details: { configured: true },
       }),
-      pulse_candidate: workerStatus(),
       handle_summary: workerStatus(),
       notification_rule: workerStatus({ enabled: true, running: true }),
       notification_delivery: workerStatus({ enabled: true, running: true, queue_depth: 0 }),
@@ -679,24 +676,6 @@ function searchInspectData(url: URL) {
   };
 }
 
-function signalPulseData(url: URL) {
-  const item = pulseItem();
-  return {
-    query: {
-      window: url.searchParams.get("window") ?? "1h",
-      scope: url.searchParams.get("scope") ?? "all",
-      status: url.searchParams.get("status") ?? "all",
-      q: url.searchParams.get("q") ?? "",
-    },
-    health: { returned_count: 1 },
-    summary: { trade_candidate: 1, token_watch: 0, risk_rejected_high_info: 0 },
-    items: [item],
-    returned_count: 1,
-    has_more: false,
-    next_cursor: null,
-  };
-}
-
 function socialEventsByIds(url: URL) {
   const ids = (url.searchParams.get("ids") ?? "")
     .split(",")
@@ -706,94 +685,6 @@ function socialEventsByIds(url: URL) {
   return {
     events: ids.map((id) => byId.get(id)).filter(Boolean),
     not_found: ids.filter((id) => !byId.has(id)),
-  };
-}
-
-function pulseItem() {
-  const row = assetFlowRow();
-  return {
-    candidate_id: "pulse-bnb",
-    candidate_type: "token_target",
-    subject_key: "BNB",
-    target_type: "Asset",
-    target_id: TARGET_ID,
-    symbol: "BNB",
-    window: "1h",
-    scope: "all",
-    evidence_status: "complete",
-    decision_status: "trade_candidate",
-    display_status: "display_trade_candidate",
-    evidence_packet_hash: "sha256:e2e-pulse-bnb",
-    verdict: "trade_candidate",
-    social_phase: "ignition",
-    candidate_score: 88,
-    score_band: "trade",
-    evidence_event_ids: ["event-upeg-1", "event-upeg-2"],
-    source_event_ids: ["event-upeg-1", "event-upeg-2", "event-upeg-3"],
-    factor_snapshot: {
-      ...row.factor_snapshot,
-      subject: { ...row.factor_snapshot.subject, symbol: "BNB" },
-    },
-    decision: {
-      route: "meme",
-      recommendation: "trade_candidate",
-      confidence: 0.72,
-      abstain_reason: null,
-      stage_count: 3,
-      summary_zh: "BNB social pulse is live for e2e.",
-      narrative_archetype: "KOL 扩散",
-      narrative_thesis_zh:
-        "Watched-account seed followed by public amplification on $BNB; keep the thesis tied to fresh independent authors.",
-      bull_view: {
-        strength: "strong",
-        thesis_zh:
-          "Watched-account seed and public amplification align within the same pulse window.",
-        supporting_event_ids: ["event-upeg-1"],
-      },
-      bear_view: {
-        strength: "weak",
-        thesis_zh:
-          "Thin liquidity can unwind the setup if independent authors stop adding confirmation.",
-        supporting_event_ids: ["event-upeg-2"],
-      },
-      playbook: {
-        has_playbook: true,
-        monitoring_horizon: "30m",
-        watch_signals: [
-          "Independent author count keeps rising",
-          "GMGN liquidity holds above guardrail",
-        ],
-        exit_triggers: ["No fresh independent authors", "Liquidity drops below guardrail"],
-      },
-      evidence_event_urls: {
-        "event-upeg-1": "https://x.com/upeg/status/1",
-        "event-upeg-2": "https://x.com/upeg/status/2",
-      },
-      invalidation_conditions: [],
-      residual_risks: [],
-      evidence_event_ids: ["event-upeg-1", "event-upeg-2"],
-      supporting_evidence_refs: ["event:event-upeg-1", "market:bnb-latest"],
-      risk_evidence_refs: ["event:event-upeg-2"],
-      data_gap_refs: [],
-    },
-    gate: {
-      candidate_score: 88,
-      score_band: "trade",
-      blocked_reasons: [],
-    },
-    fact_card: {
-      market_cap_usd: 66_000,
-      liquidity_usd: 250_000,
-      mentions_1h: 4,
-      unique_authors: 3,
-    },
-    pulse_version: "pulse-v1",
-    gate_version: "gate-v1",
-    prompt_version: "prompt-v1",
-    schema_version: "signal-pulse-v1",
-    created_at_ms: NOW,
-    updated_at_ms: NOW,
-    playbooks: [],
   };
 }
 
@@ -1033,27 +924,27 @@ function notificationsData() {
     items: [
       {
         notification_id: "notification-1",
-        dedup_key: "pulse-bnb",
-        rule_id: "pulse_trade_candidate",
+        dedup_key: "watched-account-bnb",
+        rule_id: "watched_account_token_alert",
         severity: "high",
-        title: "BNB pulse",
-        body: "BNB is now a trade candidate",
-        entity_type: "pulse_candidate",
-        entity_key: "pulse-bnb",
-        author_handle: null,
+        title: "BNB watched-account alert",
+        body: "A watched account mentioned BNB",
+        entity_type: "token",
+        entity_key: "token:bnb",
+        author_handle: "traderpow",
         symbol: "BNB",
         chain: "bnb",
         address: null,
         event_id: null,
-        source_table: "pulse_candidates",
-        source_id: "pulse-bnb",
+        source_table: "events",
+        source_id: "event-bnb",
         occurrence_count: 1,
         first_seen_at_ms: NOW,
         last_seen_at_ms: NOW,
         created_at_ms: NOW,
         updated_at_ms: NOW,
         read_at_ms: null,
-        payload: { candidate_id: "pulse-bnb" },
+        payload: { event_id: "event-bnb" },
         channels: ["in_app"],
       },
     ],

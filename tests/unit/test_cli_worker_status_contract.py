@@ -62,7 +62,7 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
             "effective_status": "degraded",
             "unavailable_reason": "optional_profile_source_missing",
         },
-        "pulse_candidate": {
+        "news_item_brief": {
             **base_worker,
             "enabled": True,
             "last_error": "agent lane failed",
@@ -87,23 +87,6 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
                     return FakeRows([])
                 return FakeRows([{"terminal_count": 0, "unresolved_terminal_count": 0}])
             if "GROUP BY status" not in sql:
-                if "pulse_agent_jobs" in sql:
-                    return FakeRows(
-                        [
-                            {
-                                "total_count": 6,
-                                "active_count": 6,
-                                "due_count": 2,
-                                "running_count": 1,
-                                "failed_count": 3,
-                                "blocked_count": 0,
-                                "source_terminal_count": 0,
-                                "oldest_due_at_ms": 1,
-                                "oldest_running_at_ms": 2,
-                                "max_attempt_count": 2,
-                            }
-                        ]
-                    )
                 if "notification_deliveries" in sql:
                     return FakeRows(
                         [
@@ -135,14 +118,6 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
                             "oldest_running_at_ms": None,
                             "max_attempt_count": 0,
                         }
-                    ]
-                )
-            if "pulse_agent_jobs" in sql:
-                return FakeRows(
-                    [
-                        {"status": "pending", "count": 2},
-                        {"status": "failed", "count": 3},
-                        {"status": "running", "count": 1},
                     ]
                 )
             if "notification_deliveries" in sql:
@@ -238,7 +213,7 @@ def test_cli_ops_worker_status_emits_manifest_workers_lanes_and_queue_depths(mon
     assert workers["token_radar_projection"]["effective_status"] == "unavailable"
     assert workers["token_radar_projection"]["unavailable_reason"] == "missing_projection_dependency"
     assert workers["collector"]["effective_status"] == "intentionally_not_started"
-    assert workers["pulse_candidate"]["queue_depth"] == 6
+    assert workers["news_item_brief"]["effective_status"] == "failed"
     assert workers["notification_delivery"]["queue_depth"] == 4
     assert workers["collector"]["details"]["frames_received"] == 88
     assert workers["collector"]["details"]["matched_twitter_events"] == 7

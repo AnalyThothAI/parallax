@@ -323,7 +323,7 @@ def test_inspect_terminal_events_filters_unresolved_terminal_rows() -> None:
             target_key="b",
             operator_action="archive",
         ),
-        _terminal_row("terminal-3", worker_name="pulse", source_table="lookup", target_key="c"),
+        _terminal_row("terminal-3", worker_name="projection", source_table="lookup", target_key="c"),
     ]
 
     payload = inspect_terminal_events(
@@ -570,7 +570,7 @@ def test_resolve_terminal_event_returning_rowcount_is_checked_before_retry_trans
 
 def test_resolve_terminal_event_archive_does_not_call_retry_transition() -> None:
     conn = _FakeTerminalConnection()
-    conn.rows = [_terminal_row("terminal-1", worker_name="pulse", source_table="pulse_agent_jobs", target_key="job-1")]
+    conn.rows = [_terminal_row("terminal-1", worker_name="worker", source_table="work_items", target_key="job-1")]
 
     payload = resolve_terminal_event(
         conn,
@@ -579,7 +579,7 @@ def test_resolve_terminal_event_archive_does_not_call_retry_transition() -> None
         reason="obsolete terminal row",
         now_ms=1_700_000_100_000,
         retry_transitions={
-            ("pulse", "pulse_agent_jobs"): lambda *_args, **_kwargs: {"requeued": 1},
+            ("worker", "work_items"): lambda *_args, **_kwargs: {"requeued": 1},
         },
     )
 

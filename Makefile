@@ -66,7 +66,6 @@ check-all: ## the only command that may produce verification-artefact evidence (
 	@uv run python scripts/regen_sdd_work_index.py --check
 	@uv run python scripts/regen_cli_help.py --check
 	@uv run python scripts/regen_score_versions.py --check
-	@uv run python scripts/regen_pulse_agent_desk_decisions.py --check
 	@uv run python scripts/regen_ws_protocol.py --check
 	@$(MAKE) check
 	@$(MAKE) test-integration
@@ -153,9 +152,9 @@ clean: ## remove local test/cache artifacts
 	@rm -rf .pytest_cache .ruff_cache __pycache__
 	@find src tests -type d -name __pycache__ -prune -exec rm -rf {} +
 
-.PHONY: docs-generated docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol docs-pulse-agent-desk-decisions docs-sdd-work-index
+.PHONY: docs-generated docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol docs-sdd-work-index
 
-docs-generated: docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol docs-pulse-agent-desk-decisions docs-sdd-work-index ## regenerate docs/generated/*
+docs-generated: docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol docs-sdd-work-index ## regenerate docs/generated/*
 
 docs-db-schema: ## regenerate docs/generated/db-schema.md (requires Postgres)
 	@uv run python scripts/regen_db_schema.py
@@ -168,9 +167,6 @@ docs-score-versions: ## regenerate docs/generated/score-versions.md
 
 docs-ws-protocol: ## regenerate docs/generated/ws-protocol.md
 	@uv run python scripts/regen_ws_protocol.py
-
-docs-pulse-agent-desk-decisions: ## regenerate docs/generated/pulse-agent-desk-decisions.md
-	@uv run python scripts/regen_pulse_agent_desk_decisions.py
 
 docs-sdd-work-index: ## regenerate docs/generated/sdd-work-index.md
 	@uv run python scripts/regen_sdd_work_index.py

@@ -6,14 +6,13 @@
 
 ```
 usage: parallax [-h]
-                {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops} ...
+                {serve,init,config,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops} ...
 
 positional arguments:
-  {serve,init,config,pulse,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops}
+  {serve,init,config,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops}
     serve               run the collector service
     init                create ~/.parallax/config.yaml
     config              print effective runtime configuration
-    pulse               Signal Pulse diagnostics
     db                  database lifecycle commands
     macro               Macro Intelligence commands
     recent              print recent stored events

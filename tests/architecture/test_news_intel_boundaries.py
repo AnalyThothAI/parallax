@@ -13,7 +13,6 @@ NEWS_PAGE_PROJECTION = ROOT / "src/parallax/domains/news_intel/services/news_pag
 FORBIDDEN_IMPORTS = (
     "domains.token_intel.runtime",
     "domains.token_intel.services.token_radar_projection",
-    "domains.pulse_lab",
     "domains.asset_market.runtime.market_tick",
 )
 
@@ -22,7 +21,6 @@ FORBIDDEN_TABLE_REFERENCES = (
     "token_radar_current_rows",
     "token_radar_rank_history",
     "token_radar_snapshot_audit",
-    "pulse_candidates",
     "market_ticks",
 )
 

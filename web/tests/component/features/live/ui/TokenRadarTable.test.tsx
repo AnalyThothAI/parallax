@@ -48,8 +48,8 @@ describe("TokenRadarTable rows", () => {
     expect(within(row).getByText("ETH · 0x111111...111111")).toBeInTheDocument();
     expect(within(row).getByText("1 帖 · 1 作者")).toBeInTheDocument();
     expect(within(row).getByText("关注源 0 · 较前窗 +1")).toBeInTheDocument();
-    expect(within(row).getByText("叙事分析暂不可用")).toBeInTheDocument();
-    expect(within(row).getByText("discussion digest missing")).toBeInTheDocument();
+    expect(within(row).getByText("Admission missing")).toBeInTheDocument();
+    expect(within(row).getByText("no current admission")).toBeInTheDocument();
     expect(within(row).queryByText("种子中 · 1 条有效讨论")).not.toBeInTheDocument();
     expect(within(row).queryByText("profile")).not.toBeInTheDocument();
     expect(within(row).queryByText("links")).not.toBeInTheDocument();
@@ -142,6 +142,7 @@ describe("TokenRadarTable rows", () => {
         narrative_admission: {
           status: "admitted",
           reason: "hot_rank",
+          is_current: true,
           currentness: {
             display_status: "current",
             reason: "hot_rank",

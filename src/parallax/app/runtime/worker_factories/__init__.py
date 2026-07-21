@@ -243,12 +243,6 @@ def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
     from parallax.app.runtime.worker_factories.notifications import (
         construct_notification_workers,
     )
-    from parallax.app.runtime.worker_factories.pulse import (
-        WORKER_KEYS as PULSE_KEYS,
-    )
-    from parallax.app.runtime.worker_factories.pulse import (
-        construct_pulse_workers,
-    )
     from parallax.app.runtime.worker_factories.token_intel import (
         WORKER_KEYS as TOKEN_INTEL_KEYS,
     )
@@ -264,7 +258,6 @@ def worker_factory_specs() -> tuple[WorkerFactorySpec, ...]:
         WorkerFactorySpec("macro_intel.py", MACRO_INTEL_KEYS, construct_macro_intel_workers),
         WorkerFactorySpec("narrative_intel.py", NARRATIVE_INTEL_KEYS, construct_narrative_intel_workers),
         WorkerFactorySpec("news_intel.py", NEWS_INTEL_KEYS, construct_news_intel_workers),
-        WorkerFactorySpec("pulse.py", PULSE_KEYS, construct_pulse_workers),
         WorkerFactorySpec("notifications.py", NOTIFICATION_KEYS, construct_notification_workers),
     )
 

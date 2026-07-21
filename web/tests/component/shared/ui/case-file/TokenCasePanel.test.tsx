@@ -23,15 +23,9 @@ describe("TokenCasePanel", () => {
 
     expect(screen.getByRole("region", { name: /Token case/i })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: /\$HANSA/i })).toBeInTheDocument();
-    expect(screen.getByText("Propagation Summary")).toBeInTheDocument();
     expect(screen.getByText("Mention Timeline")).toBeInTheDocument();
     expect(screen.getByText("Live Market")).toBeInTheDocument();
-    expect(screen.getByText("Bull · 多头")).toBeInTheDocument();
-    expect(screen.getByText("Bear · 空头")).toBeInTheDocument();
-    expect(screen.getByText("Key Amplifiers")).toBeInTheDocument();
     expect(screen.getByText("Data Gaps")).toBeInTheDocument();
-    expect(screen.getAllByText("bullish")[0]).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: /\$HANSA/i })).toBeInTheDocument();
     expect(screen.getAllByText(/原文/)[0]).toBeInTheDocument();
   });
 

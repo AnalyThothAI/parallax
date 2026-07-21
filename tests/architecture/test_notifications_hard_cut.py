@@ -161,25 +161,6 @@ def test_notification_cooldown_uses_formal_nonnegative_contract_without_runtime_
     assert "max(1, int(cooldown_seconds))" not in rules_text
 
 
-def test_signal_pulse_notification_rule_uses_formal_config_without_service_defaults() -> None:
-    rules_text = NOTIFICATION_RULES.read_text(encoding="utf-8")
-    settings_text = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
-    banned = (
-        "DEFAULT_SIGNAL_PULSE_WINDOW",
-        "DEFAULT_SIGNAL_PULSE_SCOPES",
-        "DEFAULT_SIGNAL_PULSE_STATUSES",
-        "rule.window or",
-        "rule.scopes or",
-        "rule.statuses or",
-    )
-
-    assert [token for token in banned if token in rules_text] == []
-    assert "signal_pulse_notification_rule_config_required" in rules_text
-    assert '"window": "1h"' in settings_text
-    assert '"scopes": SIGNAL_PULSE_NOTIFICATION_SCOPES' in settings_text
-    assert '"statuses": SIGNAL_PULSE_NOTIFICATION_STATUSES' in settings_text
-
-
 def test_notification_rule_candidate_limit_uses_formal_config_without_service_floor() -> None:
     rules_text = NOTIFICATION_RULES.read_text(encoding="utf-8")
     settings_text = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
@@ -199,7 +180,7 @@ def test_notification_rule_engine_requires_explicit_evaluation_clock_without_ser
     rules_text = NOTIFICATION_RULES.read_text(encoding="utf-8")
     worker_text = NOTIFICATION_WORKER.read_text(encoding="utf-8")
     watched_token_section = rules_text.split("    def _watched_account_token_alerts", 1)[1].split(
-        "\n    def _signal_pulse_candidates",
+        "\n    def _news_high_signal_candidates",
         1,
     )[0]
     banned = (
@@ -237,35 +218,14 @@ def test_notification_rule_query_windows_and_news_overscan_use_formal_config_wit
     assert "self.settings.notifications.news_high_signal_query_multiplier" in rules_text
 
 
-def test_signal_pulse_notification_page_budget_uses_formal_config_without_service_constant() -> None:
-    rules_text = NOTIFICATION_RULES.read_text(encoding="utf-8")
-    settings_text = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
-    signal_pulse_section = rules_text.split("    def _signal_pulse_candidates", 1)[1].split(
-        "\n    def _news_high_signal_candidates",
-        1,
-    )[0]
-
-    assert "MAX_SIGNAL_PULSE_NOTIFICATION_PAGES" not in rules_text
-    assert "signal_pulse_max_pages: int = Field(default=5, ge=1)" in settings_text
-    assert "self._signal_pulse_per_scope_status_limit()" in signal_pulse_section
-    assert "self._limit() * int(self.settings.notifications.signal_pulse_max_pages)" in rules_text
-    assert "list_signal_pulse_notification_candidates" in signal_pulse_section
-    banned = (
-        "list_candidates(",
-        "cursor =",
-        'page.get("next_cursor")',
-        "range(int(self.settings.notifications.signal_pulse_max_pages))",
-    )
-    assert [token for token in banned if token in signal_pulse_section] == []
-
-
 def test_notification_settings_reject_unused_query_fields_for_non_signal_rules() -> None:
     settings_text = (SRC / "platform/config/settings.py").read_text(encoding="utf-8")
 
-    assert 'if key in {"watched_account_activity", "watched_account_token_alert"}:' in settings_text
-    assert 'forbidden = {"scopes", "statuses", "window"}' in settings_text
-    assert 'if key == "news_high_signal":' in settings_text
-    assert 'forbidden = {"combined_score_min", "external_score_min", "scopes", "statuses", "window"}' in settings_text
+    rule_config = settings_text.split("class NotificationRuleConfig", 1)[1].split("\n\nclass ", 1)[0]
+    assert 'model_config = ConfigDict(extra="forbid")' in rule_config
+    assert "window:" not in rule_config
+    assert "scopes:" not in rule_config
+    assert "statuses:" not in rule_config
 
 
 def test_notification_delivery_stale_running_policy_uses_formal_settings_without_repository_defaults() -> None:

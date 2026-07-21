@@ -53,7 +53,7 @@ export function buildLiveSignalTapeItems({
         kind: "event",
         payload,
         score: payload.alerts.length ? 80 : null,
-        reason: payload.alerts.length ? "watched alert" : "public pulse",
+        reason: payload.alerts.length ? "watched alert" : "public event",
         body: eventText(payload.event),
       });
     }

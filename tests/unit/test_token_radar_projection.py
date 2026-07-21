@@ -30,7 +30,6 @@ from parallax.domains.token_intel.services.token_radar_projection import (
     _narrative_admission_target,
     _patch_ranked_current_row,
     _project_group,
-    _pulse_trigger_target,
     _rank_source_repair_analysis_since_ms,
     _row_from_target_feature,
     _select_top_ranked_by_lane,
@@ -1553,7 +1552,7 @@ def test_projection_enqueues_narrative_admission_for_realtime_rank_changes() -> 
 
 @pytest.mark.parametrize(
     "target_builder",
-    (_pulse_trigger_target, _narrative_admission_target, _token_profile_current_target),
+    (_narrative_admission_target, _token_profile_current_target),
 )
 def test_downstream_rank_change_targets_require_source_watermark_without_computed_at_fallback(target_builder):
     now_ms = 1_777_800_060_000
@@ -1587,7 +1586,7 @@ def test_downstream_rank_change_targets_require_source_watermark_without_compute
 @pytest.mark.parametrize("source_value", (None, 0, -1, True, "1777800060000"))
 @pytest.mark.parametrize(
     "target_builder",
-    (_pulse_trigger_target, _narrative_admission_target, _token_profile_current_target),
+    (_narrative_admission_target, _token_profile_current_target),
 )
 def test_downstream_rank_change_targets_reject_invalid_source_watermark(target_builder, source_value):
     now_ms = 1_777_800_060_000
@@ -1638,7 +1637,6 @@ def test_projection_runtime_gate_suppresses_narrative_admission_dirty_targets() 
         "Repos",
         (),
         {
-            "pulse_trigger_dirty_targets": FakeRuntimeDirtyTargets(),
             "narrative_admission_dirty_targets": FakeRuntimeDirtyTargets(),
             "token_profile_current_dirty_targets": FakeRuntimeDirtyTargets(),
             "token_capture_tier_dirty_targets": FakeCaptureTierDirtyTargets(),
@@ -1657,7 +1655,6 @@ def test_projection_runtime_gate_suppresses_narrative_admission_dirty_targets() 
         computed_at_ms=now_ms,
     )
 
-    assert repos.pulse_trigger_dirty_targets.enqueued
     assert repos.token_profile_current_dirty_targets.enqueued
     assert repos.asset_profile_refresh_targets.enqueued
     assert repos.token_capture_tier_dirty_targets.enqueued
@@ -1667,11 +1664,6 @@ def test_projection_runtime_gate_suppresses_narrative_admission_dirty_targets() 
 @pytest.mark.parametrize(
     ("method_name", "repository_attribute", "kwargs"),
     [
-        (
-            "_enqueue_pulse_triggers_for_rank_changes",
-            "pulse_trigger_dirty_targets",
-            {"window": "1h", "scope": "all"},
-        ),
         (
             "_enqueue_narrative_admission_for_rank_changes",
             "narrative_admission_dirty_targets",
@@ -1724,11 +1716,6 @@ def test_projection_downstream_targets_use_formal_current_identity_over_legacy_a
 @pytest.mark.parametrize(
     ("method_name", "expected_attribute", "kwargs"),
     [
-        (
-            "_enqueue_pulse_triggers_for_rank_changes",
-            "pulse_trigger_dirty_targets",
-            {"window": "1h", "scope": "all"},
-        ),
         (
             "_enqueue_narrative_admission_for_rank_changes",
             "narrative_admission_dirty_targets",
@@ -1783,11 +1770,6 @@ def test_projection_runtime_dirty_target_enqueues_require_formal_repository_cont
 @pytest.mark.parametrize(
     ("method_name", "repository_attribute", "kwargs"),
     [
-        (
-            "_enqueue_pulse_triggers_for_rank_changes",
-            "pulse_trigger_dirty_targets",
-            {"window": "1h", "scope": "all"},
-        ),
         (
             "_enqueue_narrative_admission_for_rank_changes",
             "narrative_admission_dirty_targets",
@@ -2358,57 +2340,6 @@ def test_projection_enqueues_capture_tier_when_live_market_key_changes() -> None
     assert repos.token_capture_tier_dirty_targets.enqueued[0]["rows"] == [row]
 
 
-def test_projection_enqueues_pulse_trigger_for_matched_realtime_rank_changes() -> None:
-    now_ms = 1_777_800_060_000
-    row = {
-        "target_type": "Asset",
-        "target_id": "asset-1",
-        "target_type_key": "Asset",
-        "identity_id": "asset-1",
-        "rank": 1,
-        "lane": "resolved",
-        "decision": "high_alert",
-        "factor_snapshot_json": {"schema_version": "factor"},
-        "source_event_ids_json": ["event-1"],
-        "source_max_received_at_ms": now_ms - 1_000,
-        "payload_hash": "row-hash",
-    }
-    repos = type(
-        "Repos",
-        (),
-        {"pulse_trigger_dirty_targets": FakeRuntimeDirtyTargets()},
-    )()
-
-    TokenRadarProjection(repos=repos)._enqueue_pulse_triggers_for_rank_changes(
-        window="1h",
-        scope="matched",
-        rows=[row],
-        exited_rows=[],
-        previous_by_key={},
-        computed_at_ms=now_ms,
-    )
-
-    assert repos.pulse_trigger_dirty_targets.enqueued == [
-        {
-            "targets": [
-                {
-                    "target_type": "Asset",
-                    "target_id": "asset-1",
-                    "window": "1h",
-                    "scope": "matched",
-                    "source_watermark_ms": now_ms - 1_000,
-                    "payload_hash": repos.pulse_trigger_dirty_targets.enqueued[0]["targets"][0]["payload_hash"],
-                    "priority": 40,
-                    "due_at_ms": now_ms,
-                }
-            ],
-            "reason": "token_radar_entered",
-            "now_ms": now_ms,
-            "commit": False,
-        }
-    ]
-
-
 def test_projection_downstream_payload_hash_ignores_factor_snapshot_computed_at_noise() -> None:
     now_ms = 1_777_800_060_000
     base_snapshot = {
@@ -2444,7 +2375,7 @@ def test_projection_downstream_payload_hash_ignores_factor_snapshot_computed_at_
         },
     }
 
-    base_target = _pulse_trigger_target(
+    base_target = _narrative_admission_target(
         row,
         previous=None,
         window="1h",
@@ -2452,7 +2383,7 @@ def test_projection_downstream_payload_hash_ignores_factor_snapshot_computed_at_
         computed_at_ms=now_ms,
         exited=False,
     )
-    noisy_timestamp_target = _pulse_trigger_target(
+    noisy_timestamp_target = _narrative_admission_target(
         noisy_timestamp_row,
         previous=None,
         window="1h",
@@ -2460,7 +2391,7 @@ def test_projection_downstream_payload_hash_ignores_factor_snapshot_computed_at_
         computed_at_ms=now_ms,
         exited=False,
     )
-    business_change_target = _pulse_trigger_target(
+    business_change_target = _narrative_admission_target(
         business_change_row,
         previous=None,
         window="1h",

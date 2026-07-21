@@ -3,28 +3,13 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping
-from dataclasses import dataclass
 from typing import Any
 
-from parallax.domains.pulse_lab.interfaces import contains_trading_execution_instruction
-from parallax.domains.token_intel.interfaces import is_token_factor_snapshot
 from parallax.platform.config.settings import NotificationRuleConfig, Settings
 
 from ..types import NotificationCandidate
 
-SIGNAL_PULSE_RULE_ID = "signal_pulse_candidate"
 NEWS_HIGH_SIGNAL_RULE_ID = "news_high_signal"
-SIGNAL_PULSE_SEVERITY = {
-    "trade_candidate": "critical",
-    "risk_rejected_high_info": "warning",
-}
-
-
-@dataclass(frozen=True, slots=True)
-class _PulseExternalPushPolicy:
-    eligible: bool
-    external_push_signature: str | None
-    suppression_reason: str | None
 
 
 class NotificationRuleEngine:
@@ -34,13 +19,11 @@ class NotificationRuleEngine:
         settings: Settings,
         evidence: Any,
         account_alerts: Any,
-        pulse: Any = None,
         news: Any = None,
     ) -> None:
         self.settings = settings
         self.evidence = evidence
         self.account_alerts = account_alerts
-        self.pulse = pulse
         self.news = news
 
     def evaluate(self, *, now_ms: int) -> list[NotificationCandidate]:
@@ -50,7 +33,6 @@ class NotificationRuleEngine:
         candidates: list[NotificationCandidate] = []
         candidates.extend(self._watched_account_activity(now_ms=now))
         candidates.extend(self._watched_account_token_alerts(now_ms=now))
-        candidates.extend(self._signal_pulse_candidates())
         candidates.extend(self._news_high_signal_candidates(now_ms=now))
         return candidates
 
@@ -170,102 +152,6 @@ class NotificationRuleEngine:
                         "received_at_ms": received_at_ms,
                     },
                     channels=rule.channels,
-                )
-            )
-        return candidates
-
-    def _signal_pulse_candidates(self) -> list[NotificationCandidate]:
-        rule = self._rule(SIGNAL_PULSE_RULE_ID)
-        if not rule.enabled or self.pulse is None:
-            return []
-        rows: list[dict[str, Any]] = []
-        seen: set[str] = set()
-        if rule.window is None or rule.scopes is None or rule.statuses is None:
-            raise RuntimeError("signal_pulse_notification_rule_config_required")
-        window = rule.window
-        scopes = rule.scopes
-        statuses = set(rule.statuses)
-        for row in self.pulse.list_signal_pulse_notification_candidates(
-            window=window,
-            scopes=scopes,
-            statuses=tuple(sorted(statuses)),
-            per_scope_status_limit=self._signal_pulse_per_scope_status_limit(),
-        ):
-            if not isinstance(row, dict):
-                continue
-            candidate_id = _required_source_text(row, "candidate_id", rule_id=SIGNAL_PULSE_RULE_ID)
-            if candidate_id in seen:
-                continue
-            seen.add(candidate_id)
-            rows.append(row)
-
-        candidates: list[NotificationCandidate] = []
-        seen_external_push_signatures: set[str] = set()
-        for row in rows:
-            status = str(row.get("pulse_status") or "")
-            if status not in statuses:
-                continue
-            factor_snapshot = _dict(row.get("factor_snapshot_json"))
-            if not _valid_factor_snapshot(factor_snapshot):
-                continue
-            severity = _signal_pulse_severity(row, factor_snapshot=factor_snapshot)
-            if severity is None:
-                continue
-            if severity in {"high", "critical"} and not _has_resolved_pulse_target(row, factor_snapshot):
-                continue
-            candidate_id = str(row.get("candidate_id") or "")
-            occurrence_at_ms = _required_source_timestamp_ms(
-                row,
-                "updated_at_ms",
-                rule_id=SIGNAL_PULSE_RULE_ID,
-            )
-            semantic_signature = _pulse_semantic_signature(row)
-            push_policy = _pulse_external_push_policy(
-                row,
-                severity=severity,
-                factor_snapshot=factor_snapshot,
-                occurrence_at_ms=occurrence_at_ms,
-                cooldown_seconds=rule.cooldown_seconds,
-            )
-            if push_policy.eligible and push_policy.external_push_signature in seen_external_push_signatures:
-                push_policy = _PulseExternalPushPolicy(
-                    eligible=False,
-                    external_push_signature=push_policy.external_push_signature,
-                    suppression_reason="external_signature_duplicate",
-                )
-            if push_policy.eligible and push_policy.external_push_signature:
-                seen_external_push_signatures.add(push_policy.external_push_signature)
-            external_identity = push_policy.external_push_signature or "in_app"
-            payload = _pulse_payload(
-                row,
-                semantic_signature=semantic_signature,
-                external_push_signature=push_policy.external_push_signature,
-                external_push_eligible=push_policy.eligible,
-                external_push_suppression_reason=push_policy.suppression_reason,
-            )
-            channels = (
-                rule.channels
-                if push_policy.eligible
-                else tuple(channel for channel in rule.channels if channel == "in_app")
-            )
-            symbol = _symbol(row.get("symbol"))
-            subject = _compact_text(row.get("subject_key") or candidate_id, limit=80)
-            title_subject = f"${symbol}" if symbol else subject
-            candidates.append(
-                NotificationCandidate(
-                    dedup_key=f"{SIGNAL_PULSE_RULE_ID}:{semantic_signature}:{external_identity}",
-                    rule_id=SIGNAL_PULSE_RULE_ID,
-                    severity=severity,
-                    title=f"{title_subject} {status.replace('_', ' ')}",
-                    body=_pulse_body(row),
-                    entity_type="pulse_candidate",
-                    entity_key=f"pulse_candidate:{candidate_id}",
-                    symbol=symbol,
-                    source_table="pulse_candidates",
-                    source_id=candidate_id,
-                    occurrence_at_ms=occurrence_at_ms,
-                    payload=payload,
-                    channels=channels,
                 )
             )
         return candidates
@@ -390,9 +276,6 @@ class NotificationRuleEngine:
             self._limit() * int(self.settings.notifications.news_high_signal_query_multiplier),
         )
 
-    def _signal_pulse_per_scope_status_limit(self) -> int:
-        return self._limit() * int(self.settings.notifications.signal_pulse_max_pages)
-
 
 def _cooldown_bucket(occurrence_at_ms: int, cooldown_seconds: int) -> int:
     seconds = _required_nonnegative_int(cooldown_seconds, "notification_cooldown_seconds_required")
@@ -430,284 +313,6 @@ def _alert_dedup_key(
     identity = entity_key or "unknown"
     author = author_handle or "unknown"
     return f"{rule_id}:{identity}:author:{author}:{_cooldown_bucket(occurrence_at_ms, cooldown_seconds)}"
-
-
-def _pulse_stable_decision_signature(row: dict[str, Any]) -> str:
-    """Hash only stable decision dimensions to avoid:
-    - free-text micro-changes (thesis_zh / narrative_thesis_zh / summary_zh) triggering duplicate notifications
-    - bull/bear strength changes failing to trigger refresh
-
-    Drops: edge_events, evidence/source event ids, factor_snapshot fingerprint, free text.
-    """
-    decision = _pulse_decision(row)
-    factor_snapshot = _dict(row.get("factor_snapshot_json"))
-    bull_view = decision.get("bull_view") or {}
-    bear_view = decision.get("bear_view") or {}
-    playbook = decision.get("playbook") or {}
-    payload = {
-        "pulse_version": row.get("pulse_version"),
-        "candidate_id": row.get("candidate_id"),
-        "pulse_status": row.get("pulse_status"),
-        "score_band": row.get("score_band"),
-        "decision_route": decision.get("route"),
-        "decision_recommendation": decision.get("recommendation"),
-        "bull_strength": bull_view.get("strength") if isinstance(bull_view, dict) else None,
-        "bear_strength": bear_view.get("strength") if isinstance(bear_view, dict) else None,
-        "narrative_archetype": decision.get("narrative_archetype") or "",
-        "playbook_has_playbook": bool(playbook.get("has_playbook")) if isinstance(playbook, dict) else False,
-        "playbook_monitoring_horizon": playbook.get("monitoring_horizon") if isinstance(playbook, dict) else None,
-        "playbook_watch_signal_count": len(_safe_signature_list(playbook.get("watch_signals")))
-        if isinstance(playbook, dict)
-        else 0,
-        "playbook_exit_trigger_count": len(_safe_signature_list(playbook.get("exit_triggers")))
-        if isinstance(playbook, dict)
-        else 0,
-        "gates": _dict(factor_snapshot.get("gates")),
-    }
-    return _stable_hash(payload)
-
-
-def _pulse_semantic_signature(row: dict[str, Any]) -> str:
-    return _pulse_stable_decision_signature(row)
-
-
-def _pulse_external_push_signature(
-    row: dict[str, Any],
-    *,
-    cooldown_seconds: int,
-    occurrence_at_ms: int,
-    alert_class: str,
-    status_level: int,
-    recommendation_level: int,
-    target_type: str,
-    target_id: str,
-) -> str:
-    payload = {
-        "target_type": target_type,
-        "target_id": target_id,
-        "alert_class": alert_class,
-        "status_level": status_level,
-        "recommendation_level": recommendation_level,
-        "cooldown_bucket": _cooldown_bucket(occurrence_at_ms, cooldown_seconds),
-        "pulse_version": row.get("pulse_version"),
-        "gate_version": row.get("gate_version"),
-    }
-    return _stable_hash(payload)
-
-
-def _pulse_external_push_policy(
-    row: dict[str, Any],
-    *,
-    severity: str,
-    factor_snapshot: dict[str, Any],
-    occurrence_at_ms: int,
-    cooldown_seconds: int,
-) -> _PulseExternalPushPolicy:
-    status = str(row.get("pulse_status") or "")
-    if status == "risk_rejected_high_info":
-        return _PulseExternalPushPolicy(False, None, "risk_rejected_in_app_only")
-    if severity not in {"high", "critical"}:
-        return _PulseExternalPushPolicy(False, None, "severity_below_high")
-    target_type, target_id = _pulse_resolved_target(row, factor_snapshot)
-    if not _is_resolved_target(target_type=target_type, target_id=target_id):
-        return _PulseExternalPushPolicy(False, None, "unresolved_target")
-    edge_events = set(_string_list(row.get("last_edge_events_json")))
-    if not edge_events & {"pulse_status_changed", "recommended_decision_changed"}:
-        return _PulseExternalPushPolicy(False, None, "not_escalation")
-    signature = _pulse_external_push_signature(
-        row,
-        cooldown_seconds=cooldown_seconds,
-        occurrence_at_ms=occurrence_at_ms,
-        alert_class=status,
-        status_level=_pulse_status_escalation_level(status),
-        recommendation_level=_pulse_recommendation_escalation_level(_pulse_decision(row).get("recommendation")),
-        target_type=target_type,
-        target_id=target_id,
-    )
-    return _PulseExternalPushPolicy(True, signature, None)
-
-
-def _pulse_status_escalation_level(status: str) -> int:
-    return {"risk_rejected_high_info": 0, "token_watch": 1, "trade_candidate": 2}.get(status, 0)
-
-
-def _pulse_recommendation_escalation_level(value: Any) -> int:
-    recommendation = str(value or "")
-    return {"ignore": 0, "abstain": 0, "watchlist": 1, "trade_candidate": 2, "high_conviction": 3}.get(
-        recommendation,
-        0,
-    )
-
-
-def _pulse_payload(
-    row: dict[str, Any],
-    *,
-    semantic_signature: str,
-    external_push_signature: str | None,
-    external_push_eligible: bool,
-    external_push_suppression_reason: str | None,
-) -> dict[str, Any]:
-    factor_snapshot = _dict(row.get("factor_snapshot_json"))
-    return {
-        "candidate_id": row.get("candidate_id"),
-        "pulse_status": row.get("pulse_status"),
-        "score_band": row.get("score_band"),
-        "social_phase": row.get("social_phase"),
-        "decision": _pulse_decision(row),
-        "gate": _dict(factor_snapshot.get("gates")),
-        "factor_snapshot": factor_snapshot,
-        "evidence_event_ids": _list(row.get("evidence_event_ids_json")),
-        "source_event_ids": _list(row.get("source_event_ids_json")),
-        "edge_events": _list(row.get("last_edge_events_json")),
-        "candidate_score": row.get("candidate_score"),
-        "target_type": row.get("target_type"),
-        "target_id": row.get("target_id"),
-        "symbol": _symbol(row.get("symbol")),
-        "semantic_signature": semantic_signature,
-        "external_push_signature": external_push_signature,
-        "external_push_eligible": external_push_eligible,
-        "external_push_suppression_reason": external_push_suppression_reason,
-    }
-
-
-def _pulse_body(row: dict[str, Any]) -> str:
-    from parallax.domains.notifications.services.pulse_surface_card import render_pulse_surface_card
-
-    decision = _pulse_decision(row)
-    snapshot = _dict(row.get("factor_snapshot_json"))
-    return render_pulse_surface_card(
-        row=row,
-        decision=decision,
-        factor_snapshot=snapshot,
-        asset_profile=None,  # phase 1 skips asset_profile lookup; surface card uses row-borne fields
-    )
-
-
-def _signal_pulse_severity(
-    row: dict[str, Any],
-    *,
-    factor_snapshot: dict[str, Any],
-) -> str | None:
-    status = str(row.get("pulse_status") or "")
-    gates = _dict(factor_snapshot.get("gates"))
-    eligible_for_high_alert = bool(gates.get("eligible_for_high_alert"))
-    blocked_reasons = _list(gates.get("blocked_reasons"))
-    max_decision = str(gates.get("max_decision") or "").strip()
-    gate_allows_high = (
-        eligible_for_high_alert
-        and not blocked_reasons
-        and max_decision
-        in {
-            "watch",
-            "trade_candidate",
-            "alert",
-            "high_alert",
-        }
-    )
-    if status == "token_watch":
-        return "high" if gate_allows_high else None
-    if status == "trade_candidate":
-        return "critical" if gate_allows_high else None
-    return SIGNAL_PULSE_SEVERITY.get(status)
-
-
-def _has_resolved_pulse_target(row: dict[str, Any], factor_snapshot: dict[str, Any]) -> bool:
-    target_type, target_id = _pulse_resolved_target(row, factor_snapshot)
-    return _is_resolved_target(target_type=target_type, target_id=target_id)
-
-
-def _pulse_resolved_target(row: dict[str, Any], factor_snapshot: dict[str, Any]) -> tuple[str, str]:
-    subject = _dict(factor_snapshot.get("subject"))
-    target_type = str(row.get("target_type") or subject.get("target_type") or "").strip()
-    target_id = str(row.get("target_id") or subject.get("target_id") or "").strip()
-    return target_type, target_id
-
-
-def _is_resolved_target(*, target_type: str, target_id: str) -> bool:
-    return bool(target_type and target_id and target_type.lower() != "unresolved")
-
-
-def _valid_factor_snapshot(value: Any) -> bool:
-    return is_token_factor_snapshot(value)
-
-
-def _pulse_decision(row: dict[str, Any]) -> dict[str, Any]:
-    decision = _dict(row.get("decision_json"))
-    return {
-        "route": row.get("decision_route"),
-        "recommendation": row.get("decision_recommendation"),
-        "confidence": row.get("decision_confidence"),
-        "abstain_reason": row.get("decision_abstain_reason"),
-        "summary_zh": decision.get("summary_zh") or "",
-        "invalidation_conditions": _string_list(decision.get("invalidation_conditions")),
-        "residual_risks": _string_list(decision.get("residual_risks")),
-        "evidence_event_ids": _string_list(decision.get("evidence_event_ids")),
-        "narrative_archetype": decision.get("narrative_archetype") or "",
-        "narrative_thesis_zh": decision.get("narrative_thesis_zh") or "",
-        "bull_view": _bull_bear_view(decision.get("bull_view")),
-        "bear_view": _bull_bear_view(decision.get("bear_view")),
-        "playbook": _playbook(decision.get("playbook")),
-        "evidence_event_urls": _string_string_map(decision.get("evidence_event_urls")),
-    }
-
-
-def _bull_bear_view(value: Any) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    strength = value.get("strength")
-    if strength not in ("absent", "weak", "moderate", "strong"):
-        return None
-    return {
-        "strength": strength,
-        "thesis_zh": str(value.get("thesis_zh") or ""),
-        "supporting_event_ids": _string_list(value.get("supporting_event_ids")),
-    }
-
-
-def _playbook(value: Any) -> dict[str, Any] | None:
-    if not isinstance(value, dict):
-        return None
-    horizon = value.get("monitoring_horizon")
-    if horizon not in ("1h", "4h", "24h"):
-        return None
-    return {
-        "has_playbook": bool(value.get("has_playbook")),
-        "watch_signals": _string_list(value.get("watch_signals")),
-        "exit_triggers": _string_list(value.get("exit_triggers")),
-        "monitoring_horizon": horizon,
-    }
-
-
-def _string_string_map(value: Any) -> dict[str, str]:
-    if not isinstance(value, dict):
-        return {}
-    return {str(k): str(v) for k, v in value.items() if isinstance(k, str) and isinstance(v, str)}
-
-
-def _dict(value: Any) -> dict[str, Any]:
-    return value if isinstance(value, dict) else {}
-
-
-def _list(value: Any) -> list[Any]:
-    return value if isinstance(value, list) else []
-
-
-def _string_list(value: Any) -> list[str]:
-    return [item for item in value if isinstance(item, str)] if isinstance(value, list) else []
-
-
-def _safe_signature_list(value: Any) -> list[str]:
-    if not isinstance(value, list):
-        return []
-    safe: list[str] = []
-    for item in value:
-        if not isinstance(item, str):
-            continue
-        text = item.strip()
-        if not text or contains_trading_execution_instruction(text):
-            continue
-        safe.append(text)
-    return safe
 
 
 def _news_token_impacts_payload(value: Any) -> list[dict[str, Any]]:

@@ -43,10 +43,6 @@ DIRTY_QUEUE_ATTEMPT_RESET_CONTRACTS = (
         "news_projection_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash",
     ),
     (
-        "src/parallax/domains/pulse_lab/repositories/pulse_trigger_dirty_target_repository.py",
-        "pulse_trigger_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash",
-    ),
-    (
         "src/parallax/domains/token_intel/repositories/token_radar_dirty_target_repository.py",
         "token_radar_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash",
     ),

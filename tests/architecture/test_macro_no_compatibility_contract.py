@@ -164,13 +164,6 @@ MACRO_FEATURE_ENGINE_DATA_QUALITY_FALLBACK_TOKENS = (
     'if data_quality and data_quality != "ok":',
 )
 
-MACRO_JUDGEMENT_REVIEW_STAT_FALLBACK_TOKENS = (
-    'row.get("status") or "insufficient_history"',
-    'row.get("win_rate_label") or "0/0"',
-    '_number(row.get("pnl_usd")) or 0.0',
-    '_number(row.get("average_signed_return_pct")) or 0.0',
-)
-
 MACRO_SCENARIO_QUALITY_FALLBACK_TOKENS = (
     'gap.get("severity") or "warning"',
     '"description": _text(gap.get("remediation_hint"))',
@@ -555,27 +548,6 @@ MACRO_MODULE_NEWS_EVENT_FLOW_DERIVATION_TOKENS = (
 MACRO_MODULE_HISTORY_POINTS_FALLBACK_TOKENS = (
     '_int_or_none(existing.get("history_points")) or len(_mapping_list(existing.get("history")))',
     '_int_or_none(observation_feature.get("history_points")) or len(',
-)
-
-MACRO_MODULE_TRADE_REVIEW_FALLBACK_TOKENS = (
-    '_number(row.get("return_pct")) or 0.0',
-    '_number(row.get("mae_pct")) or 0.0',
-    '_int_or_none(review.get("hit_count")) or 0',
-    '_int_or_none(review.get("sample_count")) or len(rows)',
-    'review.get("win_rate_label") or f"{hit_count}/{sample_count}"',
-)
-
-MACRO_MODULE_HOLDING_REVIEW_FALLBACK_TOKENS = (
-    '_number(row.get("signed_return_pct")) or 0.0',
-    '_int_or_none(row.get("sample_count")) or 0',
-    '_int_or_none(row.get("hit_count")) or 0',
-    "win_rate = round(hit_count / sample_count, 2) if sample_count else 0.0",
-    "average_signed_return = sum(signed_returns) / sample_count if sample_count else 0.0",
-)
-
-MACRO_MODULE_JUDGEMENT_REVIEW_WINDOW_DROP_TOKENS = (
-    "if row is not None",
-    "return None",
 )
 
 MACRO_MODULE_STATUS_CHANGE_FALLBACK_TOKENS = (
@@ -1104,12 +1076,6 @@ def test_macro_feature_engine_does_not_default_missing_data_quality_to_ok() -> N
     assert [token for token in MACRO_FEATURE_ENGINE_DATA_QUALITY_FALLBACK_TOKENS if token in data_quality_source] == []
 
 
-def test_macro_module_views_do_not_manufacture_judgement_review_stats() -> None:
-    source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
-
-    assert [token for token in MACRO_JUDGEMENT_REVIEW_STAT_FALLBACK_TOKENS if token in source] == []
-
-
 def test_macro_scenario_engine_does_not_default_quality_blocker_severity() -> None:
     source = (SRC / "domains/macro_intel/services/macro_scenario_engine.py").read_text(encoding="utf-8")
 
@@ -1586,6 +1552,30 @@ def test_macro_module_views_do_not_use_snapshot_header_time_placeholders_for_rea
     assert [token for token in MACRO_MODULE_SNAPSHOT_HEADER_TIME_PLACEHOLDER_TOKENS if token in header_source] == []
 
 
+def test_macro_module_get_does_not_generate_request_time_trade_backtests() -> None:
+    source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
+    route_source = (SRC / "app/surfaces/api/routes_macro.py").read_text(encoding="utf-8")
+
+    assert [
+        token
+        for token in (
+            "TRADE_MAP_RELIABILITY_CONCEPTS",
+            "TRADE_MAP_PAPER_NOTIONAL_USD",
+            '"historical_review"',
+            '"portfolio_review"',
+            '"holding_period_review"',
+            '"historical_trust"',
+            '"judgement_review"',
+            "def _trade_map_historical_review",
+            "def _trade_map_portfolio_review",
+            "def _trade_map_holding_period_review",
+            "def _trade_map_historical_trust",
+        )
+        if token in source
+    ] == []
+    assert "TRADE_MAP_RELIABILITY_CONCEPTS" not in route_source
+
+
 def test_macro_module_views_do_not_build_trade_map_checklist_from_legacy_code_lists() -> None:
     source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
 
@@ -1595,7 +1585,7 @@ def test_macro_module_views_do_not_build_trade_map_checklist_from_legacy_code_li
 def test_macro_module_views_do_not_silently_drop_trade_map_action_checklist_rows() -> None:
     source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
     checklist_source = source.split("def _trade_map_action_checklist", 1)[1].split(
-        "def _trade_map_holding_period_review", 1
+        "def _trade_map_action_checklist_rows", 1
     )[0]
 
     assert [token for token in MACRO_MODULE_TRADE_MAP_ACTION_CHECKLIST_DROP_TOKENS if token in checklist_source] == []
@@ -1604,7 +1594,7 @@ def test_macro_module_views_do_not_silently_drop_trade_map_action_checklist_rows
 def test_macro_module_views_do_not_silently_drop_trade_map_action_checklist_shape() -> None:
     source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
     checklist_source = source.split("def _trade_map_action_checklist", 1)[1].split(
-        "def _trade_map_holding_period_review", 1
+        "def _trade_map_action_checklist_rows", 1
     )[0]
 
     assert [
@@ -1621,7 +1611,7 @@ def test_macro_module_views_do_not_infer_trade_map_labels_from_expressions() -> 
 def test_macro_module_views_do_not_silently_drop_trade_map_items() -> None:
     source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
     decision_source = source.split("def _decision_console", 1)[1].split("def _future_catalysts", 1)[0]
-    item_source = source.split("def _trade_map_item", 1)[1].split("def _trade_map_historical_review", 1)[0]
+    item_source = source.split("def _trade_map_item", 1)[1].split("def _required_trade_map_item_text", 1)[0]
 
     assert "if item is not None" not in decision_source.split("compact_quality_blockers", 1)[0]
     assert [token for token in MACRO_MODULE_TRADE_MAP_ITEM_DROP_TOKENS if token in item_source] == []
@@ -1729,36 +1719,6 @@ def test_macro_module_views_do_not_default_missing_feature_history_points() -> N
     source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
 
     assert [token for token in MACRO_MODULE_HISTORY_POINTS_FALLBACK_TOKENS if token in source] == []
-
-
-def test_macro_module_views_do_not_default_trade_review_metrics() -> None:
-    source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
-
-    assert [token for token in MACRO_MODULE_TRADE_REVIEW_FALLBACK_TOKENS if token in source] == []
-
-
-def test_macro_module_views_do_not_default_holding_review_metrics() -> None:
-    source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
-
-    assert [token for token in MACRO_MODULE_HOLDING_REVIEW_FALLBACK_TOKENS if token in source] == []
-
-
-def test_macro_module_views_do_not_silently_drop_judgement_review_windows() -> None:
-    source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
-    row_source = source.split("def _judgement_review_row", 1)[1].split("def _judgement_review_window", 1)[0]
-    window_source = source.split("def _judgement_review_window", 1)[1].split("def _trade_map_item", 1)[0]
-
-    assert "if row is not None" not in row_source
-    assert [token for token in MACRO_MODULE_JUDGEMENT_REVIEW_WINDOW_DROP_TOKENS if token in window_source] == []
-
-
-def test_macro_module_views_do_not_silently_drop_judgement_review_items() -> None:
-    source = (SRC / "domains/macro_intel/services/macro_module_views.py").read_text(encoding="utf-8")
-    review_source = source.split("def _judgement_review", 1)[1].split("def _judgement_review_row", 1)[0]
-    row_source = source.split("def _judgement_review_row", 1)[1].split("def _judgement_review_window", 1)[0]
-
-    assert "if row is not None" not in review_source
-    assert "return None" not in row_source
 
 
 def test_macro_module_views_do_not_default_missing_status_changes_to_zero() -> None:

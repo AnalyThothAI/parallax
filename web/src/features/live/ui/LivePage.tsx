@@ -1,5 +1,3 @@
-import { SignalLabPulse } from "@features/signal-lab";
-import type { SignalPulseData, SignalPulseItem } from "@lib/types";
 import type { ReactNode } from "react";
 import { Outlet } from "react-router-dom";
 
@@ -16,21 +14,14 @@ type LivePageProps = {
   socketStatus: string;
   selectedTapeEventId: string | null;
   onTapeSelect: (item: LiveSignalTapeItem) => void;
-  signalLabPulseData: SignalPulseData | null;
-  hiddenSignalLabPulseData: SignalPulseData | null;
-  signalPulseLoading: boolean;
-  hiddenSignalPulseLoading: boolean;
-  selectedPulseItemId: string | null;
   mobileTask: LiveMobileTask;
   children?: ReactNode;
   onMobileTaskChange: (task: LiveMobileTask) => void;
-  onSelectPulse: (item: SignalPulseItem) => void;
 };
 
 /**
- * LivePage frames the live cockpit: it renders the routed top region above a persistent
- * bottom-deck (tape + signal pulse compact queue). Token Radar rows open the item route; compact
- * pulse rows remain selected inside the live cockpit.
+ * LivePage frames the live cockpit: Token Radar owns the routed top region and the replay/live
+ * event Tape owns the lower region. Mobile users switch between those two route-local tasks.
  */
 export function LivePage({
   liveSignalTapeItems,
@@ -38,40 +29,22 @@ export function LivePage({
   socketStatus,
   selectedTapeEventId,
   onTapeSelect,
-  signalLabPulseData,
-  hiddenSignalLabPulseData,
-  signalPulseLoading,
-  hiddenSignalPulseLoading,
-  selectedPulseItemId,
   mobileTask,
   children,
   onMobileTaskChange,
-  onSelectPulse,
 }: LivePageProps) {
   return (
     <div data-testid="live-page" className={`live-page mobile-task-${mobileTask}`}>
       {children ?? <Outlet />}
 
-      <div className="bottom-deck">
-        <LiveSignalTape
-          isLoading={isRecentLoading}
-          items={liveSignalTapeItems}
-          mobileTaskPanel="tape"
-          selectedEventId={selectedTapeEventId}
-          socketStatus={socketStatus}
-          onSelect={onTapeSelect}
-        />
-
-        <SignalLabPulse
-          data={signalLabPulseData ?? undefined}
-          hiddenData={hiddenSignalLabPulseData ?? undefined}
-          hiddenIsLoading={hiddenSignalPulseLoading}
-          isLoading={signalPulseLoading}
-          mobileTaskPanel="lab"
-          selectedItemId={selectedPulseItemId}
-          onSelect={onSelectPulse}
-        />
-      </div>
+      <LiveSignalTape
+        isLoading={isRecentLoading}
+        items={liveSignalTapeItems}
+        mobileTaskPanel="tape"
+        selectedEventId={selectedTapeEventId}
+        socketStatus={socketStatus}
+        onSelect={onTapeSelect}
+      />
 
       <LiveTaskNav activeTask={mobileTask} onTaskChange={onMobileTaskChange} />
     </div>

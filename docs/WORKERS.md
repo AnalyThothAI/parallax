@@ -298,16 +298,16 @@ Review workers by separating four categories:
 
 | Category | Meaning | Examples | Rule |
 |----------|---------|----------|------|
-| Facts | Business observations and decisions that should be replayable | `events`, `token_intent_resolutions`, `asset_identity_evidence`, `asset_identity_current`, `market_ticks`, `enriched_events`, Pulse audit rows | Facts are product truth. |
-| Read models | Rebuildable projections for reads and product workflows | `market_tick_current`, `token_radar_current_rows`, `token_radar_publication_state`, `token_radar_target_first_seen`, `token_profile_current`, `pulse_candidates`, `news_page_rows`, `macro_view_snapshots` | Exactly one runtime writer. |
-| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `market_tick_current_dirty_targets`, `token_radar_dirty_targets`, `token_discovery_dirty_lookup_keys`, `macro_projection_dirty_targets`, projection dirty targets, `pulse_trigger_dirty_targets`, `narrative_admission_dirty_targets`, `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`, `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, `pulse_agent_jobs`, `notification_deliveries` | Never treat job state as product truth. |
+| Facts | Business observations and decisions that should be replayable | `events`, `token_intent_resolutions`, `asset_identity_evidence`, `asset_identity_current`, `market_ticks`, `enriched_events`, News audit rows | Facts are product truth. |
+| Read models | Rebuildable projections for reads and product workflows | `market_tick_current`, `token_radar_current_rows`, `token_radar_publication_state`, `token_radar_target_first_seen`, `token_profile_current`, `news_page_rows`, `macro_view_snapshots` | Exactly one runtime writer. |
+| Control plane | Scheduling, retry, lease, budget, and queue state | `event_anchor_backfill_jobs`, `market_tick_current_dirty_targets`, `token_radar_dirty_targets`, `token_discovery_dirty_lookup_keys`, `macro_projection_dirty_targets`, projection dirty targets, `narrative_admission_dirty_targets`, `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`, `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, `notification_deliveries` | Never treat job state as product truth. |
 | Cache/fan-out | Process-local convenience state | `LivePriceGateway` latest cache and WebSocket fan-out | Cache is presentation-only unless persisted as facts. |
 | Local media mirrors | Rebuildable local copies of provider media | `token_image_assets` plus files under `cache/token-images` | Public image URLs must come from ready local rows, never provider URLs. |
 
 `app/runtime/job_queue.py` is descriptor-only ops metadata for the allowlisted
 queue tables that diagnostics may read. It must not define a generic queue
 executor, backoff policy, lease generator, claim/finalize/reclaim DML helper, or
-`RETURNING *` mutation path for `pulse_agent_jobs` or `notification_deliveries`;
+`RETURNING *` mutation path for `notification_deliveries`;
 the owning domain repositories and workers remain the only runtime writers for
 those control-plane tables.
 
@@ -335,7 +335,7 @@ collector
   -> token_radar_projection
   -> narrative_admission
   -> macro_sync / macro_view_projection / macro_daily_brief_projection
-  -> pulse_candidate / notifications / API / WebSocket / CLI
+  -> notifications / API / WebSocket / CLI
 ```
 
 `IngestService` is not a long-running worker, but it is listed in this
@@ -400,7 +400,7 @@ narrative_admission,
 news_fetch, news_item_process,
 news_item_brief, news_story_brief, news_page_projection, news_source_quality_projection,
 cex_oi_radar_board, macro_sync, macro_view_projection, macro_daily_brief_projection,
-pulse_candidate, notification_rule,
+notification_rule,
 notification_delivery
 -->
 
@@ -416,7 +416,7 @@ notification_delivery
 | `resolution_refresh` (`ResolutionRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/resolution_refresh_worker.py` | due `token_discovery_dirty_lookup_keys`, OKX DEX discovery | refreshed `token_intent_resolutions`, `registry_assets`, `asset_identity_evidence/current`, `token_discovery_results`, queue completion/reschedule state; lookup claim lease, running timeout, hot not-found retry cadence, claim batch, retry budget, and reprocess limit come from formal `settings.workers.resolution_refresh`; affected-intent reprocess enqueues Token Radar source-dirty rows only from formal `TokenIntentResolutionDecision` results and fails loose resolver decision objects before dirty enqueue; due work is consumed only through `claim_due_lookup_keys(...)`, not a read-only due-list repository helper; DiscoveryRepository repository-owned enqueue/claim/done/reschedule/start/finish/fail mutations require connection transaction with no manual commit fallback and receive due/claim/start timing explicitly rather than using repository-local policy constants; lookup queue enqueue/done/reschedule changed-row counts require PostgreSQL `cursor.rowcount` evidence and fail on missing or invalid rowcount instead of reporting zero changed lookup work; lookup claim done/reschedule/terminal completion keys and worker retry-budget decisions require positive claimed-row `attempt_count` with no zero-attempt fallback, and completion keys also require non-empty claimed-row `lease_owner` plus claimed `payload_hash`; provider-unavailable batch handling splits claimed rows by the formal retry budget, rescheduling only retryable rows and terminalizing exhausted rows; lookup running/finish/fail/claim completion writes require `RepositorySession.transaction`; repository-owned registry asset and asset identity evidence/current writes require connection transaction, and asset_identity_current `RETURNING true AS changed` booleans require rowcount evidence matching returned-row presence before `rows_written` is reported; terminal lookup-claim delete and terminal-ledger writes require connection transaction with no `nullcontext` / manual commit fallback, terminal-ledger payload hashes must come from the deleted queue source row without empty-string fallback, and terminal delete rowcount must match returned deleted lookup rows before terminal counts or ledger rows are reported | poll | `resolution_updated` | `interval_seconds` |
 | `asset_profile_refresh` (`AssetProfileRefreshWorker`) | `asset_market` | `domains/asset_market/runtime/asset_profile_refresh_worker.py` | due `asset_profile_refresh_targets`, configured DEX profile sources | `asset_profiles`, refresh target state, `token_profile_current_dirty_targets` when source facts change; refresh-target enqueue requires positive producer-supplied `source_watermark_ms` and must not repair it from source-cache `updated_at_ms` or runtime `now_ms`; Token Profile Current dirty enqueue uses the claimed source watermark and must not repair missing source watermarks with runtime `now_ms`; ready/missing/error source-cache refresh and target reschedule cadences come from formal `settings.workers.asset_profile_refresh` and are passed explicitly into service/repository calls; refresh-target repository-owned enqueue/claim/reschedule/error mutations require connection transaction with no manual commit fallback; reschedule/error completion keys require positive claimed-row `attempt_count` with no zero-attempt fallback; reschedule/error changed-row counts require PostgreSQL `cursor.rowcount` evidence and fail on missing or invalid rowcount instead of reporting zero changed refresh targets; repository-owned `asset_profiles` ready/status writes require connection transaction with no manual commit fallback; worker profile writes use session transaction with `commit=False` | poll | none | `interval_seconds` |
 | `token_image_mirror` (`TokenImageMirrorWorker`) | `asset_market` | `domains/asset_market/runtime/token_image_mirror_worker.py` | due `token_image_source_dirty_targets` only; it does not scan source tables | `token_image_assets`, local cache files, `token_profile_current_dirty_targets` on terminal image changes; profile-current dirty enqueue uses the claimed image-source watermark and must not repair missing source watermarks with runtime `now_ms`; dirty-source enqueue requires positive producer-supplied `source_watermark_ms` and must not repair it from target-level `observed_at_ms`, source-row `updated_at_ms`, or runtime `now_ms`; dirty-source repository-owned enqueue/claim/done/error mutations require connection transaction with no manual commit fallback; done/error completion keys require positive claimed-row `attempt_count`, non-empty claimed-row `lease_owner`, claimed `payload_hash`, and claimed `source_url_hash`; completion must not rederive `source_url_hash` from `source_url`; done/error changed-row counts require PostgreSQL `cursor.rowcount` evidence and fail on missing or invalid rowcount instead of reporting zero changed image-source targets; repository-owned image lifecycle writes require connection transaction with no manual commit fallback and require PostgreSQL single-row `cursor.rowcount` evidence, while pending/ready `RETURNING` paths must match rowcount with returned-row presence; worker terminal image writes use session transaction with `commit=False`; image asset and dirty-source retry cadence both come from formal `settings.workers.token_image_mirror.retry_ms`, dirty-source retry budget comes from formal `settings.workers.token_image_mirror.max_attempts`, and exhausted dirty-source claims are deleted and terminalized in `worker_queue_terminal_events` rather than re-admitted indefinitely | poll | none | `interval_seconds` |
-| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | `token_radar_source_dirty_events`, `token_radar_dirty_targets`; compact `token_radar_rank_source_events` rank-source edges | `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows`, `token_radar_publication_state`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`; dirty target/source claim `UPDATE ... RETURNING` paths require cursor rowcount to match returned claimed rows; after dirty claims are acquired, edge/feature changes, rank publication attempts, and dirty done/error terminalization run inside one explicit connection transaction; repository-owned rank-source edge population/prune writes require connection transaction before SQL and query helpers do not own commits; repository-owned serving publication/target-feature/first-seen/failure writes require connection transaction before SQL; projection-private cache retention for target-feature and rank-source rows is a bounded worker maintenance lane outside rank publication; repository-owned projection offset/run/dirty-range control-plane writes require connection transaction before SQL, ordinary offset/run/dirty enqueue and finish mutations require exactly one PostgreSQL `cursor.rowcount`, projection-run `start_run` uses `INSERT ... RETURNING *` without `run_by_id` readback proof, projection-run stale-running cleanup counts require PostgreSQL `cursor.rowcount` evidence, dirty-range `UPDATE ... RETURNING` claims require cursor rowcount to match returned claimed rows, and projection-run/dirty-range diagnostic reads require explicit caller limits with no repository-local `20`/`50` defaults; rank-set publication uses compact rank inputs and `_compact_rank_key`, with no retired `_rank_key`, invalid-snapshot demotion, or `raw_alpha_score` fallback compatibility path; downstream dirty-target enqueue to Pulse, Narrative Admission, Token Profile Current, Asset Profile Refresh, and Token Capture Tier uses required direct session repositories without optional probes, and Asset Profile Refresh fan-out requires resolved Asset chain/address identity before provider-scoped refresh enqueue; worker windows, scopes, venues, hot windows, batch size, cold interval, private-cache retention, and statement timeout come from formal `token_radar_projection` settings, projection service window math requires those valid windows without `1h`/`24h` fallbacks, and downstream wakes use `wake_emitter` with no old `wake_bus` alias | `market_tick_current_updated`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
+| `token_radar_projection` (`TokenRadarProjectionWorker`) | `token_intel` | `domains/token_intel/runtime/token_radar_projection_worker.py` | `token_radar_source_dirty_events`, `token_radar_dirty_targets`; compact `token_radar_rank_source_events` rank-source edges | `token_radar_rank_source_events`, `token_radar_target_features`, `token_radar_current_rows`, `token_radar_publication_state`, `token_radar_target_first_seen`, `projection_runs`, `projection_offsets`; dirty target/source claim `UPDATE ... RETURNING` paths require cursor rowcount to match returned claimed rows; after dirty claims are acquired, edge/feature changes, rank publication attempts, and dirty done/error terminalization run inside one explicit connection transaction; repository-owned rank-source edge population/prune writes require connection transaction before SQL and query helpers do not own commits; repository-owned serving publication/target-feature/first-seen/failure writes require connection transaction before SQL; projection-private cache retention for target-feature and rank-source rows is a bounded worker maintenance lane outside rank publication; repository-owned projection offset/run/dirty-range control-plane writes require connection transaction before SQL, ordinary offset/run/dirty enqueue and finish mutations require exactly one PostgreSQL `cursor.rowcount`, projection-run `start_run` uses `INSERT ... RETURNING *` without `run_by_id` readback proof, projection-run stale-running cleanup counts require PostgreSQL `cursor.rowcount` evidence, dirty-range `UPDATE ... RETURNING` claims require cursor rowcount to match returned claimed rows, and projection-run/dirty-range diagnostic reads require explicit caller limits with no repository-local `20`/`50` defaults; rank-set publication uses compact rank inputs and `_compact_rank_key`, with no retired `_rank_key`, invalid-snapshot demotion, or `raw_alpha_score` fallback compatibility path; downstream dirty-target enqueue to Narrative Admission, Token Profile Current, Asset Profile Refresh, and Token Capture Tier uses required direct session repositories without optional probes, and Asset Profile Refresh fan-out requires resolved Asset chain/address identity before provider-scoped refresh enqueue; worker windows, scopes, venues, hot windows, batch size, cold interval, private-cache retention, and statement timeout come from formal `token_radar_projection` settings, projection service window math requires those valid windows without `1h`/`24h` fallbacks, and downstream wakes use `wake_emitter` with no old `wake_bus` alias | `market_tick_current_updated`, `resolution_updated` | `token_radar_updated` | `interval_seconds` |
 | `token_profile_current` (`TokenProfileCurrentWorker`) | `asset_market` | `domains/asset_market/runtime/token_profile_current_worker.py` | due profile dirty targets; exact profile/evidence sources through `RepositorySession.source_query`, full `token_image_assets` states, existing image dirty targets | `token_profile_current`, `token_image_source_dirty_targets`; dirty-target enqueue requires mapping-shaped targets with positive producer-supplied `source_watermark_ms` and must not repair missing watermarks from `computed_at_ms`, `updated_at_ms`, tuple target identity, or runtime `now_ms`; image-source admission for Token Image Mirror requires positive source-row `observed_at_ms` and must not repair image-source dirty watermarks from `updated_at_ms` or runtime `now_ms`; dirty-target repository-owned claim/done/error mutations require connection transaction with no manual commit fallback; done/error completion keys require positive claimed-row `attempt_count` with no zero-attempt fallback; retry cadence and max-attempt budget come from formal worker settings, and exhausted claims are deleted and terminalized in `worker_queue_terminal_events`; done/error changed-row counts require PostgreSQL `cursor.rowcount` evidence and fail on missing or invalid rowcount instead of reporting zero changed profile-current targets; repository-owned current-row upserts require connection transaction with no manual commit fallback, require formal `quality_flags_json` and `source_payload_json` row fields without legacy `quality_flags` / `source_payload` aliases, and RETURNING changed booleans require rowcount evidence matching returned-row presence before worker `rows_written` is reported | poll | none | `interval_seconds` |
 | `narrative_admission` (`NarrativeAdmissionWorker`) | `narrative_intel` | `domains/narrative_intel/runtime/narrative_admission_worker.py` | due `narrative_admission_dirty_targets` with positive producer-supplied `source_watermark_ms`; target-scoped Radar rows, `events`, current `token_intent_resolutions` | `narrative_admissions`; dirty-target enqueue rejects missing, zero, negative, boolean, or string watermarks before queue SQL and keeps no zero-watermark compatibility branch; dirty-target claim/done/error and admission upsert/stale writes are caller-owned inside `RepositorySession.transaction`, and repository-owned dirty-target/admission mutations require connection transaction with no manual commit fallback; dirty done/error/reschedule completion keys require positive claimed-row `attempt_count` with no zero-attempt fallback, and dirty/admission changed-row counts require PostgreSQL `cursor.rowcount` evidence instead of default zero-row or zero-admission accounting; worker session timeout, admission/source limits, lease, retry, and deterministic rank thresholds come from formal `narrative_admission` settings with no second-level `lease_seconds` / `error_retry_seconds` fallback, no service-local threshold defaults, and no carry-forward TTL compatibility | `token_radar_updated`, `resolution_updated` | none | `interval_seconds`; wake-in only, no wake emitter |
 | `news_fetch` (`NewsFetchWorker`) | `news_intel` | `domains/news_intel/runtime/news_fetch_worker.py` | configured `news_intel.sources` with source classification/policy, due `news_sources`, RSS/Atom/CryptoPanic feeds, OpenNews REST `/open/news_search` catch-up | `news_sources`, `news_fetch_runs`, `news_provider_items`, `news_items`; configured-source `INSERT INTO news_sources ... ON CONFLICT ... RETURNING *` upserts require rowcount=1 with a returned source row before inserted/updated source rows are reported; provider-item `INSERT INTO news_provider_items ... ON CONFLICT ... RETURNING *` upserts require rowcount=1 with a returned provider-item row before inserted/updated provider observations are reported; canonical item `INSERT INTO news_items ... ON CONFLICT ... RETURNING *` upserts require rowcount=1 with a returned `news_items` row before observation edges, remap cleanup, or affected-item accounting use the canonical `news_item_id`; observation-edge `INSERT INTO news_item_observation_edges ... ON CONFLICT` upserts require rowcount=1 before provider-article remap, material duplicate remap, summary refresh, or affected-item accounting treats the provider observation as linked; observation summary `UPDATE news_items ... RETURNING items.*` refreshes require rowcount=1 with a returned current item row before affected-item accounting uses refreshed source/provider-article aggregates, while old zero-edge cleanup accepts rowcount=0/no row only as explicit optional cleanup state and never fallback `SELECT` readback; due-source `UPDATE news_sources ... RETURNING sources.*` claim results require cursor rowcount matching returned claim rows before provider fetch work; fetch-run start requires rowcount=1 for the `news_fetch_runs` running-row insert and matching `news_sources.last_fetch_at_ms` update before a run id is returned; fetch-run `UPDATE news_fetch_runs ... RETURNING *` finalization requires rowcount=1 with a returned run row before `news_sources` status changes or finalized run rows are returned; semantic page dirty work from repository `affected_news_item_ids`; source-refresh work; worker sessions, due-source batch, source-claim lease, feed fetch limit, provider requirement, configured-source contract, and item/page dirty wake emitter read formal `news_fetch` settings/wiring directly | poll | `news_item_written`, `news_page_dirty` | `interval_seconds`; no agent admission; missing affected-set evidence fails closed |
@@ -429,8 +429,7 @@ notification_delivery
 | `macro_sync` (`MacroSyncWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_sync_worker.py` | due `macro_sync_windows`; packaged `macrodata` history bundle after claim | `macro_observations`, `macro_import_runs`, `macro_sync_windows`, `macro_sync_runs`; retry-budget decisions require claimed-window `attempt_count` and `max_attempts` with no default fallback; sync-window enqueue/claim `RETURNING` paths require PostgreSQL rowcount evidence matching returned-row presence before enqueued, no-work, or claimed-window state is reported; sync-window terminal/retry/failure and `macro_sync_state` repair accounting requires PostgreSQL single-row `cursor.rowcount` evidence and fails on missing, invalid, or multi-row counts instead of default zero/one-row accounting | poll | `macro_observations_imported` | claims one bounded window; idle cycles do no provider IO and no broad fact scan |
 | `macro_view_projection` (`MacroViewProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_view_projection_worker.py` | due `macro_projection_dirty_targets`; then exact `macro_observations` history and `macro_observation_series_rows` current projection | `macro_observation_series_rows`, `macro_view_snapshots`, `macro_observation_series_publication_state`; `macro_view_snapshots` uses natural `projection_version` as its sole current-row key and stores no synthetic snapshot identifier; dirty-target claim, projection writes, and done/error state run through `RepositorySession.transaction` with post-commit wake only; repository-owned dirty-target claim/done/error mutations require connection transaction with no manual commit fallback; dirty-target enqueue/done/error and current-series delete/upsert counts require PostgreSQL `cursor.rowcount` evidence instead of default zero/one/length accounting; dirty-target retry cadence and retry budget come from formal worker settings, and exhausted claims are deleted with `RETURNING queue.*` and terminalized in `worker_queue_terminal_events` rather than being retried indefinitely; existing current-series rows must carry non-empty `payload_hash` before change/unchanged comparison; `macro_view_snapshots` `RETURNING true AS changed` rowcount must match returned-row presence before changed booleans or downstream wake counts are reported | `macro_observations_imported` | `macro_view_snapshot_updated` | `interval_seconds`; formal settings own statement timeout, batch, lease, retry, retry budget, lookback, and per-series bounds; no dirty target means no broad fact scan; unchanged signatures write zero serving rows and emit no downstream wake |
 | `macro_daily_brief_projection` (`MacroDailyBriefProjectionWorker`) | `macro_intel` | `domains/macro_intel/runtime/macro_daily_brief_projection_worker.py` | current `macro_view_snapshots` and current macro series rows | `macro_daily_briefs`; session timeout reads formal `macro_daily_brief_projection` settings directly; `macro_daily_briefs` `RETURNING true AS changed` rowcount must match returned-row presence before worker `rows_written` is reported | `macro_view_snapshot_updated` | none | daily `interval_seconds`; deterministic `assets_today` row writes zero serving rows when payload hash is unchanged |
-| `pulse_candidate` (`PulseCandidateWorker`) | `pulse_lab` | `domains/pulse_lab/runtime/pulse_candidate_worker.py` | due `pulse_trigger_dirty_targets` with positive producer-supplied `source_watermark_ms`; exact Token Radar current row and evidence context for Pulse `1h`/`4h` horizons | read models: `pulse_candidate_edge_state`, `pulse_candidates`, `pulse_candidates.decision_*`, `pulse_candidates.decision_json`, `pulse_playbook_snapshots`; control/audit: `pulse_agent_jobs`, run-budget tables, `pulse_agent_runs`, `pulse_agent_run_steps`, runtime-version and eval tables; trigger dirty enqueue rejects missing, zero, negative, boolean, or string watermarks before queue SQL and keeps no zero-watermark compatibility branch; trigger done/error/reschedule completion keys and exit-suppression `trigger_signature` require claimed-row `payload_hash`, trigger completion and agent job run-id/audit/retry/release decisions require positive claimed-row `attempt_count`, and trigger completion plus stale agent-run cleanup changed-row counts require PostgreSQL `cursor.rowcount` evidence instead of default zero-row accounting; agent run/step/runtime/eval audit, evidence packet upsert/run-link, public candidate upsert/hide, admission edge/budget, and playbook snapshot `RETURNING` writes validate cursor rowcount against returned-row presence, with unchanged candidate/playbook projections reported as rowcount=0/no-row instead of fallback `SELECT`; the retired playbook-outcome table/writer is absent and run outcomes remain in the run audit ledger; `max_attempts` is passed explicitly from formal worker settings at enqueue and required for retry/dead classification; evidence packet market-fact freshness comes from formal `evidence_market_freshness_ms`, not builder/repository defaults; timeline context receives explicit worker target `window`/`scope` and rejects malformed values instead of restoring `1h`/`all`; admission failure-circuit and timeline-debounce policy comes from formal `pulse_candidate` settings, not `PulseAdmissionPolicy` defaults | `token_radar_updated` | none | `interval_seconds` |
-| `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | `notifications` rebuildable serving rows and `notification_deliveries` control rows written inside the worker-session `unit_of_work`; insert results use formal `NotificationInsertOutcome`; `INSERT ... DO NOTHING` state classification for notification rows and insert-only delivery control rows requires PostgreSQL single-row `cursor.rowcount` evidence, and missing or invalid rowcount is malformed driver/wiring state rather than a created/existing decision; aggregated external deliveries use required requeue contract, and requeue `RETURNING *` outcomes require rowcount/returned-row consistency before reactivated delivery rows are reported; external delivery `max_attempts` comes from formal `settings.workers.notification_delivery.max_attempts` through the runtime factory, not a rule-worker constructor default; Signal Pulse notification query window/scope/status defaults, Signal Pulse page budget, candidate query limit, watched-account activity window, News high-signal recency window, and News high-signal overscan budgets live only in `settings.notifications`; watched-account activity passes its configured `since_ms` window into `EvidenceRepository.recent_events(...)` so PostgreSQL filters `events.received_at_ms` before the service shapes candidates; watched-account token alerts pass the worker evaluation `now_ms` through `AccountAlertService.account_alerts(...)` to `SignalRepository.account_alerts(...)`, so alert windows share the same rule-evaluation clock and do not fall back to repository wall time; Signal Pulse notification candidate discovery uses the dedicated `PulseReadRepository.list_signal_pulse_notification_candidates(...)` keyset/window query with per-scope/status budget, not public-list cursor pagination or one `list_candidates(...)` query per scope/status/page; non-Signal rules accept delivery settings only; rule evaluation receives explicit worker `now_ms` and the rule engine must not read wall-clock time; worker batch limit and session timeout read formal `notification_rule` settings directly | poll | none | `interval_seconds` |
+| `notification_rule` (`NotificationWorker`) | `notifications` | `domains/notifications/runtime/notification_worker.py` | notification rules, candidate rows | `notifications` rebuildable serving rows and `notification_deliveries` control rows written inside the worker-session `unit_of_work`; insert results use formal `NotificationInsertOutcome`; `INSERT ... DO NOTHING` state classification for notification rows and insert-only delivery control rows requires PostgreSQL single-row `cursor.rowcount` evidence, and missing or invalid rowcount is malformed driver/wiring state rather than a created/existing decision; aggregated external deliveries use required requeue contract, and requeue `RETURNING *` outcomes require rowcount/returned-row consistency before reactivated delivery rows are reported; external delivery `max_attempts` comes from formal `settings.workers.notification_delivery.max_attempts` through the runtime factory, not a rule-worker constructor default; candidate query limit, watched-account activity window, News high-signal recency window, and News high-signal overscan budgets live only in `settings.notifications`; watched-account activity passes its configured `since_ms` window into `EvidenceRepository.recent_events(...)` so PostgreSQL filters `events.received_at_ms` before the service shapes candidates; watched-account token alerts pass the worker evaluation `now_ms` through `AccountAlertService.account_alerts(...)` to `SignalRepository.account_alerts(...)`, so alert windows share the same rule-evaluation clock and do not fall back to repository wall time; rule evaluation receives explicit worker `now_ms` and the rule engine must not read wall-clock time; worker batch limit and session timeout read formal `notification_rule` settings directly | poll | none | `interval_seconds` |
 | `notification_delivery` (`NotificationDeliveryWorker`) | `notifications` | `domains/notifications/runtime/notification_delivery.py` | pending `notification_deliveries` | `notification_deliveries` side-effect/control ledger; claim/pre-flight/log-complete/external complete/fail state transitions use `RepositorySession.transaction` with external IO outside DB transactions; claim `RETURNING *` outcomes require PostgreSQL rowcount/returned-row consistency before no-delivery or claimed-delivery state is reported; repository-owned enqueue/requeue commits require connection transactions; batch limit and session timeout read formal `notification_delivery` settings directly | poll | none | `interval_seconds` |
 
 `macro_sync` queue state is a persisted control-plane read over
@@ -451,188 +450,6 @@ not reflect arbitrary objects with route-like attributes. It must also call
 `RegistryRepository.binance_usdt_perp_sync_plan_counts(...)` directly; missing
 support is a repository/session wiring failure, not an input-count estimate of
 inserts or deletes.
-
-`pulse_candidate` owns public Pulse row visibility transitions. If the
-low-information gate invalidates a previously public candidate, the worker must
-call `hide_public_candidate_for_low_information`; missing repository support is
-a dirty-trigger failure/retry and must not be treated as "nothing to hide".
-`pulse_candidate` and its job service read windows, scopes, queue limits, agent
-job budgets, dirty-trigger lease/retry intervals, target/candidate edge budgets,
-failure-circuit threshold/reasons, timeline-debounce policy, stale running-job
-timeout and terminalization batch size, trigger/gate thresholds, and session timeout directly from formal
-`workers.pulse_candidate` settings; missing settings, DB bundle, or decision
-client support is a construction/runtime contract failure, not a worker-local,
-repository-local, or policy-service default fallback.
-Dirty-trigger admission and capacity checks read `pulse_agent_jobs`,
-`pulse_candidate_edge_state`, recent-failure counts, pending job counts, and
-queue depth through the formal Pulse repositories. Missing repository support
-is a dirty-trigger failure/retry, not empty job, edge, capacity, or queue state.
-Claimed dirty-trigger `window` and `scope` values must match formal
-`workers.pulse_candidate` settings before exact Token Radar or timeline reads;
-malformed dimensions fail the dirty trigger for retry instead of being widened
-to all-public evidence.
-Existing failed `pulse_agent_jobs` rows must expose formal `attempt_count` and
-`max_attempts` values before admission policy can classify them as retryable;
-malformed attempt state is a dirty-trigger failure/retry, not a policy-local
-default.
-Pulse dirty-trigger claim, admission/edge/public visibility writes, job enqueue,
-and dirty target done/error updates run through `RepositorySession.transaction`;
-missing session transaction support is a runtime contract failure before
-claim/write, not a raw connection transaction fallback.
-Pulse admission edge-state and candidate edge-budget `RETURNING` writes require
-PostgreSQL `cursor.rowcount` evidence matching returned-row presence before edge
-rows, optional state rows, or budget booleans are reported; missing, invalid, or
-mismatched rowcount is malformed repository/driver state, not a returned-row
-success signal.
-Pulse dirty-trigger done/error/reschedule changed-row counts require PostgreSQL
-`cursor.rowcount`; missing or invalid rowcount is malformed repository/driver
-state, not zero changed dirty-trigger work.
-Pulse agent job execution writes the agent run ledger, deterministic eval,
-candidate/playbook rows, admission edge state, and job terminal state through
-`RepositorySession.transaction`; missing session transaction support is a
-runtime contract failure before writes, not a `nullcontext` or raw connection
-transaction fallback.
-The same execution path requires the claimed `pulse_agent_jobs.attempt_count`
-before run-id and agent-audit construction; malformed job claims fail before the
-pipeline enters repository state. Failure, timeout cancellation, provider
-cooldown, and backpressure release also require the claimed attempt for CAS, and
-failure retry/dead classification requires `max_attempts`.
-Pulse job terminal/dead transitions in `PulseJobsRepository` write
-`pulse_agent_jobs` state and `worker_queue_terminal_events` evidence in the
-same connection transaction. Missing connection transaction support fails before
-job-state or terminal-ledger SQL, not through `nullcontext` or manual commit
-compatibility. Batch terminal/dead transitions that use `UPDATE ... RETURNING`
-must validate PostgreSQL `cursor.rowcount` and require it to match returned rows
-before terminal ledger writes; missing, invalid, or mismatched rowcount is
-malformed repository/driver state, not a returned-row-count terminalized-job
-result.
-Pulse job enqueue, success marking, running-job release, and stale agent-run
-cleanup also use a connection transaction when the repository owns the commit.
-Missing connection transaction support fails before job/run SQL, not through
-manual `self.conn.commit()` compatibility.
-Stale agent-run cleanup changed-row counts require PostgreSQL
-`cursor.rowcount`; missing or invalid rowcount is malformed repository/driver
-state, not zero stale `pulse_agent_runs` work.
-`PulseJobsRepository.enqueue_job(...)` requires explicit `max_attempts`; the
-worker passes `settings.workers.pulse_candidate.max_attempts` into the row, and
-the repository must not keep a local fallback retry-budget default.
-Pulse stale running-job timeout is owned by
-`settings.workers.pulse_candidate.job_running_timeout_ms` and is passed into
-`PulseJobsRepository` at repository-session construction. `PulseJobsRepository`
-must not retain a local timeout default, and other Pulse repositories must not
-carry unused running-timeout state.
-Pulse stale exhausted running-job terminalization batch size is owned by
-`settings.workers.pulse_candidate.stale_running_terminalization_batch_size`; the
-worker passes it into `PulseJobsRepository.terminalize_exhausted_stale_running_jobs(...)`
-explicitly, and the repository must not keep a local `limit` default.
-Pulse agent write repositories for run/step/eval, evidence packet, candidate,
-playbook, and ordinary admission edge/budget mutations use the shared connection
-transaction when they own the commit. Missing connection transaction support
-fails before agent write SQL; runtime code must not fall back to manual
-`self.conn.commit()` compatibility. The evidence packet upsert validates
-PostgreSQL `cursor.rowcount=1` with a returned packet row; the separate
-`pulse_agent_runs` run-link `UPDATE` also validates rowcount=1 before the agent
-run is trusted to reference the packet id/hash.
-Pulse evidence packet construction reads source events, enriched events, market
-facts, and identity facts through the formal evidence source repository
-contract. Narrative admission/digest projections are not packet inputs. Missing
-source methods are repository/session wiring failures before a sealed packet
-exists, not empty evidence. The packet builder and evidence source repository consume the formal
-`PulseCandidateContext` dataclass directly; dict/SimpleNamespace-like context
-fallbacks are not part of the runtime contract. Market-fact freshness for the
-sealed packet comes from formal
-`settings.workers.pulse_candidate.evidence_market_freshness_ms` and the job
-run's explicit `now_ms`; the builder and evidence source repository must not
-retain local freshness defaults or default-to-current-clock compatibility.
-The evidence completeness gate consumes the formal `PulseEvidencePacket`
-directly; dict/object reflection, arbitrary `model_dump`, `__dict__`, or
-`vars()` compatibility is not part of the worker contract.
-The claim evidence verifier consumes the same formal packet and the strict
-`FinalDecision` model directly; dict/object final-decision reflection is outside
-the worker contract.
-The Pulse decision stage builder consumes formal `PulseEvidencePacket` and
-`EvidenceCompletenessGateResult` models. JSON context at the model-execution
-adapter boundary must be re-validated into those models before the domain
-runtime builds prompt input.
-Pulse stage-output normalization consumes the formal sealed packet directly
-when repairing model event-id fields; dict packet or dict/object evidence-ref
-compatibility is malformed adapter wiring, not a supported output shape.
-Pulse deterministic eval reads eval-case JSON but must re-validate the embedded
-packet into `PulseEvidencePacket` before allowed-ref grading. Partial dict
-packets are malformed eval artefacts, not valid evidence.
-Pulse request-audit hashes and trace packet/gate metadata are also derived from
-a validated `context["evidence_packet"]` and formal
-`EvidenceCompletenessGateResult`; top-level `evidence_packet_hash` fallbacks and
-raw gate dict payloads are outside the runtime contract.
-The runtime manifest must contribute a non-empty `runtime_version` to the same
-audit ledger; missing runtime versions fail before agent run metadata is built.
-Agent run identity fields (`run_id`, `job_id`, model, artifact hash, workflow,
-agent) are also required before request-audit metadata is built; empty identity
-strings fail instead of becoming audit placeholders.
-The runtime manifest model and artifact hash must match the request-audit model
-and artifact hash before the agent run ledger is built.
-Claimed `pulse_agent_jobs` rows must provide non-empty `job_id`,
-`trigger_signature`, and `timeline_signature` plus a positive `attempt_count`
-before Pulse run-id construction or job-service repository sessions. Empty
-segments are malformed queue state, not compatibility placeholders.
-The Pulse job service writes `pulse_agent_runs` identity from the validated
-request-audit payload directly. Missing or mismatched backend, workflow, agent,
-artifact, prompt/schema, input hash, trace metadata, runtime version, or
-runtime hash is a worker contract failure, not a defaultable ledger field.
-Pulse stage audit construction consumes formal `AgentExecutionResult` and
-`AgentExecutionRequestAudit` / `AgentExecutionResultAudit` contracts only.
-Loose gateway objects or reflective audit attributes fail before run-step audit
-rows are produced.
-Pulse `AgentStageSpec` construction validates request-audit trace `run_id` and
-stage packet group identity before gateway request audit/model execution.
-Missing trace metadata or missing packet group identity is malformed runtime
-output, not a fallback to the pipeline `run_id`.
-Pulse workflow identity is validated when the model-execution adapter is
-constructed. Omitted workflow input uses the canonical Pulse workflow constant;
-explicit blank or `None` workflow input is malformed wiring, not a defaultable
-identity.
-No-start provider backpressure/cooldown is driven only by formal
-`AgentExecutionError.error_class` and `execution_started=False`; loose audit
-dicts or alias exception fields are not job release contracts.
-Worker hard-timeout cleanup reads execution-started state only from formal
-`AgentExecutionCancelled` or the job service's `run_started` flag. Loose
-cancellation audit dicts are not retry/dead classification contracts.
-The recommendation clipper, write gate, and cost guard read formal
-`PulseGateResult`, `EvidenceCompletenessGateResult`,
-`ClaimEvidenceVerificationResult`, and `PulseSourceQualityDecision` fields
-directly; malformed gate objects are contract failures, not complete/public or
-valid defaults.
-Pulse job run-outcome classification also reads the formal
-`ClaimEvidenceVerificationResult` directly; unknown-ref outcomes cannot depend
-on an optional verifier object fallback.
-Signal Pulse public health reads persisted candidate/freshness state through
-the formal `PulseReadRepository.freshness_health(...)` contract. Missing method
-support is route/session wiring failure; the read service must not probe
-`repository.conn`, instantiate the freshness query service directly, or return
-empty health for a missing repository contract.
-Signal Pulse public list width is the same kind of read boundary:
-`SignalPulseService` passes `limit` explicitly into
-`PulseReadRepository.list_candidates(...)`, and the repository must not keep a
-local `limit=50` default.
-Signal Pulse notification candidate discovery is a worker-side read boundary,
-not a reuse of public-list cursor pagination. `NotificationRuleEngine` calls
-`PulseReadRepository.list_signal_pulse_notification_candidates(...)` once per
-evaluation with the configured window, scopes, statuses, and per-scope/status
-budget. That repository method materializes scopes/statuses as PostgreSQL
-keysets and uses a window rank per scope/status bucket; the rule engine must
-not loop over `list_candidates(...)` pages to discover notification work.
-Pulse trigger dirty-target repository enqueue, claim, done, error, and
-reschedule mutations use the shared connection transaction when the repository
-owns the commit. Missing connection transaction support fails before
-`pulse_trigger_dirty_targets` SQL, not through manual `self.conn.commit()`
-compatibility.
-Pulse trigger dirty-target done/error/reschedule write accounting requires real
-PostgreSQL `cursor.rowcount` evidence; missing or invalid rowcount fails before
-changed-row counts are returned.
-Pulse admission claims in `PulseAdmissionRepository` write edge observation,
-suppression/admission state, and target/candidate run-budget rows in the same
-connection transaction. Missing connection transaction support fails before edge
-or budget SQL, not through `nullcontext` compatibility.
 
 `news_page_projection` and `news_source_quality_projection` claim dirty
 targets, write their read models, enqueue downstream page dirty work, and mark
@@ -746,8 +563,8 @@ failure, not a reason to manually commit a repository connection.
 to `NotificationRuleEngine.evaluate(...)`. The rule engine must not keep a
 service-local current-clock fallback.
 Notification query windows and overscan budgets are likewise settings-owned:
-watched-account activity recency, Signal Pulse page budget, News high-signal
-recency, minimum News overscan limit, and News overscan multiplier are read from
+watched-account activity recency, News high-signal recency, minimum News
+overscan limit, and News overscan multiplier are read from
 `settings.notifications`, not module constants in the rule engine.
 External delivery retry budget is owned by
 `settings.workers.notification_delivery.max_attempts`; the runtime factory must
@@ -966,12 +783,12 @@ payload hash or SQL, not repository defaults from `attention`,
 require `factor_snapshot_json.composite.rank_score`,
 `factor_snapshot_json.composite.recommended_decision`, and
 `factor_snapshot_json.gates.max_decision`; missing score or decision output is
-not repaired to `0.0` or `discard`. Downstream Pulse Trigger, Narrative
-Admission, Token Profile Current, Asset Profile Refresh, and Token Capture Tier
+not repaired to `0.0` or `discard`. Downstream Narrative Admission, Token
+Profile Current, Asset Profile Refresh, and Token Capture Tier
 dirty targets derive `source_watermark_ms` only from positive current-row
 `source_max_received_at_ms`; malformed source watermarks fail closed instead of
-using `computed_at_ms`, `0`, or projection runtime time. Pulse Trigger and
-Narrative Admission repositories also reject missing or invalid producer
+using `computed_at_ms`, `0`, or projection runtime time. Narrative Admission
+repositories also reject missing or invalid producer
 watermarks before queue SQL and keep no zero-watermark enqueue compatibility
 branch. Current-row delete/upsert,
 target-feature write/delete, and target-feature retention write counts require
@@ -1057,7 +874,7 @@ Error completion also receives the formal worker `max_attempts` and
 `worker_name`; claims that have reached the retry budget are deleted with
 `RETURNING queue.*` and terminalized into `worker_queue_terminal_events` inside
 the projection transaction instead of being rescheduled indefinitely.
-Downstream dirty-target fan-out to Pulse, Narrative Admission, and Token Profile
+Downstream dirty-target fan-out to Narrative Admission and Token Profile
 Current compares previous/current Token Radar rows through required row
 `payload_hash` values; missing payload hashes fail before skip decisions instead
 of being treated as equal empty signatures.
@@ -1254,7 +1071,7 @@ evidence.
   terminal ledger must not pre-convert missing `attempt_count` to an explicit
   `0` override.
 - Queue Terminal retry transitions requeue target work only through formal
-  session repositories (`discovery`, `event_anchor_jobs`, `pulse_jobs`,
+  session repositories (`discovery`, `event_anchor_jobs`,
   `token_image_source_dirty_targets`, `token_radar_dirty_targets`, or
   `token_radar_source_dirty_events`). Missing retry repository support rolls
   back the terminal action and is not an optional queue capability discovered by
@@ -1296,30 +1113,11 @@ evidence.
   rows and writes terminal ledger evidence in the same connection transaction.
   Missing connection transaction support fails before delete/ledger SQL; runtime
   code must not fall back to `nullcontext` or manual commit compatibility.
-- `pulse_candidate` terminalizes stale, exhausted, failed, and timeout-cancelled
-  `pulse_agent_jobs` rows by writing job terminal/dead state and
-  `worker_queue_terminal_events` evidence in the same connection transaction.
-  Stale exhausted running-job terminalization uses the formal
-  `settings.workers.pulse_candidate.stale_running_terminalization_batch_size`
-  budget rather than a repository-local batch default. Missing connection
-  transaction support fails before job or ledger SQL; runtime code must not fall
-  back to `nullcontext` or manual commit compatibility.
-- `pulse_candidate` job enqueue, success marking, running-job release, and stale
-  agent-run cleanup use a connection transaction when the repository owns the
-  commit. Missing connection transaction support fails before job/run SQL;
-  runtime code must not fall back to manual `self.conn.commit()` compatibility.
-  Single-row `pulse_agent_jobs` `RETURNING` mutations validate cursor rowcount
-  against returned-row presence before job state, retry/dead classification, or
-  terminal ledger effects are reported.
-- `pulse_candidate` admission claims update `pulse_candidate_edge_state`,
-  `pulse_target_run_budget`, and `pulse_candidate_run_budget` in one connection
-  transaction. Missing connection transaction support fails before edge or budget
-  SQL; runtime code must not fall back to `nullcontext` compatibility.
 - Dirty-target claim paths that use `UPDATE ... RETURNING` must validate
   PostgreSQL cursor rowcount against returned claimed rows before workers load
   payloads, call providers, publish read models, or report claimed work. This
-  applies to Token Radar source/target queues, Macro projection targets, Pulse
-  triggers, Narrative Admission targets, Asset Market market-current/profile/
+  applies to Token Radar source/target queues, Macro projection targets,
+  Narrative Admission targets, Asset Market market-current/profile/
   image/asset-profile/capture-tier targets, News projection targets, and Event
   Anchor job claims/reconciles.
 - `macro_view_projection` publishes changed `macro_observation_series_rows`
@@ -1439,7 +1237,7 @@ method, not a CLI fallback to `SINGLE_WRITER_KEY`.
 | `market_tick_written` | `MarketTickStreamWorker`, `MarketTickPollWorker`, `EventAnchorBackfillWorker` | `MarketTickCurrentProjectionWorker` | `{target_type, target_id}` |
 | `market_tick_current_updated` | `MarketTickCurrentProjectionWorker` | `TokenRadarProjectionWorker` | `{target_type, target_id}` |
 | `resolution_updated` | `ResolutionRefreshWorker` | `TokenRadarProjectionWorker` | `{lookup_keys: [...]}` |
-| `token_radar_updated` | `TokenRadarProjectionWorker` | `NarrativeAdmissionWorker`, `PulseCandidateWorker` | `{window, scope}` |
+| `token_radar_updated` | `TokenRadarProjectionWorker` | `NarrativeAdmissionWorker` | `{window, scope}` |
 | `news_item_written` | `NewsFetchWorker` | `NewsItemProcessWorker`, `NewsPageProjectionWorker`, `NewsSourceQualityProjectionWorker` | `{source_id, count}` |
 | `news_item_processed` | `NewsItemProcessWorker` | `NewsStoryBriefWorker`, `NewsPageProjectionWorker` | `{count}` |
 | `news_story_brief_updated` | `NewsStoryBriefWorker` | `NewsPageProjectionWorker` | `{count}` |
@@ -1555,8 +1353,8 @@ Adding a wake channel requires all of these in one change:
   bootstrap/runtime cleanup must not recursively scan provider object
   graphs or provider-bundle gateway aliases for close methods.
   Worker-owned provider handles use the provider protocol's lifecycle method
-  directly, such as Pulse `decision_client.aclose()` and News fetch
-  `feed_client.close()`, without cross-shape fallback.
+  directly, such as News fetch `feed_client.close()`, without cross-shape
+  fallback.
   Market stream iterator cleanup follows the same rule for the per-cycle
   iterator returned by `iter_price_info().__aiter__()`: direct `aclose()`,
   no optional async-close probing.
@@ -1598,18 +1396,14 @@ provider SDK clients or expose worker/stage execution limits.
 Current lanes are configured under `workers.agent_runtime` in
 `workers.yaml`. `agent_runtime.defaults.model` is the single global
 agent model default; any lane can override `model` locally and otherwise
-inherits that default. Current lanes are `pulse.decision` and
-`news.item_brief` and `news.story_brief`. News fact candidates are deterministic outputs of
+inherits that default. Current lanes are `news.item_brief` and
+`news.story_brief`. News fact candidates are deterministic outputs of
 `news_item_process`, not a separate LLM lane. Attempt-burning workers reserve
 capacity before claiming DB work:
 
-Provider wiring for a known lane reads the formal lane settings directly.
-The Pulse decision provider takes its pipeline timeout from
-`workers.agent_runtime.lanes["pulse.decision"].timeout_seconds`; a missing
-lane or missing timeout is malformed runtime configuration, not a local
-120-second fallback. The low-level `LiteLLMPulseDecisionClient` does not
-expose a provider timeout budget; only the provider adapter may surface the
-configured lane timeout to domain orchestration.
+Provider wiring for a known lane reads the formal lane settings directly. A
+missing lane or timeout is malformed runtime configuration, not a provider-local
+fallback.
 
 `agent_runtime.defaults.model` and lane `model` select the registered model
 capability profile. The profile owns provider family, client-validation
@@ -1623,7 +1417,7 @@ model is known. Example DeepSeek lane override:
 ```yaml
 agent_runtime:
   lanes:
-    pulse.decision:
+    news.item_brief:
       model: deepseek-v4-flash
 ```
 
@@ -1637,17 +1431,10 @@ agent_runtime:
     model: deepseek-v4-flash
     provider_family: deepseek
   lanes:
-    pulse.decision:
-      priority: high
+    news.item_brief:
+      priority: low
 ```
 
-- `pulse_candidate` reserves `pulse.decision` before `pulse_agent_jobs`
-  claim. The decision reservation owns the global slot and lane bulkhead
-  for the single `pulse_decision` provider call.
-- Signal Pulse builds a domain-owned cost guard after evidence packet
-  construction and before LLM execution. Evidence-hard-blocked jobs finish
-  with deterministic audit only; source-quality-hidden and non-public paths skip
-  LLM execution; public trade/watch candidates run the single decision stage.
 - `news_item_brief` reserves `news.item_brief` before claiming a brief dirty
   target. No-start backpressure does not claim, burn attempts, or write an
   agent run ledger; provider-started validation failures write

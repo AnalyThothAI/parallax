@@ -14,19 +14,20 @@ describe("LiveTaskNav", () => {
 
     expect(screen.getByRole("navigation", { name: "live mobile tasks" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "Radar" })).toHaveAttribute("aria-current", "page");
-    expect(screen.getByRole("button", { name: "Lab" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Tape" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Lab" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "Tape" }));
 
     expect(onChange).toHaveBeenCalledWith("tape");
   });
 
-  it("switches into the lab task without a selected sidecar state", () => {
+  it("switches back to radar", () => {
     const onChange = vi.fn();
 
-    render(<LiveTaskNav activeTask="lab" onTaskChange={onChange} />);
+    render(<LiveTaskNav activeTask="tape" onTaskChange={onChange} />);
 
-    expect(screen.getByRole("button", { name: "Lab" })).toHaveAttribute("aria-current", "page");
+    expect(screen.getByRole("button", { name: "Tape" })).toHaveAttribute("aria-current", "page");
 
     fireEvent.click(screen.getByRole("button", { name: "Radar" }));
 

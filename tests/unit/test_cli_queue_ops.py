@@ -16,7 +16,7 @@ def test_queue_inspect_dispatches_through_ops_handler(monkeypatch) -> None:
     conn = _FakeTerminalConnection()
     conn.rows = [
         _terminal_row("terminal-1", worker_name="resolution_refresh", source_table="lookup", target_key="a"),
-        _terminal_row("terminal-2", worker_name="pulse", source_table="lookup", target_key="b"),
+        _terminal_row("terminal-2", worker_name="projection", source_table="lookup", target_key="b"),
     ]
 
     @contextmanager
@@ -355,73 +355,6 @@ def test_queue_resolve_retry_requeues_token_radar_dirty_target_with_bounded_tran
         {
             "targets": [source_row],
             "reason": "terminal_retry:operator checked radar target",
-            "now_ms": 1_700_000_100_000,
-            "due_at_ms": 1_700_000_100_000,
-            "commit": False,
-        }
-    ]
-
-
-def test_queue_resolve_retry_requeues_pulse_trigger_dirty_target_with_bounded_transition_payload(monkeypatch) -> None:
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    source_row = {
-        "target_type": "Asset",
-        "target_id": "asset-unit",
-        "window": "1h",
-        "scope": "all",
-        "payload_hash": "payload-pulse-trigger",
-        "source_watermark_ms": 1_700_000_000_000,
-        "attempt_count": 3,
-    }
-    conn = _FakeTerminalConnection()
-    conn.rows = [
-        _terminal_row(
-            "terminal-pulse-trigger-1",
-            worker_name="pulse_candidate",
-            source_table="pulse_trigger_dirty_targets",
-            target_key="Asset:asset-unit:1h:all",
-            source_row_json=source_row,
-        )
-    ]
-    repos = SimpleNamespace(
-        signals=SimpleNamespace(conn=conn),
-        pulse_trigger_dirty_targets=_FakePulseTriggerDirtyTargetRetryRepository(),
-    )
-
-    @contextmanager
-    def fake_repositories(_settings: object):
-        yield repos
-
-    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
-    stdout = io.StringIO()
-
-    code = main(
-        [
-            "ops",
-            "queue-resolve",
-            "--terminal-id",
-            "terminal-pulse-trigger-1",
-            "--action",
-            "retry",
-            "--reason",
-            "operator checked pulse trigger",
-            "--execute",
-        ],
-        stdout=stdout,
-    )
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert payload["ok"] is True
-    assert payload["data"]["operator_action"] == "retry"
-    assert payload["data"]["transition"] == {"requeued": 1, "due_at_ms": 1_700_000_100_000}
-    assert repos.pulse_trigger_dirty_targets.calls == [
-        {
-            "targets": [{**source_row, "due_at_ms": 1_700_000_100_000}],
-            "reason": "terminal_retry:operator checked pulse trigger",
             "now_ms": 1_700_000_100_000,
             "due_at_ms": 1_700_000_100_000,
             "commit": False,
@@ -949,8 +882,6 @@ def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
         ("event_anchor_backfill", "event_anchor_backfill_jobs"),
         ("market_tick_current_projection", "market_tick_current_dirty_targets"),
         ("narrative_admission", "narrative_admission_dirty_targets"),
-        ("pulse_candidate", "pulse_agent_jobs"),
-        ("pulse_candidate", "pulse_trigger_dirty_targets"),
         ("token_image_mirror", "token_image_source_dirty_targets"),
         ("token_profile_current", "token_profile_current_dirty_targets"),
         ("token_radar_projection", "token_radar_dirty_targets"),
@@ -1115,17 +1046,13 @@ class _FakeEmptyDiscoveryRetryRepository(_FakeDiscoveryRetryRepository):
         return 0
 
 
-class _FakePulseTriggerDirtyTargetRetryRepository:
+class _FakeNarrativeAdmissionDirtyTargetRetryRepository:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
 
     def enqueue_targets(self, targets, **kwargs):
         self.calls.append({"targets": [dict(target) for target in targets], **kwargs})
         return {"targets": len(targets)}
-
-
-class _FakeNarrativeAdmissionDirtyTargetRetryRepository(_FakePulseTriggerDirtyTargetRetryRepository):
-    pass
 
 
 class _FakeMarketTickCurrentDirtyTargetRetryRepository:

@@ -25,7 +25,6 @@ def test_rebuild_recent_token_intents_uses_current_builder_policy():
         result = rebuild_recent_token_intents(
             repos=repositories_for_connection(
                 conn,
-                pulse_job_running_timeout_ms=300_000,
                 notification_delivery_running_timeout_ms=300_000,
                 notification_delivery_stale_running_terminalization_batch_size=100,
             ),
@@ -37,7 +36,6 @@ def test_rebuild_recent_token_intents_uses_current_builder_policy():
 
         intents = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         ).token_intents.intents_for_event("event-cross")

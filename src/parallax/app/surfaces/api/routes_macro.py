@@ -30,11 +30,7 @@ from parallax.domains.macro_intel.services.macro_module_catalog import (
     UnsupportedMacroModuleError,
     get_macro_module_config,
 )
-from parallax.domains.macro_intel.services.macro_module_views import (
-    TRADE_MAP_RELIABILITY_CONCEPTS,
-    TRADE_MAP_RELIABILITY_WINDOW_DAYS,
-    build_macro_module_view,
-)
+from parallax.domains.macro_intel.services.macro_module_views import build_macro_module_view
 from parallax.domains.macro_intel.services.macro_series_view import (
     UnsupportedMacroConceptError,
     UnsupportedMacroSeriesWindowError,
@@ -48,6 +44,8 @@ from parallax.domains.news_intel.queries.news_page_query import NewsPageQuery
 router = APIRouter()
 
 _MACRO_MARKET_EVENT_NEWS_LIMIT = 6
+_OVERVIEW_MODULE_OBSERVATION_LOOKBACK_DAYS = 60
+_OVERVIEW_MODULE_OBSERVATION_LIMIT_PER_SERIES = 70
 
 
 @router.get("/macro")
@@ -277,9 +275,9 @@ def _module_concepts(config: Any) -> tuple[str, ...]:
 def _module_observations(repos: Any, *, module_id: str, concept_keys: tuple[str, ...]) -> list[dict[str, Any]]:
     if module_id == "overview":
         return repos.macro_intel.observations_for_concepts(
-            concept_keys=tuple(dict.fromkeys((*concept_keys, *TRADE_MAP_RELIABILITY_CONCEPTS))),
-            lookback_days=TRADE_MAP_RELIABILITY_WINDOW_DAYS,
-            limit_per_series=TRADE_MAP_RELIABILITY_WINDOW_DAYS + 10,
+            concept_keys=concept_keys,
+            lookback_days=_OVERVIEW_MODULE_OBSERVATION_LOOKBACK_DAYS,
+            limit_per_series=_OVERVIEW_MODULE_OBSERVATION_LIMIT_PER_SERIES,
         )
     return repos.macro_intel.observations_for_concepts(
         concept_keys=concept_keys,

@@ -139,7 +139,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "market_tick_poll": FakeWorker("market_tick_poll"),
             "resolution_refresh": FakeWorker("resolution_refresh"),
             "asset_profile_refresh": FakeWorker("asset_profile_refresh"),
-            "pulse_candidate": FakeWorker("pulse_candidate"),
             "token_radar_projection": FakeWorker("token_radar_projection"),
             "token_profile_current": FakeWorker("token_profile_current"),
             "notification_rule": FakeWorker("notification_rule"),
@@ -163,7 +162,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "asset_profile_refresh",
             "token_radar_projection",
             "token_profile_current",
-            "pulse_candidate",
             "notification_rule",
             "notification_delivery",
         ]
@@ -177,7 +175,6 @@ def test_scheduler_starts_enabled_workers_in_dependency_order_with_task_names() 
             "worker:asset_profile_refresh",
             "worker:token_radar_projection",
             "worker:token_profile_current",
-            "worker:pulse_candidate",
             "worker:notification_rule",
             "worker:notification_delivery",
         ]
@@ -418,13 +415,13 @@ def test_scheduler_unhealthy_reasons_reports_enabled_stopped_or_errored_workers_
         healthy = FakeWorker("market_tick_poll")
         stopped = FakeWorker("collector", exit_immediately=True)
         errored = FakeWorker("enrichment", fail_after_start=True)
-        disabled = FakeWorker("pulse_candidate", enabled=False, fail_run=True)
+        disabled = FakeWorker("disabled_test_worker", enabled=False, fail_run=True)
         scheduler = WorkerScheduler(
             workers={
                 "market_tick_poll": healthy,
                 "collector": stopped,
                 "enrichment": errored,
-                "pulse_candidate": disabled,
+                "disabled_test_worker": disabled,
             },
             db=FakeDB(),
             stop_timeout_seconds=0.1,
@@ -439,7 +436,7 @@ def test_scheduler_unhealthy_reasons_reports_enabled_stopped_or_errored_workers_
 
         assert "worker:collector:stopped" in reasons
         assert "worker:enrichment:errored:run failed" in reasons
-        assert not any("pulse_candidate" in reason for reason in reasons)
+        assert not any("disabled_test_worker" in reason for reason in reasons)
         await scheduler.stop()
 
     asyncio.run(scenario())
@@ -447,16 +444,16 @@ def test_scheduler_unhealthy_reasons_reports_enabled_stopped_or_errored_workers_
 
 def test_scheduler_unhealthy_reasons_reports_hard_timeout_as_liveness_failure() -> None:
     async def scenario() -> None:
-        hard_timed_out = FakeWorker("pulse_candidate")
-        hard_timed_out.last_error = "WorkerRunHardTimeout: worker:pulse_candidate:run_once hard timeout after 660s"
+        hard_timed_out = FakeWorker("test_worker")
+        hard_timed_out.last_error = "WorkerRunHardTimeout: worker:test_worker:run_once hard timeout after 660s"
         scheduler = WorkerScheduler(
-            workers={"pulse_candidate": hard_timed_out},
+            workers={"test_worker": hard_timed_out},
             db=FakeDB(),
             stop_timeout_seconds=0.1,
         )
-        scheduler.tasks["pulse_candidate"] = asyncio.Future()
+        scheduler.tasks["test_worker"] = asyncio.Future()
 
-        assert "worker:pulse_candidate:hard_timeout" in scheduler.unhealthy_reasons()
+        assert "worker:test_worker:hard_timeout" in scheduler.unhealthy_reasons()
 
     asyncio.run(scenario())
 
@@ -480,7 +477,7 @@ def test_scheduler_unhealthy_reasons_use_formal_status_payload_for_reason_detail
                 "unavailable_reason": "payload unavailable",
             },
         ),
-        "pulse_candidate": SimpleNamespace(
+        "news_item_brief": SimpleNamespace(
             active_run_once_hard_timed_out_at_ms=None,
             status_payload=lambda: {
                 "enabled": True,
@@ -495,7 +492,7 @@ def test_scheduler_unhealthy_reasons_use_formal_status_payload_for_reason_detail
 
     assert "worker:token_radar_projection:errored:payload error" in reasons
     assert "worker:live_price_gateway:unavailable:payload unavailable" in reasons
-    assert "worker:pulse_candidate:hard_timeout" in reasons
+    assert "worker:news_item_brief:hard_timeout" in reasons
     assert not any("stale attribute" in reason for reason in reasons)
 
 

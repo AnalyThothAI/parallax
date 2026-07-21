@@ -14,7 +14,6 @@ TOKEN_RADAR_SQL_SURFACES = (
     "src/parallax/domains/asset_market/repositories/asset_profile_refresh_target_repository.py",
     "src/parallax/domains/asset_market/repositories/registry_repository.py",
     "src/parallax/domains/narrative_intel/repositories/narrative_repository.py",
-    "src/parallax/domains/pulse_lab/queries/pulse_policy_evaluator.py",
     "src/parallax/domains/token_intel/queries/token_radar_rank_source_query.py",
     "src/parallax/domains/token_intel/read_models/asset_flow_service.py",
     "src/parallax/domains/token_intel/repositories/token_radar_repository.py",

@@ -145,7 +145,6 @@ function backlogValue(payload: OpsJson): string {
   const candidates = [
     payload.due_jobs,
     payload.total_pending,
-    payload.pending_digest_count,
     payload.failed_jobs_4h,
     payload.dead_jobs,
   ];

@@ -30,7 +30,6 @@ def test_ops_diagnostics_returns_aggregate_payload() -> None:
     with TestClient(app) as client:
         response = client.get(
             "/api/ops/diagnostics",
-            params={"since_hours": 4, "window": "1h", "scope": "all"},
             headers={"Authorization": "Bearer secret"},
         )
 

@@ -242,52 +242,6 @@ def _retry_event_anchor_job(
     return {"requeued": 1, "job": row}
 
 
-def _retry_pulse_agent_job(
-    repos: object,
-    event: dict[str, Any],
-    *,
-    now_ms: int,
-    reason: str,
-) -> dict[str, Any]:
-    try:
-        retry = cast(Any, repos).pulse_jobs.retry_terminal_job_from_snapshot
-    except AttributeError as exc:
-        raise ValueError("pulse_jobs_repository_required") from exc
-    if not callable(retry):
-        raise ValueError("pulse_jobs_repository_required")
-    row = retry(_source_row(event), now_ms=int(now_ms), reason=reason)
-    _require_requeued(row, "pulse_agent_job_retry_not_requeued")
-    return {"requeued": 1, "job": row}
-
-
-def _retry_pulse_trigger_dirty_target(
-    repos: object,
-    event: dict[str, Any],
-    *,
-    now_ms: int,
-    reason: str,
-) -> dict[str, Any]:
-    try:
-        enqueue_targets = cast(Any, repos).pulse_trigger_dirty_targets.enqueue_targets
-    except AttributeError as exc:
-        raise ValueError("pulse_trigger_dirty_target_repository_required") from exc
-    if not callable(enqueue_targets):
-        raise ValueError("pulse_trigger_dirty_target_repository_required")
-    source_row = _source_row(event)
-    target = {**source_row, "due_at_ms": int(now_ms)}
-    requeued = enqueue_targets(
-        [target],
-        reason=f"terminal_retry:{reason}",
-        now_ms=int(now_ms),
-        due_at_ms=int(now_ms),
-        commit=False,
-    )
-    requeued_count = int((requeued or {}).get("targets") or 0)
-    if requeued_count <= 0:
-        raise ValueError("pulse_trigger_dirty_target_retry_not_requeued")
-    return {"requeued": requeued_count, "due_at_ms": int(now_ms)}
-
-
 def _retry_narrative_admission_dirty_target(
     repos: object,
     event: dict[str, Any],
@@ -564,8 +518,6 @@ QUEUE_RETRY_TRANSITIONS = {
     ("event_anchor_backfill", "event_anchor_backfill_jobs"): _retry_event_anchor_job,
     ("market_tick_current_projection", "market_tick_current_dirty_targets"): _retry_market_tick_current_dirty_target,
     ("narrative_admission", "narrative_admission_dirty_targets"): _retry_narrative_admission_dirty_target,
-    ("pulse_candidate", "pulse_agent_jobs"): _retry_pulse_agent_job,
-    ("pulse_candidate", "pulse_trigger_dirty_targets"): _retry_pulse_trigger_dirty_target,
     ("token_image_mirror", "token_image_source_dirty_targets"): _retry_token_image_source_target,
     ("token_profile_current", "token_profile_current_dirty_targets"): _retry_token_profile_current_dirty_target,
     ("token_radar_projection", "token_radar_dirty_targets"): _retry_token_radar_dirty_target,

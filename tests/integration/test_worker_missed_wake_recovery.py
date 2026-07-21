@@ -10,11 +10,6 @@ from psycopg.types.json import Jsonb
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import (
-    PulseCandidateWorker,
-    PulseTriggerThresholds,
-)
-from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateThresholds
 from parallax.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_VERSION,
     TOKEN_RADAR_RESOLVER_POLICY_VERSION,
@@ -72,60 +67,6 @@ def test_token_radar_projection_worker_does_not_scan_recent_facts_when_no_dirty_
         conn.close()
 
 
-def test_pulse_candidate_worker_catches_up_from_persisted_token_radar_without_wake(tmp_path) -> None:
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        _seed_resolved_radar_source(conn)
-        conn.commit()
-        radar_worker = TokenRadarProjectionWorker(
-            name="token_radar_projection",
-            settings=_radar_settings(),
-            db=_DB(conn),
-            telemetry=object(),
-        )
-        empty_due_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
-        repair_enqueued = _enqueue_token_radar_repair(conn)
-        radar_result = asyncio.run(radar_worker.run_once(now_ms=FIXED_NOW_MS))
-        assert empty_due_result.notes["catch_up_enqueued"] == 0
-        assert empty_due_result.notes["rows_written"] == 0
-        assert repair_enqueued >= 1
-        assert radar_result.notes["rows_written"] >= 1
-
-        pulse_worker = PulseCandidateWorker(
-            name="pulse_candidate",
-            settings=_pulse_settings(),
-            db=_DB(conn),
-            telemetry=object(),
-            decision_client=_FakeDecisionClient(),
-            trigger_thresholds=PulseTriggerThresholds(min_rank_score=0),
-            gate_thresholds=PulseGateThresholds(
-                trade_candidate_min=72,
-                token_watch_min=1,
-                high_info_rejection_min=1,
-                high_conviction_min=78,
-            ),
-        )
-
-        scan = pulse_worker.scan_triggers_once(now_ms=FIXED_NOW_MS)
-
-        assert scan["asset_seen"] >= 1
-        assert scan["asset_enqueued"] >= 1
-        job = conn.execute(
-            """
-            SELECT status
-            FROM pulse_agent_jobs
-            ORDER BY created_at_ms DESC
-            LIMIT 1
-            """,
-        ).fetchone()
-        assert job is not None
-        assert job["status"] == "pending"
-        assert _FakeDecisionClient.calls == 0
-    finally:
-        conn.close()
-
-
 class _DB:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
@@ -134,36 +75,9 @@ class _DB:
     def worker_session(self, name: str, **_: Any):
         yield repositories_for_connection(
             self.conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
-
-
-class _FakeDecisionClient:
-    calls = 0
-
-    async def decide(self, *_: Any, **__: Any) -> Any:
-        type(self).calls += 1
-        raise AssertionError("scan_triggers_once should not call the decision client")
-
-
-def _enqueue_token_radar_repair(conn: Any) -> int:
-    repos = repositories_for_connection(
-        conn,
-        pulse_job_running_timeout_ms=300_000,
-        notification_delivery_running_timeout_ms=300_000,
-        notification_delivery_stale_running_terminalization_batch_size=100,
-    )
-    return int(
-        repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
-            since_ms=FIXED_NOW_MS - 60 * 60 * 1000,
-            now_ms=FIXED_NOW_MS,
-            limit=10,
-            reason="ops_repair",
-            commit=True,
-        )
-    )
 
 
 def _radar_settings(*, cold_interval_seconds: float = 0) -> SimpleNamespace:
@@ -185,44 +99,6 @@ def _radar_settings(*, cold_interval_seconds: float = 0) -> SimpleNamespace:
         private_cache_retention_ms=3_600_000,
         advisory_lock_key=2026051501,
         statement_timeout_seconds=5,
-    )
-
-
-def _pulse_settings() -> SimpleNamespace:
-    return SimpleNamespace(
-        enabled=True,
-        interval_seconds=0,
-        soft_timeout_seconds=1,
-        hard_timeout_seconds=2,
-        windows=("1h",),
-        scopes=("all",),
-        batch_size=10,
-        max_agent_jobs_per_cycle=2,
-        max_attempts=3,
-        max_enqueues_per_cycle=10,
-        max_pending_jobs_global=100,
-        max_pending_jobs_per_window_scope=25,
-        job_running_timeout_ms=300_000,
-        stale_running_terminalization_batch_size=100,
-        trigger_lease_ms=60_000,
-        trigger_capacity_retry_ms=30_000,
-        trigger_error_retry_ms=60_000,
-        target_edge_budget_per_hour=3,
-        candidate_edge_budget_per_hour=3,
-        failure_circuit_per_hour=3,
-        failure_circuit_reasons=("schema_validation_failed", "unknown_evidence_id"),
-        timeline_debounce_seconds=600,
-        evidence_market_freshness_ms=3_600_000,
-        statement_timeout_seconds=30,
-        stale_job_ttl_by_window_seconds={"1h": 3600},
-        advisory_lock_key=2026051502,
-        trigger_thresholds=SimpleNamespace(min_rank_score=45),
-        gate_thresholds=SimpleNamespace(
-            trade_candidate_min=72,
-            token_watch_min=45,
-            high_info_rejection_min=30,
-            high_conviction_min=78,
-        ),
     )
 
 
@@ -409,7 +285,6 @@ def _refresh_market_tick_current(conn: Any, *, now_ms: int) -> None:
     target_id = f"eip155:1:{ASSET_ADDRESS.lower()}"
     repos = repositories_for_connection(
         conn,
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )

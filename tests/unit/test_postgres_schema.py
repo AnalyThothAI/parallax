@@ -227,6 +227,9 @@ NEWS_PAGE_MACRO_EVENT_FLOW_MIGRATION = Path(
 BACKEND_KAPPA_CQRS_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260713_0183_backend_kappa_cqrs_hard_cut.py"
 )
+SIGNAL_PULSE_HARD_DELETE_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260721_0184_signal_pulse_hard_delete.py"
+)
 NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260606_0151_news_agent_market_admission_hard_cut.py"
 )
@@ -2948,6 +2951,34 @@ def test_backend_kappa_cqrs_hard_cut_requeues_then_drops_dead_or_malformed_deriv
     assert "PRIMARY KEY USING INDEX ux_macro_view_snapshots_current" in text
     assert "PRIMARY KEY USING INDEX ux_account_quality_snapshots_handle_window" in text
     assert text.count("DROP COLUMN snapshot_id") == 3
+    assert "irreversible hard cut" in text
+
+
+def test_signal_pulse_hard_delete_drops_entire_retired_projection_without_cascade() -> None:
+    text = SIGNAL_PULSE_HARD_DELETE_MIGRATION.read_text(encoding="utf-8")
+
+    assert 'revision = "20260721_0184"' in text
+    assert 'down_revision = "20260713_0183"' in text
+    assert "DELETE FROM notifications" in text
+    assert "DELETE FROM worker_queue_terminal_events" in text
+    for retired_table in (
+        "pulse_agent_eval_results",
+        "pulse_agent_eval_cases",
+        "pulse_evidence_packets",
+        "pulse_agent_run_steps",
+        "pulse_playbook_snapshots",
+        "pulse_candidates",
+        "pulse_agent_runs",
+        "pulse_agent_jobs",
+        "pulse_agent_runtime_versions",
+        "pulse_candidate_edge_state",
+        "pulse_candidate_run_budget",
+        "pulse_target_run_budget",
+        "pulse_trigger_dirty_targets",
+    ):
+        assert f"DROP TABLE {retired_table}" in text
+    assert "DROP TABLE IF EXISTS" not in text
+    assert all("CASCADE" not in line for line in text.splitlines() if "DROP TABLE" in line)
     assert "irreversible hard cut" in text
 
 

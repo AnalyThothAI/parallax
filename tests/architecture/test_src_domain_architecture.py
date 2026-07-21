@@ -5,8 +5,6 @@ import subprocess
 import sys
 from pathlib import Path
 
-from parallax.domains.pulse_lab.types.agent_decision import contains_trading_execution_instruction
-
 ROOT = Path(__file__).resolve().parents[2]
 SRC_ROOT = ROOT / "src" / "parallax"
 
@@ -20,7 +18,6 @@ DOMAINS = {
     "narrative_intel",
     "news_intel",
     "notifications",
-    "pulse_lab",
     "watchlist_intel",
     "account_quality",
 }
@@ -32,7 +29,6 @@ PROVIDER_DOMAINS = {
     "asset_market",
     "cex_market_intel",
     "news_intel",
-    "pulse_lab",
 }
 LEGACY_PACKAGES = {"collector", "pipeline", "retrieval", "storage", "market"}
 SQL_ALLOWED_PARTS = {
@@ -59,7 +55,6 @@ PROVIDER_WIRING_FACADE_PUBLIC_EXPORTS = {
     "CexMarketIntelProviders",
     "IngestionProviders",
     "NewsIntelProviders",
-    "PulseLabProviders",
     "UpstreamClientFactory",
     "WiredProviders",
     "wire_asset_market_providers",
@@ -81,7 +76,6 @@ FACADE_CONCRETE_EXPORTS = {
     "OkxDexQuoteProvider",
     "OkxDexWebSocketMarketProviderAdapter",
     "OkxProviderBundle",
-    "LiteLLMPulseDecisionProvider",
     "okx_chain_index",
     "okx_chain_indexes_to_chain_ids",
     "okx_index_to_chain_id",
@@ -376,23 +370,6 @@ def test_domain_interfaces_do_not_import_runtime_modules() -> None:
     )
 
 
-def test_pulse_lab_services_do_not_import_runtime_worker_modules() -> None:
-    service_root = SRC_ROOT / "domains" / "pulse_lab" / "services"
-    runtime_prefix = "parallax.domains.pulse_lab.runtime."
-    offenders = [
-        (path.relative_to(ROOT).as_posix(), imported)
-        for path in service_root.rglob("*.py")
-        for imported in _imports(path)
-        if imported.startswith(runtime_prefix)
-    ]
-    _assert_no_offenders(
-        offenders,
-        invariant="pulse_lab services do not depend on runtime workers",
-        reason="Use-case services may be called by workers, but importing workers would recreate orchestration cycles.",
-        fix="Move shared domain types into domains/pulse_lab/types or a focused service module.",
-    )
-
-
 def test_raw_sql_is_owned_by_repositories_queries_or_app_runtime() -> None:
     offenders = [
         path.relative_to(ROOT).as_posix()
@@ -531,15 +508,7 @@ def test_service_provider_wiring_is_the_only_integration_provider_join_point() -
         imports_domain_providers = any(
             imported.startswith("parallax.domains.") and ".providers" in imported for imported in imports
         )
-        allowed_adapter_protocol_import = (
-            MODEL_EXECUTION_DIR in path.parents and "parallax.domains.pulse_lab.providers" in imports
-        )
-        if (
-            imports_integrations
-            and imports_domain_providers
-            and PROVIDER_WIRING_DIR not in path.parents
-            and not allowed_adapter_protocol_import
-        ):
+        if imports_integrations and imports_domain_providers and PROVIDER_WIRING_DIR not in path.parents:
             offenders.append(path.relative_to(ROOT).as_posix())
     _assert_no_offenders(
         offenders,
@@ -654,43 +623,6 @@ importlib.import_module("parallax.app.runtime.worker_manifest")
     assert result.returncode == 0, result.stderr + result.stdout
 
 
-def test_pulse_agent_route_policy_stays_in_domain() -> None:
-    path = SRC_ROOT / "domains" / "pulse_lab" / "services" / "agent_routing.py"
-    offenders = [
-        f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}"
-        for imported, lineno in _all_import_records(path)
-        if imported.startswith("agents") or imported.startswith("parallax.integrations.")
-    ]
-    _assert_no_offenders(
-        offenders,
-        invariant="pulse agent route policy stays in the domain",
-        reason="Route/completeness policy is product behavior; importing provider SDKs hides it.",
-        fix="Move integration-specific code into integrations/model_execution or app/runtime/providers_wiring.py.",
-    )
-
-
-def test_pulse_lab_domain_does_not_import_model_sdk_primitives() -> None:
-    offenders: list[str] = []
-    forbidden_prefixes = ("agents", "openai", "litellm")
-    for path in (SRC_ROOT / "domains" / "pulse_lab").rglob("*.py"):
-        if "__pycache__" in path.parts:
-            continue
-        for imported, lineno in _all_import_records(path):
-            if imported.startswith(forbidden_prefixes):
-                offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
-    _assert_no_offenders(
-        offenders,
-        invariant="pulse_lab domain stays independent of model SDK primitives",
-        reason=(
-            "Pulse domain services own prompts, bounded evidence inputs, validation, and audit assembly; "
-            "model SDK calls belong in integrations/model_execution."
-        ),
-        fix=(
-            "Move SDK imports to integrations/model_execution and inject domain provider protocols or services instead."
-        ),
-    )
-
-
 def test_model_execution_integrations_do_not_import_repositories() -> None:
     offenders: list[str] = []
     for path in MODEL_EXECUTION_DIR.rglob("*.py"):
@@ -702,76 +634,4 @@ def test_model_execution_integrations_do_not_import_repositories() -> None:
         invariant="model execution integrations do not import repositories",
         reason="The adapter may run stages, but persistence belongs to domain repositories and workers.",
         fix="Return typed values from the adapter and let the owning domain runtime persist them.",
-    )
-
-
-def test_model_execution_integrations_do_not_import_pulse_queries_or_services() -> None:
-    offenders: list[str] = []
-    forbidden = (
-        "parallax.domains.pulse_lab.queries",
-        "parallax.domains.pulse_lab.services",
-    )
-    for path in MODEL_EXECUTION_DIR.rglob("*.py"):
-        for imported, lineno in _import_records(path):
-            if imported.startswith(forbidden):
-                offenders.append(f"{path.relative_to(ROOT).as_posix()}:{lineno} imports {imported}")
-    _assert_no_offenders(
-        offenders,
-        invariant="model execution integrations depend only on Pulse provider protocols and types",
-        reason="Pulse prompts, bounded evidence validation, and audit assembly are domain behavior.",
-        fix="Inject pulse_lab service runtimes from app/runtime/provider_wiring/model_execution.py instead.",
-    )
-
-
-def test_pulse_prompts_do_not_contain_execution_language() -> None:
-    """Pulse prompt lives under ``domains/pulse_lab/prompts/pulse_decision.md``.
-
-    Those markdown prompts deliberately enumerate every forbidden
-    execution term inside an explicit anti-injection / "do not produce"
-    section so the LLM knows what to refuse — that enumeration itself
-    triggers ``contains_trading_execution_instruction`` and is the only
-    expected source of matches. Scan each prompt with those guidance
-    sections stripped; any remaining match indicates a real prompt drift.
-
-    Lines stripped from the scan:
-
-    - Lines containing an explicit forbidden marker (``禁止``, ``不允许``,
-      ``绝对禁止``, ``forbidden``, ``do not``, ``✗``, ``错误``).
-    - Lines under a ``## Forbidden`` / ``## 禁止`` heading until the next
-      ``##`` heading.
-    """
-
-    forbidden_markers = ("禁止", "不允许", "forbidden", "do not", "✗", "错误", "must not")
-    prompts_dir = SRC_ROOT / "domains" / "pulse_lab" / "prompts"
-    offenders: list[str] = []
-    for prompt_path in sorted(prompts_dir.glob("*.md")):
-        text = prompt_path.read_text(encoding="utf-8")
-        scrubbed_lines: list[str] = []
-        in_forbidden_block = False
-        for line in text.splitlines():
-            stripped = line.strip()
-            if stripped.startswith("##"):
-                heading_lower = stripped.lower()
-                in_forbidden_block = (
-                    "forbidden" in heading_lower
-                    or "禁止" in stripped
-                    or "anti-injection" in heading_lower
-                    or "anti injection" in heading_lower
-                )
-                # Heading line itself never carries the offending example text.
-                continue
-            if in_forbidden_block:
-                continue
-            lowered = line.lower()
-            if any(marker in lowered or marker in line for marker in forbidden_markers):
-                continue
-            scrubbed_lines.append(line)
-        scrubbed = "\n".join(scrubbed_lines)
-        if contains_trading_execution_instruction(scrubbed):
-            offenders.append(prompt_path.relative_to(ROOT).as_posix())
-    _assert_no_offenders(
-        offenders,
-        invariant="Pulse prompts avoid trading execution language outside explicit forbidden-word guidance",
-        reason="Signal Pulse is research and monitoring only; prompts must not ask for orders or position advice.",
-        fix="Rewrite prompts to discuss observation, confidence, invalidation, and residual risk only.",
     )

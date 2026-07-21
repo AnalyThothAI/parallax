@@ -60,7 +60,7 @@ Current architecture test inventory:
 | `tests/architecture/test_projection_worker_idle_cost_contract.py` | Behavior contract | Idle projection workers avoid broad work. |
 | `tests/architecture/test_public_contracts_doc_alignment.py` | Generated hygiene | Public contract docs stay source-aligned. |
 | `tests/architecture/test_public_event_token_projection.py` | Behavior contract | Public event token projection contract. |
-| `tests/architecture/test_pulse_no_compat.py` | Migration tripwire | Pulse compatibility code stays deleted. |
+| `tests/architecture/test_signal_pulse_hard_delete.py` | Migration tripwire | The retired signal product and compatibility code stay deleted. |
 | `tests/architecture/test_runtime_lifecycle_hard_cut.py` | Migration tripwire | Runtime lifecycle hard cut. |
 | `tests/architecture/test_runtime_performance_architecture_hard_cut.py` | Migration tripwire | Runtime performance hard cut. |
 | `tests/architecture/test_runtime_worker_constraint_hard_cut.py` | Permanent invariant | Worker runtime constraints. |
@@ -69,7 +69,7 @@ Current architecture test inventory:
 | `tests/architecture/test_test_lane_contracts.py` | Permanent invariant | Test lane and taxonomy contract. |
 | `tests/architecture/test_token_intent_repository_contracts.py` | Permanent invariant | Token intent repository input, evidence-link, and rowcount contracts. |
 | `tests/architecture/test_token_profile_current_hard_cut.py` | Migration tripwire | Token profile current-row hard cut. |
-| `tests/architecture/test_token_pulse_equity_cpu_hard_cut_contract.py` | Migration tripwire | Token pulse CPU hard cut. |
+| `tests/architecture/test_token_equity_cpu_hard_cut_contract.py` | Migration tripwire | Token equity CPU hard cut. |
 | `tests/architecture/test_token_radar_publication_state_hard_cut.py` | Migration tripwire | Token Radar publication state hard cut. |
 | `tests/architecture/test_token_radar_source_width_contract.py` | Permanent invariant | Token Radar source width. |
 | `tests/architecture/test_token_radar_sql_surface_inventory_contract.py` | Generated hygiene | Token Radar SQL surface inventory. |

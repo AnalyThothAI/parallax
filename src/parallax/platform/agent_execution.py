@@ -17,7 +17,6 @@ from parallax.platform.agent_capabilities import (
 from parallax.platform.agent_hashing import json_sha256
 
 RUNTIME_VERSION = "litellm-execution-plane-v1"
-PULSE_DECISION_LANE = "pulse.decision"
 
 
 class AgentExecutionErrorClass(StrEnum):

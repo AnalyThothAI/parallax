@@ -20,7 +20,6 @@ Order rows by severity (high first) then by date introduced (oldest first).
 | Description | Introduced | Area | Severity | Impact | Owner |
 |-------------|------------|------|----------|--------|-------|
 | Repository `make check-all` baseline is red before frontend changes: current macro terminal verification stops at `ruff format --check` with 74 unchanged Python files; prior shadcn frontend verification saw the same baseline class at 57 files, and a temporary mechanical format pass then exposed 101 mypy errors in 34 unchanged backend/worker files | pre-2026-05-22 baseline, detected by `2026-05-22-shadcn-frontend-system-hardening`; recounted by `2026-05-26-macro-terminal-ui-navigation-hard-cut` | harness | high | Blocks the documented repository completion gate even when targeted backend and frontend gates pass; needs a backend typing/format cleanup separate from frontend hard-cut branches | unowned |
-| Frontend `npm test -- --run` baseline is red before rates-workbench changes: `useSignalPulseQueries` expects `/api/social-events/by-ids` while runtime calls `/api/events/by-ids`, and `WatchlistPage` source-navigator coverage times out at 5000ms | pre-2026-06-01 baseline, detected by `2026-06-01-rates-workbench-clarity-redesign` | harness | high | Blocks the documented frontend full-test gate even when targeted macro/rates, architecture, E2E, typecheck, lint, and build gates pass | unowned |
 | Docker `/readyz` remains red after the shadcn frontend rebuild because `market_tick_stream` reports `WorkerRunSoftTimeout` and OKX DEX WS is failed while DB/migrations and GMGN WS are healthy | pre-2026-05-22 runtime baseline, detected by `2026-05-22-shadcn-frontend-system-hardening` | pipeline | high | App container can serve `/healthz` and the frontend, but operator readiness stays false until the market tick stream / OKX provider runtime issue is isolated | unowned |
 | Macro/timsun parity gaps remain after the decision-console hard cut; `docs/references/MACRO_TIMSUN_SOURCE_GAP_MAP.md` now classifies the remaining trade-map, Fed communication, FedWatch, VIX futures/options, crypto derivatives, global-dollar, OFR/STFM funding, Treasury auction-tail, economy surprise, and credit microstructure gaps by implemented/public/license/model source gate before any deleted terminal page can be restored | 2026-06-16-macro-decision-console | pipeline | high | Parallax now has a usable public-data macro decision console and source-backed event/crypto bundles, but deeper timsun-style parity still needs explicit source gates and successor specs; no hidden routes, compatibility aliases, static future-source rows, or runtime placeholder labels should be reintroduced meanwhile | unowned |
 | `watched_event_gate` is still biased toward English / explicit entity language, so some Chinese account posts without CA, symbol, or resolved target can miss social-event extraction before Watchlist handle summaries see them | 2026-05-14-watchlist-handle-intel | pipeline | medium | Watchlist summaries can underrepresent Chinese narrative-only posts until the watched-event gate gets a multilingual semantic pass | unowned |
@@ -47,25 +46,12 @@ shape (cf. `src/parallax/domains/evidence/repositories/evidence_repository.py:60
 | `tests/integration/test_resolution_refresh_worker.py::test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_result` | `RegistryRepository.upsert_chain_asset` (no symbol/name/decimals) | seed identity via evidence repo |
 | `tests/integration/test_resolution_refresh_worker.py::test_address_discovery_remains_uncapped` | same | SELECT via identity-current |
 | `tests/integration/test_api_http.py::test_api_exposes_recent_search_and_signal_read_models` | `CliRuntime` API | `tokens` attr removed |
-| `tests/integration/test_api_http.py::test_api_signal_pulse_reads_pulse_candidates_after_hard_cut` | `PulseRepository.upsert_candidate` signature | drop `thesis=` kwarg |
 | `tests/integration/test_api_http.py::test_api_asset_flow_scope_filters_watched_mentions` | identity-current seeding | empty result vs {BONK,PEPE} |
 | `tests/integration/test_api_http.py::test_api_target_posts_returns_full_post_pages_and_requires_target_identity` | identity API | IndexError |
 | `tests/integration/test_api_http.py::test_api_target_social_timeline_returns_buckets_authors_and_posts` | identity API | IndexError |
 | `tests/integration/test_cli.py::CliTests::test_recent_search_asset_flow_and_alerts_use_postgres_runtime_store` | CLI runtime JSON output | Decimal serialization |
 
 Suggested follow-up owner: `unowned` (whoever next picks up the hard-cut family of specs).
-
-## CLI ops sync directory tests pinned to legacy config.yaml schema（来自 spec 2026-05-10-tests-and-lint-production-grade, P6 pre-flight）
-
-`tests/integration/test_cli.py::test_cli_ops_sync_gmgn_directory_dispatches_to_runner` and
-`tests/integration/test_cli.py::test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure` invoke `cli.main(...)`
-without isolating `HOME`, so `load_settings()` reads the developer's
-`~/.parallax/config.yaml`. The current dev environment has legacy
-`pulse_agent_trigger_min_rank_score`, `pulse_agent_gate_*` keys that `LlmConfig(extra='forbid')`
-rejects.
-
-To unstick: either (a) `monkeypatch.setenv("HOME", str(tmp_path))` and seed a minimal
-`~/.parallax/config.yaml` per test, or (b) refactor the runner so the test never reaches `load_settings`.
 
 ## mypy strict overrides（来自 spec 2026-05-10-tests-and-lint-production-grade）
 

@@ -136,7 +136,6 @@ const routeCases: RouteCase[] = [
     },
     specific: async (page) => {
       const tokenCase = page.getByRole("region", { name: "Token case" });
-      await expect(tokenCase.getByRole("heading", { name: "Propagation Summary" })).toBeVisible();
       await expect(tokenCase.getByRole("heading", { name: "Mention Timeline" })).toBeVisible();
       await expect(tokenCase.getByRole("heading", { name: "Live Market" })).toBeVisible();
       await expect(

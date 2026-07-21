@@ -9,7 +9,6 @@ test("token route renders the HANSA case dossier and loads another post page", a
 
   const tokenCase = page.getByRole("region", { name: "Token case" });
   await expect(tokenCase.getByRole("heading", { name: /\$HANSA/ })).toBeVisible();
-  await expect(tokenCase.getByRole("heading", { name: "Propagation Summary" })).toBeVisible();
   await expect(tokenCase.getByRole("heading", { name: "Mention Timeline" })).toBeVisible();
   await expect(tokenCase.getByRole("heading", { name: "Live Market" })).toBeVisible();
   await expect(

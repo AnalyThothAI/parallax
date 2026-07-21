@@ -71,26 +71,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.llm_configured is False
     assert settings.llm_timeout_seconds == 120
     assert settings.agent_runtime_default_model == "deepseek-v4-flash"
-    assert settings.agent_runtime_model_for_lane("pulse.decision") == "deepseek-v4-flash"
-    assert settings.pulse_agent_configured is False
     assert not hasattr(settings.workers, "enrichment")
-    assert settings.workers.pulse_candidate.interval_seconds == 60
-    assert settings.workers.pulse_candidate.batch_size == 10
-    assert settings.workers.pulse_candidate.max_attempts == 3
-    assert settings.workers.pulse_candidate.job_running_timeout_ms == 300_000
-    assert settings.workers.pulse_candidate.stale_running_terminalization_batch_size == 100
-    assert settings.workers.pulse_candidate.trigger_lease_ms == 60_000
-    assert settings.workers.pulse_candidate.trigger_capacity_retry_ms == 30_000
-    assert settings.workers.pulse_candidate.trigger_error_retry_ms == 60_000
-    assert settings.workers.pulse_candidate.target_edge_budget_per_hour == 3
-    assert settings.workers.pulse_candidate.candidate_edge_budget_per_hour == 3
-    assert settings.workers.pulse_candidate.failure_circuit_per_hour == 3
-    assert settings.workers.pulse_candidate.failure_circuit_reasons == (
-        "schema_validation_failed",
-        "unknown_evidence_id",
-    )
-    assert settings.workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
-    assert settings.workers.pulse_candidate.gate_thresholds.trade_candidate_min == 72
     assert settings.workers.notification_delivery.running_timeout_ms == 300_000
     assert settings.workers.notification_delivery.stale_running_terminalization_batch_size == 100
     assert not hasattr(settings.workers, "handle_summary")
@@ -431,19 +412,6 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
                 },
                 "lanes": {},
             },
-            "pulse_candidate": {
-                "interval_seconds": 1,
-                "batch_size": 100,
-                "max_attempts": 1,
-                "stale_running_terminalization_batch_size": 13,
-                "trigger_thresholds": {"min_rank_score": 60},
-                "gate_thresholds": {
-                    "trade_candidate_min": 70,
-                    "token_watch_min": 40,
-                    "high_info_rejection_min": 25,
-                    "high_conviction_min": 74,
-                },
-            },
         },
     )
 
@@ -463,17 +431,6 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
     assert settings.llm_trace_api_key == "sk-trace"
     assert settings.llm_trace_export_configured is False
     assert settings.llm_trace_include_sensitive_data is False
-    assert settings.workers.pulse_candidate.interval_seconds == 1
-    assert settings.workers.pulse_candidate.batch_size == 100
-    assert settings.workers.pulse_candidate.max_attempts == 1
-    assert settings.workers.pulse_candidate.stale_running_terminalization_batch_size == 13
-    assert settings.agent_runtime_model_for_lane("pulse.decision") == "gpt-test"
-    assert settings.pulse_agent_configured is True
-    assert settings.workers.pulse_candidate.trigger_thresholds.min_rank_score == 60
-    assert settings.workers.pulse_candidate.gate_thresholds.trade_candidate_min == 70
-    assert settings.workers.pulse_candidate.gate_thresholds.token_watch_min == 40
-    assert settings.workers.pulse_candidate.gate_thresholds.high_info_rejection_min == 25
-    assert settings.workers.pulse_candidate.gate_thresholds.high_conviction_min == 74
 
 
 def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypatch):
@@ -491,7 +448,6 @@ def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypat
     )
     workers = yaml.safe_load(default_workers_yaml())
     workers["agent_runtime"]["defaults"]["model"] = "gpt-base"
-    workers["agent_runtime"]["lanes"]["pulse.decision"]["model"] = "gpt-pulse"
     workers["agent_runtime"]["lanes"]["news.item_brief"]["model"] = "gpt-news"
     workers["agent_runtime"]["lanes"]["news.story_brief"]["model"] = "gpt-story"
     write_workers_config(tmp_path, workers)
@@ -499,12 +455,36 @@ def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypat
     settings = load_settings()
 
     assert settings.agent_runtime_default_model == "gpt-base"
-    assert settings.agent_runtime_model_for_lane("pulse.decision") == "gpt-pulse"
     assert settings.agent_runtime_model_for_lane("news.item_brief") == "gpt-news"
     assert settings.agent_runtime_model_for_lane("news.story_brief") == "gpt-story"
-    assert settings.pulse_agent_configured is True
-    assert settings.news_item_brief_configured is True
-    assert settings.news_story_brief_configured is True
+    assert settings.news_agent_execution_enabled is True
+
+
+def test_news_agent_execution_requires_domain_worker_and_llm_demand() -> None:
+    base = {
+        "ws_token": "secret",
+        "llm": {"api_key": "sk-test"},
+        "workers": {
+            "agent_runtime": {"defaults": {"model": "gpt-test"}},
+            "news_item_brief": {"enabled": False},
+            "news_story_brief": {"enabled": False},
+        },
+    }
+
+    no_worker = Settings.model_validate(base)
+    enabled = Settings.model_validate({**base, "workers": {**base["workers"], "news_story_brief": {"enabled": True}}})
+    disabled_domain = Settings.model_validate(
+        {
+            **base,
+            "news_intel": {"enabled": False},
+            "workers": {**base["workers"], "news_story_brief": {"enabled": True}},
+        }
+    )
+
+    assert no_worker.llm_configured is True
+    assert no_worker.news_agent_execution_enabled is False
+    assert enabled.news_agent_execution_enabled is True
+    assert disabled_domain.news_agent_execution_enabled is False
 
 
 def test_load_settings_rejects_legacy_llm_model_fields(tmp_path, monkeypatch):
@@ -518,7 +498,6 @@ def test_load_settings_rejects_legacy_llm_model_fields(tmp_path, monkeypatch):
                 "provider": "litellm",
                 "api_key": "sk-test",
                 "model": "gpt-base",
-                "pulse_agent_model": "gpt-pulse",
                 "watchlist_handle_summary_model": "gpt-watchlist",
                 "narrative_intel_model": "gpt-narrative",
                 "news_item_brief_model": "gpt-news",
@@ -809,16 +788,7 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
                 "news_high_signal_recency_window_ms": 3_600_000,
                 "news_high_signal_query_min_limit": 80,
                 "news_high_signal_query_multiplier": 4,
-                "signal_pulse_max_pages": 3,
                 "rules": {
-                    "signal_pulse_candidate": {
-                        "enabled": True,
-                        "channels": ["in_app", "pushdeer"],
-                        "window": "1h",
-                        "scopes": ["all"],
-                        "statuses": ["trade_candidate", "token_watch"],
-                        "cooldown_seconds": 120,
-                    },
                     "news_high_signal": {
                         "enabled": True,
                         "channels": ["in_app", "pushdeer"],
@@ -845,7 +815,6 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     assert settings.notifications.news_high_signal_recency_window_ms == 3_600_000
     assert settings.notifications.news_high_signal_query_min_limit == 80
     assert settings.notifications.news_high_signal_query_multiplier == 4
-    assert settings.notifications.signal_pulse_max_pages == 3
     activity_rule = settings.notifications.rules["watched_account_activity"]
     assert activity_rule.channels == ("in_app",)
     assert activity_rule.cooldown_seconds == 300
@@ -854,12 +823,6 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     assert alert_rule.cooldown_seconds == 900
     assert "hot_quality_token_5m" not in settings.notifications.rules
     assert "quality_token_5m" not in settings.notifications.rules
-    pulse_rule = settings.notifications.rules["signal_pulse_candidate"]
-    assert pulse_rule.channels == ("in_app", "pushdeer")
-    assert pulse_rule.window == "1h"
-    assert pulse_rule.scopes == ("all",)
-    assert pulse_rule.statuses == ("trade_candidate", "token_watch")
-    assert pulse_rule.cooldown_seconds == 120
     news_rule = settings.notifications.rules["news_high_signal"]
     assert news_rule.cooldown_seconds == 1800
     assert settings.notifications.channels["pushdeer"].provider == "pushdeer"
@@ -913,7 +876,6 @@ def test_notification_candidate_limit_rejects_zero(tmp_path, monkeypatch):
         "news_high_signal_recency_window_ms",
         "news_high_signal_query_min_limit",
         "news_high_signal_query_multiplier",
-        "signal_pulse_max_pages",
     ],
 )
 def test_notification_query_policy_fields_reject_zero(tmp_path, monkeypatch, field):
@@ -965,7 +927,7 @@ def test_notification_settings_reject_unused_query_fields_for_non_signal_rules(
         },
     )
 
-    with pytest.raises(ValidationError, match="only accepts delivery settings"):
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         load_settings()
 
 
@@ -987,7 +949,7 @@ def test_news_high_signal_rejects_removed_score_thresholds(tmp_path, monkeypatch
         },
     )
 
-    with pytest.raises(ValidationError, match="only accepts delivery settings"):
+    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
         load_settings()
 
 
@@ -1021,7 +983,7 @@ def test_notification_settings_reject_removed_rule_fields(tmp_path, monkeypatch)
             "handles": ["toly"],
             "notifications": {
                 "rules": {
-                    "signal_pulse_candidate": {
+                    "watched_account_activity": {
                         "candidate_score_min": 70,
                     }
                 }
@@ -1030,101 +992,6 @@ def test_notification_settings_reject_removed_rule_fields(tmp_path, monkeypatch)
     )
 
     with pytest.raises(ValidationError):
-        load_settings()
-
-
-def test_signal_pulse_rule_rejects_token_flow_thresholds(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "notifications": {
-                "rules": {
-                    "signal_pulse_candidate": {
-                        "social_heat_min": 70,
-                    }
-                }
-            },
-        },
-    )
-
-    with pytest.raises(ValidationError):
-        load_settings()
-
-
-def test_signal_pulse_notification_rule_rejects_removed_5m_window(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "notifications": {
-                "rules": {
-                    "signal_pulse_candidate": {
-                        "window": "5m",
-                    }
-                }
-            },
-        },
-    )
-
-    with pytest.raises(ValidationError):
-        load_settings()
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "match"),
-    [
-        ("window", None, "window is required"),
-        ("window", "", "window is required"),
-        ("scopes", [], "scopes are required"),
-        ("scopes", "", "scopes are required"),
-        ("statuses", [], "statuses are required"),
-        ("statuses", "", "statuses are required"),
-    ],
-)
-def test_signal_pulse_notification_rule_rejects_empty_query_dimensions(tmp_path, monkeypatch, field, value, match):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "notifications": {
-                "rules": {
-                    "signal_pulse_candidate": {
-                        field: value,
-                    }
-                }
-            },
-        },
-    )
-
-    with pytest.raises(ValidationError, match=match):
-        load_settings()
-
-
-def test_signal_pulse_rule_rejects_theme_watch_status(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "notifications": {
-                "rules": {
-                    "signal_pulse_candidate": {
-                        "statuses": ["trade_candidate", "theme_watch"],
-                    }
-                }
-            },
-        },
-    )
-
-    with pytest.raises(ValidationError, match="unsupported Signal Pulse statuses"):
         load_settings()
 
 
@@ -1149,7 +1016,6 @@ def test_load_settings_requires_workers_yaml(tmp_path, monkeypatch):
 @pytest.mark.parametrize(
     "removed_payload",
     [
-        {"llm": {"pulse_agent_batch_size": 10}},
         {"llm": {"watchlist_handle_summary_poll_interval_seconds": 2}},
         {"notifications": {"poll_interval_seconds": 5}},
         {"live_observation_heartbeat_seconds": 60},
@@ -1174,15 +1040,6 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     payload = yaml.safe_load(Path("config.example.yaml").read_text(encoding="utf-8"))
     llm = payload["llm"]
     forbidden_llm_keys = {
-        "pulse_agent_enabled",
-        "pulse_agent_interval_seconds",
-        "pulse_agent_batch_size",
-        "pulse_agent_max_attempts",
-        "pulse_agent_trigger_min_rank_score",
-        "pulse_agent_gate_trade_candidate_min",
-        "pulse_agent_gate_token_watch_min",
-        "pulse_agent_gate_high_info_rejection_min",
-        "pulse_agent_gate_high_conviction_min",
         "watchlist_handle_summary_enabled",
         "watchlist_handle_summary_signal_threshold",
         "watchlist_handle_summary_time_threshold_ms",
@@ -1208,11 +1065,6 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
     assert "workers" not in payload
     workers = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
     assert not hasattr(workers, "enrichment")
-    assert workers.pulse_candidate.trigger_thresholds.min_rank_score == 45
-    assert workers.pulse_candidate.job_running_timeout_ms == 300_000
-    assert workers.pulse_candidate.stale_running_terminalization_batch_size == 100
-    assert workers.pulse_candidate.trigger_lease_ms == 60_000
-    assert workers.pulse_candidate.failure_circuit_reasons == ("schema_validation_failed", "unknown_evidence_id")
     assert workers.notification_delivery.running_timeout_ms == 300_000
     assert workers.notification_delivery.stale_running_terminalization_batch_size == 100
     assert not hasattr(workers, "handle_summary")

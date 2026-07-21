@@ -168,7 +168,6 @@ class _DB:
     def worker_session(self, name: str, **_: Any):
         yield repositories_for_connection(
             self.conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
@@ -178,7 +177,6 @@ class _DB:
         with self.conn.transaction():
             yield repositories_for_connection(
                 self.conn,
-                pulse_job_running_timeout_ms=300_000,
                 notification_delivery_running_timeout_ms=300_000,
                 notification_delivery_stale_running_terminalization_batch_size=100,
             )

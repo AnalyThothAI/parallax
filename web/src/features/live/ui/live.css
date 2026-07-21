@@ -11,27 +11,12 @@
     gap: 6px;
   }
 
-  .bottom-deck {
-    display: grid;
-    grid-template-columns: minmax(380px, 0.95fr) minmax(400px, 1.05fr);
-    grid-template-rows: minmax(0, 1fr);
-    height: 100%;
-    min-height: 0;
-    border-top: 1px solid rgba(154, 159, 146, 0.14);
-  }
-
-  .bottom-deck > *:nth-child(3) {
-    grid-column: 1 / -1;
-    border-top: 1px solid rgba(154, 159, 146, 0.14);
-  }
-
-  .bottom-deck > * {
-    min-width: 0;
-  }
-
   .live-signal-tape {
     grid-template-rows: auto minmax(0, 1fr);
     min-height: 140px;
+    overflow: hidden;
+    border-top: 1px solid rgba(154, 159, 146, 0.14);
+    border-right: 0;
   }
 
   .tape-list {
@@ -147,11 +132,6 @@
     overflow: hidden;
   }
 
-  .bottom-deck {
-    min-height: 0;
-    overflow: hidden;
-  }
-
   .radar-panel {
     display: grid;
     grid-template-rows: auto minmax(0, 1fr);
@@ -237,10 +217,6 @@
       padding-bottom: 0;
     }
 
-    .bottom-deck {
-      display: contents;
-    }
-
     .live-page [data-mobile-task-panel] {
       display: none;
       min-height: 0;
@@ -254,8 +230,7 @@
     }
 
     .live-page.mobile-task-radar [data-mobile-task-panel="radar"],
-    .live-page.mobile-task-tape [data-mobile-task-panel="tape"],
-    .live-page.mobile-task-lab [data-mobile-task-panel="lab"] {
+    .live-page.mobile-task-tape [data-mobile-task-panel="tape"] {
       display: grid;
       grid-row: 1;
     }
@@ -265,7 +240,7 @@
       grid-row: 2;
       z-index: 30;
       display: grid;
-      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-columns: repeat(2, minmax(0, 1fr));
       border-top: 1px solid rgba(154, 159, 146, 0.14);
       background: rgba(9, 12, 12, 0.98);
       padding: 6px 8px calc(6px + env(safe-area-inset-bottom));
@@ -297,12 +272,6 @@
     .live-page > .mobile-task-surface,
     .live-signal-tape {
       display: grid;
-    }
-  }
-
-  @media (max-width: 1279px) {
-    .bottom-deck {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     }
   }
 

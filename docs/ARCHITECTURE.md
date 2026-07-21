@@ -11,7 +11,6 @@ GMGN public stream
   → domains/asset_market        (market tick capture, capture-tier projection, profile refresh/current projection, discovery)
   → domains/token_intel         (Token Radar current-row publication, scoring, search read model)
   → domains/narrative_intel     (current source-set admissions and legacy narrative currentness reads)
-  → domains/pulse_lab           (candidate gate, agent route, decision, audit ledger)
   → domains/watchlist_intel     (handle timeline read model and account topic summaries)
   → domains/news_intel          (configured news ingestion, news facts, item briefs, page read model)
   → domains/cex_market_intel    (centralized exchange derivative radar read models)
@@ -96,8 +95,7 @@ are wrong too.
    `news_item_entities`, `news_token_mentions`, `news_fact_candidates`,
    and `macro_observations` are
    the business fact tables. Control plane tables such as
-   `event_anchor_backfill_jobs`, `pulse_trigger_dirty_targets`,
-   `narrative_admission_dirty_targets`,
+   `event_anchor_backfill_jobs`, `narrative_admission_dirty_targets`,
    `token_radar_source_dirty_events`, `token_radar_dirty_targets`,
    `token_profile_current_dirty_targets`, `token_image_source_dirty_targets`,
    `asset_profile_refresh_targets`, `token_capture_tier_dirty_targets`, and
@@ -183,8 +181,8 @@ are wrong too.
    reads only `token_radar_current_rows` plus
    `token_radar_publication_state`. `token_radar_rank_source_events` is lazy
    evidence/detail, not leaderboard service. `token_radar_target_features` is
-   projection-private intermediate state, not an API, CLI, Pulse,
-   notification, or repair read path. Its retention is owned by
+   projection-private intermediate state, not an API, CLI, notification, or
+   repair read path. Its retention is owned by
    `TokenRadarProjectionWorker`, which runs a bounded private-cache maintenance
    lane from formal `settings.workers.token_radar_projection.private_cache_retention_*`
    settings; rank publication still does not prune retention rows in the hot
@@ -217,14 +215,14 @@ are wrong too.
    `composite.recommended_decision`, and `gates.max_decision` are required
    formal fields, and the cache writer does not coerce missing values into
    `0.0` or `discard`.
-   Pulse, Narrative Admission, Token Profile Current, Asset Profile Refresh,
-   and Token Capture Tier downstream dirty targets derive
+   Narrative Admission, Token Profile Current, Asset Profile Refresh, and Token
+   Capture Tier downstream dirty targets derive
    `source_watermark_ms` only from current-row positive
    `source_max_received_at_ms`; missing or invalid source watermarks fail closed
    instead of falling back to `computed_at_ms`, `0`, or projection runtime time.
-   Pulse Trigger and Narrative Admission dirty repositories also reject missing,
-   zero, negative, boolean, or string producer watermarks before queue SQL, and
-   their enqueue SQL no longer carries a zero-watermark compatibility branch.
+   The Narrative Admission dirty repository also rejects missing, zero,
+   negative, boolean, or string producer watermarks before queue SQL, and its
+   enqueue SQL carries no zero-watermark compatibility branch.
    Token Radar current-row delete/upsert, target-feature write/delete, and
    target-feature retention write accounting requires real PostgreSQL
    `cursor.rowcount` evidence. Missing, boolean, negative, or otherwise invalid
@@ -319,60 +317,7 @@ are wrong too.
    Token Radar target/source dirty error claims are deleted with
    `RETURNING queue.*` and written to `worker_queue_terminal_events` in the same
    projection transaction instead of being rescheduled indefinitely.
-   `token_capture_tier` is written only by
-   `TokenCaptureTierWorker`; `pulse_agent_jobs`, `pulse_candidate_edge_state`,
-   `pulse_candidate_run_budget`, `pulse_target_run_budget`,
-   `pulse_agent_runs`, `pulse_agent_run_steps`,
-   `pulse_agent_runtime_versions`, `pulse_agent_eval_cases`,
-   `pulse_agent_eval_results`, `pulse_candidates`, and
-   `pulse_playbook_snapshots` are written only by `PulseCandidateWorker`.
-   Signal Pulse public list/detail reads treat present `pulse_candidates` rows
-   as a serving contract: `decision_json` must be mapping-shaped and
-   `gate_reasons_json`, `risk_reasons_json`, `evidence_event_ids_json`, and
-   `source_event_ids_json` must be list-shaped. Malformed present rows are not
-   repaired into empty decision text or empty public arrays.
-   Pulse agent run and run-step audit `RETURNING` writes require PostgreSQL
-   `cursor.rowcount` evidence matching returned-row presence before run or step
-   rows are returned; missing, invalid, or mismatched rowcount is malformed
-   repository/driver state, not a valid agent audit row.
-   Pulse agent runtime-version, eval-case, and eval-result `RETURNING` writes
-   use the same required single-row evidence before eval audit rows are
-   returned.
-   Pulse candidate upsert and low-information hide `RETURNING` writes require
-   PostgreSQL `cursor.rowcount` evidence matching returned-row presence.
-   Unchanged candidate upserts and no-op hide attempts are valid only as
-   rowcount=0 with no row, not fallback readback of an existing public row.
-   Pulse agent job enqueue retry budget is the formal
-   `settings.workers.pulse_candidate.max_attempts` policy passed by the worker
-   into `PulseJobsRepository.enqueue_job(...)`; the repository owns SQL, not a
-   fallback retry-budget default.
-   Pulse agent job enqueue, claim, success, retry, failure, timeout-cancel, and
-   release `RETURNING` mutations validate PostgreSQL rowcount against
-   returned-row presence before job state, retry/dead classification, or terminal
-   ledger effects are reported. Required enqueue is rowcount=1 with a row;
-   optional state transitions accept only rowcount=0/no row or rowcount=1/row.
-   Pulse trigger dirty claims validate claimed `window` and `scope` against
-   formal worker settings before exact Token Radar or timeline reads; malformed
-   dimensions fail through dirty-trigger retry instead of widening to all-public
-   evidence.
-   Pulse trigger dirty-target done/error/reschedule accounting requires
-   PostgreSQL `cursor.rowcount` evidence. Missing, boolean, negative, or
-   otherwise invalid rowcount is malformed repository/driver state, not a
-   default zero-row dirty-trigger mutation.
-   Pulse admission edge-state and candidate edge-budget `RETURNING` writes also
-   require PostgreSQL `cursor.rowcount` evidence matching returned-row presence
-   before edge rows, optional state rows, or budget booleans are reported.
-   Missing, invalid, or mismatched rowcount is malformed repository/driver
-   state, not returned-row success.
-   Pulse playbook snapshot `RETURNING` writes must use the same execution
-   evidence: no-change writes are valid only as rowcount=0 with no row, changed
-   writes require rowcount=1 with a row, and the repository must not recover
-   success through a fallback `SELECT`. The retired outcome table and writer are
-   removed; run outcomes remain in the Pulse run audit ledger.
-   Pulse stale exhausted running-job terminalization width is the formal
-   `settings.workers.pulse_candidate.stale_running_terminalization_batch_size`
-   worker policy passed into `PulseJobsRepository`; the repository must not own
-   a hidden `limit` default.
+   `token_capture_tier` is written only by `TokenCaptureTierWorker`.
    `narrative_admissions` is written only by `NarrativeAdmissionWorker`.
    Narrative admission dirty claims validate claimed `window` and `scope`
    against formal worker settings before admission-target or source-set reads;
@@ -699,16 +644,11 @@ are wrong too.
    outcome counters (`immediate_complete | debounced_complete |
    debounced_timeout | non_tw_channel`). Both surface through
    `/api/status`.
-10. **Audit ledger truth.** Every Signal Pulse decision must be replayable
-   from `pulse_agent_runs` and `pulse_agent_run_steps`. Insufficient data
-   finishes as an abstain decision with the audit row written; no path may
-   return a decision without an audit row, and no path may invent a
-   confidence or display status to avoid abstaining.
-11. **Public query boundaries fail closed.** API route defaults own product
+10. **Public query boundaries fail closed.** API route defaults own product
    defaults such as `scope=all` or `scope=matched`; shared validators only
    validate. Malformed scope/window values return structured bad requests and
    must not be coerced into another valid read scope before PostgreSQL queries.
-12. **Agent execution is an operational plane, not product truth.**
+11. **Agent execution is an operational plane, not product truth.**
    `AgentExecutionGateway` owns project execution mechanics around LiteLLM:
    structured JSON object dispatch, application-side Pydantic validation,
    trace metadata, usage, lane bulkheads, rate limits, timeouts, circuit
@@ -717,13 +657,11 @@ are wrong too.
    types and never branch on provider, model, or response format. Domain
    workers still own admission, claim, retry, finalize, read-model writes,
    and business validation. There is no central durable `agent_tasks`
-   queue; PostgreSQL domain facts and read models remain the truth. Pulse
-   multi-stage runs reserve the single `pulse.decision` lane before job claim.
-   Every LLM-backed worker that can burn business attempts reserves lane capacity,
+   queue; PostgreSQL domain facts and read models remain the truth. Every
+   LLM-backed worker that can burn business attempts reserves lane capacity,
    circuit, and RPM before durable queue claim; batch workers request explicit
    `rate_units` for the maximum provider calls they want to execute and claim
-   only the actual `reservation.rate_units` returned by the gateway. Pulse
-   internal audit stages reuse the same `pulse.decision` reservation.
+   only the actual `reservation.rate_units` returned by the gateway.
    No-start backpressure does not claim work, write business run ledgers, or
    burn provider attempts. Provider-started validation/publication failures
    write the domain run ledger with `execution_started=true`. Lane `priority`
@@ -754,14 +692,13 @@ Cross-cutting primitives that implement these invariants:
   worker keys/classes/lane contracts and own worker start/stop/status semantics.
 - `LLMGateway` and `AgentExecutionGateway` — `LLMGateway` owns low-level
   OpenAI transport/client/trace-export lifecycle; `AgentExecutionGateway`
-  is the single agent execution path used by Social, Watchlist,
-  Narrative, Pulse, and future LLM lanes. It resolves the lane capability
+  is the single agent execution path used by News and future LLM lanes. It
+  resolves the lane capability
   profile and chooses the structured-output strategy before any provider
   call.
 - Model-execution provider wiring reads known lane settings from
-  `workers.agent_runtime.lanes` directly. The Pulse decision provider's
-  pipeline timeout comes from `pulse.decision.timeout_seconds`; a missing lane
-  is malformed runtime configuration, not a provider-local fallback.
+  `workers.agent_runtime.lanes` directly. A missing lane is malformed runtime
+  configuration, not a provider-local fallback.
 - Wake emission/listening is composed via
   `DBPoolBundle.wake_emitter()` and `DBPoolBundle.wake_listener()`.
   Domain workers receive wake dependencies by injection and never call
@@ -953,7 +890,7 @@ direction is still enforced by the package rules below.
 | `[FACT]` | Owns persisted business facts or value types that represent those facts. |
 | `[WAKE]` | Emits or consumes wake hints such as LISTEN/NOTIFY. Wake hints are never the source of correctness. |
 | `[PROJECTION]` | Builds derived read models from facts. Projection output must be rebuildable. |
-| `[READ MODEL]` | Product-facing derived state such as Token Radar rows, profile blocks, or Signal Pulse candidates. |
+| `[READ MODEL]` | Product-facing derived state such as Token Radar rows, News rows, or profile blocks. |
 | `[QUERY]` | Owns read-side queries over facts or read models. |
 | `[SCORING]` | Computes deterministic scores, gates, readiness, and diagnostics from query results. |
 | `[SURFACE]` | HTTP, WebSocket, or CLI translation layer. Surfaces do not perform provider calls, scoring, token resolution, or raw SQL joins. |
@@ -970,7 +907,6 @@ direction is still enforced by the package rules below.
 | `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model and token-target views with explicit caller-owned query boundaries, Token Radar feature aggregation, current-row publication state, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, signal alerts. |
 | `domains/narrative_intel/` | Deterministic `narrative_admissions` source-set read model and admission coverage consumed by API composition. Per-mention semantics and discussion-digest lanes and storage are removed. |
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
-| `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
 | `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
 | `domains/news_intel/` | Configured news source ingestion, news item facts, token mention observations, fact candidates, item-scoped agent brief read model, and the News page read model. |
 | `domains/cex_market_intel/` | Binance OI radar board and CEX detail snapshot projections. |
@@ -988,7 +924,6 @@ own maps next to the code they describe, and this file links to them.
 | Narrative intelligence | [`src/parallax/domains/narrative_intel/ARCHITECTURE.md`](../src/parallax/domains/narrative_intel/ARCHITECTURE.md) | Current `narrative_admissions` ownership, API admission coverage, and removed semantic/digest hard-cut contracts. |
 | Asset market and market tick capture | [`src/parallax/domains/asset_market/ARCHITECTURE.md`](../src/parallax/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
 | CEX market intelligence | [`src/parallax/domains/cex_market_intel/ARCHITECTURE.md`](../src/parallax/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
-| Signal Pulse pipeline | [`src/parallax/domains/pulse_lab/ARCHITECTURE.md`](../src/parallax/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
 | Watchlist intelligence | [`src/parallax/domains/watchlist_intel/ARCHITECTURE.md`](../src/parallax/domains/watchlist_intel/ARCHITECTURE.md) | Watchlist account topic read models, overview API contracts, and worker-owned refresh boundaries. |
 | News intelligence | [`src/parallax/domains/news_intel/ARCHITECTURE.md`](../src/parallax/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, fact candidates, item briefs, and the News page read model. |
 | Macro intelligence | [`src/parallax/domains/macro_intel/ARCHITECTURE.md`](../src/parallax/domains/macro_intel/ARCHITECTURE.md) | `macro_sync` fact ingest, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v3 views, and Macro projection ownership. |
@@ -1027,7 +962,7 @@ Cross-domain imports MUST go through the target domain's `interfaces.py` (or `_c
 
 Raw SQL (`conn.execute(...)`) lives ONLY in `repositories/`, `queries/`, `platform/db/`, or `app/runtime/` health checks. `tests/architecture/test_src_domain_architecture.py::test_raw_sql_is_owned_by_repositories_queries_or_app_runtime` enforces this.
 
-Legacy `assets`, `asset_aliases`, `asset_venues`, and `asset_market_snapshots` tables have no runtime writers. `tests/architecture/test_worker_runtime_contracts.py::test_legacy_asset_tables_have_no_runtime_writers` enforces this; `tests/architecture/test_worker_runtime_contracts.py::test_legacy_asset_repository_is_not_imported` bans the deleted `AssetRepository` / `MarketRepository` classes. SocialEvent closed-loop harness tables are deleted; Pulse market reads go through `RegistryRepository.chain_token_market_target(...)` + `MarketTickRepository.latest_at_or_before(...)` rather than `asset_market_snapshots`.
+Legacy `assets`, `asset_aliases`, `asset_venues`, and `asset_market_snapshots` tables have no runtime writers. `tests/architecture/test_worker_runtime_contracts.py::test_legacy_asset_tables_have_no_runtime_writers` enforces this; `tests/architecture/test_worker_runtime_contracts.py::test_legacy_asset_repository_is_not_imported` bans the deleted `AssetRepository` / `MarketRepository` classes. SocialEvent closed-loop harness tables are deleted; current market reads use `RegistryRepository.chain_token_market_target(...)` + `MarketTickRepository.latest_at_or_before(...)` rather than `asset_market_snapshots`.
 
 Transaction ownership follows the same rule: domain services and runtime workers use repository/session Unit of Work methods, not `platform.db.postgres_client.transaction` directly. Repositories and `app/runtime/repository_session.py` own the concrete PostgreSQL transaction context.
 
@@ -1044,39 +979,14 @@ and control-plane tables are leased with bounded work and terminal evidence.
 Runtime workers must not use cold history/audit tables as freshness, fallback,
 or queue-maintenance state; cold projections need their own spec and writer.
 
-Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, `pulse_lab`, and `watchlist_intel`. Do not add empty provider files.
+Provider modules are intentionally sparse. Only domains with real inbound cross-cutting dependencies have `providers.py` today: `ingestion`, `asset_market`, and `watchlist_intel`. Do not add empty provider files.
 
 CLI ops remain a separate operational surface exception: they may construct external clients for explicit operator commands, while service runtime construction stays centralized in `app/runtime/providers_wiring.py`.
 
-## Pulse Agent Runtime
+## Narrative And Notification Runtime
 
-Signal Pulse is the first concrete strategy on the unified Agent Runtime Core.
-`domains/pulse_lab/services/agent_routing.py` owns deterministic route policy
-(`cex`, `meme`, or `research_only`) and completeness gates. The Pulse worker
-turns a factor snapshot into a route, writes an agent run, short-circuits
-research-only or hard-blocked rows to an abstain decision, and otherwise calls
-the configured `PulseDecisionProvider`.
-
-LiteLLM-specific model calls live only under `integrations/model_execution/`.
-Signal Pulse uses one tool-free `pulse_decision` runtime stage, with
-deterministic hard-blocks before provider execution. Pulse-specific
-orchestration is domain-owned:
-`domains/pulse_lab/services/pulse_decision_runtime.py` loads the prompt, builds
-the packet-only input contract, assembles request audit hashes, validates cited
-evidence refs, and enriches final evidence URLs. The model adapter only
-dispatches typed stage specs through `AgentExecutionGateway` and
-returns audit envelopes. `app/runtime/provider_wiring/model_execution.py` is the
-composition point that creates the domain runtimes and injects concrete LiteLLM
-adapters bound to provider protocols.
-
-The audit ledger is PostgreSQL: `pulse_agent_runs` records the final outcome and
-route, `pulse_agent_run_steps` records replayable stage inputs/prompts/outputs,
-and `pulse_candidates.decision_*` plus `decision_json` are the public decision
-source. Signal Pulse public payloads expose `decision`, `factor_snapshot`,
-`gate`, and `fact_card`; they do not expose run ids or run-step `stages`.
-
-Narrative Intelligence sits upstream of Pulse decisioning and downstream of
-Token Radar discovery. API surfaces may compose Token Radar / Token Case rows
+Narrative Intelligence sits downstream of Token Radar discovery. API surfaces
+may compose Token Radar / Token Case rows
 with `NarrativeReadModel`, but they do not run providers, score rows, or write
 narrative read models, and Token Radar API composition must pass the formal
 nested `target` object through rather than synthesizing top-level target identity
@@ -1087,35 +997,15 @@ mention-semantic and discussion-digest LLM workers and tables are removed.
 Public reads expose `narrative_admission`, derived only from the current
 `narrative_admissions` row. The lookup requires formal Token Radar row identity
 (`target_type` / `target_id`) and treats legacy `type` / `id` aliases as missing
-admission context. Pulse evidence packets are independent of Narrative
-admissions and removed semantic/digest projections.
-Pulse evidence completeness checks consume the formal sealed
-`PulseEvidencePacket`; arbitrary dict/object reflection at this boundary is a
-contract failure, not an insufficient-evidence decision.
-Pulse evidence market-fact freshness is part of the replay policy owned by
-formal `settings.workers.pulse_candidate.evidence_market_freshness_ms` and the
-job run's explicit `now_ms`. The evidence builder and evidence source
-repository must not keep their own freshness windows or default-current-clock
-fallbacks.
-Persisting the sealed Pulse evidence packet is also a required single-row
-`RETURNING` write: `PulseEvidenceRepository.upsert_packet(...)` must validate
-PostgreSQL `cursor.rowcount=1` with a returned packet row before linking
-`pulse_agent_runs` to the packet hash.
-Pulse timeline context also requires the worker's explicit target `window` and
-`scope`; unknown windows or scopes fail before context signatures are computed
-instead of being restored to `1h` or `all`.
-Pulse admission failure-circuit and timeline-debounce policy is also owned by
-formal `settings.workers.pulse_candidate`; the worker passes
-`failure_circuit_per_hour` and `timeline_debounce_seconds` explicitly into
-`PulseAdmissionPolicy`, whose service method must not keep policy defaults.
+admission context.
 Notification rule evaluation is a replayable worker step, not a service-local
 clock read. `NotificationWorker` owns the runtime evaluation timestamp and
 passes `now_ms` into `NotificationRuleEngine.evaluate(...)`; the rule engine
 must not call the current clock or accept missing evaluation time.
 Notification rule query policy is also settings-owned: watched-account
 activity windows, news high-signal recency, and news high-signal overscan
-limits, plus Signal Pulse notification page budget, live in
-`settings.notifications`, not `NotificationRuleEngine` module constants.
+limits live in `settings.notifications`, not `NotificationRuleEngine` module
+constants.
 Notification fact insertion and insert-only delivery enqueue classify
 created-vs-existing state from PostgreSQL single-row `cursor.rowcount`
 evidence. Missing, boolean, negative, multi-row, or otherwise invalid rowcount
@@ -1125,23 +1015,6 @@ Notification delivery requeue and claim `RETURNING *` mutations use the same
 execution-evidence boundary: optional outcomes are valid only when PostgreSQL
 rowcount is 0 with no returned row or 1 with one returned row. Returned-row
 presence by itself is not a delivery reactivation or claim contract.
-Pulse claim verification uses that sealed packet with the strict `FinalDecision`
-model; arbitrary final-decision object reflection is a contract failure before
-public write-gate decisions.
-Pulse decision stage construction uses the same sealed packet plus
-`EvidenceCompletenessGateResult`; JSON context at the integration boundary must
-be re-validated into formal models before domain prompt construction.
-Pulse stage-output normalization also consumes the formal sealed packet; dict
-packet or object-ref compatibility is malformed adapter wiring, not a
-normalization input shape.
-Pulse deterministic eval cases are stored as JSON audit artefacts, but their
-`evidence_packet` payload must be re-validated into `PulseEvidencePacket`
-before grading allowed refs; partial dict packets are malformed eval input, not
-passing evidence.
-Pulse request-audit metadata follows the same rule: audit hashes and trace
-packet/gate metadata are derived from `context["evidence_packet"]` after formal
-packet validation and from formal `EvidenceCompletenessGateResult` payloads,
-never from top-level `evidence_packet_hash` or raw gate-dict compatibility.
 Runtime manifest metadata must also carry a non-empty `runtime_version`; empty
 runtime-version audit rows are malformed replay metadata, not a default runtime.
 Agent run identity fields (`run_id`, `job_id`, model, artifact hash, workflow,
@@ -1150,34 +1023,6 @@ identity strings are malformed execution lineage.
 The runtime manifest's `model.model` and `model.artifact_version_hash` must
 match those request-audit identity fields so the runtime hash and run audit
 lineage describe the same executable artifact.
-`PulseCandidateJobService` must validate claimed-row `job_id`,
-`trigger_signature`, `timeline_signature`, and positive `attempt_count` before
-building a `run_id` or opening repository sessions; empty identity segments are
-malformed queue state, not run-id compatibility input.
-`PulseCandidateJobService` must persist `pulse_agent_runs` and run-step
-prompt/schema fields from the validated request-audit payload directly. Missing
-or mismatched audit identity is a contract failure; the job service must not
-rebuild backend, workflow, agent, artifact, prompt/schema, input hash, trace
-metadata, runtime version, or runtime hash defaults at the ledger boundary.
-Pulse stage audit rows are built only from formal `AgentExecutionResult` and
-`AgentExecutionRequestAudit` / `AgentExecutionResultAudit` contracts; malformed
-gateway objects fail before run-step audit rows are synthesized.
-The Pulse model-execution adapter also validates request-audit trace `run_id`
-and stage packet group identity before building `AgentStageSpec`. Missing trace
-metadata or missing packet group identity is malformed runtime output, not a
-reason to substitute the pipeline `run_id`.
-The adapter's workflow identity is likewise explicit: omitted constructor input
-uses the canonical Pulse workflow name, but blank or `None` workflow values are
-malformed wiring rather than defaultable identity.
-Pulse no-start provider backpressure is likewise classified only from formal
-`AgentExecutionError.error_class` plus `execution_started=False`; loose
-exception audit dicts or alias attributes must not release jobs to provider
-cooldown.
-Pulse worker hard-timeout cleanup reads `execution_started` only from formal
-`AgentExecutionCancelled`; ordinary worker-level cancellations fall back to the
-service's `run_started` state. Loose cancellation audit dicts must not decide
-whether a timeout is before or after provider execution.
-
 ## Asset Profile Facts
 
 Resolved DEX asset profile facts live in `domains/asset_market`, not in Token
@@ -1303,19 +1148,9 @@ already-validated query boundaries explicitly. They must not recover malformed
 `window`, `scope`, `limit`, or repair-width inputs through product-looking
 defaults such as `1h`, `24h`, `all`, or `matched`.
 
-Ops diagnostics follows the same rule: `/api/ops/diagnostics` owns its public
-`since_hours`, `window`, and `scope` defaults and validates them before calling
-runtime composition. `ops_diagnostics_payload(...)` receives those values as
-required inputs so direct runtime callers cannot silently widen or narrow
-PostgreSQL diagnostic reads.
-
-Signal Pulse freshness health uses a fixed public health horizon today, but the
-same ownership rule applies. `SignalPulseService` and CLI replay/health
-commands pass `since_hours` explicitly; `PulseReadRepository.freshness_health`
-and `PulseFreshnessHealthService.health` do not define their own 4h fallback.
-Signal Pulse public listing follows the same boundary: API/service callers pass
-the validated `limit` into `PulseReadRepository.list_candidates(...)`, and the
-repository does not own a hidden `50`-row default.
+Ops diagnostics exposes the current runtime aggregate without feature-specific
+query dimensions. `ops_diagnostics_payload(...)` receives only the runtime root
+and optional evaluation clock.
 
 Macro asset correlation follows the same public-query rule. The HTTP route owns
 the public `60d` correlation default and validates supported windows before it

@@ -109,7 +109,6 @@ describe("macro route", () => {
     expect(requestedPaths).not.toContain("/api/token-radar");
     expect(requestedPaths).not.toContain("/api/stocks-radar");
     expect(requestedPaths).not.toContain("/api/news");
-    expect(requestedPaths).not.toContain("/api/signal-lab/pulse");
     expect(requestedPaths).not.toContain("/api/notifications");
   });
 

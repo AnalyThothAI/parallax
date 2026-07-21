@@ -587,7 +587,6 @@ def test_completion_rejects_malformed_claim_attempt_before_sql(attempt_count: ob
 def test_repository_session_exposes_narrative_dirty_targets() -> None:
     session = repositories_for_connection(
         _ScriptedConnection([]),
-        pulse_job_running_timeout_ms=300_000,
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )

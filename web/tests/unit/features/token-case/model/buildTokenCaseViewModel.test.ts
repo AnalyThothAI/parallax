@@ -47,6 +47,7 @@ describe("buildTokenCaseViewModel", () => {
           ...dossier.narrative_admission,
           status: "missing",
           reason: "no_current_admission",
+          is_current: false,
           currentness: {
             display_status: "not_ready",
             reason: "no_current_admission",

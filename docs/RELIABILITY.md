@@ -81,9 +81,8 @@ bootstrap failure cleanup call `WiredProviders.aclose()`,
 `runtime.agent_execution_gateway.aclose()`, and `runtime.llm_gateway.aclose()`
 directly. Bootstrap must not recursively scan provider dataclasses, object
 slots, mappings, or `close/aclose`-shaped aliases.
-Worker-owned provider handles follow their provider protocols directly:
-Pulse candidate decision clients close through `aclose()`, and News fetch
-source providers close through synchronous `close()`. Workers must not probe
+Worker-owned provider handles follow their provider protocols directly. News
+fetch source providers close through synchronous `close()`. Workers must not probe
 alternate close shapes or await a sync close result as compatibility fallback.
 Market stream workers also close each per-cycle provider async iterator through
 the iterator's formal `aclose()` contract. A stream iterator missing `aclose()`
@@ -161,12 +160,11 @@ circuit, and RPM before claiming. Batch workers must pass explicit
 `rate_units` for the maximum provider calls they want to execute, then claim no
 more rows than the actual `reservation.rate_units` returned by the gateway; one
 reservation must not cover multiple unreserved model calls. This applies to
-`pulse_candidate` and `news_item_brief`. If a
+`news_item_brief` and `news_story_brief`. If a
 reservation is denied, the worker returns an `agent_backpressure_*` note and
 leaves the job unclaimed. This preserves retry budgets during provider
-congestion and lets the next bounded catch-up cycle retry naturally. For Pulse,
-`pulse.decision` is reserved before job claim and covers all internal decision
-audit stages. A no-start response from capacity, circuit, RPM, or reservation
+congestion and lets the next bounded catch-up cycle retry naturally. A no-start
+response from capacity, circuit, RPM, or reservation
 pressure is backpressure, not a provider attempt.
 Reservation release is synchronous resource accounting inside the gateway:
 lane semaphores, global capacity, and RPM slots are released by a callback that
@@ -176,23 +174,10 @@ No-start backpressure must not write business run ledgers or increment
 business attempts. Provider-started validation, publication, schema, timeout,
 or cancellation failures remain started execution failures and follow the
 domain retry/audit policy with `execution_started=true`.
-Signal Pulse releases provider-started pressure into a bounded provider
-cooldown instead of the old 30-second retry loop. The job is returned to
-`pending`, its claim attempt is decremented when execution did not start, and
-`next_run_at_ms` is delayed by the lane/provider cooldown. This keeps outage
-noise out of business retries while preserving audit only for execution that
-actually started.
 Supervisor cancellation is also auditable: the gateway records
 `cancelled` result metadata and releases lane/global counters, then
 propagates cancellation as `asyncio.CancelledError` so domain cleanup can
 run.
-
-Signal Pulse also performs deterministic cost gating before paid stages:
-evidence-hard-blocked, source-quality-hidden, duplicate-fingerprint, and
-non-public gate-ceiling paths cannot call the DeepSeek judge. The deterministic
-eval contract reads the recorded cost-guard stage plan, so Qwen-only and reused
-terminal runs are evaluated against the stages they were supposed to execute,
-not against the full three-stage public-judge path.
 
 `/api/status` exposes the gateway snapshot under `agent_execution`, and
 Prometheus exposes `gmgn_agent_execution_*` metrics. These are ops
@@ -212,20 +197,6 @@ comes from persisted domain facts and read models.
 ## MCP boundary
 
 MCP / FastMCP is optional control / query infrastructure only. `/ws` is the production live push channel; do not route real-time events through MCP.
-
-## Pulse Agent Audit Ledger
-
-Signal Pulse agent decisions must be replayable from PostgreSQL. Every worker
-run writes `pulse_agent_runs`; every stage writes one
-`pulse_agent_run_steps` row. The runtime stage enum is now
-`investigator | decision_maker | research_only_gate` (plan 2026-05-16
-hard cut; the prior `analyst / critic / judge` stages are no longer
-accepted by the schema CHECK constraint and exist only in historical
-rows). `pulse_agent_run_steps.prompt_text` is operational audit data
-and must never include secrets, cookies, auth headers, raw `.env`
-values, or private provider credentials. Rows with insufficient data
-finish as abstain decisions written via `research_only_gate` instead of
-inventing confidence or a display status.
 
 ## Market tick capture lanes
 
@@ -283,7 +254,7 @@ are wake hints, not delivery guarantees. Market tick writers wake
 `macro_sync` wakes `MacroViewProjectionWorker` after committed fact imports,
 but wake failure never changes the committed sync result. Every listener
 (`TokenRadarProjectionWorker`, `MacroViewProjectionWorker`,
-`PulseCandidateWorker`, future workers) runs on a bounded
+`NarrativeAdmissionWorker`, future workers) runs on a bounded
 `interval_seconds` loop from `workers.yaml` even when `NOTIFY` is healthy. The
 loop must claim durable dirty queues, honor due gates, or read bounded read
 models; it must not scan broad fact windows just to prove no wake was missed.
@@ -304,7 +275,7 @@ supported compatibility path.
 
 Each derived read model has exactly one runtime writer. A second runtime
 writer of `token_radar_current_rows`, `token_radar_publication_state`,
-`pulse_candidates`, or any future read model is both a reliability incident
+`news_page_rows`, or any future read model is both a reliability incident
 and an architecture-test violation. The
 canonical worker registry and worker inventory are architecture-guarded
 so runtime ownership stays explicit. Ops paths and CLI rebuilds are
@@ -345,7 +316,7 @@ source refresh/window targets and expands configured windows inside that worker;
 broad source/window coverage is an ops repair enqueue concern only.
 
 The same dirty-target rule applies to runtime agent/profile tails:
-`pulse_candidate`, `narrative_admission`, `token_profile_current`,
+`narrative_admission`, `token_profile_current`,
 `token_image_mirror`, `asset_profile_refresh`, and `token_capture_tier` must
 claim their control-plane rows first. `LivePriceGateway` reads the live target
 control set from `token_capture_tier`; it must not scan Token Radar current

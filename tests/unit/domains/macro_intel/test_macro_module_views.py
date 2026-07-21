@@ -5343,7 +5343,7 @@ def test_trade_map_item_requires_expression_and_label_without_silent_drop(
     trade_map_item: dict[str, str], message: str
 ) -> None:
     with pytest.raises(ValueError, match=message):
-        macro_module_views._trade_map_item(trade_map_item, [])
+        macro_module_views._trade_map_item(trade_map_item)
 
 
 def test_overview_decision_console_requires_trade_map_display_contract_without_silent_drop() -> None:
@@ -5434,41 +5434,6 @@ def test_backend_status_fallbacks_use_specific_insufficient_history_labels() -> 
         current_points=None,
         change_1w_points=None,
     ) == ("insufficient_history", "样本不足")
-
-    with pytest.raises(ValueError, match="macro_judgement_review_window_status_required"):
-        macro_module_views._judgement_review_window({"horizon": "1d", "label": "1D"})
-
-
-def test_overview_judgement_review_requires_complete_windows_without_silent_drop() -> None:
-    snapshot = _snapshot()
-    snapshot["scenario_json"] = {
-        **snapshot["scenario_json"],
-        "trade_map": [
-            {
-                "expression": "risk_down_credit_sensitive",
-                "label": "风险降档 / 信用敏感",
-                "holding_period_review": {
-                    "rows": [
-                        {"horizon": "1d", "label": "1D"},
-                        {
-                            "horizon": "5d",
-                            "label": "5D",
-                            "status": "complete",
-                            "status_label": "已完成",
-                            "sample_count": 5,
-                            "hit_count": 4,
-                            "win_rate_label": "4/5",
-                            "pnl_usd": 220.0,
-                            "average_signed_return_pct": 2.2,
-                        },
-                    ],
-                },
-            }
-        ],
-    }
-
-    with pytest.raises(ValueError, match="macro_judgement_review_window_status_required"):
-        build_macro_module_view("overview", snapshot=snapshot, observations=[])
 
 
 def test_overview_decision_console_adds_liquidity_pressure_from_retained_rrp_tga_diagnostics() -> None:
@@ -7812,7 +7777,7 @@ def test_overview_decision_console_adds_watchlist_alerts_from_trade_map_and_rule
     }
 
 
-def test_overview_trade_map_adds_five_asset_historical_review() -> None:
+def test_overview_trade_map_does_not_backtest_current_expression_against_prior_observations() -> None:
     snapshot = _snapshot()
     snapshot["scenario_json"] = {
         **snapshot["scenario_json"],
@@ -7827,13 +7792,7 @@ def test_overview_trade_map_adds_five_asset_historical_review() -> None:
                         "kind_label": "确认",
                         "label": "HY OAS 5日走阔",
                         "description": "观察 HY OAS 5日走阔 是否继续确认。",
-                    },
-                    {
-                        "kind": "invalidate",
-                        "kind_label": "失效",
-                        "label": "VIX 回到 carry 区间",
-                        "description": "若 VIX 回到 carry 区间，则撤销该映射。",
-                    },
+                    }
                 ],
                 "legs": [],
             }
@@ -7845,187 +7804,35 @@ def test_overview_trade_map_adds_five_asset_historical_review() -> None:
         snapshot=snapshot,
         observations=[
             _obs("asset:ndx", "2026-05-01", 100.0, unit="index", source_name="yahoo"),
-            _obs("asset:ndx", "2026-05-02", 99.0, unit="index", source_name="yahoo"),
-            _obs("asset:ndx", "2026-05-06", 96.0, unit="index", source_name="yahoo"),
             _obs("asset:ndx", "2026-05-20", 94.0, unit="index", source_name="yahoo"),
-            _obs("asset:ndx", "2026-05-21", 94.0, unit="index", source_name="yahoo"),
             _obs("crypto:btc", "2026-05-01", 100.0, unit="usd", source_name="yahoo"),
-            _obs("crypto:btc", "2026-05-02", 98.0, unit="usd", source_name="yahoo"),
-            _obs("crypto:btc", "2026-05-06", 94.0, unit="usd", source_name="yahoo"),
             _obs("crypto:btc", "2026-05-20", 90.0, unit="usd", source_name="yahoo"),
-            _obs("crypto:btc", "2026-05-21", 90.0, unit="usd", source_name="yahoo"),
             _obs("asset:gld", "2026-05-01", 100.0, unit="usd", source_name="yahoo"),
-            _obs("asset:gld", "2026-05-02", 101.0, unit="usd", source_name="yahoo"),
-            _obs("asset:gld", "2026-05-06", 102.0, unit="usd", source_name="yahoo"),
             _obs("asset:gld", "2026-05-20", 104.0, unit="usd", source_name="yahoo"),
-            _obs("asset:gld", "2026-05-21", 104.0, unit="usd", source_name="yahoo"),
             _obs("asset:spx", "2026-05-01", 100.0, unit="index", source_name="fred"),
-            _obs("asset:spx", "2026-05-02", 99.5, unit="index", source_name="fred"),
-            _obs("asset:spx", "2026-05-06", 99.0, unit="index", source_name="fred"),
             _obs("asset:spx", "2026-05-20", 98.0, unit="index", source_name="fred"),
-            _obs("asset:spx", "2026-05-21", 98.0, unit="index", source_name="fred"),
             _obs("asset:tlt", "2026-05-01", 100.0, unit="usd", source_name="yahoo"),
-            _obs("asset:tlt", "2026-05-02", 100.5, unit="usd", source_name="yahoo"),
-            _obs("asset:tlt", "2026-05-06", 98.0, unit="usd", source_name="yahoo"),
-            _obs("asset:tlt", "2026-05-10", 96.0, unit="usd", source_name="yahoo"),
             _obs("asset:tlt", "2026-05-20", 101.0, unit="usd", source_name="yahoo"),
-            _obs("asset:tlt", "2026-05-21", 101.0, unit="usd", source_name="yahoo"),
         ],
     )
 
-    trade = view["module_read"]["decision_console"]["trade_map"][0]
-    review = trade["historical_review"]
-    assert review == {
-        "label": "五资产 60日验证",
-        "window": "60d",
-        "sample_count": 5,
-        "hit_count": 5,
-        "win_rate": 1.0,
-        "win_rate_label": "5/5",
-        "average_return_pct": -2.6,
-        "max_adverse_excursion_pct": -4.0,
-        "rows": [
+    decision_console = view["module_read"]["decision_console"]
+    trade = decision_console["trade_map"][0]
+    assert trade == {
+        "expression": "risk_down_credit_sensitive",
+        "label": "风险降档 / 信用敏感",
+        "time_window": "1w",
+        "action_checklist": [
             {
-                "asset": "NDX",
-                "label": "纳斯达克",
-                "concept_key": "asset:ndx",
-                "expected_direction": "down",
-                "action": "回避",
-                "return_pct": -6.0,
-                "mfe_pct": 6.0,
-                "mae_pct": 0.0,
-                "outcome": "hit",
-                "outcome_label": "命中",
-            },
-            {
-                "asset": "BTC",
-                "label": "比特币",
-                "concept_key": "crypto:btc",
-                "expected_direction": "down",
-                "action": "回避",
-                "return_pct": -10.0,
-                "mfe_pct": 10.0,
-                "mae_pct": 0.0,
-                "outcome": "hit",
-                "outcome_label": "命中",
-            },
-            {
-                "asset": "GOLD",
-                "label": "黄金",
-                "concept_key": "asset:gld",
-                "expected_direction": "up",
-                "action": "防守",
-                "return_pct": 4.0,
-                "mfe_pct": 4.0,
-                "mae_pct": 0.0,
-                "outcome": "hit",
-                "outcome_label": "命中",
-            },
-            {
-                "asset": "SPX",
-                "label": "标普500",
-                "concept_key": "asset:spx",
-                "expected_direction": "down",
-                "action": "回避",
-                "return_pct": -2.0,
-                "mfe_pct": 2.0,
-                "mae_pct": 0.0,
-                "outcome": "hit",
-                "outcome_label": "命中",
-            },
-            {
-                "asset": "TLT",
-                "label": "长债",
-                "concept_key": "asset:tlt",
-                "expected_direction": "up",
-                "action": "防守",
-                "return_pct": 1.0,
-                "mfe_pct": 1.0,
-                "mae_pct": -4.0,
-                "outcome": "hit",
-                "outcome_label": "命中",
-            },
+                "kind": "confirm",
+                "kind_label": "确认",
+                "label": "HY OAS 5日走阔",
+                "description": "观察 HY OAS 5日走阔 是否继续确认。",
+            }
         ],
+        "legs": [],
     }
-    assert trade["portfolio_review"] == {
-        "label": "$10K 纸面映射",
-        "notional_usd": 10000,
-        "deployed_usd": 10000,
-        "pnl_usd": 460.0,
-        "pnl_pct": 4.6,
-        "max_adverse_usd": -80.0,
-        "risk_temperature": "低",
-        "summary": "$10,000 · P&L +$460 · 胜率 5/5",
-    }
-    assert trade["action_checklist"] == [
-        {
-            "kind": "confirm",
-            "kind_label": "确认",
-            "label": "HY OAS 5日走阔",
-            "description": "观察 HY OAS 5日走阔 是否继续确认。",
-        },
-        {
-            "kind": "invalidate",
-            "kind_label": "失效",
-            "label": "VIX 回到 carry 区间",
-            "description": "若 VIX 回到 carry 区间，则撤销该映射。",
-        },
-        {
-            "kind": "position_review",
-            "kind_label": "纸面仓位",
-            "label": "纸面仓位复盘",
-            "description": "$10,000 · P&L +$460 · 胜率 5/5",
-        },
-    ]
-    assert trade["historical_trust"] == {
-        "label": "历史可信度",
-        "score_pct": 93.3,
-        "quality": "高",
-        "sample_count": 15,
-        "hit_count": 14,
-        "summary": "历史可信度 93.3% · 高 · 15 个样本",
-    }
-    assert trade["holding_period_review"] == {
-        "label": "持有期复盘",
-        "rows": [
-            {
-                "horizon": "1d",
-                "label": "1D",
-                "status": "complete",
-                "status_label": "已完成",
-                "sample_count": 5,
-                "hit_count": 5,
-                "win_rate": 1.0,
-                "win_rate_label": "5/5",
-                "pnl_usd": 100.0,
-                "average_signed_return_pct": 1.0,
-            },
-            {
-                "horizon": "5d",
-                "label": "5D",
-                "status": "complete",
-                "status_label": "已完成",
-                "sample_count": 5,
-                "hit_count": 4,
-                "win_rate": 0.8,
-                "win_rate_label": "4/5",
-                "pnl_usd": 220.0,
-                "average_signed_return_pct": 2.2,
-            },
-            {
-                "horizon": "20d",
-                "label": "20D",
-                "status": "complete",
-                "status_label": "已完成",
-                "sample_count": 5,
-                "hit_count": 5,
-                "win_rate": 1.0,
-                "win_rate_label": "5/5",
-                "pnl_usd": 460.0,
-                "average_signed_return_pct": 4.6,
-            },
-        ],
-    }
+    assert "judgement_review" not in decision_console
 
 
 def test_trade_map_action_checklist_uses_only_explicit_display_contract() -> None:
@@ -8041,8 +7848,7 @@ def test_trade_map_action_checklist_uses_only_explicit_display_contract() -> Non
                     "description": "只消费 scenario 输出的展示契约。",
                 }
             ],
-        },
-        {"summary": "$10,000 · P&L +$460 · 胜率 5/5"},
+        }
     )
 
     assert checklist == [
@@ -8051,12 +7857,6 @@ def test_trade_map_action_checklist_uses_only_explicit_display_contract() -> Non
             "kind_label": "确认",
             "label": "显式信用压力确认",
             "description": "只消费 scenario 输出的展示契约。",
-        },
-        {
-            "kind": "position_review",
-            "kind_label": "纸面仓位",
-            "label": "纸面仓位复盘",
-            "description": "$10,000 · P&L +$460 · 胜率 5/5",
         },
     ]
     assert "HY OAS 5日走阔" not in str(checklist)
@@ -8085,10 +7885,7 @@ def test_trade_map_action_checklist_requires_complete_rows_without_silent_drop(
     del checklist_row[field_name]
 
     with pytest.raises(ValueError, match=message):
-        macro_module_views._trade_map_action_checklist(
-            {"action_checklist": [checklist_row]},
-            {"summary": "$10,000 · P&L +$460 · 胜率 5/5"},
-        )
+        macro_module_views._trade_map_action_checklist({"action_checklist": [checklist_row]})
 
 
 @pytest.mark.parametrize("action_checklist", ("not-a-list", {"kind": "confirm"}, 42))
@@ -8096,305 +7893,12 @@ def test_trade_map_action_checklist_requires_list_shape_without_silent_drop(
     action_checklist: object,
 ) -> None:
     with pytest.raises(ValueError, match="macro_trade_map_action_checklist_rows_required"):
-        macro_module_views._trade_map_action_checklist(
-            {"action_checklist": action_checklist},
-            {"summary": "$10,000 · P&L +$460 · 胜率 5/5"},
-        )
+        macro_module_views._trade_map_action_checklist({"action_checklist": action_checklist})
 
 
 def test_trade_map_action_checklist_requires_mapping_rows_without_silent_drop() -> None:
     with pytest.raises(ValueError, match="macro_trade_map_action_checklist_row_required"):
-        macro_module_views._trade_map_action_checklist(
-            {"action_checklist": ["not-a-row"]},
-            {"summary": "$10,000 · P&L +$460 · 胜率 5/5"},
-        )
-
-
-def test_overview_decision_console_summarizes_judgement_review_across_holding_windows() -> None:
-    snapshot = _snapshot()
-    snapshot["scenario_json"] = {
-        **snapshot["scenario_json"],
-        "trade_map": [
-            {
-                "expression": "risk_down_credit_sensitive",
-                "label": "风险降档 / 信用敏感",
-                "time_window": "1w",
-                "action_checklist": [
-                    {
-                        "kind": "confirm",
-                        "kind_label": "确认",
-                        "label": "HY OAS 5日走阔",
-                        "description": "观察 HY OAS 5日走阔 是否继续确认。",
-                    },
-                    {
-                        "kind": "invalidate",
-                        "kind_label": "失效",
-                        "label": "VIX 回到 carry 区间",
-                        "description": "若 VIX 回到 carry 区间，则撤销该映射。",
-                    },
-                ],
-                "legs": [],
-            }
-        ],
-    }
-
-    view = build_macro_module_view(
-        "overview",
-        snapshot=snapshot,
-        observations=[
-            _obs("asset:ndx", "2026-05-01", 100.0, unit="index", source_name="yahoo"),
-            _obs("asset:ndx", "2026-05-02", 99.0, unit="index", source_name="yahoo"),
-            _obs("asset:ndx", "2026-05-06", 96.0, unit="index", source_name="yahoo"),
-            _obs("asset:ndx", "2026-05-20", 94.0, unit="index", source_name="yahoo"),
-            _obs("asset:ndx", "2026-05-21", 94.0, unit="index", source_name="yahoo"),
-            _obs("crypto:btc", "2026-05-01", 100.0, unit="usd", source_name="yahoo"),
-            _obs("crypto:btc", "2026-05-02", 98.0, unit="usd", source_name="yahoo"),
-            _obs("crypto:btc", "2026-05-06", 94.0, unit="usd", source_name="yahoo"),
-            _obs("crypto:btc", "2026-05-20", 90.0, unit="usd", source_name="yahoo"),
-            _obs("crypto:btc", "2026-05-21", 90.0, unit="usd", source_name="yahoo"),
-            _obs("asset:gld", "2026-05-01", 100.0, unit="usd", source_name="yahoo"),
-            _obs("asset:gld", "2026-05-02", 101.0, unit="usd", source_name="yahoo"),
-            _obs("asset:gld", "2026-05-06", 102.0, unit="usd", source_name="yahoo"),
-            _obs("asset:gld", "2026-05-20", 104.0, unit="usd", source_name="yahoo"),
-            _obs("asset:gld", "2026-05-21", 104.0, unit="usd", source_name="yahoo"),
-            _obs("asset:spx", "2026-05-01", 100.0, unit="index", source_name="fred"),
-            _obs("asset:spx", "2026-05-02", 99.5, unit="index", source_name="fred"),
-            _obs("asset:spx", "2026-05-06", 99.0, unit="index", source_name="fred"),
-            _obs("asset:spx", "2026-05-20", 98.0, unit="index", source_name="fred"),
-            _obs("asset:spx", "2026-05-21", 98.0, unit="index", source_name="fred"),
-            _obs("asset:tlt", "2026-05-01", 100.0, unit="usd", source_name="yahoo"),
-            _obs("asset:tlt", "2026-05-02", 100.5, unit="usd", source_name="yahoo"),
-            _obs("asset:tlt", "2026-05-06", 98.0, unit="usd", source_name="yahoo"),
-            _obs("asset:tlt", "2026-05-10", 96.0, unit="usd", source_name="yahoo"),
-            _obs("asset:tlt", "2026-05-20", 101.0, unit="usd", source_name="yahoo"),
-            _obs("asset:tlt", "2026-05-21", 101.0, unit="usd", source_name="yahoo"),
-        ],
-    )
-
-    assert view["module_read"]["decision_console"]["judgement_review"] == {
-        "label": "昨日判断复盘",
-        "item_count": 1,
-        "item_count_label": "1 条",
-        "rows": [
-            {
-                "key": "risk_down_credit_sensitive:holding_periods",
-                "expression": "risk_down_credit_sensitive",
-                "label": "风险降档 / 信用敏感",
-                "reliability_summary": "历史可信度 93.3% · 高 · 15 个样本",
-                "windows": [
-                    {
-                        "horizon": "1d",
-                        "label": "1D",
-                        "status": "complete",
-                        "status_label": "已完成",
-                        "sample_count": 5,
-                        "hit_count": 5,
-                        "win_rate_label": "5/5",
-                        "pnl_usd": 100.0,
-                        "average_signed_return_pct": 1.0,
-                    },
-                    {
-                        "horizon": "5d",
-                        "label": "5D",
-                        "status": "complete",
-                        "status_label": "已完成",
-                        "sample_count": 5,
-                        "hit_count": 4,
-                        "win_rate_label": "4/5",
-                        "pnl_usd": 220.0,
-                        "average_signed_return_pct": 2.2,
-                    },
-                    {
-                        "horizon": "20d",
-                        "label": "20D",
-                        "status": "complete",
-                        "status_label": "已完成",
-                        "sample_count": 5,
-                        "hit_count": 5,
-                        "win_rate_label": "5/5",
-                        "pnl_usd": 460.0,
-                        "average_signed_return_pct": 4.6,
-                    },
-                ],
-            }
-        ],
-    }
-
-
-def test_trade_map_portfolio_review_requires_row_return_without_zero_default() -> None:
-    review = {
-        "rows": [{"expected_direction": "up", "mae_pct": -1.0}],
-        "hit_count": 1,
-        "sample_count": 1,
-        "win_rate_label": "1/1",
-    }
-
-    with pytest.raises(ValueError, match="macro_trade_map_review_row_return_pct_required"):
-        macro_module_views._trade_map_portfolio_review(review)
-
-
-def test_trade_map_portfolio_review_requires_row_mae_without_zero_default() -> None:
-    review = {
-        "rows": [{"expected_direction": "up", "return_pct": 1.0}],
-        "hit_count": 1,
-        "sample_count": 1,
-        "win_rate_label": "1/1",
-    }
-
-    with pytest.raises(ValueError, match="macro_trade_map_review_row_mae_pct_required"):
-        macro_module_views._trade_map_portfolio_review(review)
-
-
-def test_trade_map_portfolio_review_requires_explicit_counts_and_win_rate_label() -> None:
-    review = {
-        "rows": [{"expected_direction": "up", "return_pct": 1.0, "mae_pct": -1.0}],
-        "sample_count": 1,
-        "win_rate_label": "1/1",
-    }
-
-    with pytest.raises(ValueError, match="macro_trade_map_review_hit_count_required"):
-        macro_module_views._trade_map_portfolio_review(review)
-
-    review = {
-        "rows": [{"expected_direction": "up", "return_pct": 1.0, "mae_pct": -1.0}],
-        "hit_count": 1,
-        "win_rate_label": "1/1",
-    }
-
-    with pytest.raises(ValueError, match="macro_trade_map_review_sample_count_required"):
-        macro_module_views._trade_map_portfolio_review(review)
-
-    review = {
-        "rows": [{"expected_direction": "up", "return_pct": 1.0, "mae_pct": -1.0}],
-        "hit_count": 1,
-        "sample_count": 1,
-    }
-
-    with pytest.raises(ValueError, match="macro_trade_map_review_win_rate_label_required"):
-        macro_module_views._trade_map_portfolio_review(review)
-
-
-def test_trade_map_holding_period_row_requires_signed_return_without_zero_default() -> None:
-    with pytest.raises(ValueError, match="macro_trade_map_holding_signed_return_pct_required"):
-        macro_module_views._trade_map_holding_period_row(
-            "1d",
-            "1D",
-            [{"outcome": "hit"}],
-        )
-
-
-def test_trade_map_holding_period_row_requires_samples_without_zero_default() -> None:
-    with pytest.raises(ValueError, match="macro_trade_map_holding_rows_required"):
-        macro_module_views._trade_map_holding_period_row("20d", "20D", [])
-
-
-def test_trade_map_holding_period_review_omits_unsampled_windows_without_zero_stats() -> None:
-    review = macro_module_views._trade_map_holding_period_review(
-        "risk_down_credit_sensitive",
-        [
-            _obs("asset:ndx", "2026-05-01", 100.0, unit="index", source_name="yahoo"),
-            _obs("asset:ndx", "2026-05-02", 99.0, unit="index", source_name="yahoo"),
-            _obs("asset:ndx", "2026-05-06", 96.0, unit="index", source_name="yahoo"),
-            _obs("asset:ndx", "2026-05-20", 94.0, unit="index", source_name="yahoo"),
-        ],
-    )
-
-    assert review is not None
-    assert [row["horizon"] for row in review["rows"]] == ["1d", "5d"]
-    assert "0/0" not in str(review)
-
-
-@pytest.mark.parametrize(
-    ("field_name", "message"),
-    (
-        ("horizon", "macro_judgement_review_window_horizon_required"),
-        ("label", "macro_judgement_review_window_label_required"),
-        ("status", "macro_judgement_review_window_status_required"),
-        ("status_label", "macro_judgement_review_window_status_label_required"),
-        ("sample_count", "macro_judgement_review_window_sample_count_required"),
-        ("hit_count", "macro_judgement_review_window_hit_count_required"),
-        ("win_rate_label", "macro_judgement_review_window_win_rate_label_required"),
-        ("pnl_usd", "macro_judgement_review_window_pnl_usd_required"),
-        (
-            "average_signed_return_pct",
-            "macro_judgement_review_window_average_signed_return_pct_required",
-        ),
-    ),
-)
-def test_judgement_review_window_requires_explicit_fields_without_silent_drop(field_name: str, message: str) -> None:
-    row = {
-        "horizon": "1d",
-        "label": "1D",
-        "status": "complete",
-        "status_label": "已完成",
-        "sample_count": 5,
-        "hit_count": 4,
-        "win_rate_label": "4/5",
-        "pnl_usd": 220.0,
-        "average_signed_return_pct": 2.2,
-    }
-    row.pop(field_name)
-
-    with pytest.raises(ValueError, match=message):
-        macro_module_views._judgement_review_window(row)
-
-
-def test_judgement_review_window_requires_positive_sample_count_without_silent_drop() -> None:
-    row = {
-        "horizon": "1d",
-        "label": "1D",
-        "status": "complete",
-        "status_label": "已完成",
-        "sample_count": 0,
-        "hit_count": 0,
-        "win_rate_label": "0/0",
-        "pnl_usd": 0.0,
-        "average_signed_return_pct": 0.0,
-    }
-
-    with pytest.raises(ValueError, match="macro_judgement_review_window_sample_count_required"):
-        macro_module_views._judgement_review_window(row)
-
-
-@pytest.mark.parametrize(
-    ("field_name", "message"),
-    (
-        ("expression", "macro_trade_map_expression_required"),
-        ("label", "macro_trade_map_label_required"),
-    ),
-)
-def test_judgement_review_row_requires_identity_fields_without_silent_drop(field_name: str, message: str) -> None:
-    item = {
-        "expression": "risk_down_credit_sensitive",
-        "label": "风险降档 / 信用敏感",
-        "holding_period_review": {
-            "rows": [
-                {
-                    "horizon": "1d",
-                    "label": "1D",
-                    "status": "complete",
-                    "status_label": "已完成",
-                    "sample_count": 5,
-                    "hit_count": 4,
-                    "win_rate_label": "4/5",
-                    "pnl_usd": 220.0,
-                    "average_signed_return_pct": 2.2,
-                }
-            ],
-        },
-    }
-    item.pop(field_name)
-
-    with pytest.raises(ValueError, match=message):
-        macro_module_views._judgement_review_row(item)
-
-
-def test_trade_map_historical_trust_requires_explicit_counts_without_zero_default() -> None:
-    with pytest.raises(ValueError, match="macro_trade_map_historical_trust_sample_count_required"):
-        macro_module_views._trade_map_historical_trust({"rows": [{"hit_count": 1}]})
-
-    with pytest.raises(ValueError, match="macro_trade_map_historical_trust_hit_count_required"):
-        macro_module_views._trade_map_historical_trust({"rows": [{"sample_count": 1}]})
+        macro_module_views._trade_map_action_checklist({"action_checklist": ["not-a-row"]})
 
 
 def test_overview_module_view_preserves_watch_trigger_horizon_and_priority() -> None:

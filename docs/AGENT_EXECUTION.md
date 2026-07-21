@@ -5,7 +5,7 @@
 Parallax uses the word "agent" in two different ways:
 
 - **development agents**: coding tools that read this repository, write specs/plans/code, run tests, and hand work to subagents.
-- **product LLM agents**: runtime workers that call models to produce bounded semantic outputs for product workflows such as Pulse, News item/story briefs, and Narrative Intelligence.
+- **product LLM agents**: runtime workers that call models to produce bounded semantic outputs for product workflows such as News item/story briefs and Narrative Intelligence.
 
 Do not mix these planes. Development agent traces, chat history, branch summaries, and subagent findings are engineering workflow evidence. They are not Parallax product truth.
 
@@ -30,10 +30,8 @@ is async only because callers already await the public method; its internal
 `_release()` callback must return `None`. Awaitable release results are
 malformed execution-plane wiring, not an alternate lifecycle shape.
 Provider wiring for known product lanes reads the formal
-`workers.agent_runtime.lanes` settings directly. For example, the Pulse
-decision provider uses `workers.agent_runtime.lanes["pulse.decision"].timeout_seconds`;
-missing lane settings are malformed runtime configuration, not a provider-local
-120-second fallback.
+`workers.agent_runtime.lanes` settings directly. Missing lane settings are
+malformed runtime configuration, not a provider-local timeout fallback.
 Domain adapters that build `AgentStageSpec` must carry validated request-audit
 trace identity into the gateway. Missing or mismatched `run_id` trace metadata,
 or a missing product group id from the stage input packet, is malformed
@@ -92,7 +90,7 @@ using the shared gateway audit hash for all request options.
 Parallax borrows the useful part of agent harness tool catalogs without adding
 a model-driven tool loop. `src/parallax/platform/agent_read_tools.py` declares
 read-only `ReadOnlySqlAgentTool` metadata over current read models such as
-`news_story_agent_briefs`, `pulse_candidates`, and `token_radar_current_rows`.
+`news_story_agent_briefs` and `token_radar_current_rows`.
 These tools are not passed to models as callable tools. They are a typed
 catalog for deterministic host-side context assembly, operator inspection, and
 future reviewed retrieval code.

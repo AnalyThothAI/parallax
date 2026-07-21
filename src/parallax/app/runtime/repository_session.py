@@ -55,20 +55,6 @@ from parallax.domains.news_intel.repositories.news_projection_dirty_target_repos
 )
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
 from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
-from parallax.domains.pulse_lab.repositories.pulse_admission_repository import PulseAdmissionRepository
-from parallax.domains.pulse_lab.repositories.pulse_agent_eval_repository import PulseAgentEvalRepository
-from parallax.domains.pulse_lab.repositories.pulse_candidates_repository import PulseCandidatesRepository
-from parallax.domains.pulse_lab.repositories.pulse_evidence_repository import PulseEvidenceRepository
-from parallax.domains.pulse_lab.repositories.pulse_evidence_source_repository import (
-    PulseEvidenceSourceRepository,
-)
-from parallax.domains.pulse_lab.repositories.pulse_jobs_repository import PulseJobsRepository
-from parallax.domains.pulse_lab.repositories.pulse_playbooks_repository import PulsePlaybooksRepository
-from parallax.domains.pulse_lab.repositories.pulse_read_repository import PulseReadRepository
-from parallax.domains.pulse_lab.repositories.pulse_runs_repository import PulseRunsRepository
-from parallax.domains.pulse_lab.repositories.pulse_trigger_dirty_target_repository import (
-    PulseTriggerDirtyTargetRepository,
-)
 from parallax.domains.token_intel.interfaces import EventTokenProjectionQuery, SignalRepository
 from parallax.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
 from parallax.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
@@ -126,16 +112,6 @@ class RepositorySession:
     token_radar: TokenRadarRepository
     token_targets: TokenTargetRepository
     notifications: NotificationRepository
-    pulse_jobs: PulseJobsRepository
-    pulse_admission: PulseAdmissionRepository
-    pulse_candidates: PulseCandidatesRepository
-    pulse_evidence: PulseEvidenceRepository
-    pulse_evidence_sources: PulseEvidenceSourceRepository
-    pulse_runs: PulseRunsRepository
-    pulse_trigger_dirty_targets: PulseTriggerDirtyTargetRepository
-    pulse_agent_eval: PulseAgentEvalRepository
-    pulse_read: PulseReadRepository
-    pulse_playbooks: PulsePlaybooksRepository
     narratives: NarrativeRepository
     narrative_admission_dirty_targets: NarrativeAdmissionDirtyTargetRepository
     watchlist_intel: WatchlistIntelRepository
@@ -158,7 +134,6 @@ class RepositorySession:
 def repositories_for_connection(
     conn: Any,
     *,
-    pulse_job_running_timeout_ms: int,
     notification_delivery_running_timeout_ms: int,
     notification_delivery_stale_running_terminalization_batch_size: int,
 ) -> RepositorySession:
@@ -200,16 +175,6 @@ def repositories_for_connection(
             running_timeout_ms=notification_delivery_running_timeout_ms,
             stale_running_terminalization_batch_size=notification_delivery_stale_running_terminalization_batch_size,
         ),
-        pulse_jobs=PulseJobsRepository(conn, running_timeout_ms=pulse_job_running_timeout_ms),
-        pulse_admission=PulseAdmissionRepository(conn),
-        pulse_candidates=PulseCandidatesRepository(conn),
-        pulse_evidence=PulseEvidenceRepository(conn),
-        pulse_evidence_sources=PulseEvidenceSourceRepository(conn),
-        pulse_runs=PulseRunsRepository(conn),
-        pulse_trigger_dirty_targets=PulseTriggerDirtyTargetRepository(conn),
-        pulse_agent_eval=PulseAgentEvalRepository(conn),
-        pulse_read=PulseReadRepository(conn),
-        pulse_playbooks=PulsePlaybooksRepository(conn),
         narratives=NarrativeRepository(conn),
         narrative_admission_dirty_targets=NarrativeAdmissionDirtyTargetRepository(conn),
         watchlist_intel=WatchlistIntelRepository(conn),
@@ -225,14 +190,12 @@ def repositories_for_connection(
 def repository_session(
     pool: Any,
     *,
-    pulse_job_running_timeout_ms: int,
     notification_delivery_running_timeout_ms: int,
     notification_delivery_stale_running_terminalization_batch_size: int,
 ) -> Iterator[RepositorySession]:
     with pool.connection() as conn:
         yield repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=pulse_job_running_timeout_ms,
             notification_delivery_running_timeout_ms=notification_delivery_running_timeout_ms,
             notification_delivery_stale_running_terminalization_batch_size=(
                 notification_delivery_stale_running_terminalization_batch_size

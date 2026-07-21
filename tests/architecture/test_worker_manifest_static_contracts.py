@@ -60,7 +60,6 @@ def test_dirty_target_workers_declare_claim_tables_and_read_model_identity() -> 
         "market_tick_current_projection",
         "token_radar_projection",
         "token_profile_current",
-        "pulse_candidate",
     ):
         manifest = manifests[worker_name]
         assert manifest.kind in {WorkerKind.PROJECTION, WorkerKind.AGENT_SIDE_EFFECT}

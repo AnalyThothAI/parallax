@@ -4,14 +4,10 @@ import {
   type CockpitShellProps,
   type SearchShellProps,
 } from "@features/cockpit";
-import {
-  useLiveRouteState,
-  useLiveSelection,
-  type LiveMobileTask,
-  type LiveSignalTapeItem,
-} from "@features/live/shell";
+import { useLiveRouteState } from "@features/live/shell";
 import { useNotificationsController } from "@features/notifications";
-import type { LivePayload, ScopeKey, SignalPulseItem, TokenFlowItem, WindowKey } from "@lib/types";
+import type { ScopeKey, WindowKey } from "@lib/types";
+import { searchPath } from "@shared/routing/paths";
 import { searchWithOptionalPrefix } from "@shared/routing/searchParams";
 import { useSocketSnapshot } from "@shared/socket/socketContext";
 import { useQueryClient } from "@tanstack/react-query";
@@ -21,22 +17,12 @@ import { useLocation, useNavigate } from "react-router-dom";
 export type ShellRouteContext = {
   configuredWatchlistHandles: string[];
   liveRouteHandles: string;
-  mobileTask: LiveMobileTask;
   onMarkHandleRead: (handle: string) => void;
   scope: ScopeKey;
-  selectedAccountEventId: string | null;
-  selectedPulseItemId: string | null;
-  selectedTapeEventId: string | null;
-  selectAccountEvent: (item: LivePayload) => void;
-  selectPulseItem: (item: SignalPulseItem) => void;
-  selectToken: (item: TokenFlowItem) => void;
-  socketStatus: string;
   token: string;
   updateScope: (scope: ScopeKey) => void;
   updateWindow: (window: WindowKey) => void;
   windowKey: WindowKey;
-  onMobileTaskChange: (task: LiveMobileTask) => void;
-  onTapeSelect: (item: LiveSignalTapeItem) => void;
 };
 
 export type ShellChromeData = {
@@ -58,11 +44,9 @@ export function useShellChromeData(session: AppSession): ShellChromeData {
   const status = statusQuery.data?.data ?? null;
   const token = session.token;
   const windowKey = liveRoute.window;
-  const selection = useLiveSelection({ scope });
   const notificationsController = useNotificationsController({
     enabled: true,
     fallbackSummary: null,
-    setMobileTask: selection.setMobileTask,
     socketNotifications: socketSnapshot.notificationItems,
     token,
   });
@@ -70,18 +54,8 @@ export function useShellChromeData(session: AppSession): ShellChromeData {
   const routeContext: ShellRouteContext = {
     configuredWatchlistHandles,
     liveRouteHandles: liveRoute.handles,
-    mobileTask: selection.mobileTask,
     onMarkHandleRead: notificationsController.markAuthorRead,
-    onMobileTaskChange: selection.handleMobileTaskChange,
-    onTapeSelect: selection.handleTapeSelect,
     scope,
-    selectAccountEvent: selection.selectAccountEvent,
-    selectPulseItem: selection.selectPulseItem,
-    selectToken: selection.selectToken,
-    selectedAccountEventId: selection.selectedAccountEventId,
-    selectedPulseItemId: selection.selectedPulseItemId,
-    selectedTapeEventId: selection.selectedTapeEventId,
-    socketStatus: socketSnapshot.status,
     token,
     updateScope: liveRoute.updateScope,
     updateWindow: liveRoute.updateWindow,
@@ -109,7 +83,7 @@ export function useShellChromeData(session: AppSession): ShellChromeData {
   const searchTargetsNews = shouldRouteTopbarSearchToNews(location.pathname);
   const submitTopbarSearch = (searchText: string) => {
     if (!searchTargetsNews) {
-      selection.submitEvidenceSearch(searchText);
+      navigate(searchPath({ q: searchText.trim(), window: "24h", scope }));
       return;
     }
     const query = searchText.trim();

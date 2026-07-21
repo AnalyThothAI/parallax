@@ -1,11 +1,5 @@
 from __future__ import annotations
 
-import asyncio
-from types import SimpleNamespace
-from typing import Any
-
-import pytest
-
 from parallax.app.runtime import provider_wiring
 from parallax.app.runtime.provider_wiring import model_execution
 from parallax.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
@@ -18,49 +12,16 @@ class FakeLLMGateway:
     trace_export_enabled = False
 
 
-class FakePulseClient:
-    provider = "litellm"
-    model = "gpt-pulse"
-    artifact_version_hash = "artifact-hash"
-    runtime_contract = object()
-
-    def __init__(self) -> None:
-        self.pipeline_kwargs: dict[str, Any] | None = None
-
-    def try_reserve_execution(self, lane, *, child_lanes=(), rate_units=1, scope="execution"):
-        raise AssertionError("not used")
-
-    def model_for_lane(self, lane):
-        return f"model:{lane}"
-
-    def request_audit(self, **kwargs):
-        return {"input_hash": "hash-input"}
-
-    async def run_decision_pipeline(self, **kwargs):
-        self.pipeline_kwargs = kwargs
-        return SimpleNamespace(
-            final_decision={"recommendation": "watchlist"},
-            agent_run_audit={"output_hash": "hash-1"},
-            stage_audits=("pulse_decision",),
-        )
-
-    async def aclose(self):
-        return None
-
-
 def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> None:
     settings = Settings(
-        llm={
-            "api_key": "sk-test",
-            "base_url": "https://example.com/v1",
-        },
+        llm={"api_key": "sk-test", "base_url": "https://example.com/v1"},
         workers={
             "agent_runtime": {
                 "defaults": {"model": "qwen3.6"},
                 "global_max_concurrency": 2,
                 "global_rpm_limit": 30,
                 "lanes": {
-                    "pulse.decision": {
+                    "news.item_brief": {
                         "priority": "high",
                         "max_concurrency": 1,
                         "timeout_seconds": 90,
@@ -74,14 +35,12 @@ def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> 
 
     snapshot = gateway.status_snapshot()
     assert snapshot["global_max_concurrency"] == 2
-    assert snapshot["lanes"]["pulse.decision"]["timeout_seconds"] == 90
+    assert snapshot["lanes"]["news.item_brief"]["timeout_seconds"] == 90
 
 
 def test_build_agent_execution_gateway_hard_cuts_safety_net() -> None:
     settings = Settings(
-        llm={
-            "api_key": "sk-test",
-        },
+        llm={"api_key": "sk-test"},
         workers={"agent_runtime": {"defaults": {"model": "gpt-news"}}},
     )
 
@@ -90,49 +49,28 @@ def test_build_agent_execution_gateway_hard_cuts_safety_net() -> None:
     assert not hasattr(gateway, "_safety_net")
 
 
-def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_factories(monkeypatch) -> None:
+def test_wire_providers_passes_agent_execution_gateway_to_news_provider(monkeypatch) -> None:
     settings = Settings(
         ws_token="secret",
-        llm={
-            "api_key": "sk-test",
-        },
+        llm={"api_key": "sk-test"},
         workers={
             "agent_runtime": {
                 "defaults": {"model": "gpt-social"},
                 "lanes": {
-                    "pulse.decision": {"model": "gpt-pulse"},
                     "news.item_brief": {"model": "gpt-news"},
                     "news.story_brief": {"model": "gpt-story"},
                 },
             },
-            "pulse_candidate": {"enabled": True},
             "news_item_brief": {"enabled": True},
         },
     )
     agent_gateway = object()
-    calls: list[tuple[str, str, object]] = []
+    calls: list[object] = []
 
-    def fake_pulse(
-        settings: Settings,
-        *,
-        agent_gateway: object,
-        **kwargs: Any,
-    ) -> object:
-        assert "llm_gateway" not in kwargs
-        calls.append(("pulse", settings.agent_runtime_model_for_lane("pulse.decision"), agent_gateway))
+    def fake_news_item_brief(*, agent_gateway: object) -> object:
+        calls.append(agent_gateway)
         return object()
 
-    def fake_news_item_brief(
-        *,
-        agent_gateway: object,
-        **kwargs: Any,
-    ) -> object:
-        assert "llm_gateway" not in kwargs
-        calls.append(("news_item_brief", settings.agent_runtime_model_for_lane("news.item_brief"), agent_gateway))
-        calls.append(("news_story_brief", settings.agent_runtime_model_for_lane("news.story_brief"), agent_gateway))
-        return object()
-
-    monkeypatch.setattr(model_execution, "litellm_pulse_decision_provider", fake_pulse)
     monkeypatch.setattr(model_execution, "litellm_news_item_brief_provider", fake_news_item_brief)
 
     providers = provider_wiring.wire_providers(
@@ -142,94 +80,5 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
     )
 
     assert providers.agent_execution_gateway is agent_gateway
-    assert calls == [
-        ("news_item_brief", "gpt-news", agent_gateway),
-        ("news_story_brief", "gpt-story", agent_gateway),
-        ("pulse", "gpt-pulse", agent_gateway),
-    ]
-
-
-def test_pulse_provider_uses_agent_runtime_decision_timeout() -> None:
-    settings = Settings(
-        ws_token="secret",
-        llm={
-            "api_key": "sk-test",
-        },
-        workers={
-            "agent_runtime": {
-                "defaults": {"model": "gpt-social"},
-                "lanes": {
-                    "pulse.decision": {
-                        "timeout_seconds": 305,
-                    }
-                },
-            }
-        },
-    )
-
-    provider = model_execution.litellm_pulse_decision_provider(
-        settings,
-        agent_gateway=object(),
-    )
-
-    assert provider.timeout_seconds == 305
-
-
-def test_pulse_provider_timeout_requires_agent_runtime_lanes_contract() -> None:
-    malformed_settings = SimpleNamespace(workers=SimpleNamespace(agent_runtime=SimpleNamespace()))
-
-    with pytest.raises(AttributeError, match="lanes"):
-        model_execution._agent_runtime_lane_timeout_seconds(malformed_settings, "pulse.decision")
-
-
-def test_pulse_provider_timeout_requires_configured_pulse_decision_lane() -> None:
-    malformed_settings = SimpleNamespace(
-        workers=SimpleNamespace(
-            agent_runtime=SimpleNamespace(lanes={}),
-        ),
-    )
-
-    with pytest.raises(KeyError, match=r"pulse\.decision"):
-        model_execution._agent_runtime_lane_timeout_seconds(malformed_settings, "pulse.decision")
-
-
-@pytest.mark.parametrize("timeout_seconds", [0, -1, True, "305"])
-def test_pulse_provider_timeout_rejects_malformed_lane_timeout_without_runtime_repair(timeout_seconds: object) -> None:
-    malformed_settings = SimpleNamespace(
-        workers=SimpleNamespace(
-            agent_runtime=SimpleNamespace(
-                lanes={"pulse.decision": SimpleNamespace(timeout_seconds=timeout_seconds)},
-            ),
-        ),
-    )
-
-    with pytest.raises(ValueError, match="agent_runtime_lane_timeout_seconds_required"):
-        model_execution._agent_runtime_lane_timeout_seconds(malformed_settings, "pulse.decision")
-
-
-@pytest.mark.parametrize("timeout_seconds", [0, -1, True, "305"])
-def test_pulse_provider_rejects_malformed_pipeline_timeout_without_runtime_repair(timeout_seconds: object) -> None:
-    with pytest.raises(ValueError, match="pulse_decision_pipeline_timeout_seconds_required"):
-        model_execution.LiteLLMPulseDecisionProvider(FakePulseClient(), pipeline_timeout_seconds=timeout_seconds)
-
-
-def test_pulse_provider_maps_agent_run_audit_from_litellm_client() -> None:
-    client = FakePulseClient()
-    provider = model_execution.LiteLLMPulseDecisionProvider(client, pipeline_timeout_seconds=305)
-
-    result = asyncio.run(
-        provider.run_decision_pipeline(
-            context={},
-            run_id="run-1",
-            job={},
-            route="meme",
-            completeness={},
-            runtime_manifest={},
-        )
-    )
-
-    assert client.pipeline_kwargs is not None
-    assert "stage_plan" not in client.pipeline_kwargs
-    assert result.agent_run_audit == {"output_hash": "hash-1"}
-    assert result.final_decision == {"recommendation": "watchlist"}
-    assert result.stage_audits == ("pulse_decision",)
+    assert providers.news_intel.brief_provider is not None
+    assert calls == [agent_gateway]

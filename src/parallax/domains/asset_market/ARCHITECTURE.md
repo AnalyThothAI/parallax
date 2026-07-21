@@ -8,9 +8,9 @@
 > `../../../../docs/CONTRACTS.md`.
 
 Asset Market is the only domain that may call market and identity
-providers in the service runtime. It writes the facts that Token Radar
-projection and Signal Pulse consume; it does not own ranking, decisions,
-or read-model projection.
+providers in the service runtime. It writes the facts that Token Radar and
+supported read models consume; it does not own ranking, decisions, or
+read-model projection.
 
 ## Stage Map
 
@@ -71,8 +71,8 @@ type before any persistence call.
   facts for the same instrument/observation.
 - CEX liquidation levels / heatmap zones are not tick facts. CoinGlass-derived
   level snapshots should enter through an Asset Market provider + append-only
-  derivatives snapshot table with one runtime writer, then be copied into Token
-  Case and Pulse evidence packets from persisted facts. Public reads and agents
+  derivatives snapshot table with one runtime writer, then be read from
+  persisted facts by Token Case and research consumers. Public reads and agents
   must not shell out to CoinGlass directly.
 - `raw_payload_json` stores the provider payload needed for audit without
   making provider frames the business fact.

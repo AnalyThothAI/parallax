@@ -32,7 +32,7 @@ cold paths are retained by partition lifecycle, not by worker-loop deletes.
 | Retention class | Tables | Lifecycle rule |
 | --- | --- | --- |
 | Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows`, `macro_view_snapshots`, `cex_oi_radar_rows`, `cex_oi_radar_publication_state` | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` publication state and product/window current rows, with `current_generation_id` kept as attempt audit metadata rather than a serving join key. Current rows carry `rank_score`, `quality_status`, `degraded_reasons_json`, and `factor_snapshot_json`, not legacy top-level current-row JSON blocks. Macro and CEX serving rows are compact current rows; unchanged source signatures update publication state at most and write zero serving rows. |
-| Projection-private/detail path | `token_radar_target_features`, `token_radar_rank_source_events` | Used by the Token Radar projection and bounded evidence/detail lookups only. `token_radar_target_features` is not an API, CLI, Pulse, notification, or repair read path. `token_radar_rank_source_events` is lazy evidence/detail, not online leaderboard service. |
+| Projection-private/detail path | `token_radar_target_features`, `token_radar_rank_source_events` | Used by the Token Radar projection and bounded evidence/detail lookups only. `token_radar_target_features` is not an API, CLI, notification, or repair read path. `token_radar_rank_source_events` is lazy evidence/detail, not online leaderboard service. |
 | Selected-row hydrate | `events`, `enriched_events` | Access only after ranking or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
 | Cold audit/history | `raw_frames` and future explicit cold projections | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
 | Control plane | Dirty targets, jobs, fetch runs | Leased, bounded, and terminal-evidence based. Queue state transitions must preserve attempts, lease ownership, payload hash/idempotency keys, and explicit terminal reasons. |
@@ -414,7 +414,6 @@ work, and a few query shapes and maintenance gaps amplify it.
 | Retired Token Radar rebuild gate | Historical P0 | The compact rank-input rebuild gate was a transitional failure mode. The later publication-state hard cut removed runtime rank-input readiness/rebuild paths; Token Radar now uses durable dirty targets, due gates, and content-stable current-row publication. |
 | Token Radar source hydration | P0 | The old `TokenRadarTargetFeatureQuery.source_rows()` single-target family caused the Top SQL fingerprint. Runtime now uses batched source requests without the materialized CTE. |
 | Worker terminal backlog | P0/P1 | Most unresolved terminal rows are real provider/business outcomes, not DB lock symptoms. LLM `522`, no quote, no market data, stale TTL, and retry-budget exhaustion dominate. |
-| Worker state-machine contracts | P1 | `pulse_candidate` had a stale-running edge case. Exhausted stale running jobs now terminalize as `dead` with `stale_running_timeout` before new claims. |
 | PostgreSQL maintenance hygiene | P1 | No invalid indexes exist, but several hot tables have stale statistics and high churn. The follow-up migration validates its concurrent index and analyzes affected hot tables. |
 | Kappa/CQRS boundary | P1 | Macro request-time dedupe moved into `macro_observation_series_rows`, written by `MacroViewProjectionWorker`; request paths read the projected table only. |
 
@@ -479,18 +478,10 @@ Terminal evidence by normalized reason:
 | `resolution_refresh` | `not_found_retry_budget_exhausted` | 1,536 |
 | `event_anchor_backfill` | `provider_no_quote` | 1,109 |
 | `mention_semantics` | `llm_provider_522` | 976 |
-| `pulse_candidate` | `stale_window_ttl` | 584 |
 | `enrichment` | `llm_provider_522` | 276 |
 | `event_anchor_backfill` | `no_market_data` | 262 |
 | `event_anchor_backfill` | `provider_error` | 229 |
 | `enrichment` | `timeout` | 127 |
-| `pulse_candidate` | `provider_unavailable` | 68 |
-
-Pulse has one stale running job:
-
-```text
-status=running, attempt_count=3, max_attempts=3, window=1h, scope=all, age=511 minutes
-```
 
 Statistics are stale enough to influence planner choices. Actual counts are
 far above `pg_stat_user_tables.n_live_tup` estimates until analyze runs:
@@ -501,7 +492,6 @@ far above `pg_stat_user_tables.n_live_tup` estimates until analyze runs:
 | `token_intent_resolutions` | 147,522 | 185 MB | 825 | 46.29% |
 | `event_anchor_backfill_jobs` | 33,606 | 22 MB | 84 | 50.00% |
 | `token_radar_target_features` | 17,252 | 109 MB | 90 | 78.26% |
-| `pulse_agent_runs` | 9,512 | 255 MB | 57 | 45.19% |
 
 There are no invalid indexes in the current database.
 
@@ -589,7 +579,6 @@ Fresh unresolved terminal evidence:
 | --- | --- | ---: | ---: | --- |
 | `event_anchor_backfill` | `event_anchor_backfill_jobs` | `failed` | 1,586 | `provider_no_quote`, `no_market_data`, provider errors |
 | `mention_semantics` | `token_mention_semantics` | `semantic_unavailable` | 967 | LLM provider `522` |
-| `pulse_candidate` | `pulse_agent_jobs` | `dead` | 642 | mostly `stale_window_ttl` |
 | `resolution_refresh` | `token_discovery_dirty_lookup_keys` | `not_found` | 622 | retry budget exhausted |
 | `enrichment` | `enrichment_jobs` | `dead` | 400 | LLM provider `522`, 120s timeout |
 | `resolution_refresh` | `token_discovery_dirty_lookup_keys` | `error` | 14 | provider error retry budget |
@@ -603,9 +592,6 @@ Diagnosis by domain:
 - `mention_semantics` and `enrichment` are dominated by external LLM provider
   `522` and provider timeouts. Treat this as provider/circuit/backpressure
   behavior, not as database failure.
-- `pulse_candidate` dead rows are mostly stale-window TTL. The agent lane is
-  admitting or retaining work that cannot finish before the product window
-  expires.
 - `resolution_refresh` is actively terminalizing poison lookup keys, but active
   backlog still exists.
 
@@ -630,7 +616,6 @@ Next moves:
 - Resolve obvious terminal rows by operator action, not table updates.
 - Add reason-level dashboards: provider outage, no quote, no market data,
   stale TTL, retry budget exhausted.
-- For `pulse_candidate`, tune enqueue volume versus TTL and agent capacity.
 
 ### P1: Macro Request-Time Dedupe Still Writes Temp Blocks
 
@@ -694,7 +679,6 @@ Fresh examples:
 | `token_intent_lookup_keys` | 87.85% | 91 MB |
 | `token_intent_resolutions` | 46.35% | 183 MB |
 | `event_anchor_backfill_jobs` | 50.00% | 21 MB |
-| `pulse_agent_runs` | 39.01% | 248 MB |
 
 Diagnosis:
 
@@ -709,7 +693,6 @@ VACUUM (ANALYZE) token_radar_target_features;
 VACUUM (ANALYZE) token_intent_lookup_keys;
 VACUUM (ANALYZE) token_intent_resolutions;
 VACUUM (ANALYZE) event_anchor_backfill_jobs;
-VACUUM (ANALYZE) pulse_agent_runs;
 ```
 
 Run after the current drain/rebuild wave, not while the same tables are being

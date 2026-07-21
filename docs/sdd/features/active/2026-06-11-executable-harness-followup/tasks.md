@@ -25,7 +25,7 @@
 - **Owner**: parent
 - **Depends on**: none
 - **Touch set**: `scripts/validate_sdd_artifacts.py`, `scripts/regen_sdd_work_index.py`, `tests/architecture/test_sdd_artifact_validator.py`, `docs/sdd/features/active/2026-06-11-executable-harness-followup`, `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut`, `docs/generated/sdd-work-index.md`
-- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared generated SDD index updates.
+- **Conflict set**: coordinate with 2026-06-09-agent-playbook-skill-hard-cut for shared generated SDD index updates; coordinate with 2026-07-21-signal-pulse-hard-cut for shared generated SDD index.
 - **Failing test first**: `tests/architecture/test_sdd_artifact_validator.py::test_active_feature_rejects_unbounded_task_board` — proves oversized active task boards fail validation.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated

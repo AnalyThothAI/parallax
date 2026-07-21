@@ -75,7 +75,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
     brief_provider = news_providers.brief_provider
     if workers.news_item_brief.enabled:
         worker_name = "news_item_brief"
-        if not ctx.settings.news_item_brief_configured:
+        if not ctx.settings.llm_configured:
             constructed[worker_name] = disabled_worker(ctx, worker_name)
         elif brief_provider is not None:
             constructed[worker_name] = NewsItemBriefWorker(
@@ -90,7 +90,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
 
     if workers.news_story_brief.enabled:
         worker_name = "news_story_brief"
-        if not ctx.settings.news_story_brief_configured:
+        if not ctx.settings.llm_configured:
             constructed[worker_name] = disabled_worker(ctx, worker_name)
         elif brief_provider is not None:
             constructed[worker_name] = NewsStoryBriefWorker(

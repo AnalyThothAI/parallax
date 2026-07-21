@@ -37,7 +37,7 @@ describe("notifications route shell", () => {
       await screen.findByRole("complementary", { name: "notification drawer" }),
     ).toBeInTheDocument();
     await waitFor(() => expect(screen.getByText("1 unread")).toBeInTheDocument());
-    expect(screen.getByRole("button", { name: "open Signal Pulse" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "open Watched token alert" })).toBeInTheDocument();
     expect(apiMock.getApi.mock.calls.some(([path]) => path === "/api/notification-summary")).toBe(
       true,
     );
@@ -53,19 +53,19 @@ describe("notifications route shell", () => {
       notification: {
         notification_id: "socket-notification-1",
         dedup_key: "socket:notification:1",
-        rule_id: "signal_pulse_candidate",
+        rule_id: "watched_account_activity",
         severity: "high",
-        title: "Signal Pulse",
-        body: "candidate ready",
-        entity_type: "pulse_candidate",
-        entity_key: "pulse:candidate",
+        title: "Watched account activity",
+        body: "watched account mentioned PEPE",
+        entity_type: "token",
+        entity_key: "token:pepe",
         author_handle: "traderpow",
         symbol: "PEPE",
         chain: "eth",
         address: null,
         event_id: "event-1",
-        source_table: "pulse_candidates",
-        source_id: "candidate-1",
+        source_table: "events",
+        source_id: "event-1",
         occurrence_count: 1,
         first_seen_at_ms: 1_700_000_000_000,
         last_seen_at_ms: 1_700_000_000_000,

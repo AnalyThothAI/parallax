@@ -11,7 +11,6 @@ export type ScopeKey = "matched" | "all";
 export type TokenCaseApiScope = ScopeKey | "watched";
 export type Decision = "driver" | "watch" | "investigate" | "discard";
 export type RadarSortMode = "opportunity" | "heat" | "quality" | "propagation" | "timing";
-export type TokenDetailTab = "timeline" | "posts" | "score" | "lab" | "accounts";
 export type TimelineBucket = "30s" | "5m" | "15m" | "1h";
 export type TokenPostRange = "current_window" | "since_ignition" | "all_history";
 export type TokenPostSortMode = "recent" | "quality" | "catalyst";
@@ -626,19 +625,13 @@ export type SearchAgentBrief = {
   };
 };
 
-export type NarrativeAdmissionStatus =
-  | "admitted"
-  | "suppressed"
-  | "missing"
-  | "unsupported_window"
-  | string;
+export type NarrativeAdmissionStatus = "admitted" | "suppressed" | "missing";
 
 export type NarrativeAdmissionCurrentnessStatus =
   | "current"
   | "not_ready"
   | "out_of_frontier"
-  | "unsupported_window"
-  | string;
+  | "unsupported_window";
 
 export type NarrativeAdmissionCurrentness = {
   display_status: NarrativeAdmissionCurrentnessStatus;
@@ -648,6 +641,7 @@ export type NarrativeAdmissionCurrentness = {
 export type NarrativeAdmission = {
   status: NarrativeAdmissionStatus;
   reason: string;
+  is_current: boolean;
   computed_at_ms?: number | null;
   currentness: NarrativeAdmissionCurrentness;
   coverage: {
@@ -663,20 +657,6 @@ export type NarrativeAdmission = {
         [key: string]: unknown;
       }
   >;
-};
-
-export type PulseOverlay = {
-  status: "ready" | "hidden" | "unavailable" | string;
-  pulse_status?: SignalPulseStatus | string | null;
-  display_status?: string | null;
-  evidence_packet_hash?: string | null;
-  verdict?: string | null;
-  summary_zh?: string | null;
-  recommendation?: string | null;
-  confidence?: number | null;
-  updated_at_ms?: number | null;
-  evidence_refs?: Array<string | Record<string, unknown>>;
-  data_gaps?: string[];
 };
 
 export type TokenProfileBlock = {
@@ -778,7 +758,6 @@ export type TokenCaseDossier = {
   timeline: TokenCaseSocialTimelineData;
   posts: TokenCasePostsData;
   narrative_admission: NarrativeAdmission;
-  pulse_overlay?: PulseOverlay | null;
   market_live: LiveMarketSnapshot;
   cex_detail?: CexDetailSnapshot | null;
 };
@@ -949,7 +928,6 @@ export type AssetFlowRow = {
   market: MarketContext;
   radar?: TokenRadarRowMeta;
   narrative_admission?: NarrativeAdmission | null;
-  pulse_overlay?: PulseOverlay | null;
   resolution: {
     status: "EXACT" | "UNIQUE_BY_CONTEXT" | "NIL" | "AMBIGUOUS" | string;
     resolution_status?: string | null;
@@ -1295,7 +1273,6 @@ export type TokenFlowItem = {
   watch: WatchBlock;
   profile?: TokenProfileBlock | null;
   narrative_admission?: NarrativeAdmission | null;
-  pulse_overlay?: PulseOverlay | null;
   factor_data_health?: TokenFactorSnapshot["data_health"];
   factor_gates?: TokenFactorSnapshot["gates"];
   factor_normalization?: TokenFactorSnapshot["normalization"];
@@ -1549,60 +1526,6 @@ export type TokenSocialTimelineData = {
   next_cursor?: string | null;
 };
 
-export type SignalPulseStatus = "trade_candidate" | "token_watch" | "risk_rejected_high_info";
-export type SignalPulseStatusFilter = "all" | SignalPulseStatus;
-export type SignalPulseVisibilityFilter = "public" | "hidden";
-
-export type SignalPulseQuery = {
-  window: WindowKey;
-  scope: ScopeKey;
-  status?: SignalPulseStatus | null;
-  visibility?: SignalPulseVisibilityFilter | null;
-  handle?: string | null;
-  q?: string | null;
-};
-
-export type SignalPulseHealth = {
-  pulse_ready: boolean;
-  public_ready?: boolean | null;
-  candidate_count: number;
-  public_candidate_count?: number | null;
-  hidden_candidate_count?: number | null;
-  blocked_low_information_count: number;
-  dead_job_count: number;
-  market_ready_rate: number;
-  window?: string | null;
-  scope?: string | null;
-  since_hours?: number | null;
-  publish_status?: "healthy" | "degraded" | "hold_publish" | string | null;
-  reasons?: string[];
-  latest_packet_created_at_ms?: number | null;
-  latest_agent_run_finished_at_ms?: number | null;
-  latest_public_candidate_updated_at_ms?: number | null;
-  latest_hidden_hold_candidate_updated_at_ms?: number | null;
-  due_jobs?: number | null;
-  claimed_jobs?: number | null;
-  failed_jobs_4h?: number | null;
-  agent_runs_4h?: number | null;
-  agent_failed_4h?: number | null;
-  agent_failure_rate_4h?: number | null;
-  unknown_ref_failures_4h?: number | null;
-  unknown_ref_failure_rate_4h?: number | null;
-  unsupported_claim_failures_4h?: number | null;
-  unsupported_claim_failure_rate_4h?: number | null;
-  hidden_abstain_4h?: number | null;
-  hidden_hold_publish_4h?: number | null;
-  hidden_insufficient_evidence_4h?: number | null;
-  public_candidates_4h?: number | null;
-};
-
-export type SignalPulseSummary = Record<SignalPulseStatus, number> & {
-  decision_route_counts?: Record<string, number>;
-  decision_recommendation_counts?: Record<string, number>;
-  decision_abstain_reason_counts?: Record<string, number>;
-  decision_error_count?: number;
-};
-
 export type FactorPoint = {
   family: string;
   key: string;
@@ -1674,91 +1597,6 @@ export type TokenFactorSnapshot = {
     source_event_ids: string[];
     computed_at_ms: number;
   };
-};
-
-export type BullBearView = {
-  strength: "absent" | "weak" | "moderate" | "strong";
-  thesis_zh: string;
-  supporting_event_ids: string[];
-};
-
-export type TradePlaybook = {
-  has_playbook: boolean;
-  watch_signals: string[];
-  exit_triggers: string[];
-  monitoring_horizon: "1h" | "4h" | "24h";
-};
-
-export type PulseDecision = {
-  route: "cex" | "meme" | "research_only" | string;
-  recommendation:
-    | "high_conviction"
-    | "trade_candidate"
-    | "watchlist"
-    | "ignore"
-    | "abstain"
-    | string;
-  confidence?: number | null;
-  abstain_reason?: string | null;
-  stage_count?: number | null;
-  summary_zh: string;
-  invalidation_conditions: string[];
-  residual_risks: string[];
-  evidence_event_ids?: string[];
-  supporting_evidence_refs?: string[];
-  risk_evidence_refs?: string[];
-  data_gap_refs?: string[];
-  // v2 新字段 — 全部可选 + 缺时前端 fallback 显示 "—"
-  narrative_archetype?: string;
-  narrative_thesis_zh?: string;
-  bull_view?: BullBearView | null;
-  bear_view?: BullBearView | null;
-  playbook?: TradePlaybook | null;
-  evidence_event_urls?: Record<string, string>;
-};
-
-export type SignalPulseItem = {
-  candidate_id: string;
-  candidate_type: string;
-  subject_key: string;
-  target_type?: string | null;
-  target_id?: string | null;
-  symbol?: string | null;
-  window: WindowKey | string;
-  scope: ScopeKey | string;
-  evidence_status?: string | null;
-  decision_status?: string | null;
-  display_status?: string | null;
-  evidence_packet_hash?: string | null;
-  verdict?: string | null;
-  social_phase?: string | null;
-  candidate_score?: number | null;
-  score_band?: string | null;
-  evidence_event_ids: string[];
-  source_event_ids: string[];
-  factor_snapshot: TokenFactorSnapshot;
-  decision: PulseDecision;
-  gate: Record<string, unknown>;
-  claim_verification?: Record<string, unknown> | null;
-  evidence_gate?: Record<string, unknown> | null;
-  fact_card: Record<string, unknown>;
-  pulse_version?: string | null;
-  gate_version?: string | null;
-  prompt_version?: string | null;
-  schema_version?: string | null;
-  created_at_ms: number;
-  updated_at_ms: number;
-  playbooks: unknown[];
-};
-
-export type SignalPulseData = {
-  query: SignalPulseQuery;
-  health: SignalPulseHealth;
-  summary: SignalPulseSummary;
-  items: SignalPulseItem[];
-  returned_count: number;
-  has_more: boolean;
-  next_cursor?: string | null;
 };
 
 export type SourceEventDetail = {

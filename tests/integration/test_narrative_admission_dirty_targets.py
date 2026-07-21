@@ -33,7 +33,6 @@ def test_token_radar_publish_enqueues_narrative_admission_in_same_transaction(tm
 
         repos = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
@@ -89,7 +88,6 @@ def test_token_radar_refresh_rolls_back_current_rows_when_narrative_enqueue_fail
         _insert_pricefeed(conn, "feed-1")
         repos = repositories_for_connection(
             conn,
-            pulse_job_running_timeout_ms=300_000,
             notification_delivery_running_timeout_ms=300_000,
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
@@ -115,7 +113,6 @@ def test_token_radar_refresh_rolls_back_current_rows_when_narrative_enqueue_fail
             """
             SELECT
               (SELECT count(*) FROM token_radar_current_rows) AS current_count,
-              (SELECT count(*) FROM pulse_trigger_dirty_targets) AS pulse_count,
               (SELECT count(*) FROM narrative_admission_dirty_targets) AS narrative_count
             """
         ).fetchone()
@@ -123,7 +120,6 @@ def test_token_radar_refresh_rolls_back_current_rows_when_narrative_enqueue_fail
         conn.close()
 
     assert counts["current_count"] == 0
-    assert counts["pulse_count"] == 0
     assert counts["narrative_count"] == 0
 
 

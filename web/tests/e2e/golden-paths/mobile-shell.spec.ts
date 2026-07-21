@@ -36,10 +36,9 @@ test("mobile shell exposes sidebar route nav and task nav without route reloads"
   await expect(liveTaskNav).toBeVisible();
   const radarButton = liveTaskNav.getByRole("button", { name: "Radar" });
   const tapeButton = liveTaskNav.getByRole("button", { name: "Tape" });
-  const labButton = liveTaskNav.getByRole("button", { name: "Lab" });
   await expect(radarButton).toBeVisible();
   await expect(tapeButton).toBeVisible();
-  await expect(labButton).toBeVisible();
+  await expect(liveTaskNav.getByRole("button", { name: "Lab" })).toHaveCount(0);
 
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalOverflow(page, [".topbar", ".live-task-nav"]);
@@ -53,13 +52,6 @@ test("mobile shell exposes sidebar route nav and task nav without route reloads"
   await expect(tapeButton).toHaveAttribute("aria-current", "page");
   await expect(radarButton).not.toHaveAttribute("aria-current", "page");
   await expectActiveMobileTask(page, "tape");
-  await expect(page).toHaveURL(/\/$/);
-  expect(await page.evaluate(() => window.__routeBackSentinel)).toBe("mobile-task-switch");
-
-  await labButton.click();
-  await expect(labButton).toHaveAttribute("aria-current", "page");
-  await expect(tapeButton).not.toHaveAttribute("aria-current", "page");
-  await expectActiveMobileTask(page, "lab");
   await expect(page).toHaveURL(/\/$/);
   expect(await page.evaluate(() => window.__routeBackSentinel)).toBe("mobile-task-switch");
 
@@ -150,7 +142,7 @@ test("mobile radar row click reaches token detail above the task nav", async ({ 
 
 async function expectActiveMobileTask(page: Page, activePanel: string) {
   await expect(page.locator(`[data-mobile-task-panel="${activePanel}"]`)).toBeVisible();
-  for (const inactivePanel of ["radar", "tape", "lab"].filter((panel) => panel !== activePanel)) {
+  for (const inactivePanel of ["radar", "tape"].filter((panel) => panel !== activePanel)) {
     await expect(page.locator(`[data-mobile-task-panel="${inactivePanel}"]`)).toBeHidden();
   }
 }

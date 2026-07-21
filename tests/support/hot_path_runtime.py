@@ -38,14 +38,6 @@ def backend_hot_path_settings(tmp_path: Path) -> Settings:
             "rules": {
                 "watched_account_activity": {"enabled": False},
                 "watched_account_token_alert": {"enabled": False},
-                "signal_pulse_candidate": {
-                    "enabled": True,
-                    "channels": ("in_app", "log"),
-                    "window": "1h",
-                    "scopes": ("all",),
-                    "statuses": ("trade_candidate",),
-                    "cooldown_seconds": 0,
-                },
             },
             "channels": {
                 "log": {
@@ -84,19 +76,6 @@ def _disabled_workers() -> dict[str, dict[str, Any]]:
                 "scopes": ("all",),
                 "hot_windows": ("1h",),
                 "cold_interval_seconds": 0,
-            },
-            "pulse_candidate": {
-                "enabled": False,
-                "batch_size": 10,
-                "windows": ("1h",),
-                "scopes": ("all",),
-                "trigger_thresholds": {"min_rank_score": 0},
-                "gate_thresholds": {
-                    "trade_candidate_min": 0,
-                    "token_watch_min": 0,
-                    "high_info_rejection_min": 0,
-                    "high_conviction_min": 0,
-                },
             },
             "notification_rule": {
                 "enabled": False,

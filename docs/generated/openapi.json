@@ -889,98 +889,6 @@
         "title": "ApiEnvelope[SearchInspectData]",
         "type": "object"
       },
-      "ApiEnvelope_SignalPulseData_": {
-        "additionalProperties": true,
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Field"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "ok"
-        ],
-        "title": "ApiEnvelope[SignalPulseData]",
-        "type": "object"
-      },
-      "ApiEnvelope_SignalPulseItem_": {
-        "additionalProperties": true,
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseItem"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Field"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "ok"
-        ],
-        "title": "ApiEnvelope[SignalPulseItem]",
-        "type": "object"
-      },
       "ApiEnvelope_SourceEventsByIdsData_": {
         "additionalProperties": true,
         "properties": {
@@ -1522,31 +1430,10 @@
         "title": "LiveMarketData",
         "type": "object"
       },
-      "NarrativeCurrentnessData": {
+      "NarrativeAdmissionData": {
         "additionalProperties": true,
         "properties": {
-          "current_source_event_count": {
-            "default": 0,
-            "title": "Current Source Event Count",
-            "type": "integer"
-          },
-          "current_source_fingerprint": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Current Source Fingerprint"
-          },
-          "delta_independent_author_count": {
-            "default": 0,
-            "title": "Delta Independent Author Count",
-            "type": "integer"
-          },
-          "delta_since_ms": {
+          "computed_at_ms": {
             "anyOf": [
               {
                 "type": "integer"
@@ -1555,84 +1442,75 @@
                 "type": "null"
               }
             ],
-            "title": "Delta Since Ms"
+            "title": "Computed At Ms"
           },
-          "delta_source_event_count": {
+          "coverage": {
+            "$ref": "#/components/schemas/NarrativeCoverageData"
+          },
+          "currentness": {
+            "$ref": "#/components/schemas/NarrativeCurrentnessData"
+          },
+          "data_gaps": {
+            "items": {},
+            "title": "Data Gaps",
+            "type": "array"
+          },
+          "is_current": {
+            "default": false,
+            "title": "Is Current",
+            "type": "boolean"
+          },
+          "reason": {
+            "title": "Reason",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "admitted",
+              "suppressed",
+              "missing"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "currentness"
+        ],
+        "title": "NarrativeAdmissionData",
+        "type": "object"
+      },
+      "NarrativeCoverageData": {
+        "additionalProperties": true,
+        "properties": {
+          "independent_authors": {
             "default": 0,
-            "title": "Delta Source Event Count",
+            "title": "Independent Authors",
             "type": "integer"
           },
+          "source_mentions": {
+            "default": 0,
+            "title": "Source Mentions",
+            "type": "integer"
+          }
+        },
+        "title": "NarrativeCoverageData",
+        "type": "object"
+      },
+      "NarrativeCurrentnessData": {
+        "additionalProperties": true,
+        "properties": {
           "display_status": {
             "enum": [
               "current",
-              "updating",
-              "stale",
               "not_ready",
               "out_of_frontier",
               "unsupported_window"
             ],
             "title": "Display Status",
             "type": "string"
-          },
-          "epoch_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Epoch Id"
-          },
-          "epoch_policy_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Epoch Policy Version"
-          },
-          "last_ready_computed_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Ready Computed At Ms"
-          },
-          "next_refresh_due_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Refresh Due At Ms"
-          },
-          "ready_source_event_count": {
-            "default": 0,
-            "title": "Ready Source Event Count",
-            "type": "integer"
-          },
-          "ready_source_fingerprint": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Ready Source Fingerprint"
           },
           "reason": {
             "title": "Reason",
@@ -1644,41 +1522,6 @@
           "reason"
         ],
         "title": "NarrativeCurrentnessData",
-        "type": "object"
-      },
-      "NarrativeDeltaData": {
-        "additionalProperties": true,
-        "properties": {
-          "delta_independent_author_count": {
-            "default": 0,
-            "title": "Delta Independent Author Count",
-            "type": "integer"
-          },
-          "delta_source_event_count": {
-            "default": 0,
-            "title": "Delta Source Event Count",
-            "type": "integer"
-          },
-          "display_status": {
-            "title": "Display Status",
-            "type": "string"
-          },
-          "label": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Label"
-          }
-        },
-        "required": [
-          "display_status"
-        ],
-        "title": "NarrativeDeltaData",
         "type": "object"
       },
       "NewsAgentAdmission": {
@@ -4227,1026 +4070,6 @@
         "title": "SearchInspectData",
         "type": "object"
       },
-      "SignalPulseBullBearView": {
-        "additionalProperties": true,
-        "properties": {
-          "strength": {
-            "title": "Strength",
-            "type": "string"
-          },
-          "supporting_event_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Supporting Event Ids",
-            "type": "array"
-          },
-          "thesis_zh": {
-            "title": "Thesis Zh",
-            "type": "string"
-          }
-        },
-        "required": [
-          "strength",
-          "thesis_zh",
-          "supporting_event_ids"
-        ],
-        "title": "SignalPulseBullBearView",
-        "type": "object"
-      },
-      "SignalPulseData": {
-        "additionalProperties": true,
-        "properties": {
-          "has_more": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Has More"
-          },
-          "health": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseHealth"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "items": {
-            "items": {
-              "$ref": "#/components/schemas/SignalPulseItem"
-            },
-            "title": "Items",
-            "type": "array"
-          },
-          "next_cursor": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Next Cursor"
-          },
-          "query": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Query"
-          },
-          "returned_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Returned Count"
-          },
-          "summary": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Summary"
-          },
-          "total_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Total Count"
-          }
-        },
-        "title": "SignalPulseData",
-        "type": "object"
-      },
-      "SignalPulseDecision": {
-        "additionalProperties": true,
-        "properties": {
-          "abstain_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Abstain Reason"
-          },
-          "bear_view": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseBullBearView"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "bull_view": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseBullBearView"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "confidence": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Confidence"
-          },
-          "data_gap_refs": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Data Gap Refs",
-            "type": "array"
-          },
-          "evidence_event_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Evidence Event Ids",
-            "type": "array"
-          },
-          "evidence_event_urls": {
-            "additionalProperties": {
-              "type": "string"
-            },
-            "title": "Evidence Event Urls",
-            "type": "object"
-          },
-          "invalidation_conditions": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Invalidation Conditions",
-            "type": "array"
-          },
-          "narrative_archetype": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Narrative Archetype"
-          },
-          "narrative_thesis_zh": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Narrative Thesis Zh"
-          },
-          "playbook": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulsePlaybook"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "recommendation": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Recommendation"
-          },
-          "residual_risks": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Residual Risks",
-            "type": "array"
-          },
-          "risk_evidence_refs": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Risk Evidence Refs",
-            "type": "array"
-          },
-          "route": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Route"
-          },
-          "summary_zh": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Summary Zh"
-          },
-          "supporting_evidence_refs": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Supporting Evidence Refs",
-            "type": "array"
-          }
-        },
-        "required": [
-          "route",
-          "recommendation",
-          "confidence",
-          "summary_zh",
-          "abstain_reason",
-          "narrative_archetype",
-          "narrative_thesis_zh",
-          "bull_view",
-          "bear_view",
-          "playbook",
-          "evidence_event_ids",
-          "evidence_event_urls",
-          "invalidation_conditions",
-          "residual_risks"
-        ],
-        "title": "SignalPulseDecision",
-        "type": "object"
-      },
-      "SignalPulseHealth": {
-        "additionalProperties": true,
-        "properties": {
-          "agent_failed_4h": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Failed 4H"
-          },
-          "agent_failure_rate_4h": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Failure Rate 4H"
-          },
-          "agent_runs_4h": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Runs 4H"
-          },
-          "blocked_low_information_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Blocked Low Information Count"
-          },
-          "candidate_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Candidate Count"
-          },
-          "claimed_jobs": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Claimed Jobs"
-          },
-          "dead_job_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Dead Job Count"
-          },
-          "due_jobs": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Due Jobs"
-          },
-          "failed_jobs_4h": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Failed Jobs 4H"
-          },
-          "hidden_abstain_4h": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hidden Abstain 4H"
-          },
-          "hidden_candidate_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hidden Candidate Count"
-          },
-          "hidden_hold_publish_4h": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hidden Hold Publish 4H"
-          },
-          "hidden_insufficient_evidence_4h": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Hidden Insufficient Evidence 4H"
-          },
-          "latest_agent_run_finished_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Agent Run Finished At Ms"
-          },
-          "latest_hidden_hold_candidate_updated_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Hidden Hold Candidate Updated At Ms"
-          },
-          "latest_packet_created_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Packet Created At Ms"
-          },
-          "latest_public_candidate_updated_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Latest Public Candidate Updated At Ms"
-          },
-          "market_ready_rate": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Market Ready Rate"
-          },
-          "public_candidate_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Public Candidate Count"
-          },
-          "public_candidates_4h": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Public Candidates 4H"
-          },
-          "public_ready": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Public Ready"
-          },
-          "publish_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Publish Status"
-          },
-          "pulse_ready": {
-            "anyOf": [
-              {
-                "type": "boolean"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pulse Ready"
-          },
-          "reasons": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Reasons",
-            "type": "array"
-          },
-          "scope": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scope"
-          },
-          "since_hours": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Since Hours"
-          },
-          "unknown_ref_failure_rate_4h": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unknown Ref Failure Rate 4H"
-          },
-          "unknown_ref_failures_4h": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unknown Ref Failures 4H"
-          },
-          "unsupported_claim_failure_rate_4h": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unsupported Claim Failure Rate 4H"
-          },
-          "unsupported_claim_failures_4h": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Unsupported Claim Failures 4H"
-          },
-          "window": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Window"
-          }
-        },
-        "title": "SignalPulseHealth",
-        "type": "object"
-      },
-      "SignalPulseItem": {
-        "additionalProperties": true,
-        "properties": {
-          "candidate_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Candidate Id"
-          },
-          "candidate_score": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Candidate Score"
-          },
-          "candidate_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Candidate Type"
-          },
-          "created_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Created At Ms"
-          },
-          "decision": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/SignalPulseDecision"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "decision_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decision Status"
-          },
-          "display_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Display Status"
-          },
-          "evidence_event_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Evidence Event Ids",
-            "type": "array"
-          },
-          "evidence_packet_hash": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Evidence Packet Hash"
-          },
-          "evidence_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Evidence Status"
-          },
-          "fact_card": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Fact Card"
-          },
-          "factor_snapshot": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Factor Snapshot"
-          },
-          "gate": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gate"
-          },
-          "gate_reasons": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Gate Reasons",
-            "type": "array"
-          },
-          "gate_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Gate Version"
-          },
-          "playbooks": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Playbooks",
-            "type": "array"
-          },
-          "prompt_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Prompt Version"
-          },
-          "pulse_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pulse Version"
-          },
-          "risk_reasons": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Risk Reasons",
-            "type": "array"
-          },
-          "schema_version": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Schema Version"
-          },
-          "scope": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Scope"
-          },
-          "score_band": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Score Band"
-          },
-          "social_phase": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Social Phase"
-          },
-          "source_event_ids": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Source Event Ids",
-            "type": "array"
-          },
-          "subject": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subject"
-          },
-          "subject_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Subject Key"
-          },
-          "symbol": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Symbol"
-          },
-          "target_id": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Id"
-          },
-          "target_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Target Type"
-          },
-          "updated_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Updated At Ms"
-          },
-          "verdict": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Verdict"
-          },
-          "window": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Window"
-          }
-        },
-        "title": "SignalPulseItem",
-        "type": "object"
-      },
-      "SignalPulsePlaybook": {
-        "additionalProperties": true,
-        "properties": {
-          "exit_triggers": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Exit Triggers",
-            "type": "array"
-          },
-          "has_playbook": {
-            "title": "Has Playbook",
-            "type": "boolean"
-          },
-          "monitoring_horizon": {
-            "title": "Monitoring Horizon",
-            "type": "string"
-          },
-          "watch_signals": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Watch Signals",
-            "type": "array"
-          }
-        },
-        "required": [
-          "has_playbook",
-          "watch_signals",
-          "exit_triggers",
-          "monitoring_horizon"
-        ],
-        "title": "SignalPulsePlaybook",
-        "type": "object"
-      },
       "SourceEventDetail": {
         "additionalProperties": true,
         "properties": {
@@ -5716,24 +4539,13 @@
             ],
             "title": "Cex Detail"
           },
-          "discussion_digest": {
-            "$ref": "#/components/schemas/TokenDiscussionDigestData"
-          },
           "market_live": {
             "additionalProperties": true,
             "title": "Market Live",
             "type": "object"
           },
-          "narrative_clusters": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Narrative Clusters",
-            "type": "array"
-          },
-          "narrative_delta": {
-            "$ref": "#/components/schemas/NarrativeDeltaData"
+          "narrative_admission": {
+            "$ref": "#/components/schemas/NarrativeAdmissionData"
           },
           "posts": {
             "additionalProperties": true,
@@ -5752,18 +4564,6 @@
             ],
             "title": "Profile"
           },
-          "pulse_overlay": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Pulse Overlay"
-          },
           "target": {
             "additionalProperties": true,
             "title": "Target",
@@ -5779,45 +4579,10 @@
           "target",
           "timeline",
           "posts",
-          "discussion_digest",
+          "narrative_admission",
           "market_live"
         ],
         "title": "TokenCaseData",
-        "type": "object"
-      },
-      "TokenDiscussionDigestData": {
-        "additionalProperties": true,
-        "properties": {
-          "coverage": {
-            "additionalProperties": true,
-            "title": "Coverage",
-            "type": "object"
-          },
-          "currentness": {
-            "$ref": "#/components/schemas/NarrativeCurrentnessData"
-          },
-          "data_gaps": {
-            "items": {},
-            "title": "Data Gaps",
-            "type": "array"
-          },
-          "status": {
-            "enum": [
-              "ready",
-              "pending",
-              "insufficient",
-              "semantic_unavailable",
-              "stale"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "currentness"
-        ],
-        "title": "TokenDiscussionDigestData",
         "type": "object"
       },
       "TokenRadarData": {
@@ -5866,10 +4631,10 @@
       "TokenRadarRowData": {
         "additionalProperties": true,
         "properties": {
-          "discussion_digest": {
+          "narrative_admission": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/TokenDiscussionDigestData"
+                "$ref": "#/components/schemas/NarrativeAdmissionData"
               },
               {
                 "type": "null"
@@ -7431,40 +6196,6 @@
     "/api/ops/diagnostics": {
       "get": {
         "operationId": "ops_diagnostics_api_ops_diagnostics_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "since_hours",
-            "required": false,
-            "schema": {
-              "default": 4,
-              "maximum": 168,
-              "minimum": 1,
-              "title": "Since Hours",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "window",
-            "required": false,
-            "schema": {
-              "default": "1h",
-              "title": "Window",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scope",
-            "required": false,
-            "schema": {
-              "default": "all",
-              "title": "Scope",
-              "type": "string"
-            }
-          }
-        ],
         "responses": {
           "200": {
             "content": {
@@ -7475,16 +6206,6 @@
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
           }
         },
         "summary": "Ops Diagnostics",
@@ -7805,171 +6526,6 @@
           }
         },
         "summary": "Search Inspect",
-        "tags": [
-          "api"
-        ]
-      }
-    },
-    "/api/signal-lab/pulse": {
-      "get": {
-        "operationId": "signal_lab_pulse_api_signal_lab_pulse_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "window",
-            "required": false,
-            "schema": {
-              "default": "4h",
-              "title": "Window",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scope",
-            "required": false,
-            "schema": {
-              "default": "all",
-              "title": "Scope",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "status",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Status",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "handle",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Handle",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "q",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Q",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "visibility",
-            "required": false,
-            "schema": {
-              "default": "public",
-              "title": "Visibility",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 80,
-              "title": "Limit",
-              "type": "integer"
-            }
-          },
-          {
-            "in": "query",
-            "name": "cursor",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Cursor",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_SignalPulseData_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Signal Lab Pulse",
-        "tags": [
-          "api"
-        ]
-      }
-    },
-    "/api/signal-lab/pulse/{candidate_id}": {
-      "get": {
-        "operationId": "signal_lab_pulse_by_id_api_signal_lab_pulse__candidate_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "candidate_id",
-            "required": true,
-            "schema": {
-              "title": "Candidate Id",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "visibility",
-            "required": false,
-            "schema": {
-              "default": "public",
-              "title": "Visibility",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_SignalPulseItem_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Signal Lab Pulse By Id",
         "tags": [
           "api"
         ]

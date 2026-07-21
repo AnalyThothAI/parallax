@@ -50,10 +50,7 @@ class NarrativeReadModel:
         target_type, target_id = _target_identity(row)
         return {
             **row,
-            "narrative_admission": _public_admission(
-                admissions.get((target_type, target_id), _missing_admission())
-            ),
-            "pulse_overlay": row.get("pulse_overlay") or {"status": "absent"},
+            "narrative_admission": _public_admission(admissions.get((target_type, target_id), _missing_admission())),
         }
 
 
@@ -70,8 +67,8 @@ def _extract_targets(data: dict[str, Any]) -> list[dict[str, str]]:
 def _target_identity(row: dict[str, Any]) -> tuple[str, str]:
     target = _dict(row.get("target"))
     return (
-        str(target.get("target_type") or row.get("target_type") or ""),
-        str(target.get("target_id") or row.get("target_id") or ""),
+        str(target.get("target_type") or ""),
+        str(target.get("target_id") or ""),
     )
 
 

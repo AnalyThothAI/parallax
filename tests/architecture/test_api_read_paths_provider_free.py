@@ -368,25 +368,13 @@ def test_ops_diagnostics_payload_requires_explicit_query_boundaries_without_defa
         "\n\ndef ops_queue_payload",
         1,
     )[0]
-    forbidden = (
-        "since_hours: int =",
-        "window: str =",
-        "scope: str =",
-        "max(1, int(since_hours))",
-    )
-    required = (
-        "since_hours: int,",
-        "window: str,",
-        "scope: str,",
-        "ops_diagnostics_since_hours_required",
-    )
+    forbidden = ("since_hours", "window", "scope")
+    required = ("runtime: Any,", "now_ms: int | None = None,")
 
     assert [token for token in forbidden if token in payload_source] == []
     assert [token for token in required if token not in payload_source] == []
-    assert 'window: Annotated[str, Query()] = "1h"' in route_source
-    assert 'scope: Annotated[str, Query()] = "all"' in route_source
-    assert "window=_window(window)" in route_source
-    assert "scope=_scope(scope)" in route_source
+    assert "def ops_diagnostics(\n    request: Request,\n)" in route_source
+    assert "ops_diagnostics_payload(\n        runtime,\n        now_ms=_now_ms(),\n    )" in route_source
 
 
 def test_market_candles_read_model_has_no_provider_io() -> None:
@@ -429,12 +417,14 @@ def test_token_radar_route_does_not_synthesize_target_identity_for_narrative_hyd
     required_narrative_tokens = (
         "def _target_identity(row: dict[str, Any]) -> tuple[str, str]:",
         'target = _dict(row.get("target"))',
-        'target_type = target.get("target_type") or row.get("target_type")',
-        'target_id = target.get("target_id") or row.get("target_id")',
+        'str(target.get("target_type") or "")',
+        'str(target.get("target_id") or "")',
     )
 
     assert [token for token in forbidden_route_tokens if token in route_source] == []
     assert [token for token in required_narrative_tokens if token not in narrative_source] == []
+    assert 'row.get("target_type")' not in narrative_source
+    assert 'row.get("target_id")' not in narrative_source
 
 
 def test_stocks_radar_source_event_ids_are_bounded_in_sql_read_path() -> None:
@@ -695,19 +685,6 @@ def test_account_quality_repository_writes_use_connection_transaction_without_ma
     assert "account_quality_repository_transaction_required" in source
     assert source.count("_run_repository_write(self.conn, commit,") == 4
     assert [token for token in forbidden if token in source] == []
-
-
-def test_signal_pulse_public_read_path_does_not_expose_worker_runtime_state() -> None:
-    route_source = (SRC / "app/surfaces/api/routes_pulse.py").read_text()
-    service_source = (SRC / "domains/pulse_lab/read_models/signal_pulse_service.py").read_text()
-    schema_source = (SRC / "app/surfaces/api/schemas.py").read_text()
-
-    forbidden = (
-        "_worker_running",
-        "agent_worker_running",
-    )
-    combined = "\n".join((route_source, service_source, schema_source))
-    assert [token for token in forbidden if token in combined] == []
 
 
 def test_news_source_status_uses_static_provider_contract_not_runtime_provider_object() -> None:

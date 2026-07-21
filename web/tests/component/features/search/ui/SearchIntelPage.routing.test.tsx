@@ -45,7 +45,6 @@ describe("SearchIntelPage", () => {
     expect(await screen.findByRole("heading", { name: "Search Intel" })).toBeInTheDocument();
     expect(await screen.findByRole("region", { name: /Token case/i })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: /\$RKC/i })).toBeInTheDocument();
-    expect(await screen.findByText("Propagation Summary")).toBeInTheDocument();
     expect(screen.getByText("Mention Timeline")).toBeInTheDocument();
     expect(screen.getByText("Live Market")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
@@ -246,36 +245,6 @@ function searchInspectData(): SearchInspectData {
           raw_available: true,
           last_error: null,
         },
-      },
-      discussion_digest: {
-        ...tokenResult.discussion_digest,
-        dominant_narrative: {
-          title: "$RKC 24h social propagation brief",
-          summary_zh: "Runtime narrative",
-          propagation_state: "expansion",
-          trade_stance: "bullish",
-          attention_valence: "informational",
-          evidence_refs: [{ ref_type: "event", event_id: "ev_482" }],
-        },
-        propagation: {
-          state: "expansion",
-          summary_zh: "过去 24 小时，RKC 进入 expansion。",
-          evidence_refs: [{ ref_type: "event", event_id: "ev_482" }],
-        },
-        bull_bear: {
-          stance: "watch",
-          bull: {
-            thesis_zh: "作者扩散。",
-            evidence_refs: [{ ref_type: "event", event_id: "ev_482" }],
-            bullets_zh: ["新增作者"],
-          },
-          bear: {
-            thesis_zh: "后段 chase。",
-            evidence_refs: [{ ref_type: "event", event_id: "ev_556" }],
-            bullets_zh: ["无新作者"],
-          },
-        },
-        data_gaps: ["缺真实 OHLC/K 线"],
       },
     },
     topic_result: null,

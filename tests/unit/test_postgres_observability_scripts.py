@@ -99,13 +99,6 @@ def test_runtime_performance_check_hard_gates_runtime_sql_fingerprints() -> None
     assert "source_payload_hash IS NULL" in script
     assert "query ILIKE '%count(*)%'" in script
 
-    assert "PULSE_TARGET_WIDE_TIMELINE_CALLS_BEFORE" in script
-    assert "pulse_candidate target-wide timeline_rows/WITH matched fingerprint" in script
-    assert "FROM token_intent_resolutions tir" in script
-    assert "JOIN events ON events.event_id = tir.event_id" in script
-    assert "ORDER BY received_at_ms DESC, event_id DESC" in script
-    assert "query NOT ILIKE '%requested_events%'" in script
-
     assert "assert_zero_new_or_cumulative_calls" in script
     assert 'stale equity fetch runs" "${stale_equity_fetch_runs}"' not in script
     assert "top sql token radar share percent" not in script
