@@ -4,8 +4,8 @@
 **Date**: 2026-07-21
 **Owning spec**: `docs/sdd/features/active/2026-07-21-signal-pulse-hard-cut/spec.md`
 **Owning plan**: `docs/sdd/features/active/2026-07-21-signal-pulse-hard-cut/plan.md`
-**Branch**: `codex/signal-pulse-hard-cut`
-**Worktree**: `.worktrees/signal-pulse-hard-cut`
+**Branch**: `main`
+**Worktree**: `main`
 **Approved by**: delegated goal
 **Approved at**: 2026-07-21
 
@@ -96,8 +96,19 @@ The final coverage rerun was interrupted before collection at the user's explici
 
 - Kappa/CQRS diff review: no P0 and no code-layer P1; single-writer, stable-key, idempotency and bounded catch-up contracts remain intact.
 - `impl-validator`: code, migration, shared-capability retention and hard-delete checks passed. Its stale-SDD/diff-number findings are repaired in this record and the audit before merge.
-- Remaining deployment prerequisite: back up PostgreSQL and remove exactly `signal_pulse_candidate`, `pulse.decision` and `pulse_candidate` from operator config before startup.
+- Production rollout completed after a verified database/config backup and exact removal of `signal_pulse_candidate`, `pulse.decision` and `pulse_candidate` from operator config.
 
 ## Deployment status
 
-The user requested direct merge, Docker rebuild and real-environment inspection after functional gates passed. Deployment validation, current schema version, `/readyz`, and final diff/commit identity will be recorded after startup; the SDD remains active until then.
+The user requested direct merge, Docker rebuild and real-environment inspection after functional gates passed, with no additional E2E run.
+
+- Hard-cut commit: `2bd6e241` — 350 files changed, 2,319 insertions, 53,071 deletions; net -50,752 lines.
+- Backup: `~/.parallax/backups/pre-0184-20260721-1937/`; `parallax.dump` is a valid custom-format archive with SHA-256 `875d35cd51e69a548aabb86cdab691b3bfd12c12c14a5bb630198118cb743431`.
+- Operator config: removed only `notifications.rules.signal_pulse_candidate`, `agent_runtime.lanes.pulse.decision`, and the top-level `pulse_candidate` worker block; strict config validation passes.
+- Database: migration container exited 0 at `20260721_0184`; all 13 Pulse relations and exact shared-ledger residue counts are zero. `events` and `token_radar_current_rows` remain present and non-empty.
+- HTTP/runtime: app and PostgreSQL containers are healthy; `/` and `/healthz` return 200; retired `/api/signal-lab/pulse` returns 404.
+- Real backlog exposed a latent Asset Profile claim-identity bug not introduced by the hard cut. Regression-first fix `c8c4abb2` now processes 100 targets per observed iteration with 100 writes and zero failures; approximately 45.7k historical due targets are draining.
+- Real Macro sync exposed a formal provider-state mapping bug not introduced by the hard cut. Regression-first fix `89e682f9` accepts `ok/stale/partial/unavailable`, rejects retired aliases, and the observed iteration processed 3 windows with zero failures (`partial/ok/partial`).
+- Strict `/readyz` remains 503 for the single reason `worker:news_fetch:failed`: two configured OpenNews sources return external HTTP 402 entitlement/billing responses. The provider contract passes; the failure is deliberately not hidden with disabled sources or synthetic readiness.
+
+The SDD remains active only because the final coverage collection was explicitly waived/interrupted; all requested implementation and production rollout work is complete.

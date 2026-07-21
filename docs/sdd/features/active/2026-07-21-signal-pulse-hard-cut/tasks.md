@@ -2,8 +2,8 @@
 
 **Status**: In Progress
 **Owning plan**: `docs/sdd/features/active/2026-07-21-signal-pulse-hard-cut/plan.md`
-**Worktree**: `.worktrees/signal-pulse-hard-cut`
-**Branch**: `codex/signal-pulse-hard-cut`
+**Worktree**: `main`
+**Branch**: `main`
 **Approved by**: delegated goal
 **Approved at**: 2026-07-21
 
@@ -136,7 +136,7 @@
 - **Subagent report**: not delegated
 - **Review result**: not delegated
 - **Factory lane**: Final integration
-- **Deterministic constraints**: Fresh full command output, no hidden skipped failures, no unreviewed generated drift, no mutation of the real operator database/config, and no claim based only on static scans.
+- **Deterministic constraints**: Fresh command output, no hidden skipped failures, no unreviewed generated drift, and no claim based only on static scans; production database/config mutation is allowed only after a verified backup and the user's explicit deployment instruction.
 - **On-demand context**: final diff, spec/plan, targeted command results, frontend browser state, migration upgrade output, residual references.
 - **Kill/defer criteria**: Keep the SDD active if full gates, browser smoke, migration test, or independent review is incomplete.
 - **Eval/repair signal**: `make check-all`, desktop/mobile screenshots, `git diff --check`, residual scan, and validator findings.

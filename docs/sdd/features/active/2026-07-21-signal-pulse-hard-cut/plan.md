@@ -3,8 +3,8 @@
 **Status**: In Progress
 **Date**: 2026-07-21
 **Owning spec**: `docs/sdd/features/active/2026-07-21-signal-pulse-hard-cut/spec.md`
-**Worktree**: `.worktrees/signal-pulse-hard-cut`
-**Branch**: `codex/signal-pulse-hard-cut`
+**Worktree**: `main`
+**Branch**: `main`
 **Approved by**: delegated goal
 **Approved at**: 2026-07-21
 
