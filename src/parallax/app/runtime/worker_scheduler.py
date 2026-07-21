@@ -33,16 +33,13 @@ class WorkerScheduler:
                 worker = self.workers[name]
                 if not _worker_startable(worker):
                     continue
-                concurrency = _worker_concurrency(name, worker)
-                for index in range(concurrency):
-                    task_key = name if concurrency == 1 else f"{name}#{index}"
-                    self.tasks[task_key] = asyncio.create_task(worker.run(), name=f"worker:{task_key}")
-                    await asyncio.sleep(0)
-                    task = self.tasks[task_key]
-                    if task.done():
-                        exc = task.exception()
-                        if exc is not None:
-                            raise exc
+                self.tasks[name] = asyncio.create_task(worker.run(), name=f"worker:{name}")
+                await asyncio.sleep(0)
+                task = self.tasks[name]
+                if task.done():
+                    exc = task.exception()
+                    if exc is not None:
+                        raise exc
         except Exception:
             tasks = list(self.tasks.values())
             for task in tasks:
@@ -177,11 +174,6 @@ def _worker_status_payload(worker: Any) -> dict[str, Any]:
     return dict(payload)
 
 
-def _worker_concurrency(name: str, worker: Any) -> int:
-    _ = (name, worker)
-    return 1
-
-
 def _worker_hard_timed_out(payload: Mapping[str, Any]) -> bool:
     hard_timed_out_at_ms = payload.get("active_run_once_hard_timed_out_at_ms")
     if hard_timed_out_at_ms is not None:
@@ -195,10 +187,7 @@ def _worker_task_items(
     name: str,
 ) -> list[tuple[str, asyncio.Task[None]]]:
     direct = tasks.get(name)
-    if direct is not None:
-        return [(name, direct)]
-    prefix = f"{name}#"
-    return [(task_key, task) for task_key, task in tasks.items() if task_key.startswith(prefix)]
+    return [(name, direct)] if direct is not None else []
 
 
 def _consume_task_exception(task: asyncio.Task[Any]) -> None:

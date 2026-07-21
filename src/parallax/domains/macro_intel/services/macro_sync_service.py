@@ -592,7 +592,9 @@ def _sync_success_status(status: object) -> str:
     raw_status = status.strip().lower()
     if raw_status in {"ok", "partial"}:
         return raw_status
-    return "partial"
+    if raw_status == "empty":
+        return "partial"
+    raise ValueError("macro_sync_import_status_invalid")
 
 
 def _date_from_ms(now_ms: int) -> date:

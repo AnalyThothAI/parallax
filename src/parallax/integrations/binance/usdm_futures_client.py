@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from dataclasses import dataclass
 from typing import Any
 
@@ -206,7 +207,7 @@ def _route_from_exchange_symbol(row: dict[str, Any]) -> BinanceUsdmRoute | None:
         quote_symbol=QUOTE_SYMBOL,
         native_market_id=symbol,
         base_symbol=base,
-        multiplier=_float(row.get("contractSize") or row.get("multiplier")),
+        multiplier=_float(row.get("contractSize")),
         raw=dict(row),
     )
 
@@ -321,14 +322,28 @@ def _text(value: Any) -> str | None:
 
 
 def _float(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
+    if value is None:
         return None
+    if isinstance(value, bool):
+        raise BinanceUsdmFuturesClientError("Binance numeric field is invalid")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise BinanceUsdmFuturesClientError("Binance numeric field is invalid") from exc
+    if not math.isfinite(parsed):
+        raise BinanceUsdmFuturesClientError("Binance numeric field is invalid")
+    return parsed
 
 
 def _int(value: Any) -> int | None:
-    try:
-        return int(float(value))
-    except (TypeError, ValueError):
+    if value is None:
         return None
+    if isinstance(value, bool):
+        raise BinanceUsdmFuturesClientError("Binance integer field is invalid")
+    try:
+        parsed = float(value)
+    except (TypeError, ValueError) as exc:
+        raise BinanceUsdmFuturesClientError("Binance integer field is invalid") from exc
+    if not math.isfinite(parsed) or not parsed.is_integer():
+        raise BinanceUsdmFuturesClientError("Binance integer field is invalid")
+    return int(parsed)

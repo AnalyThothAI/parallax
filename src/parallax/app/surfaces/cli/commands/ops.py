@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Mapping
 from contextlib import AbstractContextManager
 from typing import Any, cast
@@ -9,7 +8,6 @@ from typing import Any, cast
 from parallax.app.runtime.bootstrap import bootstrap
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
 from parallax.app.runtime.ops_cli_queries import (
-    market_tick_current_rebuild_estimate,
     token_profile_image_repair_targets,
     token_radar_max_market_tick_observed_at_ms,
     token_radar_max_resolution_ms,
@@ -18,6 +16,7 @@ from parallax.app.runtime.ops_cli_queries import (
 from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
 from parallax.app.runtime.providers_wiring import wire_asset_market_providers
 from parallax.app.runtime.telemetry import TelemetryRegistry
+from parallax.app.runtime.worker_manifest import require_worker_manifest
 from parallax.app.runtime.worker_status import workers_status_payload
 from parallax.app.surfaces.cli.commands import queue_ops
 from parallax.app.surfaces.cli.dependencies import repositories
@@ -32,9 +31,6 @@ from parallax.domains.asset_market.runtime.token_image_mirror_worker import Toke
 from parallax.domains.asset_market.runtime.token_profile_current_worker import TokenProfileCurrentWorker
 from parallax.domains.asset_market.services.asset_market_sync import BinanceUsdtPerpRoute, sync_binance_usdt_perp_routes
 from parallax.domains.asset_market.services.cex_token_profile_sync import sync_cex_token_profiles
-from parallax.domains.asset_market.services.market_tick_current_rebuild import (
-    MarketTickCurrentRebuildService,
-)
 from parallax.domains.asset_market.services.us_equity_symbol_sync import (
     NasdaqTraderSymbolClient,
     sync_us_equity_symbols,
@@ -51,7 +47,6 @@ from parallax.domains.token_intel.repositories.projection_repository import Proj
 from parallax.domains.token_intel.runtime.token_intent_rebuild import rebuild_recent_token_intents
 from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from parallax.domains.token_intel.scoring.factor_diagnostics import factor_distribution_report
-from parallax.domains.token_intel.services.token_factor_evaluation import settle_token_factor_scores
 from parallax.domains.token_intel.services.token_radar_projection import WINDOW_MS
 from parallax.domains.token_intel.services.token_resolution_refresh import reprocess_recent_token_intents
 from parallax.integrations.binance.cex_profile_client import BinanceCexProfileClient
@@ -59,9 +54,6 @@ from parallax.integrations.binance.usdm_futures_client import BinanceUsdmFutures
 from parallax.integrations.gmgn.directory_client import GmgnDirectoryClient, GmgnDirectoryError
 from parallax.platform.config.settings import load_settings
 from parallax.platform.db.postgres_audit import ProjectionValidationAudit
-
-LEGACY_FACTOR_GATE_KEY = "_".join(("hard", "gates"))
-LEGACY_FACTOR_GATE_PRESENT_CODE = f"{LEGACY_FACTOR_GATE_KEY}_present"
 
 
 def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
@@ -95,15 +87,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             settings,
             limit=args.limit,
             reprocess_limit=args.reprocess_limit,
-            now_ms=_now_ms(),
-        )
-        return 0, {"ok": True, "data": data}
-
-    if args.ops_command == "rebuild-market-tick-current":
-        data = _run_market_tick_current_rebuild(
-            settings,
-            dry_run=bool(args.dry_run),
-            execute=bool(args.execute),
             now_ms=_now_ms(),
         )
         return 0, {"ok": True, "data": data}
@@ -205,17 +188,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             )
             data = factor_distribution_report(rows)
             return (0 if data["ok"] else 1), {"ok": data["ok"], "data": data}
-
-        if args.ops_command == "settle-token-factors":
-            data = settle_token_factor_scores(
-                repos=repos,
-                horizon=args.horizon,
-                window=args.window,
-                scope=args.scope,
-                generated_at_ms=args.now_ms if args.now_ms is not None else _now_ms(),
-                limit=args.limit,
-            )
-            return 0, {"ok": True, "data": data}
 
         if args.ops_command == "enqueue-token-radar-dirty-targets":
             data = _enqueue_token_radar_dirty_targets(
@@ -344,80 +316,6 @@ def handle_ops(args: object, parser: object) -> tuple[int, dict[str, Any]]:
             return (0 if data["ok"] else 1), {"ok": data["ok"], "data": data}
 
     return 2, {"ok": False, "error": f"unknown ops command: {args.ops_command}"}
-
-
-def _run_market_tick_current_rebuild(
-    settings: object,
-    *,
-    dry_run: bool,
-    execute: bool,
-    now_ms: int,
-) -> dict[str, Any]:
-    telemetry = TelemetryRegistry()
-    db = None
-    advisory_lock = None
-    worker_name = "market_tick_current_projection"
-    lock_key = _market_tick_current_projection_lock_key(settings)
-    mode = "execute" if execute else "dry_run"
-    try:
-        db = DBPoolBundle.create(settings, telemetry=telemetry)
-        if execute:
-            try:
-                advisory_lock = db.acquire_advisory_lock_connection(worker_name, lock_key)
-            except RuntimeError as exc:
-                if "advisory_lock_unavailable" not in str(exc):
-                    raise
-                return {
-                    "mode": mode,
-                    "dry_run": bool(dry_run),
-                    "execute": bool(execute),
-                    "status": "skipped",
-                    "skipped": 1,
-                    "scanned": 0,
-                    "changed": 0,
-                    "estimated_rows": 0,
-                    "counts_by_target_type": {},
-                    "notes": {
-                        "reason": "advisory_lock_unavailable",
-                        "worker_name": worker_name,
-                        "lock_key": lock_key,
-                    },
-                }
-        worker_settings = settings.workers.market_tick_current_projection
-        with db.worker_session(
-            worker_name,
-            statement_timeout_seconds=worker_settings.statement_timeout_seconds,
-        ) as repos:
-            estimate = market_tick_current_rebuild_estimate(repos.conn)
-            if dry_run:
-                return {
-                    "mode": mode,
-                    "dry_run": True,
-                    "execute": False,
-                    "scanned": int(estimate["scanned"]),
-                    "estimated_rows": int(estimate["estimated_rows"]),
-                    "changed": 0,
-                    "counts_by_target_type": dict(estimate["counts_by_target_type"]),
-                }
-            result = MarketTickCurrentRebuildService(repos).rebuild_all(now_ms=now_ms)
-            return {
-                "mode": mode,
-                "dry_run": False,
-                "execute": True,
-                "scanned": int(result.get("scanned") or 0),
-                "changed": int(result.get("changed") or 0),
-                "estimated_rows": int(estimate["estimated_rows"]),
-                "counts_by_target_type": dict(estimate["counts_by_target_type"]),
-            }
-    finally:
-        if advisory_lock is not None:
-            _release_advisory_lock_connection(advisory_lock)
-        if db is not None:
-            _close_db_bundle(db)
-
-
-def _market_tick_current_projection_lock_key(settings: object) -> int:
-    return int(settings.workers.market_tick_current_projection.advisory_lock_key)
 
 
 def _enqueue_token_radar_dirty_targets(
@@ -691,24 +589,6 @@ def _required_nonnegative_int(value: object, error_code: str) -> int:
     return int(value)
 
 
-def _cursor_mapping(raw: str) -> dict[str, Any]:
-    if not str(raw or "").strip():
-        return {}
-    try:
-        payload = json.loads(str(raw))
-    except json.JSONDecodeError as exc:
-        raise ValueError("after-cursor must be a JSON object") from exc
-    if not isinstance(payload, dict):
-        raise ValueError("after-cursor must be a JSON object")
-    return payload
-
-
-def _cursor_json(value: dict[str, Any] | None) -> str | None:
-    if value is None:
-        return None
-    return json.dumps(value, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-
-
 def _optional_int(value: Any) -> int | None:
     if value is None:
         return None
@@ -775,16 +655,44 @@ def _run_asset_profile_refresh_worker_once(settings: object, *, limit: int, now_
     worker = None
     try:
         db = DBPoolBundle.create(settings, telemetry=telemetry)
-        asset_market = wire_asset_market_providers(settings, start_collector=True)
+        asset_market = wire_asset_market_providers(settings)
+        worker_settings = _worker_settings_with_overrides(
+            settings.workers.asset_profile_refresh,
+            batch_size=limit,
+        )
+        source_rows_scanned = 0
+        targets_enqueued = 0
+        discovery_sources: dict[str, dict[str, int]] = {}
+        for profile_source in asset_market.dex_profile_sources:
+            with (
+                db.worker_session(
+                    "ops_refresh_asset_profiles",
+                    statement_timeout_seconds=worker_settings.statement_timeout_seconds,
+                ) as repos,
+                repos.transaction(),
+            ):
+                source_result = repos.asset_profile_refresh_targets.enqueue_missing_token_radar_current_targets_for_ops(
+                    provider=profile_source.provider,
+                    now_ms=now_ms,
+                    limit=limit,
+                    commit=False,
+                )
+            source_rows_scanned += int(source_result.get("source_rows_scanned") or 0)
+            targets_enqueued += int(source_result.get("targets") or 0)
+            discovery_sources[profile_source.provider] = source_result
         worker = AssetProfileRefreshWorker(
             name="asset_profile_refresh",
-            settings=_worker_settings_with_overrides(settings.workers.asset_profile_refresh, batch_size=limit),
+            settings=worker_settings,
             db=db,
             telemetry=telemetry,
             dex_profile_sources=asset_market.dex_profile_sources,
         )
-        result = asyncio.run(worker.run_once(now_ms=now_ms))
-        return dict(result.notes.get("result") or {})
+        worker_result = asyncio.run(worker.run_once(now_ms=now_ms))
+        result = dict(worker_result.notes.get("result") or {})
+        result["source_rows_scanned"] = source_rows_scanned
+        result["targets_enqueued"] = targets_enqueued
+        result["discovery"] = discovery_sources
+        return result
     finally:
         if worker is not None:
             asyncio.run(worker.aclose())
@@ -849,7 +757,7 @@ def _run_token_profile_image_repair_once(settings: object, *, limit: int, now_ms
     try:
         db = DBPoolBundle.create(settings, telemetry=telemetry)
         with db.worker_session("token_profile_image_repair") as repos, repos.transaction():
-            targets = token_profile_image_repair_targets(repos.conn, limit=bounded_limit, now_ms=now_ms)
+            targets = token_profile_image_repair_targets(repos.conn, limit=bounded_limit)
             enqueue_result = repos.token_profile_current_dirty_targets.enqueue_targets(
                 targets,
                 reason="token_profile_image_repair",
@@ -892,7 +800,7 @@ def _run_resolution_refresh_worker_once(
     worker = None
     try:
         db = DBPoolBundle.create(settings, telemetry=telemetry)
-        asset_market = wire_asset_market_providers(settings, start_collector=True)
+        asset_market = wire_asset_market_providers(settings)
         worker = ResolutionRefreshWorker(
             name="resolution_refresh",
             settings=_worker_settings_with_overrides(
@@ -937,7 +845,7 @@ def _run_token_radar_projection_worker_once(
             db=db,
             telemetry=telemetry,
             wake_emitter=db.wake_emitter(),
-            wake_waiter=db.wake_listener(worker_name, settings.workers.token_radar_projection.wakes_on),
+            wake_waiter=db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
             enqueue_narrative_admission=bool(settings.workers.narrative_admission.enabled),
         )
         try:
@@ -1146,8 +1054,6 @@ def _audit_token_radar_current_rows(
             violations.append({"row": index, "code": "missing_factor_families", "families": missing})
         if extra:
             violations.append({"row": index, "code": "extra_factor_families", "families": extra})
-        if LEGACY_FACTOR_GATE_KEY in factor_snapshot:
-            violations.append({"row": index, "code": LEGACY_FACTOR_GATE_PRESENT_CODE})
         violations.extend(
             {"row": index, "code": "missing_factor_snapshot_block", "block": block_name}
             for block_name in required_blocks

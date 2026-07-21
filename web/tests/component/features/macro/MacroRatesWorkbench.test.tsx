@@ -499,7 +499,7 @@ describe("Macro rates workbench", () => {
 
       const primaryText = textBeforeDiagnostics(container);
       expect(primaryText).not.toMatch(
-        /macro_module_view_v3|source_snapshot_id|rates:dgs|fed:effr|fed_funds_futures_missing|fomc_probability_feed_missing|[{}]/,
+        /macro_module_view_v3|rates:dgs|fed:effr|fed_funds_futures_missing|fomc_probability_feed_missing|[{}]/,
       );
     },
   );

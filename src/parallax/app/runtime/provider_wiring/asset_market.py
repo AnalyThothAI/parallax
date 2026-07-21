@@ -108,8 +108,7 @@ def wire_asset_market(settings: Settings) -> AssetMarketProviders:
         raise
 
 
-def wire_asset_market_providers(settings: Settings, *, start_collector: bool) -> AssetMarketProviders:
-    _ = start_collector
+def wire_asset_market_providers(settings: Settings) -> AssetMarketProviders:
     return wire_asset_market(settings)
 
 

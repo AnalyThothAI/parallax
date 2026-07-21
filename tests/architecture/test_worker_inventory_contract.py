@@ -15,12 +15,11 @@ from parallax.app.runtime.worker_manifest import (
     WorkerKind,
     WorkerRuntimeConstraint,
     all_worker_manifests,
-    worker_class_by_name,
 )
 
 ROOT = Path(__file__).resolve().parents[2]
 DOCS_WORKERS = ROOT / "docs" / "WORKERS.md"
-MANIFEST_WORKER_CLASSES = worker_class_by_name()
+MANIFEST_WORKER_CLASSES = {manifest.name: manifest.worker_class for manifest in all_worker_manifests()}
 
 
 @pytest.mark.architecture
@@ -44,6 +43,7 @@ def test_worker_manifest_exposes_owned_tables_as_source_contract() -> None:
                 (
                     *manifest.writes_input_observations,
                     *manifest.writes_facts,
+                    *manifest.writes_cache_state,
                     *manifest.writes_read_models,
                     *manifest.writes_control_plane,
                     *manifest.side_effect_ledgers,
@@ -302,6 +302,18 @@ def test_worker_manifest_validation_rejects_blank_table_declarations(
 
 
 @pytest.mark.architecture
+def test_worker_manifest_validation_rejects_column_names_disguised_as_tables(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    manifests[0] = replace(manifests[0], writes_facts=("news_items.content_class",))
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="qualified worker manifest table declarations"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
 def test_worker_manifest_validation_rejects_dirty_consumers_without_dirty_targets(
     monkeypatch: pytest.MonkeyPatch,
 ) -> None:
@@ -519,6 +531,43 @@ def test_worker_manifest_validation_rejects_ledgers_on_non_side_effect_workers(
     monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
 
     with pytest.raises(ValueError, match="non-side-effect worker manifests declaring side-effect ledgers"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
+def test_worker_manifest_validation_rejects_read_models_disguised_as_side_effect_ledgers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    agent_index = next(
+        index
+        for index, manifest in enumerate(manifests)
+        if manifest.kind == WorkerKind.AGENT_SIDE_EFFECT and manifest.writes_read_models
+    )
+    read_model = manifests[agent_index].writes_read_models[0]
+    manifests[agent_index] = replace(manifests[agent_index], side_effect_ledgers=(read_model,))
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="side-effect ledger role overlaps"):
+        worker_manifest_module._validate_worker_manifests()
+
+
+@pytest.mark.architecture
+def test_worker_manifest_validation_rejects_agent_queue_tables_as_side_effect_ledgers(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    manifests = list(all_worker_manifests())
+    agent_index = next(
+        index
+        for index, manifest in enumerate(manifests)
+        if manifest.kind == WorkerKind.AGENT_SIDE_EFFECT and manifest.queue_depth_table is not None
+    )
+    queue_table = manifests[agent_index].queue_depth_table
+    assert queue_table is not None
+    manifests[agent_index] = replace(manifests[agent_index], side_effect_ledgers=(queue_table,))
+    monkeypatch.setattr(worker_manifest_module, "_WORKER_MANIFESTS", tuple(manifests))
+
+    with pytest.raises(ValueError, match="agent queue tables declared as side-effect ledgers"):
         worker_manifest_module._validate_worker_manifests()
 
 
@@ -943,14 +992,12 @@ def test_provider_io_worker_marker_matches_manifest_inventory() -> None:
 
 
 @pytest.mark.architecture
-def test_documented_wake_inputs_match_default_worker_settings() -> None:
-    from parallax.platform.config.settings import WorkersSettings
-
+def test_documented_wake_inputs_match_worker_manifest() -> None:
     inventory = _worker_inventory()
-    settings = WorkersSettings()
+    manifests = {manifest.name: manifest for manifest in all_worker_manifests()}
     mismatches: list[str] = []
-    for worker_key in sorted(set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}):
-        expected = set(getattr(getattr(settings, worker_key), "wakes_on", ()))
+    for worker_key, manifest in sorted(manifests.items()):
+        expected = set(manifest.wakes_on)
         documented = _cell_code_values(inventory[worker_key]["Wake-in"])
         missing = sorted(expected - documented)
         extra = sorted(documented - expected)

@@ -10,8 +10,6 @@ from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 
-_MAX_WINDOWS_PER_CYCLE = 5
-
 
 class MacroSyncWorker(WorkerBase):
     def __init__(
@@ -94,11 +92,10 @@ class MacroSyncWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        configured = _required_positive_int(
+        return _required_positive_int(
             self.settings.batch_size,
             error_code="macro_sync_batch_size_required",
         )
-        return min(configured, _MAX_WINDOWS_PER_CYCLE)
 
     def _service(self) -> MacroSyncService:
         if self.service_factory is not None:

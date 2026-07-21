@@ -329,26 +329,19 @@ Token Radar market contract:
 - `/api/token-radar` rows expose a single `market` block from
   `factor_snapshot_json`. The block contains `event_anchor`, `decision_latest`,
   and `readiness`.
-- `/api/token-radar` rows expose `discussion_digest` from the persisted
-  narrative read model and may expose a read-only public `pulse_overlay`.
+- `/api/token-radar` rows expose `narrative_admission` from the persisted
+  admission read model and may expose a read-only public `pulse_overlay`.
   Narrative hydration reads target identity from the row's formal nested
   `target.target_type` / `target.target_id` object; API routes do not synthesize
   temporary top-level target identity fields for hydration.
-  Digest status is `ready`, `pending`, `insufficient`,
-  `semantic_unavailable`, or `stale`; clients must render data gaps instead of
-  recreating narrative text from factor snapshots. A digest may include optional
-  compact `processing.backlog` metadata for ops visibility, but `status` and
-  `data_gaps` remain the truth for user-facing readiness.
-- `discussion_digest.currentness` is required on Token Radar rows. It composes
-  the last ready narrative epoch with the current admitted source frontier and
-  exposes `display_status` (`current`, `updating`, `stale`, `not_ready`,
-  `out_of_frontier`, or `unsupported_window`), ready/current source
-  fingerprints, ready/current/delta source counts, delta independent authors,
-  last-ready time, next-refresh time, and a public reason. Source fingerprint
-  mismatch no longer hides a ready digest by itself; it displays as
-  `updating` or `stale` with explicit delta metadata. Realtime narrative digest
-  hydration is `1h` only; `5m`, `4h`, and `24h` Radar rows return
-  `unsupported_window`, not a pending digest backlog or a reused `1h` digest.
+  Admission status is `admitted`, `suppressed`, or `missing`. The object also
+  contains reason, `is_current`, `computed_at_ms`, source/author coverage,
+  currentness, and explicit data gaps. It contains no generated narrative text,
+  semantic backlog, epoch, or delta fields.
+- `narrative_admission.currentness` is required on Token Radar rows and exposes
+  `display_status` (`current`, `not_ready`, `out_of_frontier`, or
+  `unsupported_window`) plus a reason. Unsupported windows use
+  `status = "missing"`; no other window's admission is reused.
 - `market.event_anchor` and `market.decision_latest` are public response keys
   generated from `enriched_events` and `market_ticks`. They are not internal
   market concepts, DB tables, worker names, or provider runtime semantics.
@@ -435,7 +428,9 @@ Macro contract:
 - `/api/macro` is authenticated and read-only. It performs no provider IO;
   it reads the latest `macro_view_snapshots` row written by
   `MacroViewProjectionWorker`. The hard-cut projection is
-  `macro_regime_v4`; there is no `macro_regime_v3` compatibility read path.
+  `macro_regime_v4`, which is also the table's natural current-row key; there
+  is no synthetic snapshot identifier or `macro_regime_v3` compatibility read
+  path.
   The response also includes `currentness`, derived only from PostgreSQL sync
   audit/fact/projection state: latest sync status, fact max observed date,
   projection lag days, and whether projection is behind facts.
@@ -601,7 +596,7 @@ Search V2 contract:
   - `data.resolver`: confidence, target candidates, selected target when there
     is exactly one resolved target, and deterministic resolver reasons.
   - `data.token_result`: the same token case dossier shape as `/api/token-case`
-    for the selected target, including `discussion_digest` and no
+    for the selected target, including `narrative_admission` and no
     `agent_brief`. The Search page renders this payload directly and must not
     issue a second `/api/token-case` request for the same result. When the
     selected target is `CexToken`, this includes the same persisted
@@ -616,7 +611,7 @@ Search V2 contract:
   It is deterministic in the first release and must cite visible evidence ids.
 - `token_result.profile` uses the same `TokenProfileBlock` contract as
   `/api/token-radar` rows. Search Inspect continues to return timeline, posts,
-  live market status, and discussion digest state when profile facts are
+  live market status, and narrative admission state when profile facts are
   pending, missing, or errored.
 
 ### Token Case Dossier
@@ -644,13 +639,9 @@ Search V2 contract:
     Token Case and target-post read services receive `window`, `scope`, and
     page limits explicitly from API callers; malformed direct service calls do
     not fall back to `1h` or `all`.
-  - `data.discussion_digest`: persisted narrative digest with explicit status,
-    required `currentness`, semantic coverage, evidence refs, data gaps, and
-    optional compact `processing.backlog`.
-  - `data.narrative_delta`: compact UI metadata derived from
-    `discussion_digest.currentness`, including display status and source/author
-    delta counts.
-  - `data.narrative_clusters`: digest cluster summaries when available.
+  - `data.narrative_admission`: admission-derived status, reason, currentness,
+    source/author coverage, computation time, and data gaps. It contains no
+    generated narrative prose or per-post semantic state.
   - `data.pulse_overlay`: optional public Signal Pulse overlay; it is
     display-gated and never changes Radar rank or Token Case narrative.
   - `data.market_live`: persisted latest-market-tick snapshot with `status`
@@ -662,14 +653,17 @@ Search V2 contract:
     server-side repository/session contract failure, not a successful missing
     market response.
   - `data.cex_detail`: for `CexToken`, persisted CEX detail state read from
-    `cex_detail_snapshots`. Missing snapshot rows return a structured
-    `status = "missing"` block; a missing repository method is a server-side
-    repository/session contract failure, not a successful no-detail response.
-    For non-CEX targets this field is `null`.
+    `cex_detail_snapshots`. Its persisted current-row identity is the natural
+    `(exchange, native_market_id)` key; no synthetic snapshot identifier is
+    exposed. Missing snapshot rows return a structured `status = "missing"`
+    block; a missing repository method is a server-side repository/session
+    contract failure, not a successful no-detail response. For non-CEX targets
+    this field is `null`.
 - Token Case responses do not expose Token Radar score audit blocks. Ranking
-  facts remain owned by `/api/token-radar`; dossier pages show evidence,
-  propagation, profile, discussion digest, semantic timeline labels, and live
-  market readiness. Canonical token dossiers do not expose `agent_brief`.
+  facts remain owned by `/api/token-radar`; dossier pages show raw evidence,
+  admission coverage, profile, and live market readiness. Target posts do not
+  carry a synthetic `semantic` block. Canonical token dossiers do not expose
+  `agent_brief`.
 
 ## CLI
 
@@ -679,9 +673,12 @@ document. `config` prints both `config_path` and `workers_config_path`
 and includes the effective `workers` settings loaded from `workers.yaml`.
 `ops worker-status` bootstraps the runtime without the upstream
 collector and returns the canonical worker map plus queue depths where
-queue tables exist. `ops refresh-asset-profiles` is the one-shot
-operator path for due DEX profile source refreshes; it returns an explicit
-skipped result when no profile source is configured. `ops
+queue tables exist. `ops refresh-asset-profiles` is the one-shot operator
+repair path that first discovers a bounded set of missing provider-scoped
+targets from current Token Radar rows, then refreshes due DEX profile source
+facts; it returns an explicit skipped result when no profile source is
+configured. The normal `asset_profile_refresh` worker consumes its durable
+queue only. `ops
 queue-resolve-bucket` is the bounded operator path for resolving unresolved
 `worker_queue_terminal_events` by exact worker, source table, and reason
 bucket. Dry-run returns only aggregate counts; execute mode still resolves each
@@ -697,10 +694,11 @@ upstream providers. Narrative Intelligence no longer exposes
 `ops rebuild-narrative-intel`; runtime LLM workers for mention semantics and
 discussion digests were hard-cut instead of kept as disabled maintenance
 surfaces.
-Runtime dirty-target consumers must self-heal from their material fact sources
-with bounded catch-up inside their own projection path. There is no generic
-runtime-worker repair CLI because such a surface blurs the boundary between
-normal runtime and operator maintenance.
+Runtime dirty-target consumers claim durable queue rows and do not scan broad
+fact or read-model sources when their queues are empty. Queue repair is an
+explicit, bounded operator action; there is no generic runtime-worker repair
+CLI because each repair surface must preserve its domain-specific identity and
+source-watermark contract.
 Market Tick Current dirty-target enqueue and done/error accounting requires
 PostgreSQL `cursor.rowcount` evidence. Missing or invalid rowcount is malformed
 repository/driver state, not zero changed market-current work, and enqueue
@@ -733,11 +731,11 @@ Pulse admission edge-state and candidate edge-budget writes that use single-row
 valid 0/1 and match returned-row presence before edge rows, optional state rows,
 or budget booleans are reported; missing, invalid, or mismatched rowcount is
 malformed repository/driver state, not returned-row success.
-Pulse playbook snapshot/outcome writes also require PostgreSQL `cursor.rowcount`
-evidence before playbook rows are returned. Snapshot no-change writes are valid
-only as rowcount=0 with no row and must not be restored through fallback
-`SELECT`; changed snapshot and outcome writes require rowcount=1 with a returned
-row.
+Pulse playbook snapshot writes also require PostgreSQL `cursor.rowcount`
+evidence before playbook rows are returned. No-change writes are valid only as
+rowcount=0 with no row and must not be restored through fallback `SELECT`;
+changed snapshot writes require rowcount=1 with a returned row. The retired
+playbook-outcome table and writer are not public or runtime contracts.
 Pulse stale agent-run timeout cleanup requires PostgreSQL `cursor.rowcount`
 evidence. Missing or invalid rowcount fails before the repository reports zero
 stale `pulse_agent_runs` updated.
@@ -880,8 +878,8 @@ Macro sync-window enqueue and claim paths that use `RETURNING` also require
 rowcount evidence matching returned-row presence. Enqueue is a required
 single-row result; claim/no-work outcomes are valid only as rowcount=0 with no
 row or rowcount=1 with the claimed `macro_sync_windows` row.
-CEX read-model write-count accounting for OI board delete/upsert, detail
-snapshot upsert, and derivative-series upsert requires PostgreSQL
+CEX read-model write-count accounting for OI board delete/upsert and detail
+snapshot upsert requires PostgreSQL
 `cursor.rowcount` evidence. Missing, boolean, negative, or non-integer rowcount
 fails before the repositories report zero, one, or fabricated CEX serving-row
 write counts.
@@ -1154,26 +1152,6 @@ Projection dirty-range claims from `UPDATE ... RETURNING` require cursor
 rowcount to match returned claimed rows before the projection worker treats the
 dirty ranges as leased; rowcount=0 with no rows is the only no-work claim
 result.
-`token_score_evaluations` uses this same formal v3 factor snapshot contract:
-missing `composite.rank_score` fails before score bucket, IC, or coverage
-calculation and is not counted as a `0-19` sample. Token Factor Evaluation is a
-settlement consumer, so it additionally requires `factor_snapshot_json.subject`
-to carry non-empty `target_type` and `target_id` for the sample being settled;
-it does not restore those fields from current-row top-level identity. This
-consumer rule is separate from the global snapshot shape, where unresolved
-attention snapshots may remain valid without a resolved asset id. CEX settlement
-targets require subject-owned `provider` and `native_market_id`; the evaluator
-does not repair missing CEX subject market identity from `market.decision_latest`
-or an `instrument` alias. Settlement subject `target_type` must be formal
-`Asset` or `CexToken`; direct market-tick target types `chain_token` and
-`cex_symbol` are not settlement subjects and fail before market lookup or bucket
-upsert. Asset settlement market identity must come from subject-owned `chain`
-and `address`; `chain_id` and `asset_address` aliases are not settlement
-identity fallbacks. Settlement time comes from
-`factor_snapshot_json.provenance.computed_at_ms`; current-row
-top-level `computed_at_ms` and epoch-zero defaults are not compatibility inputs.
-Family rank IC and family coverage read the formal `families.*.score` blocks;
-`composite.family_scores` is not a diagnostic compatibility source.
 High-confidence `EXACT` / `UNIQUE_BY_CONTEXT` resolution rows require
 formal `Asset` or `CexToken` target identity before resolved-lane publication;
 malformed target identity is not a valid attention fallback.
@@ -1199,8 +1177,6 @@ Operational commands:
 
 - `parallax ops factor-diagnostics` reports current factor score dispersion,
   bucket counts, and rank-score diagnostics.
-- `parallax ops settle-token-factors` writes point-in-time forward
-  return evaluations when sufficient later market observations exist.
 - `parallax ops audit-token-radar` is v3-only and flags legacy
   snapshots instead of accepting compatibility fallback.
 - Token Radar has no runtime hard-reset command. Schema retirement belongs to

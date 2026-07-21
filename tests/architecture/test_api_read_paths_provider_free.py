@@ -76,7 +76,7 @@ def test_api_limit_validators_reject_runtime_int_repairs() -> None:
 
     assert [token for token in forbidden if token in f"{validators_source}\n{search_routes_source}"] == []
     assert "invalid_limit" in validators_source
-    assert "_positive_limit(posts_limit, maximum=50, field=\"posts_limit\")" in search_routes_source
+    assert '_positive_limit(posts_limit, maximum=50, field="posts_limit")' in search_routes_source
 
 
 def test_news_page_query_limit_rejects_runtime_int_repairs() -> None:
@@ -111,25 +111,20 @@ def test_search_or_symbol_resolution_uses_batched_keyset_sql() -> None:
     assert [token for token in required_query if token not in query_source] == []
 
 
-def test_narrative_post_semantics_hydration_uses_batched_keyset_sql() -> None:
+def test_narrative_post_semantics_hydration_is_removed() -> None:
     repository_source = (SRC / "domains/narrative_intel/repositories/narrative_repository.py").read_text()
+    read_model_source = (SRC / "domains/narrative_intel/read_models/narrative_read_model.py").read_text()
+    route_source = (SRC / "app/surfaces/api/routes_search.py").read_text()
 
     forbidden = (
-        "for post in posts:\n            row = self.conn.execute",
-        'post["event_id"]',
-        'post["target_type"]',
-        'post["target_id"]',
-    )
-    required = (
-        "WITH input_posts AS",
-        "unnest(%s::text[], %s::text[], %s::text[]) WITH ORDINALITY",
-        "distinct_posts AS",
-        "LEFT JOIN LATERAL",
-        "ORDER BY distinct_posts.ordinality",
+        "semantics_for_posts",
+        "hydrate_target_posts",
+        "token_mention_semantics",
     )
 
     assert [token for token in forbidden if token in repository_source] == []
-    assert [token for token in required if token not in repository_source] == []
+    assert [token for token in forbidden if token in read_model_source] == []
+    assert [token for token in forbidden if token in route_source] == []
 
 
 def test_websocket_token_replay_uses_batched_keyset_sql() -> None:
@@ -639,18 +634,6 @@ def test_account_quality_multi_handle_reads_use_batched_keyset_sql() -> None:
     assert [token for token in forbidden if token in service_source or token in repository_source] == []
     assert [token for token in required_service if token not in service_source] == []
     assert [token for token in required_repository if token not in repository_source] == []
-
-
-def test_account_quality_interface_exposes_read_services_only() -> None:
-    source = (SRC / "domains/account_quality/interfaces.py").read_text()
-
-    forbidden = (
-        "repositories.account_quality_repository",
-        "AccountQualityRepository",
-        "AccountQualityBackfillService",
-        "services.account_quality_backfill_service",
-    )
-    assert [token for token in forbidden if token in source] == []
 
 
 def test_account_quality_architecture_declares_read_write_boundary() -> None:

@@ -82,11 +82,11 @@ def test_asset_profile_refresh_claim_due_rejects_malformed_parameters_before_tra
 
 
 @pytest.mark.parametrize("limit", [-1, True, "25"])
-def test_asset_profile_refresh_backfill_limit_rejects_malformed_before_transaction(limit: object) -> None:
+def test_asset_profile_refresh_ops_discovery_limit_rejects_malformed_before_transaction(limit: object) -> None:
     conn = _MissingTransactionConnection()
 
     with pytest.raises(ValueError, match="asset_profile_refresh_target_limit_required"):
-        AssetProfileRefreshTargetRepository(conn).enqueue_missing_token_radar_current_targets(
+        AssetProfileRefreshTargetRepository(conn).enqueue_missing_token_radar_current_targets_for_ops(
             provider="gmgn_dex_profile",
             now_ms=NOW_MS,
             limit=limit,
@@ -250,7 +250,7 @@ def test_asset_profile_refresh_target_enqueue_requires_formal_source_watermark_w
     assert conn.sql == ""
 
 
-def test_enqueue_missing_token_radar_current_targets_uses_current_rows_as_bounded_backfill_source() -> None:
+def test_ops_discovery_enqueues_missing_current_token_radar_assets() -> None:
     conn = _BackfillConnection(
         [
             {
@@ -264,7 +264,7 @@ def test_enqueue_missing_token_radar_current_targets_uses_current_rows_as_bounde
         ]
     )
 
-    result = AssetProfileRefreshTargetRepository(conn).enqueue_missing_token_radar_current_targets(
+    result = AssetProfileRefreshTargetRepository(conn).enqueue_missing_token_radar_current_targets_for_ops(
         provider="gmgn_dex_profile",
         now_ms=NOW_MS,
         limit=25,

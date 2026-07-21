@@ -830,6 +830,16 @@ class MacroIntelRepository:
         reason: str,
         commit: bool = True,
     ) -> int:
+        if commit:
+            with _macro_projection_dirty_target_transaction_context(self.conn):
+                return self.enqueue_macro_projection_dirty_target(
+                    projection_name=projection_name,
+                    projection_version=projection_version,
+                    now_ms=now_ms,
+                    due_at_ms=due_at_ms,
+                    reason=reason,
+                    commit=False,
+                )
         payload_hash = _macro_projection_dirty_payload_hash(
             projection_name=projection_name,
             projection_version=projection_version,
@@ -927,6 +937,17 @@ class MacroIntelRepository:
         )
         if not targets:
             return 0
+        if commit:
+            with _macro_projection_dirty_target_transaction_context(self.conn):
+                return self.enqueue_macro_projection_dirty_targets_for_changes(
+                    changed_observations=changed_observations,
+                    projection_name=projection_name,
+                    projection_version=projection_version,
+                    now_ms=now_ms,
+                    due_at_ms=due_at_ms,
+                    reason=reason,
+                    commit=False,
+                )
         params: dict[str, Any] = {
             "projection_names": [target["projection_name"] for target in targets],
             "projection_versions": [target["projection_version"] for target in targets],
@@ -1835,13 +1856,12 @@ class MacroIntelRepository:
         cursor = self.conn.execute(
             """
             INSERT INTO macro_view_snapshots(
-              snapshot_id, projection_version, asof_date, status, regime, overall_score, panels_json,
+              projection_version, asof_date, status, regime, overall_score, panels_json,
               indicators_json, triggers_json, data_gaps_json, source_coverage_json, features_json,
               chain_json, scenario_json, scorecard_json, computed_at_ms, payload_hash
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(snapshot_id) DO UPDATE SET
-              projection_version = excluded.projection_version,
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(projection_version) DO UPDATE SET
               asof_date = excluded.asof_date,
               status = excluded.status,
               regime = excluded.regime,
@@ -1861,7 +1881,6 @@ class MacroIntelRepository:
             RETURNING true AS changed
             """,
             (
-                snapshot["snapshot_id"],
                 snapshot["projection_version"],
                 snapshot["asof_date"],
                 snapshot["status"],
@@ -2096,10 +2115,6 @@ def _existing_series_payload_hash(row: Mapping[str, Any]) -> str:
     return payload_hash
 
 
-def _macro_snapshot_payload_hash(snapshot: Mapping[str, Any]) -> str:
-    return stable_current_payload_hash(_macro_snapshot_payload(snapshot))
-
-
 def _macro_snapshot_payload(snapshot: Mapping[str, Any]) -> dict[str, Any]:
     payload = {
         "projection_version": snapshot["projection_version"],
@@ -2317,19 +2332,6 @@ def _macro_projection_dirty_target_key(row: Mapping[str, Any]) -> str:
 def _macro_projection_retry_budget_exhausted_reason(error: str) -> str:
     message = str(error or "").strip()
     return f"macro_view_projection_retry_budget_exhausted: {message}"[:2048]
-
-
-def _observation_id(observation: Mapping[str, Any]) -> str:
-    identity = "|".join(
-        [
-            str(observation.get("source_name") or ""),
-            str(observation.get("concept_key") or ""),
-            str(observation.get("observed_at") or ""),
-            str(observation.get("series_key") or ""),
-        ]
-    )
-    digest = hashlib.sha256(identity.encode()).hexdigest()[:32]
-    return f"macro-observation:{digest}"
 
 
 def _sync_window_id(

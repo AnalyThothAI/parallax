@@ -465,10 +465,6 @@ def _target_domains(*, target_id: Any, target_type: Any) -> list[str]:
     return _stable_unique([domain for domain in domains if domain in _NEWS_MARKET_DOMAINS])
 
 
-def _mention_sort_key(row: Mapping[str, Any]) -> tuple[str, str]:
-    return (_str(row.get("mention_id")), _str(row.get("observed_symbol")))
-
-
 def _fact_sort_key(row: Mapping[str, Any]) -> tuple[str, str]:
     return (_str(row.get("fact_candidate_id")), _str(row.get("claim")))
 

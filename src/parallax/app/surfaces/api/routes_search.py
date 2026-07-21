@@ -112,7 +112,6 @@ def search_inspect(
                 data["token_result"],
                 window=parsed_window,
                 scope=parsed_scope,
-                now_ms=_now_ms(),
             )
     return _json({"ok": True, "data": data})
 
@@ -158,7 +157,6 @@ def token_case(
                 data,
                 window=parsed_window,
                 scope=response_scope,
-                now_ms=_now_ms(),
             )
     except TokenCaseTargetNotFound:
         return _json({"ok": False, "error": "target_not_found"}, status_code=404)
@@ -194,12 +192,6 @@ def target_posts(
                 sort=sort,
                 limit=_limit(limit, maximum=200),
                 cursor=cursor or None,
-            )
-            data = _narrative_read_model(repos).hydrate_target_posts(
-                data,
-                window=parsed_window,
-                scope=parsed_scope,
-                now_ms=_now_ms(),
             )
     except TokenTargetPostsRangeError:
         return _json({"ok": False, "error": "invalid_range", "field": "range"}, status_code=400)

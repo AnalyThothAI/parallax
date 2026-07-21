@@ -36,6 +36,8 @@ def cex_detail(
     runtime = _authenticated_runtime(request)
     target_query = _cex_detail_target_query(target_type=target_type, target_id=target_id)
     market_query = _cex_detail_market_query(exchange=exchange, symbol=symbol)
+    if target_query is None and market_query is None:
+        raise ApiBadRequest("invalid_cex_detail_query", field="query")
     if target_query is not None and market_query is not None:
         raise ApiBadRequest("invalid_cex_detail_query", field="query")
     with runtime.repositories() as repos:
@@ -45,14 +47,14 @@ def cex_detail(
                 target_type=query_target_type,
                 target_id=query_target_id,
             )
-        elif market_query is not None:
+        else:
+            if market_query is None:  # pragma: no cover - guarded before the repository session.
+                raise ApiBadRequest("invalid_cex_detail_query", field="query")
             query_exchange, query_symbol = market_query
             snapshot = repos.cex_detail_snapshots.latest_snapshot_by_market(
                 exchange=query_exchange,
                 native_market_id=query_symbol,
             )
-        else:
-            snapshot = None
     return _json({"ok": True, "data": snapshot})
 
 

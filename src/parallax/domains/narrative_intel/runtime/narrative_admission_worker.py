@@ -189,8 +189,6 @@ class NarrativeAdmissionWorker(WorkerBase):
                 target_id=target_id,
                 window=window,
                 scope=scope,
-                schema_version=schema_version,
-                now_ms=now_ms,
                 commit=False,
             )
             stats["admissions_staled"] += int(staled.get("staled_admissions") or 0)
@@ -199,11 +197,13 @@ class NarrativeAdmissionWorker(WorkerBase):
 
         for decision in decisions:
             payload = asdict(decision)
-            projection_computed_at_ms = decision.projection_computed_at_ms or now_ms
-            source_end_ms = (
-                int(decision.source_max_received_at_ms)
-                if decision.source_max_received_at_ms is not None
-                else projection_computed_at_ms
+            projection_computed_at_ms = _required_decision_positive_int(
+                decision.projection_computed_at_ms,
+                error_code="narrative_admission_projection_computed_at_required",
+            )
+            source_end_ms = _required_decision_positive_int(
+                decision.source_max_received_at_ms,
+                error_code="narrative_admission_source_watermark_required",
             )
             source_start_ms = max(0, int(source_end_ms) - _window_ms(window))
             source_set = repos.narratives.source_set_for_admission(
@@ -294,6 +294,19 @@ def _positive_worker_setting_int(settings: Any, field_name: str, *, error_code: 
 
 def _radar_row_for_admission(row: dict[str, Any]) -> dict[str, Any]:
     normalized = dict(row)
-    source_event_ids = normalized.get("source_event_ids") or normalized.get("source_event_ids_json") or []
-    normalized["source_event_ids"] = [str(event_id) for event_id in source_event_ids if str(event_id)]
+    try:
+        source_event_ids = normalized["source_event_ids_json"]
+    except KeyError as exc:
+        raise ValueError("narrative_admission_source_event_ids_required") from exc
+    if not isinstance(source_event_ids, list):
+        raise ValueError("narrative_admission_source_event_ids_invalid")
+    if any(not isinstance(event_id, str) or not event_id.strip() for event_id in source_event_ids):
+        raise ValueError("narrative_admission_source_event_ids_invalid")
+    normalized["source_event_ids"] = [event_id.strip() for event_id in source_event_ids]
     return normalized
+
+
+def _required_decision_positive_int(value: Any, *, error_code: str) -> int:
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(error_code)
+    return int(value)

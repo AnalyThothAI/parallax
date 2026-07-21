@@ -24,7 +24,6 @@ _PROMPTS_DIR = Path(__file__).resolve().parent.parent / "prompts"
 _ROUTE_HEADING_RE = re.compile(r"^##\s+Route:\s+(?P<route>\w+)\s*$", re.MULTILINE)
 _KNOWN_ROLES = ("pulse_decision",)
 PULSE_DECISION_KNOWLEDGE_REFS = ("market_research_harness",)
-PULSE_DECISION_READ_ONLY_TOOL_REFS = ("token_radar.current_rows", "pulse.current_candidates")
 
 
 @lru_cache(maxsize=8)
@@ -90,7 +89,6 @@ def pulse_decision_prompt_text_hash() -> str:
 
 __all__ = [
     "PULSE_DECISION_KNOWLEDGE_REFS",
-    "PULSE_DECISION_READ_ONLY_TOOL_REFS",
     "load_prompt",
     "load_pulse_decision_prompt",
     "pulse_decision_prompt_text_hash",

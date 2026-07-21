@@ -46,7 +46,7 @@ const featureClassPrefixes: Record<string, string[]> = {
     "live-",
     "market-",
     "mobile-task-surface",
-    "narrative-fact",
+    "admission-fact",
     "radar-",
     "tape-",
     "token-radar-",
@@ -65,6 +65,7 @@ const featureClassPrefixes: Record<string, string[]> = {
 const modifierClassNames = new Set([
   "account_event",
   "active",
+  "admission",
   "agent",
   "bad",
   "bearish",
@@ -124,7 +125,6 @@ const modifierClassNames = new Set([
   "warn",
   "watch",
   "watched",
-  "why",
   "wide",
 ]);
 

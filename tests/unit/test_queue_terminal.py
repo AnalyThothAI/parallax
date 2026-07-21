@@ -15,13 +15,13 @@ from parallax.platform.db.queue_terminal import (
 
 
 def test_terminal_reason_bucket_normalizes_operator_triage_reasons() -> None:
-    assert terminal_reason_bucket("deepseek provider 522 gateway", "dead") == "llm_provider_522"
-    assert terminal_reason_bucket("stale_running_timeout", "dead") == "stale_window_ttl"
-    assert terminal_reason_bucket("provider_error_retry_budget_exhausted", "dead") == "retry_budget_exhausted"
-    assert terminal_reason_bucket("provider_unavailable: transport failed", "dead") == "provider_unavailable"
-    assert terminal_reason_bucket("provider_no_quote:empty", "dead") == "provider_no_quote"
-    assert terminal_reason_bucket("semantic parse unavailable", "terminal") == "semantic_unavailable"
-    assert terminal_reason_bucket("unexpected", "dead") == "other"
+    assert terminal_reason_bucket("deepseek provider 522 gateway") == "llm_provider_522"
+    assert terminal_reason_bucket("stale_running_timeout") == "stale_window_ttl"
+    assert terminal_reason_bucket("provider_error_retry_budget_exhausted") == "retry_budget_exhausted"
+    assert terminal_reason_bucket("provider_unavailable: transport failed") == "provider_unavailable"
+    assert terminal_reason_bucket("provider_no_quote:empty") == "provider_no_quote"
+    assert terminal_reason_bucket("semantic parse unavailable") == "semantic_unavailable"
+    assert terminal_reason_bucket("unexpected") == "other"
 
 
 def test_terminalize_source_row_stores_final_reason_bucket() -> None:

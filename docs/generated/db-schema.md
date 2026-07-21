@@ -22,7 +22,6 @@
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|---------|
-| `snapshot_id` | `TEXT` | False | `None` |
 | `handle` | `TEXT` | False | `None` |
 | `window` | `TEXT` | False | `None` |
 | `precision_score` | `DOUBLE PRECISION` | True | `None` |
@@ -177,7 +176,6 @@
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|---------|
-| `snapshot_id` | `TEXT` | False | `None` |
 | `target_type` | `TEXT` | False | `'CexToken'::text` |
 | `target_id` | `TEXT` | False | `None` |
 | `exchange` | `TEXT` | False | `'binance'::text` |
@@ -592,7 +590,6 @@
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|---------|
-| `snapshot_id` | `TEXT` | False | `None` |
 | `projection_version` | `TEXT` | False | `None` |
 | `asof_date` | `DATE` | False | `None` |
 | `status` | `TEXT` | False | `None` |
@@ -749,7 +746,7 @@
 | `schema_version` | `TEXT` | False | `None` |
 | `dirty_reason` | `TEXT` | False | `None` |
 | `payload_hash` | `TEXT` | False | `None` |
-| `source_watermark_ms` | `BIGINT` | False | `0` |
+| `source_watermark_ms` | `BIGINT` | False | `None` |
 | `priority` | `INTEGER` | False | `100` |
 | `due_at_ms` | `BIGINT` | False | `None` |
 | `leased_until_ms` | `BIGINT` | True | `None` |
@@ -763,7 +760,6 @@
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|---------|
-| `admission_id` | `TEXT` | False | `None` |
 | `target_type` | `TEXT` | False | `None` |
 | `target_id` | `TEXT` | False | `None` |
 | `window` | `TEXT` | False | `None` |
@@ -1583,22 +1579,6 @@
 | `source_fingerprints_json` | `JSONB` | False | `'{}'::jsonb` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 
-## `pulse_playbook_outcomes`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `playbook_id` | `TEXT` | False | `None` |
-| `settled_at_ms` | `BIGINT` | False | `None` |
-| `actual_return` | `DOUBLE PRECISION` | True | `None` |
-| `benchmark_return` | `DOUBLE PRECISION` | True | `None` |
-| `abnormal_return` | `DOUBLE PRECISION` | True | `None` |
-| `max_favorable_excursion` | `DOUBLE PRECISION` | True | `None` |
-| `max_adverse_excursion` | `DOUBLE PRECISION` | True | `None` |
-| `confirmation_hit` | `BOOLEAN` | False | `false` |
-| `invalidation_hit` | `BOOLEAN` | False | `false` |
-| `outcome_json` | `JSONB` | False | `'{}'::jsonb` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-
 ## `pulse_playbook_snapshots`
 
 | Column | Type | Nullable | Default |
@@ -1617,7 +1597,6 @@
 | `risk_json` | `JSONB` | False | `None` |
 | `entry_market_json` | `JSONB` | False | `'{}'::jsonb` |
 | `playbook_version` | `TEXT` | False | `None` |
-| `outcome_status` | `TEXT` | False | `'pending'::text` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 
 ## `pulse_target_run_budget`
@@ -2064,7 +2043,7 @@
 | `target_id` | `TEXT` | False | `None` |
 | `dirty_reason` | `TEXT` | False | `None` |
 | `payload_hash` | `TEXT` | False | `None` |
-| `source_watermark_ms` | `BIGINT` | False | `0` |
+| `source_watermark_ms` | `BIGINT` | False | `None` |
 | `priority` | `INTEGER` | False | `100` |
 | `due_at_ms` | `BIGINT` | False | `None` |
 | `leased_until_ms` | `BIGINT` | True | `None` |
@@ -2272,6 +2251,8 @@
 | `raw_composite_score` | `DOUBLE PRECISION` | True | `None` |
 | `recommended_decision` | `TEXT` | False | `'discard'::text` |
 | `gates_max_decision` | `TEXT` | False | `'discard'::text` |
+| `intent_json` | `JSONB` | False | `None` |
+| `resolution_json` | `JSONB` | False | `None` |
 
 ## `token_radar_target_first_seen`
 
@@ -2289,35 +2270,6 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 | `venue` | `TEXT` | False | `'all'::text` |
-
-## `token_score_evaluations`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `evaluation_id` | `TEXT` | False | `None` |
-| `horizon` | `TEXT` | False | `None` |
-| `window` | `TEXT` | False | `None` |
-| `scope` | `TEXT` | False | `None` |
-| `score_version` | `TEXT` | False | `None` |
-| `bucket_label` | `TEXT` | False | `None` |
-| `bucket_min` | `BIGINT` | False | `None` |
-| `bucket_max` | `BIGINT` | False | `None` |
-| `snapshot_count` | `BIGINT` | False | `None` |
-| `settled_count` | `BIGINT` | False | `None` |
-| `settlement_coverage` | `DOUBLE PRECISION` | False | `None` |
-| `avg_actual_return` | `DOUBLE PRECISION` | False | `None` |
-| `avg_abnormal_return` | `DOUBLE PRECISION` | False | `None` |
-| `avg_normalized_outcome` | `DOUBLE PRECISION` | False | `None` |
-| `directional_hit_rate` | `DOUBLE PRECISION` | False | `None` |
-| `wilson_low` | `DOUBLE PRECISION` | False | `None` |
-| `wilson_high` | `DOUBLE PRECISION` | False | `None` |
-| `generated_at_ms` | `BIGINT` | False | `None` |
-| `sample_start_ms` | `BIGINT` | True | `None` |
-| `sample_end_ms` | `BIGINT` | True | `None` |
-| `spearman_ic` | `DOUBLE PRECISION` | True | `None` |
-| `icir` | `DOUBLE PRECISION` | True | `None` |
-| `score_stddev` | `DOUBLE PRECISION` | True | `None` |
-| `diagnostics_json` | `JSONB` | False | `'{}'::jsonb` |
 
 ## `token_social_bucket_authors`
 

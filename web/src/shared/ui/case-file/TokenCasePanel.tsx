@@ -5,13 +5,10 @@ import type {
   TokenCaseWindow,
 } from "@shared/model/tokenCaseViewModel";
 
-import { TokenCaseAmplifiersRail } from "./TokenCaseAmplifiersRail";
-import { TokenCaseBullBearRail } from "./TokenCaseBullBearRail";
 import { TokenCaseCexDetailRail } from "./TokenCaseCexDetailRail";
 import { TokenCaseDataGapsRail } from "./TokenCaseDataGapsRail";
 import { TokenCaseHero } from "./TokenCaseHero";
 import styles from "./TokenCasePanel.module.css";
-import { TokenCasePropagationSummary } from "./TokenCasePropagationSummary";
 import { TokenCaseTimeline } from "./TokenCaseTimeline";
 
 export type TokenCasePanelProps = {
@@ -40,7 +37,6 @@ export function TokenCasePanel({
         onScopeChange={onScopeChange}
         onWindowChange={onWindowChange}
       />
-      <TokenCasePropagationSummary propagation={vm.propagation} />
       <div className={styles.workspace}>
         <div className={styles.mainColumn}>
           <TokenCaseTimeline
@@ -51,8 +47,6 @@ export function TokenCasePanel({
         </div>
         <div className={styles.sideRail} aria-label="Token case side rail">
           {vm.cexDetail ? <TokenCaseCexDetailRail cexDetail={vm.cexDetail} /> : null}
-          <TokenCaseBullBearRail bullBear={vm.bullBear} />
-          <TokenCaseAmplifiersRail amplifiers={vm.amplifiers} />
           <TokenCaseDataGapsRail dataGaps={vm.dataGaps} />
         </div>
       </div>

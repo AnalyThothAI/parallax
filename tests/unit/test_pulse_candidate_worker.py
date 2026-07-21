@@ -1350,7 +1350,6 @@ def test_worker_runtime_manifest_uses_wired_provider_evidence_first_contract(mon
         settings,
         start_collector=True,
         agent_execution_gateway=FakeAgentExecutionGateway(),
-        db_pool=object(),
     )
     repos = FakeRepos()
     repos.pulse_evidence_sources.market_facts = []
@@ -1793,7 +1792,6 @@ def _settings(**overrides: Any) -> SimpleNamespace:
         "max_attempts": 3,
         "statement_timeout_seconds": 30.0,
         "advisory_lock_key": 2026051502,
-        "wakes_on": ("token_radar_updated",),
         "windows": ("1h",),
         "scopes": ("all",),
         "max_enqueues_per_cycle": 10,
@@ -2207,7 +2205,6 @@ class FakePulseStore:
                 "source_table": "asset_identity_current",
             }
         ]
-        self.discussion_digest: dict[str, Any] | None = None
 
     def candidate_by_id(self, candidate_id: str) -> dict[str, Any] | None:
         return self.candidates.get(candidate_id)
@@ -2487,17 +2484,6 @@ class FakePulseStore:
 
     def list_identity_facts(self, context: Any) -> list[dict[str, Any]]:
         return list(self.identity_facts)
-
-    def get_current_discussion_digest(
-        self,
-        *,
-        target_type: str,
-        target_id: str,
-        window: str,
-        scope: str,
-        schema_version: str,
-    ) -> dict[str, Any] | None:
-        return self.discussion_digest
 
     def mark_job_succeeded(self, job: dict[str, Any], **_: Any) -> dict[str, Any] | None:
         self.successes.append(job["job_id"])

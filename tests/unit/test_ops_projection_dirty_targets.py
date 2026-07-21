@@ -194,7 +194,33 @@ def test_token_profile_image_repair_targets_require_current_row_watermark_withou
     )
 
     with pytest.raises(ValueError, match="token_profile_image_repair_source_watermark_required"):
-        token_profile_image_repair_targets(conn, limit=10, now_ms=NOW_MS)
+        token_profile_image_repair_targets(conn, limit=10)
+
+
+def test_token_profile_image_repair_targets_use_observed_source_frontier_not_projection_update_time() -> None:
+    conn = TokenProfileImageRepairConn(
+        [
+            {
+                "target_type": "Asset",
+                "target_id": "asset-1",
+                "source_watermark_ms": NOW_MS - 5_000,
+            }
+        ]
+    )
+
+    targets = token_profile_image_repair_targets(conn, limit=10)
+
+    sql, params = conn.statements[0]
+    assert "observed_at_ms AS source_watermark_ms" in sql
+    assert params == (10,)
+    assert targets == [
+        {
+            "target_type": "Asset",
+            "target_id": "asset-1",
+            "source_watermark_ms": NOW_MS - 5_000,
+            "priority": 25,
+        }
+    ]
 
 
 def test_enqueue_projection_dirty_targets_source_quality_only_does_not_scan_news_items() -> None:

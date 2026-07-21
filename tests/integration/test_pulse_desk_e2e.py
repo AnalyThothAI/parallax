@@ -494,19 +494,6 @@ class _RealWorkerEvidenceSources:
             }
         ]
 
-    def get_current_discussion_digest(
-        self,
-        *,
-        target_type: str,
-        target_id: str,
-        window: str,
-        scope: str,
-        schema_version: str,
-    ) -> dict[str, Any] | None:
-        del target_type, target_id, window, scope, schema_version
-        return None
-
-
 class _EmptyEvidence:
     def recent_events(self, **_: Any) -> list[dict[str, Any]]:
         return []

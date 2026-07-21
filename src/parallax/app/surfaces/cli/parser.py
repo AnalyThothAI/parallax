@@ -6,15 +6,6 @@ from parallax.app.runtime.projection_dirty_targets import DOMAIN_CHOICES, PROJEC
 from parallax.domains.pulse_lab.services.pulse_horizon_policy import SIGNAL_PULSE_WINDOWS
 
 
-class _ExecuteMode(argparse.Action):
-    def __init__(self, option_strings, dest, **kwargs):
-        super().__init__(option_strings, dest, nargs=0, **kwargs)
-
-    def __call__(self, parser, namespace, values, option_string=None):
-        setattr(namespace, self.dest, True)
-        namespace.dry_run = False
-
-
 def _positive_int(value: str) -> int:
     parsed = int(value)
     if parsed <= 0:
@@ -129,13 +120,6 @@ def build_parser() -> argparse.ArgumentParser:
         help="backfill account token-call stats and quality snapshots",
     )
     backfill_account_quality.add_argument("--limit", type=int, default=1000)
-    rebuild_market_tick_current = ops_subcommands.add_parser(
-        "rebuild-market-tick-current",
-        help="rebuild market_tick_current from append-only market_ticks",
-    )
-    rebuild_market_tick_current_mode = rebuild_market_tick_current.add_mutually_exclusive_group(required=True)
-    rebuild_market_tick_current_mode.add_argument("--dry-run", action="store_true")
-    rebuild_market_tick_current_mode.add_argument("--execute", action="store_true")
     enqueue_token_radar_dirty_targets = ops_subcommands.add_parser(
         "enqueue-token-radar-dirty-targets",
         help="enqueue Token Radar dirty targets from persisted facts",
@@ -241,7 +225,7 @@ def build_parser() -> argparse.ArgumentParser:
     run_resolution_refresh.add_argument("--reprocess-limit", type=int, default=500)
     refresh_asset_profiles = ops_subcommands.add_parser(
         "refresh-asset-profiles",
-        help="refresh due DEX token profile facts",
+        help="enqueue missing DEX profile targets and refresh due profile facts",
     )
     refresh_asset_profiles.add_argument("--limit", type=int, default=50)
     rebuild_token_profiles = ops_subcommands.add_parser(
@@ -301,13 +285,4 @@ def build_parser() -> argparse.ArgumentParser:
     factor_diagnostics.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
     factor_diagnostics.add_argument("--scope", choices=("all", "matched"), default="all")
     factor_diagnostics.add_argument("--limit", type=int, default=200)
-    settle_token_factors = ops_subcommands.add_parser(
-        "settle-token-factors",
-        help="settle token factor scores against later price observations",
-    )
-    settle_token_factors.add_argument("--window", choices=("5m", "1h", "4h", "24h"), default="1h")
-    settle_token_factors.add_argument("--scope", choices=("all", "matched"), default="all")
-    settle_token_factors.add_argument("--horizon", choices=("15m", "1h", "6h", "24h"), default="1h")
-    settle_token_factors.add_argument("--limit", type=int, default=1000)
-    settle_token_factors.add_argument("--now-ms", type=int, default=None, help=argparse.SUPPRESS)
     return parser

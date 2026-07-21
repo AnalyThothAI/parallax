@@ -11,7 +11,6 @@ from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     _macro_daily_brief_payload_hash,
     _macro_projection_dirty_change_payload_hash,
     _macro_projection_dirty_payload_hash,
-    _macro_snapshot_payload_hash,
 )
 
 CONTROL_METHODS = (
@@ -206,6 +205,33 @@ def test_macro_projection_dirty_target_default_writes_require_connection_transac
     assert conn.executions == []
 
 
+@pytest.mark.parametrize("operation", ("current", "changes"))
+def test_macro_projection_dirty_target_default_enqueues_require_connection_transaction_before_sql(
+    operation: str,
+) -> None:
+    conn = DirtyTargetConnectionWithoutTransaction()
+    repo = MacroIntelRepository(conn)
+
+    with pytest.raises(RuntimeError, match="macro_projection_dirty_target_transaction_required"):
+        if operation == "current":
+            repo.enqueue_macro_projection_dirty_target(
+                projection_name="macro_view",
+                projection_version="macro_regime_v4",
+                now_ms=1_779_000_000_000,
+                reason="macro_observations_imported",
+            )
+        else:
+            repo.enqueue_macro_projection_dirty_targets_for_changes(
+                changed_observations=[{"concept_key": "liquidity:sofr", "observed_at": "2026-05-28"}],
+                projection_name="macro_view",
+                projection_version="macro_regime_v4",
+                now_ms=1_779_000_000_000,
+                reason="macro_observations_changed",
+            )
+
+    assert conn.executions == []
+
+
 @pytest.mark.parametrize(
     ("overrides", "error_code"),
     [
@@ -383,9 +409,7 @@ def test_macro_projection_dirty_target_error_terminalizes_exhausted_claim() -> N
     assert conn.terminal_params["source_table"] == "macro_projection_dirty_targets"
     assert conn.terminal_params["target_key"] == "macro_view:macro_regime_v4:current:current"
     assert conn.terminal_params["final_status"] == "terminal"
-    assert conn.terminal_params["final_reason"] == (
-        "macro_view_projection_retry_budget_exhausted: projection failed"
-    )
+    assert conn.terminal_params["final_reason"] == ("macro_view_projection_retry_budget_exhausted: projection failed")
     assert conn.terminal_params["final_reason_bucket"] == "retry_budget_exhausted"
     assert conn.terminal_params["attempt_count"] == 1
     assert conn.terminal_params["payload_hash"] == "sha256:dirty"
@@ -500,36 +524,6 @@ def test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys() -> None:
                 123: "legacy",
             }
         )
-
-
-def test_macro_snapshot_payload_hash_uses_shared_current_payload_contract() -> None:
-    hash_source = inspect.getsource(_macro_snapshot_payload_hash)
-
-    assert "stable_current_payload_hash" in hash_source
-    assert "postgres_safe_json" not in hash_source
-    assert "default=str" not in hash_source
-
-
-def test_macro_snapshot_payload_hash_rejects_legacy_feature_keys() -> None:
-    snapshot = {
-        "projection_version": "macro_regime_v4",
-        "asof_date": date(2026, 6, 11),
-        "status": "ready",
-        "regime": "risk_on",
-        "overall_score": 64,
-        "panels_json": {},
-        "indicators_json": {},
-        "triggers_json": [],
-        "data_gaps_json": [],
-        "source_coverage_json": {},
-        "features_json": {123: "legacy"},
-        "chain_json": {},
-        "scenario_json": {},
-        "scorecard_json": {},
-    }
-
-    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
-        _macro_snapshot_payload_hash(snapshot)
 
 
 def test_record_run_methods_write_hard_cut_observation_counts_and_watermarks() -> None:

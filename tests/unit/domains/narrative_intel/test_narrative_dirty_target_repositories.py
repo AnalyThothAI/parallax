@@ -15,7 +15,7 @@ _MISSING = object()
 
 
 def test_enqueue_targets_coalesces_by_full_narrative_key_and_versions() -> None:
-    conn = _ScriptedConnection([])
+    conn = _ScriptedConnection([], rowcount=1)
 
     count = NarrativeAdmissionDirtyTargetRepository(conn).enqueue_targets(
         [
@@ -248,7 +248,7 @@ def test_dirty_target_mutations_require_connection_transaction_before_sql_when_c
 
 
 def test_enqueue_targets_commit_owned_write_uses_connection_transaction_without_manual_commit() -> None:
-    conn = _ScriptedConnection([])
+    conn = _ScriptedConnection([], rowcount=1)
 
     count = NarrativeAdmissionDirtyTargetRepository(conn).enqueue_targets(
         [_target()],
@@ -364,8 +364,7 @@ def test_mark_error_terminalizes_exhausted_claims_into_queue_terminal() -> None:
 
     assert changed == 1
     assert any(
-        "DELETE FROM narrative_admission_dirty_targets queue" in sql and "RETURNING queue.*" in sql
-        for sql in conn.sql
+        "DELETE FROM narrative_admission_dirty_targets queue" in sql and "RETURNING queue.*" in sql for sql in conn.sql
     )
     assert any("INSERT INTO worker_queue_terminal_events" in sql for sql in conn.sql)
     terminal_params = conn.params[-1]

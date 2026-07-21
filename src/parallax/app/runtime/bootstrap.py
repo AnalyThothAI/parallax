@@ -106,7 +106,6 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
             settings,
             start_collector=start_collector,
             agent_execution_gateway=agent_execution_gateway,
-            db_pool=db.tool_pool,
         )
         runtime = _assemble_runtime(
             settings=settings,
@@ -237,8 +236,7 @@ class _PooledIngestStore:
         prepared = IngestService.prepare_event(event, is_watched=is_watched)
         market_resolutions: list[dict[str, Any]] = []
         prefetched_ticks: dict[tuple[str, str], Any] = {}
-        resolutions: list[Any] = []
-        with self.db.worker_session("collector") as repos:
+        with self.db.worker_session("collector") as repos, repos.transaction():
             ingest = _ingest_service_for_repos(
                 repos,
                 event_anchor_active_window_ms=self.event_anchor_active_window_ms,
@@ -260,29 +258,22 @@ class _PooledIngestStore:
                         max_lag_ms=60_000,
                     )
                 )
-
-        tick_lookup = TickLookup(
-            latest_at_or_before=lambda target_type, target_id, _at_ms, _max_lag_ms: prefetched_ticks.get(
-                (target_type, target_id)
+            tick_lookup = TickLookup(
+                latest_at_or_before=lambda target_type, target_id, _at_ms, _max_lag_ms: prefetched_ticks.get(
+                    (target_type, target_id)
+                )
             )
-        )
-        captures = [
-            self._capture_service.capture_for_event(
-                event_id=market_resolution["event_id"],
-                intent_id=market_resolution["intent_id"],
-                resolution_id=market_resolution["resolution_id"],
-                resolution=market_resolution,
-                event_ms=_prepared_value(prepared, "event_ms"),
-                tick_lookup=tick_lookup,
-            )
-            for market_resolution in market_resolutions
-        ]
-
-        with self.db.worker_session("collector") as repos:
-            ingest = _ingest_service_for_repos(
-                repos,
-                event_anchor_active_window_ms=self.event_anchor_active_window_ms,
-            )
+            captures = [
+                self._capture_service.capture_for_event(
+                    event_id=market_resolution["event_id"],
+                    intent_id=market_resolution["intent_id"],
+                    resolution_id=market_resolution["resolution_id"],
+                    resolution=market_resolution,
+                    event_ms=_prepared_value(prepared, "event_ms"),
+                    tick_lookup=tick_lookup,
+                )
+                for market_resolution in market_resolutions
+            ]
             return ingest.commit_prepared_event(prepared, resolutions=resolutions, captures=captures)
 
     def event_token_resolutions(self, event_id: str) -> list[dict[str, Any]]:

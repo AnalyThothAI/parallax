@@ -134,24 +134,6 @@ export type NewsAgentBrief = {
   evidence_refs?: NewsAgentEvidenceRef[];
 };
 
-export type NewsAgentRunSummary = {
-  backend?: string | null;
-  status?: string | null;
-  outcome?: string | null;
-  provider?: string | null;
-  model?: string | null;
-  lane?: string | null;
-  workflow_name?: string | null;
-  agent_name?: string | null;
-  started_at_ms?: number | null;
-  finished_at_ms?: number | null;
-  latency_ms?: number | null;
-  execution_started?: boolean | null;
-  error_class?: string | null;
-  error?: string | null;
-  error_message?: string | null;
-};
-
 export type NewsRow = {
   row_id: string;
   news_item_id: string;
@@ -210,7 +192,6 @@ export type NewsItemDetail = NewsRow & {
   entities?: unknown[];
   token_mentions?: unknown[];
   fact_candidates?: NewsFactLane[];
-  agent_run?: NewsAgentRunSummary | null;
   provider_item?: Record<string, unknown> | null;
   fetch_run?: Record<string, unknown> | null;
   observation_edges?: Record<string, unknown>[];

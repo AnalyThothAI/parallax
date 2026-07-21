@@ -209,7 +209,6 @@ def test_narrative_admission_worker_stales_only_claimed_missing_target():
             ("chain_token", "solana:Exited", "1h", "matched"): {
                 "radar_row": None,
                 "existing_admission": {
-                    "admission_id": "admission-exited",
                     "target_type": "chain_token",
                     "target_id": "solana:Exited",
                     "window": "1h",
@@ -254,8 +253,6 @@ def test_narrative_admission_worker_stales_only_claimed_missing_target():
             "target_id": "solana:Exited",
             "window": "1h",
             "scope": "matched",
-            "schema_version": NARRATIVE_SCHEMA_VERSION,
-            "now_ms": 10_000,
             "commit": False,
         }
     ]
@@ -545,19 +542,17 @@ class FakeNarrativeRepository:
         self.upserted_admissions.extend(selected)
         return {"upserted": len(selected), "seen": len(selected)}
 
-    def stale_admission_target(self, *, target_type, target_id, window, scope, schema_version, now_ms, commit=True):
+    def stale_admission_target(self, *, target_type, target_id, window, scope, commit=True):
         self.staled_admission_targets.append(
             {
                 "target_type": target_type,
                 "target_id": target_id,
                 "window": window,
                 "scope": scope,
-                "schema_version": schema_version,
-                "now_ms": now_ms,
                 "commit": commit,
             }
         )
-        return {"staled_admissions": 1, "staled_digests": 0, "staled_semantics": 0}
+        return {"staled_admissions": 1}
 
     def delete_admissions_outside_frontier(self, *, window, scope, schema_version, active_target_keys, now_ms):
         self.deleted_frontiers.append(set(active_target_keys))

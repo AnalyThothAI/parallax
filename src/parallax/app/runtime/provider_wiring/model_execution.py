@@ -129,7 +129,6 @@ def litellm_pulse_decision_provider(
 
 
 def litellm_news_item_brief_provider(
-    settings: Settings,
     *,
     agent_gateway: AgentExecutionGateway,
 ) -> LiteLLMNewsItemBriefClient:

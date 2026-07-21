@@ -52,16 +52,13 @@ options:
 
 ```
 usage: parallax ops [-h]
-                    {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors} ...
+                    {backfill-account-quality,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics} ...
 
 positional arguments:
-  {backfill-account-quality,rebuild-market-tick-current,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics,settle-token-factors}
+  {backfill-account-quality,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics}
     backfill-account-quality
                         backfill account token-call stats and quality
                         snapshots
-    rebuild-market-tick-current
-                        rebuild market_tick_current from append-only
-                        market_ticks
     enqueue-token-radar-dirty-targets
                         enqueue Token Radar dirty targets from persisted facts
     enqueue-token-capture-tier-rank-set
@@ -102,7 +99,8 @@ positional arguments:
                         refresh due token resolution lookups and reprocess
                         recent intents
     refresh-asset-profiles
-                        refresh due DEX token profile facts
+                        enqueue missing DEX profile targets and refresh due
+                        profile facts
     rebuild-token-profiles
                         rebuild canonical token profile current facts
     mirror-token-images
@@ -123,9 +121,6 @@ positional arguments:
                         readiness regressions
     factor-diagnostics  inspect token factor distribution health for latest
                         radar rows
-    settle-token-factors
-                        settle token factor scores against later price
-                        observations
 
 options:
   -h, --help            show this help message and exit

@@ -308,7 +308,7 @@ def _insert_source_provider_and_item(
         source_item_key=source_item_key,
         canonical_url=f"https://example.com/{source_item_key}",
         payload_hash=f"hash-{source_item_key}",
-        raw_payload_json={"title": title},
+        raw_payload={"title": title},
         fetched_at_ms=NOW_MS,
     )
     news = repo.upsert_canonical_news_item(
@@ -480,7 +480,7 @@ def _upsert_opennews_observation(
         source_item_key=article_id,
         canonical_url=canonical_url,
         payload_hash=f"payload-{article_id}",
-        raw_payload_json={"id": article_id, "link": canonical_url, "text": title},
+        raw_payload={"id": article_id, "link": canonical_url, "text": title},
         fetched_at_ms=now_ms,
         provider_article_id=article_id,
     )

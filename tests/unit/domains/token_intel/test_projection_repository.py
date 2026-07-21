@@ -12,7 +12,7 @@ from parallax.domains.token_intel.interfaces import (
 )
 from parallax.domains.token_intel.repositories.projection_repository import ProjectionRepository
 
-_REQUIRED_CONTROL_WRITE_CASE_NAMES = ("advance_offset", "start_run", "finish_run", "enqueue_dirty_range")
+_REQUIRED_CONTROL_WRITE_CASE_NAMES = ("advance_offset", "start_run", "finish_run")
 
 
 def test_projection_repository_diagnostic_reads_require_explicit_limits_without_defaults() -> None:
@@ -20,25 +20,11 @@ def test_projection_repository_diagnostic_reads_require_explicit_limits_without_
 
     with pytest.raises(TypeError, match="limit"):
         repo.list_runs(projection_name=TOKEN_RADAR_PROJECTION_NAME)
-    with pytest.raises(TypeError, match="limit"):
-        repo.list_dirty_ranges(projection_name=TOKEN_RADAR_PROJECTION_NAME)
 
 
 @pytest.mark.parametrize(
     "operation",
-    [
-        pytest.param(lambda repo, limit: repo.list_runs(limit=limit), id="list-runs"),
-        pytest.param(
-            lambda repo, limit: repo.claim_dirty_ranges(
-                projection_name=TOKEN_RADAR_PROJECTION_NAME,
-                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                limit=limit,
-                commit=False,
-            ),
-            id="claim-dirty-ranges",
-        ),
-        pytest.param(lambda repo, limit: repo.list_dirty_ranges(limit=limit), id="list-dirty-ranges"),
-    ],
+    [pytest.param(lambda repo, limit: repo.list_runs(limit=limit), id="list-runs")],
 )
 @pytest.mark.parametrize("limit", [-1, True, "10"])
 def test_projection_repository_limits_reject_malformed_before_sql(
@@ -103,44 +89,6 @@ def test_projection_repository_stale_run_accounting_rejects_invalid_cursor_rowco
             finished_at_ms=1_777_800_000_000,
             commit=False,
         )
-
-
-def test_projection_repository_claim_dirty_ranges_requires_cursor_rowcount() -> None:
-    conn = FakeProjectionConnection(claim_omit_rowcount=True)
-
-    with pytest.raises(TypeError, match="projection_repository_rowcount_required"):
-        ProjectionRepository(conn).claim_dirty_ranges(
-            projection_name=TOKEN_RADAR_PROJECTION_NAME,
-            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-            limit=10,
-            commit=False,
-        )
-
-
-@pytest.mark.parametrize("rowcount", [True, False, "1", -1, 0, 2])
-def test_projection_repository_claim_dirty_ranges_rejects_invalid_or_mismatched_rowcount(rowcount: object) -> None:
-    conn = FakeProjectionConnection(claim_rowcount=rowcount)
-
-    with pytest.raises(TypeError, match="projection_repository_rowcount_invalid"):
-        ProjectionRepository(conn).claim_dirty_ranges(
-            projection_name=TOKEN_RADAR_PROJECTION_NAME,
-            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-            limit=10,
-            commit=False,
-        )
-
-
-def test_projection_repository_claim_dirty_ranges_accepts_zero_rowcount_with_no_rows() -> None:
-    conn = FakeProjectionConnection(claim_rows=[], claim_rowcount=0)
-
-    rows = ProjectionRepository(conn).claim_dirty_ranges(
-        projection_name=TOKEN_RADAR_PROJECTION_NAME,
-        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-        limit=10,
-        commit=False,
-    )
-
-    assert rows == []
 
 
 @pytest.mark.parametrize("case_name", _REQUIRED_CONTROL_WRITE_CASE_NAMES)
@@ -221,29 +169,6 @@ def _repository_cases() -> list[RepositoryCase]:
                 status="ready",
                 rows_read=10,
                 rows_written=2,
-                dirty_ranges_written=0,
-            ),
-        ),
-        RepositoryCase(
-            name="enqueue_dirty_range",
-            write=lambda conn: ProjectionRepository(conn).enqueue_dirty_range(
-                projection_name=TOKEN_RADAR_PROJECTION_NAME,
-                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                entity_type="token",
-                entity_key="asset-1",
-                window="1h",
-                scope="all",
-                start_ms=1_777_799_000_000,
-                end_ms=1_777_800_000_000,
-                reason="test",
-            ),
-        ),
-        RepositoryCase(
-            name="claim_dirty_ranges",
-            write=lambda conn: ProjectionRepository(conn).claim_dirty_ranges(
-                projection_name=TOKEN_RADAR_PROJECTION_NAME,
-                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                limit=10,
             ),
         ),
     ]
@@ -262,7 +187,6 @@ class RepositoryCase:
         self.write = write
 
 
-_CLAIM_ROWCOUNT_FROM_ROWS = object()
 _START_RUN_ROW_FROM_PARAMS = object()
 
 
@@ -273,9 +197,6 @@ class FakeProjectionConnection:
         rowcount: object = 1,
         omit_rowcount: bool = False,
         start_run_row: dict[str, Any] | None | object = _START_RUN_ROW_FROM_PARAMS,
-        claim_rows: list[dict[str, Any]] | None = None,
-        claim_rowcount: object = _CLAIM_ROWCOUNT_FROM_ROWS,
-        claim_omit_rowcount: bool = False,
     ) -> None:
         self.sql: list[str] = []
         self.sql_depths: list[int] = []
@@ -286,9 +207,6 @@ class FakeProjectionConnection:
         self.rowcount = rowcount
         self.omit_rowcount = omit_rowcount
         self.start_run_row = start_run_row
-        self.claim_rows = [{"dirty_id": "dirty-1"}] if claim_rows is None else claim_rows
-        self.claim_rowcount = claim_rowcount
-        self.claim_omit_rowcount = claim_omit_rowcount
 
     def transaction(self) -> FakeTransaction:
         return FakeTransaction(self)
@@ -302,9 +220,6 @@ class FakeProjectionConnection:
         if "INSERT INTO projection_runs(" in text and "RETURNING *" in text:
             row = {"run_id": str(params[0])} if self.start_run_row is _START_RUN_ROW_FROM_PARAMS else self.start_run_row
             return FakeResult(row=row, rowcount=self.rowcount, omit_rowcount=self.omit_rowcount)
-        if "RETURNING ranges.*" in text:
-            rowcount = len(self.claim_rows) if self.claim_rowcount is _CLAIM_ROWCOUNT_FROM_ROWS else self.claim_rowcount
-            return FakeResult(rows=self.claim_rows, rowcount=rowcount, omit_rowcount=self.claim_omit_rowcount)
         return FakeResult(rowcount=self.rowcount, omit_rowcount=self.omit_rowcount)
 
     def commit(self) -> None:

@@ -88,10 +88,16 @@ def ops_diagnostics_payload(
     now_ms: int | None = None,
 ) -> dict[str, Any]:
     generated_at_ms = int(now_ms if now_ms is not None else _now_ms())
-    since_ms = generated_at_ms - _required_positive_int(
-        since_hours,
-        "ops_diagnostics_since_hours_required",
-    ) * 60 * 60 * 1000
+    since_ms = (
+        generated_at_ms
+        - _required_positive_int(
+            since_hours,
+            "ops_diagnostics_since_hours_required",
+        )
+        * 60
+        * 60
+        * 1000
+    )
     database = _section("database", lambda: _database_payload(runtime))
     collector = _section("collector", lambda: _collector_payload(runtime))
     providers = _providers_payload(runtime)

@@ -49,7 +49,6 @@ describe("TokenCasePanel", () => {
           address: null,
         },
         cex_detail: {
-          snapshot_id: "cex-detail:binance:BTCUSDT",
           target_type: "CexToken",
           target_id: "cex_token:BTC",
           exchange: "binance",

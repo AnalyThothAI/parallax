@@ -825,7 +825,6 @@ def test_news_projection_dirty_priority_has_no_int_repair() -> None:
     combined = "\n".join((priority_value_source, priority_for_key_source))
 
     required = {
-        "_priority_for_key(priorities, news_item_id)",
         "_priority_for_key(priorities, story_key)",
         "news_projection_dirty_target_priority_required",
         "not isinstance(value, int) or isinstance(value, bool)",
@@ -2011,9 +2010,6 @@ def test_old_item_outputs_are_audit_only_after_story_agent_hard_cut() -> None:
     story_current_source = _function_source(repository_path, "_current_story_agent_briefs_for_story_keys")
     source_quality_input_source = _function_source(repository_path, "_list_source_quality_inputs_for_source_ids")
     page_projection_source = _read("src/parallax/domains/news_intel/services/news_page_projection.py")
-    agent_read_tools_source = _read("src/parallax/platform/agent_read_tools.py")
-    story_stage_source = _read("src/parallax/domains/news_intel/services/news_story_brief_stage.py")
-    item_stage_source = _read("src/parallax/domains/news_intel/services/news_item_brief_stage.py")
 
     page_item_loader_forbidden = (
         "news_item_agent_briefs",
@@ -2046,11 +2042,6 @@ def test_old_item_outputs_are_audit_only_after_story_agent_hard_cut() -> None:
     assert "max(1, int(window_ms))" not in source_quality_input_source
     assert "news_source_quality_window_ms_required" in source_quality_input_source
     assert '"method": "news_story_brief"' in page_projection_source
-    assert "news.current_briefs" not in agent_read_tools_source
-    assert "news.current_briefs" not in story_stage_source
-    assert "news.current_briefs" not in item_stage_source
-    assert "news.story_current_briefs" in agent_read_tools_source
-    assert "news_story_agent_briefs" in agent_read_tools_source
 
 
 def test_news_item_brief_input_has_no_provider_signal_field_aliases() -> None:
@@ -2485,13 +2476,10 @@ def test_news_item_brief_contract_module_has_no_runtime_row_schema_gate() -> Non
 
 def test_news_page_projection_wakes_from_story_current_not_item_brief_current() -> None:
     from parallax.app.runtime.worker_manifest import require_worker_manifest
-    from parallax.platform.config.settings import WorkersSettings
 
     manifest_wakes = require_worker_manifest("news_page_projection").wakes_on
-    settings_wakes = WorkersSettings().news_page_projection.wakes_on
     item_brief_wakes_out = require_worker_manifest("news_item_brief").wakes_out
 
-    assert manifest_wakes == settings_wakes
     assert "news_story_brief_updated" in manifest_wakes
     assert "news_item_brief_updated" not in manifest_wakes
     assert item_brief_wakes_out == ()
@@ -2512,11 +2500,9 @@ def test_news_item_brief_current_write_does_not_dirty_page_projection() -> None:
 
 def test_news_item_process_enqueues_story_brief_not_item_brief_after_hard_cut() -> None:
     from parallax.app.runtime.worker_manifest import require_worker_manifest
-    from parallax.platform.config.settings import WorkersSettings
 
     source = _read("src/parallax/domains/news_intel/runtime/news_item_process_worker.py")
     item_brief_manifest_wakes = require_worker_manifest("news_item_brief").wakes_on
-    item_brief_settings_wakes = WorkersSettings().news_item_brief.wakes_on
     forbidden = {
         "enqueue_item_brief_work",
         "ITEM_BRIEF_INPUT",
@@ -2529,7 +2515,7 @@ def test_news_item_process_enqueues_story_brief_not_item_brief_after_hard_cut() 
 
     assert sorted(token for token in forbidden if token in source) == []
     assert sorted(token for token in required if token not in source) == []
-    assert item_brief_manifest_wakes == item_brief_settings_wakes == ()
+    assert item_brief_manifest_wakes == ()
 
 
 def test_news_detail_signal_fallback_helpers_are_removed() -> None:

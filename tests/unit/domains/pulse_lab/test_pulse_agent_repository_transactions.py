@@ -175,14 +175,6 @@ NOW_MS = 1_779_000_000_000
             ),
         ),
         (
-            "upsert_playbook_outcome",
-            PulsePlaybooksRepository,
-            lambda repo: repo.upsert_playbook_outcome(
-                playbook_id="playbook-1",
-                settled_at_ms=NOW_MS,
-            ),
-        ),
-        (
             "record_edge_observation",
             PulseAdmissionRepository,
             lambda repo: repo.record_edge_observation(

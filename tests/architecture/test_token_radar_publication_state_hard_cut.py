@@ -763,7 +763,7 @@ def test_token_radar_target_feature_writer_requires_formal_payload_fields_withou
         '_required_target_feature_payload_mapping(row, "factor_snapshot_json")',
         "_required_target_feature_payload_lane(row)",
         '_required_target_feature_payload_int(row, "source_max_received_at_ms")',
-        '_required_target_feature_payload_list(row, "source_event_ids_json")',
+        "source_event_ids = _required_target_feature_payload_string_list(",
         '_required_target_feature_payload_int(row, "created_at_ms")',
         '_required_target_feature_payload_mapping(factor_snapshot, "composite")',
         '_required_target_feature_payload_mapping(factor_snapshot, "gates")',
@@ -867,10 +867,7 @@ def test_token_capture_tier_rank_set_hash_requires_formal_current_identity_witho
 
 def test_token_radar_capture_tier_fanout_requires_formal_source_watermark_without_runtime_fallback() -> None:
     source = TOKEN_RADAR_PROJECTION.read_text(encoding="utf-8")
-    enqueue_source = source.split("def _enqueue_token_capture_tier_for_rank_changes", 1)[1].split(
-        "\n    @staticmethod",
-        1,
-    )[0]
+    enqueue_source = _function_source(TOKEN_RADAR_PROJECTION, "_enqueue_token_capture_tier_for_rank_changes")
     watermark_source = source.split("def _rank_set_source_watermark_ms", 1)[1].split(
         "\ndef _capture_tier_relevant_row",
         1,

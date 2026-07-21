@@ -1,12 +1,9 @@
 import { compactNumber, formatTokenPriceUsd, formatUsdCompact, shortAddress } from "@lib/format";
 import type {
   CexDetailSnapshot,
-  NarrativeArgument,
-  NarrativeCluster,
+  NarrativeAdmission,
   TokenCaseDossier,
   TokenCasePostsData,
-  TokenDiscussionDigest,
-  TokenMentionSemantic,
   TokenPostItem,
 } from "@lib/types";
 import { narrativeGapLabels } from "@shared/model/narrativeDataGaps";
@@ -58,10 +55,8 @@ export function buildTokenCaseViewModel({
   );
   const visibleTimelineItems =
     route.postSort === "watched" ? timelineItems.filter((item) => item.isWatched) : timelineItems;
-  const digest = dossier.discussion_digest;
-  const dataGaps = narrativeGapLabels(digest.data_gaps);
-  const propagationState = digestPropagationState(digest) ?? dossier.timeline.summary.phase;
-  const currentness = digestCurrentnessView(digest, dataGaps[0] ?? null);
+  const admission = dossier.narrative_admission;
+  const dataGaps = narrativeGapLabels(admission.data_gaps);
 
   return {
     target: {
@@ -82,7 +77,7 @@ export function buildTokenCaseViewModel({
     hero: {
       logoUrl: cleanText(profileIdentity?.logo_url),
       title,
-      subtitle: heroSubtitle(dossier, digest),
+      subtitle: heroSubtitle(dossier),
       contractLabel: target.address
         ? `${target.chain_id ?? "chain"} · ${shortAddress(target.address)}`
         : null,
@@ -97,13 +92,11 @@ export function buildTokenCaseViewModel({
         tone: dossier.timeline.summary.posts > 0 ? "health" : "neutral",
       },
       {
-        key: "phase",
-        label: "phase",
-        value: phaseLabel(propagationState),
-        detail: digest.coverage?.semantic_coverage
-          ? `${Math.round(digest.coverage.semantic_coverage * 100)}% semantic coverage`
-          : "semantic coverage pending",
-        tone: phaseTone(propagationState),
+        key: "admission",
+        label: "admission",
+        value: admissionStatusLabel(admission),
+        detail: admissionCoverageLabel(admission),
+        tone: admissionTone(admission),
       },
       {
         key: "watched",
@@ -120,12 +113,6 @@ export function buildTokenCaseViewModel({
         tone: market.tone,
       },
     ],
-    propagation: {
-      summaryZh: propagationSummary(digest),
-      currentness,
-      statusPills: digestStatusPills(digest, currentness),
-      stages: digestStages(dossier.narrative_clusters, digest),
-    },
     timeline: {
       sort: route.postSort,
       items: visibleTimelineItems,
@@ -136,29 +123,6 @@ export function buildTokenCaseViewModel({
     },
     market,
     cexDetail: buildCexDetailView(dossier.cex_detail),
-    bullBear: {
-      stance: digest.bull_bear?.stance ?? digest.status,
-      bull: {
-        title: "Bull · 多头",
-        thesis: digest.bull_bear?.bull.thesis_zh ?? "",
-        evidenceEventIds: evidenceEventIds(digest.bull_bear?.bull.evidence_refs),
-        bullets: digest.bull_bear?.bull.bullets_zh ?? [],
-        tone: "health",
-      },
-      bear: {
-        title: "Bear · 空头",
-        thesis: digest.bull_bear?.bear.thesis_zh ?? "",
-        evidenceEventIds: evidenceEventIds(digest.bull_bear?.bear.evidence_refs),
-        bullets: digest.bull_bear?.bear.bullets_zh ?? [],
-        tone: "risk",
-      },
-    },
-    amplifiers: digestAmplifiers(digest, dossier.narrative_clusters).map((account) => ({
-      handle: `@${account.handle.replace(/^@+/, "")}`,
-      role: account.role,
-      posts: account.posts,
-      firstSeenLabel: account.first_seen_ms ? timeAgoLabel(account.first_seen_ms) : null,
-    })),
     dataGaps,
   };
 }
@@ -275,7 +239,6 @@ function delta(
 function buildPostEvent(post: TokenPostItem, livePriceUsd: number | null): TokenCasePostEvent {
   const score = numberValue(post.post_quality.score);
   const reasons = post.post_quality.reasons ?? [];
-  const semantic = post.semantic ?? null;
   return {
     id: post.event_id,
     handle: cleanText(post.handle ?? post.author_role),
@@ -283,9 +246,8 @@ function buildPostEvent(post: TokenPostItem, livePriceUsd: number | null): Token
     url: cleanText(post.url),
     timestampMs: post.received_at_ms ?? null,
     timeLabel: post.received_at_ms ? timeAgoLabel(post.received_at_ms) : null,
-    phase:
-      cleanText(semantic?.narrative_cluster_title) ?? cleanText(semantic?.narrative_cluster_key),
-    role: semanticRole(semantic),
+    phase: cleanText(post.stage_phase),
+    role: cleanText(post.author_role),
     isWatched: Boolean(post.is_watched),
     pills: postPills(post),
     market: buildPostMarket(post, livePriceUsd),
@@ -359,44 +321,11 @@ function sortTimelineItems(
 }
 
 function postPills(post: TokenPostItem): Array<{ label: string; tone: TokenCaseTone }> {
-  const pills: Array<{ label: string; tone: TokenCaseTone }> = [];
   const pricePill = tokenPricePill(post.price?.price_usd, post.price?.status);
-  if (pricePill) {
-    pills.push(pricePill);
-  }
-  const semantic = post.semantic;
-  if (!semantic) {
-    pills.push({ label: "semantic unavailable", tone: "warn" });
-    return pills;
-  }
-  if (semantic.status !== "ready" && semantic.status !== "labeled") {
-    pills.push({
-      label: semantic.status.replaceAll("_", " "),
-      tone: semanticStatusTone(semantic.status),
-    });
-    return pills;
-  }
-  const stance = cleanText(semantic.trade_stance);
-  if (stance && stance !== "unknown") {
-    pills.push({ label: stance, tone: stanceTone(stance) });
-  }
-  const valence = cleanText(semantic.attention_valence);
-  if (valence && valence !== "unknown") {
-    pills.push({ label: valence, tone: valenceTone(valence) });
-  }
-  const cluster =
-    cleanText(semantic.narrative_cluster_title) ?? cleanText(semantic.narrative_cluster_key);
-  if (cluster) {
-    pills.push({ label: cluster, tone: "info" });
-  }
-  return pills;
+  return pricePill ? [pricePill] : [];
 }
 
-function heroSubtitle(dossier: TokenCaseDossier, digest: TokenDiscussionDigest): string {
-  const narrativeTitle = cleanText(digest.dominant_narrative?.title);
-  if (digest.status === "ready" && narrativeTitle) {
-    return narrativeTitle;
-  }
+function heroSubtitle(dossier: TokenCaseDossier): string {
   const target = dossier.target;
   const parts = [
     target.chain_id,
@@ -427,241 +356,30 @@ function heroActions(dossier: TokenCaseDossier): TokenCaseViewModel["hero"]["act
   return actions;
 }
 
-function phaseTone(phase?: string | null): TokenCaseTone {
-  const normalized = phase?.toLowerCase();
-  if (normalized === "expansion" || normalized === "escalation") {
+function admissionStatusLabel(admission: NarrativeAdmission): string {
+  const labels: Record<string, string> = {
+    admitted: "admitted",
+    missing: "not admitted",
+    suppressed: "suppressed",
+    unsupported_window: "unsupported",
+  };
+  return labels[admission.status] ?? admission.status.replaceAll("_", " ");
+}
+
+function admissionCoverageLabel(admission: NarrativeAdmission): string {
+  return `${compactNumber(admission.coverage.source_mentions)} posts · ${compactNumber(
+    admission.coverage.independent_authors,
+  )} authors`;
+}
+
+function admissionTone(admission: NarrativeAdmission): TokenCaseTone {
+  if (admission.status === "admitted" && admission.currentness.display_status === "current") {
     return "health";
   }
-  if (normalized === "ignition") {
-    return "opportunity";
-  }
-  if (normalized === "fade") {
+  if (admission.status === "suppressed" || admission.currentness.display_status === "out_of_frontier") {
     return "warn";
   }
   return "info";
-}
-
-function phaseLabel(value?: string | null): string {
-  const text = cleanText(value) ?? "unknown";
-  return text.replaceAll("_", " ");
-}
-
-function digestPropagationState(digest: TokenDiscussionDigest): string | null {
-  return (
-    cleanText(digest.propagation?.state) ??
-    cleanText(digest.dominant_narrative?.propagation_state) ??
-    null
-  );
-}
-
-function propagationSummary(digest: TokenDiscussionDigest): string {
-  return (
-    cleanText(digest.propagation?.summary_zh) ??
-    cleanText(digest.dominant_narrative?.summary_zh) ??
-    digestStatusLabel(digest.status)
-  );
-}
-
-function digestStatusPills(
-  digest: TokenDiscussionDigest,
-  currentness: TokenCaseViewModel["propagation"]["currentness"],
-): Array<{ label: string; tone: TokenCaseTone }> {
-  const pills: Array<{ label: string; tone: TokenCaseTone }> = [
-    { label: digestStatusLabel(digest.status), tone: digestStatusTone(digest.status) },
-    { label: currentness.label, tone: currentness.tone },
-  ];
-  if (currentness.deltaLabel) {
-    pills.push({ label: currentness.deltaLabel, tone: "info" });
-  }
-  if (currentness.lastReadyComputedLabel) {
-    pills.push({ label: `last ready ${currentness.lastReadyComputedLabel}`, tone: "neutral" });
-  }
-  const state = digestPropagationState(digest);
-  if (state) {
-    pills.push({ label: phaseLabel(state), tone: phaseTone(state) });
-  }
-  const topStance = topMixLabel(digest.stance_mix);
-  if (topStance) {
-    pills.push({ label: topStance, tone: "info" });
-  }
-  const coverage = digest.coverage?.semantic_coverage;
-  if (typeof coverage === "number" && Number.isFinite(coverage)) {
-    pills.push({ label: `${Math.round(coverage * 100)}% coverage`, tone: "neutral" });
-  }
-  return pills;
-}
-
-function digestCurrentnessView(
-  digest: TokenDiscussionDigest,
-  firstDataGapLabel: string | null,
-): TokenCaseViewModel["propagation"]["currentness"] {
-  const currentness = digest.currentness;
-  const displayStatus = currentness.display_status;
-  const deltaSourceEventCount = nonNegativeNumber(currentness.delta_source_event_count);
-  const deltaIndependentAuthorCount = nonNegativeNumber(currentness.delta_independent_author_count);
-  const lastReadyComputedAtMs = numberValue(currentness.last_ready_computed_at_ms);
-  const deltaLabel = currentnessDeltaLabel(deltaSourceEventCount, deltaIndependentAuthorCount);
-  return {
-    displayStatus,
-    reason: cleanText(currentness.reason),
-    label: currentnessLabel(displayStatus, deltaSourceEventCount, firstDataGapLabel),
-    tone: currentnessTone(displayStatus),
-    lastReadyComputedAtMs,
-    lastReadyComputedLabel: lastReadyComputedAtMs ? timeAgoLabel(lastReadyComputedAtMs) : null,
-    deltaSourceEventCount,
-    deltaIndependentAuthorCount,
-    deltaLabel,
-  };
-}
-
-function currentnessLabel(
-  displayStatus: string,
-  deltaSourceEventCount: number,
-  firstDataGapLabel: string | null,
-): string {
-  if (displayStatus === "updating") {
-    return `叙事更新中 +${compactNumber(deltaSourceEventCount)}`;
-  }
-  const labels: Record<string, string> = {
-    current: "叙事已更新",
-    not_ready: firstDataGapLabel ?? "叙事待生成",
-    out_of_frontier: "不在当前雷达前沿",
-    stale: "上一版",
-    unsupported_window: "5m 实时信号",
-  };
-  return labels[displayStatus] ?? displayStatus.replaceAll("_", " ");
-}
-
-function currentnessTone(displayStatus: string): TokenCaseTone {
-  if (displayStatus === "current") {
-    return "health";
-  }
-  if (displayStatus === "updating" || displayStatus === "unsupported_window") {
-    return "info";
-  }
-  if (displayStatus === "stale" || displayStatus === "out_of_frontier") {
-    return "warn";
-  }
-  return "neutral";
-}
-
-function currentnessDeltaLabel(sourceCount: number, authorCount: number): string | null {
-  const parts = [
-    sourceCount > 0 ? `+${compactNumber(sourceCount)} posts` : null,
-    authorCount > 0 ? `+${compactNumber(authorCount)} authors` : null,
-  ].filter((part): part is string => Boolean(part));
-  return parts.length ? parts.join(" · ") : null;
-}
-
-function nonNegativeNumber(value: unknown): number {
-  const parsed = numberValue(value);
-  return parsed === null ? 0 : Math.max(0, parsed);
-}
-
-function digestStages(
-  clusters: NarrativeCluster[],
-  digest: TokenDiscussionDigest,
-): TokenCaseViewModel["propagation"]["stages"] {
-  const fromClusters = clusters.slice(0, 3).map((cluster) => {
-    const state =
-      cluster.propagation_state ?? digestPropagationState(digest) ?? cluster.cluster_key;
-    const lead = cluster.lead_accounts?.[0]?.handle;
-    return {
-      id: cluster.cluster_key,
-      phase: phaseLabel(state),
-      count: cluster.mention_count ?? 0,
-      authors: cluster.author_count ?? 0,
-      leadAccount: lead ? `@${lead.replace(/^@+/, "")}` : null,
-      readZh: cluster.summary_zh,
-      tone: phaseTone(state),
-    };
-  });
-  if (fromClusters.length) {
-    return fromClusters;
-  }
-  const state = digestPropagationState(digest) ?? digest.status;
-  return [
-    {
-      id: "digest",
-      phase: phaseLabel(state),
-      count: digest.coverage?.source_mentions ?? 0,
-      authors: digest.coverage?.independent_authors ?? 0,
-      leadAccount: null,
-      readZh: propagationSummary(digest),
-      tone: phaseTone(state),
-    },
-  ];
-}
-
-function digestAmplifiers(digest: TokenDiscussionDigest, clusters: NarrativeCluster[]) {
-  if (digest.key_accounts?.length) {
-    return digest.key_accounts;
-  }
-  return clusters.flatMap((cluster) =>
-    (cluster.lead_accounts ?? []).map((account) => ({
-      handle: account.handle,
-      role: account.role ?? cluster.title,
-      posts: account.posts ?? 0,
-      first_seen_ms: account.first_seen_ms,
-    })),
-  );
-}
-
-function topMixLabel(mix: TokenDiscussionDigest["stance_mix"]): string | null {
-  const top = Object.entries(mix ?? {})
-    .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
-    .sort((left, right) => Number(right[1]) - Number(left[1]))[0];
-  return top ? `${top[0]} ${Math.round(Number(top[1]) * 100)}%` : null;
-}
-
-function digestStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    insufficient: "insufficient",
-    pending: "pending",
-    ready: "ready",
-    semantic_unavailable: "semantic unavailable",
-  };
-  return labels[status] ?? status.replaceAll("_", " ");
-}
-
-function digestStatusTone(status: string): TokenCaseTone {
-  if (status === "ready") return "health";
-  if (status === "pending") return "info";
-  return "warn";
-}
-
-function semanticRole(semantic: TokenMentionSemantic | null): string | null {
-  return (
-    cleanText(semantic?.claim_type) ??
-    cleanText(semantic?.evidence_type) ??
-    cleanText(semantic?.status) ??
-    null
-  );
-}
-
-function semanticStatusTone(status: string): TokenCaseTone {
-  if (status === "pending" || status === "queued") return "info";
-  return "warn";
-}
-
-function stanceTone(stance: string): TokenCaseTone {
-  if (stance === "bullish") return "health";
-  if (stance === "bearish" || stance === "exit-risk") return "risk";
-  if (stance === "skeptical") return "warn";
-  return "neutral";
-}
-
-function valenceTone(valence: string): TokenCaseTone {
-  if (valence === "positive" || valence === "celebratory") return "health";
-  if (valence === "panic" || valence === "hostile" || valence === "negative") return "risk";
-  if (valence === "mixed" || valence === "ironic") return "warn";
-  return "info";
-}
-
-function evidenceEventIds(refs: NarrativeArgument["evidence_refs"] | undefined): string[] {
-  return (refs ?? [])
-    .map((ref) => cleanText(ref.event_id))
-    .filter((eventId): eventId is string => Boolean(eventId));
 }
 
 function shortId(value: string): string {

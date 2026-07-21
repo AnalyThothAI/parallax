@@ -184,6 +184,7 @@ def aggregate_queue_health(tables: dict[str, dict[str, Any]]) -> dict[str, Any]:
     running_count = _sum_field(tables, "running_count")
     failed_count = _sum_field(tables, "failed_count")
     blocked_count = _sum_field(tables, "blocked_count")
+    source_terminal_count = _sum_field(tables, "source_terminal_count")
     terminal_count = _sum_field(tables, "terminal_count")
     unresolved_terminal_count = _sum_field(tables, "unresolved_terminal_count")
     reason_buckets = _sum_reason_buckets(tables)
@@ -213,6 +214,7 @@ def aggregate_queue_health(tables: dict[str, dict[str, Any]]) -> dict[str, Any]:
         "running_count": running_count,
         "failed_count": failed_count,
         "blocked_count": blocked_count,
+        "source_terminal_count": source_terminal_count,
         "terminal_count": terminal_count,
         "unresolved_terminal_count": unresolved_terminal_count,
         "reason_buckets": reason_buckets,
@@ -237,6 +239,7 @@ def empty_queue_health() -> dict[str, Any]:
         "running_count": 0,
         "failed_count": 0,
         "blocked_count": 0,
+        "source_terminal_count": 0,
         "terminal_count": 0,
         "unresolved_terminal_count": 0,
         "reason_buckets": {},
@@ -259,6 +262,14 @@ def _status_queue_health(
         counts = _status_counts(conn, spec)
         metrics = _status_metrics(conn, spec, now_ms=now_ms)
         terminal_metrics = _terminal_projection_metrics(conn, table, worker_name=worker_name)
+        return _table_health(
+            table=table,
+            kind="status_queue",
+            counts_by_status=counts,
+            metrics=metrics,
+            terminal_metrics=terminal_metrics,
+            now_ms=now_ms,
+        )
     except Exception as exc:
         return _unavailable_health(
             table,
@@ -266,14 +277,6 @@ def _status_queue_health(
             error_code=_query_error_code(exc),
             exc=exc,
         )
-    return _table_health(
-        table=table,
-        kind="status_queue",
-        counts_by_status=counts,
-        metrics=metrics,
-        terminal_metrics=terminal_metrics,
-        now_ms=now_ms,
-    )
 
 
 def _dirty_target_queue_health(
@@ -298,6 +301,7 @@ def _dirty_target_queue_health(
               COUNT(*) FILTER (WHERE leased_until_ms > %(now_ms)s) AS running_count,
               COUNT(*) FILTER (WHERE last_error IS NOT NULL AND last_error <> '') AS failed_count,
               0 AS blocked_count,
+              0 AS source_terminal_count,
               MIN(due_at_ms) FILTER (
                 WHERE due_at_ms <= %(now_ms)s
                   AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
@@ -316,6 +320,14 @@ def _dirty_target_queue_health(
         ).fetchone()
         metrics = _row_dict(row)
         terminal_metrics = _terminal_projection_metrics(conn, table, worker_name=worker_name)
+        return _table_health(
+            table=table,
+            kind="dirty_target",
+            counts_by_status={},
+            metrics=metrics,
+            terminal_metrics=terminal_metrics,
+            now_ms=now_ms,
+        )
     except Exception as exc:
         return _unavailable_health(
             table,
@@ -323,14 +335,6 @@ def _dirty_target_queue_health(
             error_code=_query_error_code(exc),
             exc=exc,
         )
-    return _table_health(
-        table=table,
-        kind="dirty_target",
-        counts_by_status={},
-        metrics=metrics,
-        terminal_metrics=terminal_metrics,
-        now_ms=now_ms,
-    )
 
 
 def _terminal_projection_queue_health(
@@ -343,6 +347,25 @@ def _terminal_projection_queue_health(
     table = _validate_identifier(table)
     try:
         terminal_metrics = _terminal_projection_metrics(conn, table, worker_name=worker_name)
+        return _table_health(
+            table=table,
+            kind="terminal_projection",
+            counts_by_status={},
+            metrics={
+                "total_count": terminal_metrics["terminal_count"],
+                "active_count": 0,
+                "due_count": 0,
+                "running_count": 0,
+                "failed_count": 0,
+                "blocked_count": 0,
+                "source_terminal_count": 0,
+                "oldest_due_at_ms": None,
+                "oldest_running_at_ms": None,
+                "max_attempt_count": None,
+            },
+            terminal_metrics=terminal_metrics,
+            now_ms=now_ms,
+        )
     except Exception as exc:
         return _unavailable_health(
             table,
@@ -350,21 +373,6 @@ def _terminal_projection_queue_health(
             error_code=_query_error_code(exc),
             exc=exc,
         )
-    return _table_health(
-        table=table,
-        kind="terminal_projection",
-        counts_by_status={},
-        metrics={
-            "total_count": terminal_metrics.get("terminal_count"),
-            "active_count": 0,
-            "due_count": 0,
-            "running_count": 0,
-            "failed_count": 0,
-            "blocked_count": 0,
-        },
-        terminal_metrics=terminal_metrics,
-        now_ms=now_ms,
-    )
 
 
 def _status_counts(conn: Any, spec: StatusQueueSpec) -> dict[str, int]:
@@ -416,6 +424,7 @@ def _status_metrics(conn: Any, spec: StatusQueueSpec, *, now_ms: int) -> dict[st
           COUNT(*) FILTER (WHERE {running_filter}) AS running_count,
           COUNT(*) FILTER (WHERE {_status_filter("status", spec.failed_statuses)}) AS failed_count,
           COUNT(*) FILTER (WHERE {_status_filter("status", spec.blocked_statuses)}) AS blocked_count,
+          COUNT(*) FILTER (WHERE {_status_filter("status", spec.terminal_statuses)}) AS source_terminal_count,
           MIN({due_column}) FILTER (
             WHERE {_status_filter("status", spec.due_statuses)}
               AND {due_column} <= %(now_ms)s
@@ -491,7 +500,10 @@ def _table_health(
     source_terminal_count = _int_metric(metrics, "source_terminal_count")
     unresolved_terminal_count = _int_metric(terminal_metrics, "unresolved_terminal_count")
     terminal_count = _int_metric(terminal_metrics, "terminal_count")
-    blocked_count = active_blocked_count + unresolved_terminal_count
+    # Source terminal state and unresolved ledger rows are independent blocking
+    # signals. Without a queue-specific identity join, keep both counts visible
+    # and sum them conservatively instead of inventing an overlap from cardinality.
+    blocked_count = active_blocked_count + unresolved_terminal_count + source_terminal_count
     status = _health_status(
         queue_depth=queue_depth,
         due_count=due_count,
@@ -524,9 +536,9 @@ def _table_health(
         "terminal_count": terminal_count,
         "unresolved_terminal_count": unresolved_terminal_count,
         "reason_buckets": dict(terminal_metrics.get("reason_buckets") or {}),
-        "oldest_due_age_ms": _age_ms(now_ms, metrics.get("oldest_due_at_ms")),
-        "oldest_running_age_ms": _age_ms(now_ms, metrics.get("oldest_running_at_ms")),
-        "max_attempt_count": _optional_int(metrics.get("max_attempt_count")),
+        "oldest_due_age_ms": _age_ms(now_ms, _optional_int_metric(metrics, "oldest_due_at_ms")),
+        "oldest_running_age_ms": _age_ms(now_ms, _optional_int_metric(metrics, "oldest_running_at_ms")),
+        "max_attempt_count": _optional_int_metric(metrics, "max_attempt_count"),
     }
 
 
@@ -554,6 +566,7 @@ def _unavailable_health(
         "failed_count": 0,
         "blocked_count": 0,
         "active_blocked_count": 0,
+        "source_terminal_count": 0,
         "terminal_count": 0,
         "unresolved_terminal_count": 0,
         "reason_buckets": {},
@@ -639,6 +652,7 @@ def _status_metric_statuses(spec: StatusQueueSpec) -> tuple[str, ...]:
                 *spec.running_statuses,
                 *spec.failed_statuses,
                 *spec.blocked_statuses,
+                *spec.terminal_statuses,
             )
         )
     )
@@ -689,11 +703,23 @@ def _row_get(row: Any, key: str, index: int) -> Any:
 
 
 def _int_metric(metrics: dict[str, Any], key: str) -> int:
-    return int(metrics.get(key) or 0)
+    if key not in metrics:
+        raise KeyError(f"queue_health_metric_required:{key}")
+    value = metrics[key]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"queue_health_metric_nonnegative_int_required:{key}")
+    return value
 
 
-def _optional_int(value: Any) -> int | None:
-    return int(value) if value is not None else None
+def _optional_int_metric(metrics: dict[str, Any], key: str) -> int | None:
+    if key not in metrics:
+        raise KeyError(f"queue_health_metric_required:{key}")
+    value = metrics[key]
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"queue_health_metric_optional_nonnegative_int_required:{key}")
+    return value
 
 
 def _age_ms(now_ms: int, started_at_ms: Any) -> int | None:

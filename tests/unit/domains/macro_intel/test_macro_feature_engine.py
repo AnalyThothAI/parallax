@@ -465,13 +465,12 @@ def test_repository_concept_history_counts_rejects_malformed_lookback_before_sql
 
 def test_repository_latest_snapshot_filters_current_projection_version_by_default() -> None:
     conn = LatestSnapshotConnection(
-        current_row={"snapshot_id": "v4", "projection_version": "macro_regime_v4", "computed_at_ms": 100},
-        any_version_row={"snapshot_id": "v1-newer", "projection_version": "macro_regime_v1", "computed_at_ms": 200},
+        current_row={"projection_version": "macro_regime_v4", "computed_at_ms": 100},
+        any_version_row={"projection_version": "macro_regime_v1", "computed_at_ms": 200},
     )
     repo = MacroIntelRepository(conn)
 
     assert repo.latest_snapshot() == {
-        "snapshot_id": "v4",
         "projection_version": "macro_regime_v4",
         "computed_at_ms": 100,
     }
@@ -482,8 +481,8 @@ def test_repository_latest_snapshot_filters_current_projection_version_by_defaul
 
 def test_repository_latest_snapshot_rejects_unbounded_projection_version() -> None:
     conn = LatestSnapshotConnection(
-        current_row={"snapshot_id": "v3", "projection_version": "macro_regime_v3", "computed_at_ms": 100},
-        any_version_row={"snapshot_id": "v1-newer", "projection_version": "macro_regime_v1", "computed_at_ms": 200},
+        current_row={"projection_version": "macro_regime_v3", "computed_at_ms": 100},
+        any_version_row={"projection_version": "macro_regime_v1", "computed_at_ms": 200},
     )
     repo = MacroIntelRepository(conn)
 

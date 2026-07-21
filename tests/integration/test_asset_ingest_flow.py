@@ -200,6 +200,34 @@ def test_ingest_capture_tick_and_dirty_target_roll_back_with_event_transaction(t
     assert dirty_row is None
 
 
+def test_ingest_registry_asset_rolls_back_with_failed_event_transaction(tmp_path):
+    conn, repos, ingest = open_ingest(tmp_path)
+    address = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
+    event = make_event(
+        "event-registry-rollback",
+        text=f"https://gmgn.ai/eth/token/{address} registry rollback",
+        received_at_ms=1_800_000_015_000,
+    )
+    ingest.event_anchor_jobs = _FailingEventAnchorJobs()
+
+    try:
+        with pytest.raises(RuntimeError, match="event_anchor_enqueue_failed_for_test"):
+            ingest.ingest_event(event, is_watched=True)
+
+        event_row = conn.execute("SELECT event_id FROM events WHERE event_id = %s", (event.event_id,)).fetchone()
+        assets = repos.registry.find_assets_by_address(chain_id="eth", address=address)
+        intent_rows = conn.execute(
+            "SELECT intent_id FROM token_intents WHERE event_id = %s",
+            (event.event_id,),
+        ).fetchall()
+    finally:
+        conn.close()
+
+    assert event_row is None
+    assert assets == []
+    assert intent_rows == []
+
+
 def test_ingest_rejects_loose_capture_result_contract(tmp_path):
     conn, _, ingest = open_ingest(tmp_path)
     event = make_event(

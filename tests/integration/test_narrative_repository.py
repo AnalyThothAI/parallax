@@ -5,10 +5,7 @@ from psycopg.types.json import Jsonb
 from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
-from parallax.domains.narrative_intel.repositories.narrative_repository import (
-    NarrativeRepository,
-    admission_payload_hash,
-)
+from parallax.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -48,66 +45,7 @@ def open_repo(tmp_path):
     return conn, evidence, NarrativeRepository(conn)
 
 
-def insert_admitted_admission(
-    conn,
-    *,
-    admission_id: str,
-    target_id: str,
-    window: str,
-    source_event_ids: list[str],
-    scope: str = "matched",
-    source_fingerprint: str = "source-fingerprint",
-    source_max_received_at_ms: int = 3_000,
-) -> None:
-    payload = {
-        "admission_id": admission_id,
-        "target_type": "chain_token",
-        "target_id": target_id,
-        "window": window,
-        "scope": scope,
-        "schema_version": NARRATIVE_SCHEMA_VERSION,
-        "status": "admitted",
-        "reason": "unit_test",
-        "priority": 1,
-        "last_radar_rank": 1,
-        "last_rank_score": 90.0,
-        "source_event_ids_json": Jsonb(source_event_ids),
-        "source_fingerprint": source_fingerprint,
-        "source_max_received_at_ms": source_max_received_at_ms,
-        "projection_computed_at_ms": None,
-        "source_window_start_ms": None,
-        "source_window_end_ms": source_max_received_at_ms,
-        "source_event_count": len(source_event_ids),
-        "independent_author_count": len(source_event_ids),
-        "admission_generation": None,
-        "admitted_at_ms": source_max_received_at_ms,
-        "last_seen_at_ms": source_max_received_at_ms,
-        "updated_at_ms": source_max_received_at_ms,
-    }
-    payload["payload_hash"] = admission_payload_hash(payload)
-    conn.execute(
-        """
-        INSERT INTO narrative_admissions(
-          admission_id, target_type, target_id, "window", scope, schema_version, status, reason,
-          priority, last_radar_rank, last_rank_score, source_event_ids_json, source_fingerprint,
-          source_max_received_at_ms, projection_computed_at_ms, source_window_start_ms, source_window_end_ms,
-          source_event_count, independent_author_count, admission_generation,
-          admitted_at_ms, last_seen_at_ms, updated_at_ms, payload_hash
-        )
-        VALUES (
-          %(admission_id)s, %(target_type)s, %(target_id)s, %(window)s, %(scope)s, %(schema_version)s,
-          %(status)s, %(reason)s, %(priority)s, %(last_radar_rank)s, %(last_rank_score)s,
-          %(source_event_ids_json)s, %(source_fingerprint)s, %(source_max_received_at_ms)s,
-          %(projection_computed_at_ms)s, %(source_window_start_ms)s, %(source_window_end_ms)s,
-          %(source_event_count)s, %(independent_author_count)s, %(admission_generation)s,
-          %(admitted_at_ms)s, %(last_seen_at_ms)s, %(updated_at_ms)s, %(payload_hash)s
-        )
-        """,
-        payload,
-    )
-
-
-def test_migration_creates_narrative_read_model_tables(tmp_path):
+def test_migration_keeps_only_narrative_admission_read_model(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -120,28 +58,10 @@ def test_migration_creates_narrative_read_model_tables(tmp_path):
     finally:
         conn.close()
 
-    assert {
-        "narrative_admissions",
-        "narrative_model_runs",
-        "token_mention_semantics",
-        "token_discussion_digests",
-    }.issubset(tables)
-
-
-def test_removed_narrative_llm_writer_methods_are_not_repository_api(tmp_path):
-    _, _, repo = open_repo(tmp_path)
-
-    for name in (
-        "enqueue_missing_mention_semantics",
-        "claim_due_mention_semantics",
-        "complete_mention_semantics_batch",
-        "replace_current_digest",
-        "record_narrative_model_run",
-        "cleanup_narrative_current_hard_cut",
-        "digest_context",
-        "due_digest_targets",
-    ):
-        assert not hasattr(repo, name)
+    assert "narrative_admissions" in tables
+    assert "narrative_model_runs" not in tables
+    assert "token_mention_semantics" not in tables
+    assert "token_discussion_digests" not in tables
 
 
 def test_upsert_admissions_uses_product_identity_and_zero_writes_unchanged(tmp_path):
@@ -153,10 +73,19 @@ def test_upsert_admissions_uses_product_identity_and_zero_writes_unchanged(tmp_p
             "window": "1h",
             "scope": "matched",
             "schema_version": NARRATIVE_SCHEMA_VERSION,
+            "status": "admitted",
+            "reason": "radar_row",
+            "priority": 10,
+            "last_radar_rank": 1,
+            "last_rank_score": 88.5,
             "source_event_ids": ["event-stable"],
             "source_max_received_at_ms": 2_000,
+            "projection_computed_at_ms": 2_000,
+            "source_window_start_ms": 1_000,
+            "source_window_end_ms": 2_000,
             "source_event_count": 1,
             "independent_author_count": 1,
+            "admission_generation": "1h:matched:2000",
         }
 
         first = repo.upsert_admissions([row], now_ms=2_000)
@@ -218,67 +147,40 @@ def test_load_radar_admission_target_uses_exact_latest_ready_projection_frontier
     assert context["existing_admission"] is None
 
 
-def test_current_digests_for_targets_reads_legacy_digest_without_exact_fingerprint_match(tmp_path):
-    conn, evidence, repo = open_repo(tmp_path)
+def test_current_narrative_admissions_are_derived_from_admissions(tmp_path):
+    conn, _, repo = open_repo(tmp_path)
     try:
-        assert evidence.insert_event(make_event("event-ready"), is_watched=True) is True
-        insert_admitted_admission(
-            conn,
-            admission_id="admission-ready",
-            target_id="solana:Ready",
-            window="1h",
-            source_event_ids=["event-ready"],
-            source_fingerprint="current-source-fingerprint",
-        )
-        _insert_legacy_digest(
-            conn,
-            digest_id="digest-ready",
-            target_id="solana:Ready",
-            window="1h",
-            scope="matched",
-            source_event_ids=["event-ready"],
-            source_fingerprint="old-source-fingerprint",
-            headline="Legacy digest is readable",
-            computed_at_ms=2_500,
-        )
-
-        current = repo.current_digests_for_targets(
-            [{"target_type": "chain_token", "target_id": "solana:Ready"}],
-            window="1h",
-            scope="matched",
-            schema_version=NARRATIVE_SCHEMA_VERSION,
-        )
-    finally:
-        conn.close()
-
-    row = current[("chain_token", "solana:Ready")]
-    assert row["headline_zh"] == "Legacy digest is readable"
-    assert row["currentness"]["display_status"] == "current"
-    assert row["currentness"]["reason"] == "fingerprint_match"
-
-
-def test_current_digests_for_targets_does_not_treat_legacy_semantics_as_current_backlog(tmp_path):
-    conn, evidence, repo = open_repo(tmp_path)
-    try:
-        for event_id in ["event-labeled", "event-missing"]:
-            assert evidence.insert_event(make_event(event_id), is_watched=True) is True
-        insert_admitted_admission(
-            conn,
-            admission_id="admission-pending",
-            target_id="solana:Pending",
-            window="1h",
-            source_event_ids=["event-labeled", "event-missing"],
-        )
-        _insert_legacy_semantic(
-            conn,
-            event_id="event-labeled",
-            target_id="solana:Pending",
-            status="labeled",
-            computed_at_ms=2_500,
+        repo.upsert_admissions(
+            [
+                {
+                    "target_type": "chain_token",
+                    "target_id": "solana:Ready",
+                    "window": "1h",
+                    "scope": "matched",
+                    "schema_version": NARRATIVE_SCHEMA_VERSION,
+                    "status": "admitted",
+                    "reason": "radar_row",
+                    "priority": 10,
+                    "last_radar_rank": 1,
+                    "last_rank_score": 88.5,
+                    "source_event_ids": ["event-ready"],
+                    "source_max_received_at_ms": 2_000,
+                    "projection_computed_at_ms": 2_000,
+                    "source_window_start_ms": 1_000,
+                    "source_window_end_ms": 2_000,
+                    "source_event_count": 1,
+                    "independent_author_count": 1,
+                    "admission_generation": "1h:matched:2000",
+                }
+            ],
+            now_ms=2_000,
         )
 
-        current = repo.current_digests_for_targets(
-            [{"target_type": "chain_token", "target_id": "solana:Pending"}],
+        current = repo.current_narrative_admissions_for_targets(
+            [
+                {"target_type": "chain_token", "target_id": "solana:Ready"},
+                {"target_type": "chain_token", "target_id": "solana:Missing"},
+            ],
             window="1h",
             scope="matched",
             schema_version=NARRATIVE_SCHEMA_VERSION,
@@ -286,151 +188,13 @@ def test_current_digests_for_targets_does_not_treat_legacy_semantics_as_current_
     finally:
         conn.close()
 
-    row = current[("chain_token", "solana:Pending")]
-    assert row["status"] == "pending"
-    assert row["data_gaps_json"] == [{"reason": "no_ready_digest"}]
-    assert "semantic_backlog_pending" not in row
-    assert row["source_event_count"] == 2
-    assert row["labeled_event_count"] == 0
-
-
-def test_semantics_for_posts_reads_legacy_label_rows(tmp_path):
-    conn, evidence, repo = open_repo(tmp_path)
-    try:
-        assert evidence.insert_event(make_event("event-label"), is_watched=True) is True
-        _insert_legacy_semantic(
-            conn,
-            event_id="event-label",
-            target_id="solana:Label",
-            status="labeled",
-            trade_stance="bullish",
-            attention_valence="positive",
-            computed_at_ms=3_000,
-        )
-
-        semantics = repo.semantics_for_posts(
-            [{"event_id": "event-label", "target_type": "chain_token", "target_id": "solana:Label"}],
-            schema_version=NARRATIVE_SCHEMA_VERSION,
-        )
-    finally:
-        conn.close()
-
-    row = semantics[("event-label", "chain_token", "solana:Label")]
-    assert row["status"] == "labeled"
-    assert row["trade_stance"] == "bullish"
-    assert row["attention_valence"] == "positive"
-
-
-def _insert_legacy_semantic(
-    conn,
-    *,
-    event_id: str,
-    target_id: str,
-    status: str,
-    computed_at_ms: int | None = None,
-    trade_stance: str = "unknown",
-    attention_valence: str = "unknown",
-) -> None:
-    conn.execute(
-        """
-        INSERT INTO token_mention_semantics(
-          semantic_id, event_id, target_type, target_id, schema_version, model_version,
-          text_fingerprint, language, status, trade_stance, attention_valence,
-          narrative_cluster_key, claim_type, evidence_type, semantic_confidence,
-          co_mentioned_targets_json, evidence_refs_json, raw_label_json,
-          source_received_at_ms, queued_at_ms, computed_at_ms, next_retry_at_ms
-        )
-        VALUES (
-          %s, %s, 'chain_token', %s, %s, 'legacy-model',
-          %s, 'en', %s, %s, %s,
-          'cluster:test', 'market_view', 'claim', 0.85,
-          %s, %s, %s,
-          2_000, 2_000, %s, 0
-        )
-        """,
-        (
-            f"semantic:{event_id}:{target_id}",
-            event_id,
-            target_id,
-            NARRATIVE_SCHEMA_VERSION,
-            f"text:{event_id}",
-            status,
-            trade_stance,
-            attention_valence,
-            Jsonb([]),
-            Jsonb([{"ref_id": f"event:{event_id}", "kind": "event"}]),
-            Jsonb({"status": status}),
-            computed_at_ms,
-        ),
-    )
-
-
-def _insert_legacy_digest(
-    conn,
-    *,
-    digest_id: str,
-    target_id: str,
-    window: str,
-    scope: str,
-    source_event_ids: list[str],
-    source_fingerprint: str,
-    headline: str,
-    computed_at_ms: int,
-    status: str = "ready",
-) -> None:
-    conn.execute(
-        """
-        INSERT INTO token_discussion_digests(
-          digest_id, target_type, target_id, "window", scope, schema_version, model_version,
-          status, is_current, epoch_id, epoch_policy_version, source_event_ids_json,
-          source_window_start_ms, source_window_end_ms, epoch_closed_at_ms,
-          display_current_until_ms, refresh_reason, source_fingerprint, label_fingerprint, headline_zh,
-          dominant_narratives_json, bull_view_json, bear_view_json, stance_mix_json,
-          attention_valence_mix_json, propagation_read_json, reflexivity_read_json,
-          watch_triggers_json, invalidation_conditions_json, data_gaps_json,
-          semantic_coverage, source_event_count, labeled_event_count, independent_author_count,
-          evidence_refs_json, computed_at_ms, expires_at_ms, superseded_at_ms, payload_hash
-        )
-        VALUES (
-          %s, 'chain_token', %s, %s, %s, %s, 'legacy-model',
-          %s, true, 'epoch:test', 'token_narrative_epoch_v1', %s,
-          1_000, 2_000, 2_000,
-          9_999_999_999_999, 'legacy_read', %s, 'label:test', %s,
-          %s, %s, %s, %s,
-          %s, %s, %s,
-          %s, %s, %s,
-          1.0, %s, %s, %s,
-          %s, %s, NULL, NULL, %s
-        )
-        """,
-        (
-            digest_id,
-            target_id,
-            window,
-            scope,
-            NARRATIVE_SCHEMA_VERSION,
-            status,
-            Jsonb(source_event_ids),
-            source_fingerprint,
-            headline,
-            Jsonb([{"cluster_key": "cluster:test", "label": "Test"}]),
-            Jsonb({"summary": "bull"}),
-            Jsonb({"summary": "bear"}),
-            Jsonb({"bullish": 1}),
-            Jsonb({"positive": 1}),
-            Jsonb({"summary": "propagation"}),
-            Jsonb({"summary": "reflexivity"}),
-            Jsonb([]),
-            Jsonb([]),
-            Jsonb([]),
-            len(source_event_ids),
-            len(source_event_ids),
-            len(source_event_ids),
-            Jsonb([{"ref_id": "event:ready", "kind": "event"}]),
-            computed_at_ms,
-            f"payload:{digest_id}",
-        ),
-    )
+    ready = current[("chain_token", "solana:Ready")]
+    missing = current[("chain_token", "solana:Missing")]
+    assert ready["status"] == "admitted"
+    assert ready["currentness"] == {"display_status": "current", "reason": "radar_row"}
+    assert ready["source_event_count"] == 1
+    assert missing["status"] == "missing"
+    assert missing["currentness"] == {"display_status": "not_ready", "reason": "no_current_admission"}
 
 
 def _insert_intent(conn, *, intent_id: str, event_id: str, observed_at_ms: int) -> None:

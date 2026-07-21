@@ -6,10 +6,19 @@ from dataclasses import dataclass
 from enum import StrEnum
 from pathlib import Path
 
-from parallax.app.runtime.current_read_model_publisher import FORBIDDEN_SERVING_IDENTITY_COLUMNS
-
 _DOMAIN_DIR = Path(__file__).resolve().parents[2] / "domains"
 _WORKER_FACTORY_DIR = Path(__file__).resolve().parent / "worker_factories"
+FORBIDDEN_SERVING_IDENTITY_COLUMNS = frozenset(
+    {
+        "run_id",
+        "generation_id",
+        "generation",
+        "snapshot_id",
+        "attempt_id",
+        "computed_at_ms",
+        "published_at_ms",
+    }
+)
 
 
 class WorkerKind(StrEnum):
@@ -53,6 +62,7 @@ class WorkerManifest:
     ordering_keys: tuple[str, ...]
     writes_input_observations: tuple[str, ...] = ()
     writes_facts: tuple[str, ...] = ()
+    writes_cache_state: tuple[str, ...] = ()
     writes_read_models: tuple[str, ...] = ()
     writes_control_plane: tuple[str, ...] = ()
     current_read_model_identities: tuple[tuple[str, tuple[str, ...]], ...] = ()
@@ -72,6 +82,7 @@ class WorkerManifest:
             (
                 *self.writes_input_observations,
                 *self.writes_facts,
+                *self.writes_cache_state,
                 *self.writes_read_models,
                 *self.writes_control_plane,
                 *self.side_effect_ledgers,
@@ -92,7 +103,26 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         input_contract=("gmgn public websocket frames",),
         ordering_keys=("provider_event_id", "received_at_ms"),
         writes_input_observations=("raw_frames",),
-        writes_facts=("events", "token_intents"),
+        writes_facts=(
+            "events",
+            "event_entities",
+            "token_evidence",
+            "token_intents",
+            "token_intent_lookup_keys",
+            "token_intent_resolutions",
+            "registry_assets",
+            "asset_identity_evidence",
+            "asset_identity_current",
+            "market_ticks",
+            "enriched_events",
+            "account_token_alerts",
+        ),
+        writes_control_plane=(
+            "token_discovery_dirty_lookup_keys",
+            "token_radar_source_dirty_events",
+            "market_tick_current_dirty_targets",
+            "event_anchor_backfill_jobs",
+        ),
         uses_provider_io=True,
         idempotency_evidence=("events provider event identity",),
     ),
@@ -212,9 +242,17 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         start_priority=60,
         input_contract=("token_discovery_dirty_lookup_keys",),
         ordering_keys=("target_type", "lookup_key"),
-        writes_facts=("asset_identity_*", "token_intent_resolutions"),
+        writes_facts=(
+            "registry_assets",
+            "asset_identity_evidence",
+            "asset_identity_current",
+            "token_discovery_results",
+            "token_intent_lookup_keys",
+            "token_intent_resolutions",
+        ),
         writes_control_plane=(
             "token_discovery_dirty_lookup_keys",
+            "token_radar_source_dirty_events",
             "token_radar_dirty_targets",
             "narrative_admission_dirty_targets",
         ),
@@ -235,7 +273,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         start_priority=70,
         input_contract=("asset_profile_refresh_targets",),
         ordering_keys=("target_type", "target_id", "provider"),
-        writes_facts=("asset_profiles",),
+        writes_cache_state=("asset_profiles",),
         writes_control_plane=("asset_profile_refresh_targets", "token_profile_current_dirty_targets"),
         uses_provider_io=True,
         idempotency_evidence=("asset_profiles target/provider identity", "dirty target payload hash"),
@@ -252,7 +290,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         start_priority=82,
         input_contract=("token_image_source_dirty_targets",),
         ordering_keys=("target_type", "target_id", "source_url"),
-        writes_facts=("token_image_assets",),
+        writes_cache_state=("token_image_assets",),
         writes_control_plane=("token_image_source_dirty_targets", "token_profile_current_dirty_targets"),
         uses_provider_io=True,
         idempotency_evidence=("token_image_assets source digest", "dirty target payload hash"),
@@ -298,13 +336,12 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
             "token_radar_current_rows",
             "token_radar_publication_state",
             "token_radar_target_first_seen",
-            "projection_offsets",
-            "token_score_evaluations",
         ),
         writes_control_plane=(
             "token_radar_source_dirty_events",
             "token_radar_dirty_targets",
             "projection_runs",
+            "projection_offsets",
             "pulse_trigger_dirty_targets",
             "narrative_admission_dirty_targets",
             "token_profile_current_dirty_targets",
@@ -335,8 +372,6 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
                 "token_radar_target_first_seen",
                 ("projection_version", "window", "scope", "venue", "target_type_key", "identity_id"),
             ),
-            ("projection_offsets", ("projection_name",)),
-            ("token_score_evaluations", ("horizon", "window", "scope", "score_version", "bucket_label")),
         ),
         idempotency_evidence=("token radar window/scope/target primary key", "projection version"),
         dirty_target_tables=("token_radar_source_dirty_events", "token_radar_dirty_targets"),
@@ -374,8 +409,9 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         start_priority=90,
         input_contract=("news sources due queue", "news provider documents"),
         ordering_keys=("source_id", "published_at_ms", "external_id"),
-        writes_facts=("news_sources", "news_fetch_runs", "news_provider_items", "news_items"),
-        writes_control_plane=("news_projection_dirty_targets",),
+        writes_input_observations=("news_provider_items",),
+        writes_facts=("news_items",),
+        writes_control_plane=("news_sources", "news_fetch_runs", "news_projection_dirty_targets"),
         uses_provider_io=True,
         idempotency_evidence=("news item source/external identity",),
         advisory_lock_key="2026051905",
@@ -393,12 +429,10 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         input_contract=("news items awaiting processing",),
         ordering_keys=("news_item_id",),
         writes_facts=(
+            "news_items",
             "news_item_entities",
             "news_token_mentions",
             "news_fact_candidates",
-            "news_items.content_class",
-            "news_items.content_tags_json",
-            "news_items.content_classification_json",
         ),
         writes_control_plane=("news_projection_dirty_targets",),
         idempotency_evidence=("news_item_id processing state", "news fact natural keys"),
@@ -418,10 +452,10 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         input_contract=("semantic news item brief work",),
         ordering_keys=("news_item_id", "artifact_version_hash"),
         writes_read_models=("news_item_agent_briefs",),
-        writes_control_plane=("news_projection_dirty_targets", "news_item_agent_runs"),
+        writes_control_plane=("news_projection_dirty_targets",),
         current_read_model_identities=(("news_item_agent_briefs", ("news_item_id",)),),
         idempotency_evidence=("news_item_agent_briefs(news_item_id)", "news_item_agent_runs(run_id)"),
-        side_effect_ledgers=("news_item_agent_runs", "news_item_agent_briefs"),
+        side_effect_ledgers=("news_item_agent_runs",),
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026052001",
         wakes_on=(),
@@ -439,10 +473,10 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         input_contract=("semantic news story brief work",),
         ordering_keys=("story_key", "artifact_version_hash"),
         writes_read_models=("news_story_agent_briefs",),
-        writes_control_plane=("news_projection_dirty_targets", "news_story_agent_runs"),
+        writes_control_plane=("news_projection_dirty_targets",),
         current_read_model_identities=(("news_story_agent_briefs", ("story_brief_key",)),),
         idempotency_evidence=("news_story_agent_briefs(story_brief_key)", "news_story_agent_runs(run_id)"),
-        side_effect_ledgers=("news_story_agent_runs", "news_story_agent_briefs"),
+        side_effect_ledgers=("news_story_agent_runs",),
         dirty_target_tables=("news_projection_dirty_targets",),
         advisory_lock_key="2026061801",
         wakes_on=("news_item_processed",),
@@ -608,28 +642,25 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         input_contract=("pulse_trigger_dirty_targets", "pulse_agent_jobs"),
         ordering_keys=("window", "scope", "target_type", "target_id", "candidate_id"),
         writes_read_models=(
-            "pulse_candidate_edge_state",
             "pulse_candidates",
             "pulse_playbook_snapshots",
         ),
         writes_control_plane=(
             "pulse_trigger_dirty_targets",
+            "pulse_candidate_edge_state",
             "pulse_agent_jobs",
-            "pulse_agent_runs",
             "pulse_candidate_run_budget",
             "pulse_target_run_budget",
-            "pulse_agent_run_steps",
             "pulse_agent_runtime_versions",
             "pulse_agent_eval_cases",
             "pulse_agent_eval_results",
         ),
         current_read_model_identities=(
-            ("pulse_candidate_edge_state", ("candidate_id",)),
             ("pulse_candidates", ("candidate_id",)),
             ("pulse_playbook_snapshots", ("playbook_id",)),
         ),
         idempotency_evidence=("pulse candidate id", "pulse_agent_jobs candidate identity", "pulse_agent_runs(run_id)"),
-        side_effect_ledgers=("pulse_agent_jobs", "pulse_agent_runs", "pulse_agent_run_steps", "pulse_candidates"),
+        side_effect_ledgers=("pulse_agent_runs", "pulse_agent_run_steps"),
         dirty_target_tables=("pulse_trigger_dirty_targets",),
         queue_depth_table="pulse_agent_jobs",
         advisory_lock_key="2026051502",
@@ -646,8 +677,9 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         start_priority=120,
         input_contract=("pulse_candidates", "token radar read models", "news_page_rows", "watchlist read models"),
         ordering_keys=("rule_id", "entity_type", "entity_key"),
-        writes_facts=("notifications",),
+        writes_read_models=("notifications",),
         writes_control_plane=("notification_deliveries",),
+        current_read_model_identities=(("notifications", ("dedup_key",)),),
         idempotency_evidence=("notifications rule/entity dedupe key", "notification_deliveries(delivery_id)"),
     ),
     WorkerManifest(
@@ -692,20 +724,8 @@ def manifest_names_for_factory(factory: str) -> frozenset[str]:
     return frozenset(manifest.name for manifest in _WORKER_MANIFESTS if manifest.factory == factory)
 
 
-def worker_class_by_name() -> dict[str, str]:
-    return {manifest.name: manifest.worker_class for manifest in _WORKER_MANIFESTS}
-
-
 def worker_start_priority() -> dict[str, int]:
     return {manifest.name: manifest.start_priority for manifest in _WORKER_MANIFESTS}
-
-
-def worker_queue_depth_tables() -> dict[str, str]:
-    return {
-        manifest.name: manifest.queue_depth_table
-        for manifest in _WORKER_MANIFESTS
-        if manifest.queue_depth_table is not None
-    }
 
 
 def worker_queue_health_tables() -> dict[str, tuple[str, ...]]:
@@ -719,12 +739,6 @@ def worker_queue_health_tables() -> dict[str, tuple[str, ...]]:
         )
         for manifest in _WORKER_MANIFESTS
         if manifest.queue_depth_table or manifest.dirty_target_tables or manifest.queue_health_tables
-    }
-
-
-def worker_dirty_target_tables() -> dict[str, tuple[str, ...]]:
-    return {
-        manifest.name: manifest.dirty_target_tables for manifest in _WORKER_MANIFESTS if manifest.dirty_target_tables
     }
 
 
@@ -958,6 +972,38 @@ def _validate_worker_manifests() -> None:
             f"non-side-effect worker manifests declaring side-effect ledgers: {unexpected_side_effect_ledgers}"
         )
 
+    side_effect_ledger_role_overlaps = {
+        manifest.name: sorted(
+            set(manifest.side_effect_ledgers).intersection(
+                (
+                    *manifest.writes_input_observations,
+                    *manifest.writes_facts,
+                    *manifest.writes_cache_state,
+                    *manifest.writes_read_models,
+                )
+            )
+        )
+        for manifest in _WORKER_MANIFESTS
+        if set(manifest.side_effect_ledgers).intersection(
+            (
+                *manifest.writes_input_observations,
+                *manifest.writes_facts,
+                *manifest.writes_cache_state,
+                *manifest.writes_read_models,
+            )
+        )
+    }
+    if side_effect_ledger_role_overlaps:
+        raise ValueError(f"side-effect ledger role overlaps: {side_effect_ledger_role_overlaps}")
+
+    agent_queue_ledgers = {
+        manifest.name: manifest.queue_depth_table
+        for manifest in _WORKER_MANIFESTS
+        if manifest.kind == WorkerKind.AGENT_SIDE_EFFECT and manifest.queue_depth_table in manifest.side_effect_ledgers
+    }
+    if agent_queue_ledgers:
+        raise ValueError(f"agent queue tables declared as side-effect ledgers: {agent_queue_ledgers}")
+
     non_string_queue_depth_tables = {
         manifest.name: manifest.queue_depth_table
         for manifest in _WORKER_MANIFESTS
@@ -979,6 +1025,20 @@ def _validate_worker_manifests() -> None:
     }
     if blank_table_declarations:
         raise ValueError(f"blank worker manifest table declarations: {blank_table_declarations}")
+
+    qualified_table_declarations = {
+        manifest.name: qualified
+        for manifest in _WORKER_MANIFESTS
+        if (
+            qualified := {
+                field_name: tuple(table_name for table_name in table_names if "." in table_name)
+                for field_name, table_names in _table_declaration_values(manifest)
+                if any("." in table_name for table_name in table_names)
+            }
+        )
+    }
+    if qualified_table_declarations:
+        raise ValueError(f"qualified worker manifest table declarations: {qualified_table_declarations}")
 
     duplicate_table_declarations = {
         manifest.name: duplicates
@@ -1342,6 +1402,7 @@ def _tuple_contract_field_values(manifest: WorkerManifest) -> tuple[tuple[str, o
         ("ordering_keys", manifest.ordering_keys),
         ("writes_input_observations", manifest.writes_input_observations),
         ("writes_facts", manifest.writes_facts),
+        ("writes_cache_state", manifest.writes_cache_state),
         ("writes_read_models", manifest.writes_read_models),
         ("writes_control_plane", manifest.writes_control_plane),
         ("current_read_model_identities", manifest.current_read_model_identities),
@@ -1360,6 +1421,7 @@ def _string_tuple_contract_field_values(manifest: WorkerManifest) -> tuple[tuple
         ("ordering_keys", manifest.ordering_keys),
         ("writes_input_observations", manifest.writes_input_observations),
         ("writes_facts", manifest.writes_facts),
+        ("writes_cache_state", manifest.writes_cache_state),
         ("writes_read_models", manifest.writes_read_models),
         ("writes_control_plane", manifest.writes_control_plane),
         ("idempotency_evidence", manifest.idempotency_evidence),
@@ -1375,6 +1437,7 @@ def _table_declaration_values(manifest: WorkerManifest) -> tuple[tuple[str, tupl
     return (
         ("writes_input_observations", manifest.writes_input_observations),
         ("writes_facts", manifest.writes_facts),
+        ("writes_cache_state", manifest.writes_cache_state),
         ("writes_read_models", manifest.writes_read_models),
         ("writes_control_plane", manifest.writes_control_plane),
         ("side_effect_ledgers", manifest.side_effect_ledgers),
@@ -1436,10 +1499,7 @@ __all__ = [
     "manifests_by_lane",
     "read_model_writer_by_table",
     "require_worker_manifest",
-    "worker_class_by_name",
-    "worker_dirty_target_tables",
     "worker_names",
-    "worker_queue_depth_tables",
     "worker_queue_health_tables",
     "worker_start_priority",
 ]

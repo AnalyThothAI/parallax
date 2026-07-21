@@ -5,7 +5,7 @@ from typing import Any
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker, unavailable_worker
-from parallax.app.runtime.worker_manifest import manifest_names_for_factory
+from parallax.app.runtime.worker_manifest import manifest_names_for_factory, require_worker_manifest
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
 from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
@@ -22,13 +22,6 @@ from parallax.domains.token_intel.services.deterministic_token_resolver import (
 )
 
 WORKER_KEYS = manifest_names_for_factory("news_intel.py")
-NEWS_ITEM_BRIEF_WAKE_CHANNELS: tuple[str, ...] = ()
-NEWS_PAGE_PROJECTION_WAKE_CHANNELS: tuple[str, ...] = (
-    "news_item_written",
-    "news_item_processed",
-    "news_story_brief_updated",
-    "news_page_dirty",
-)
 
 
 def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
@@ -76,7 +69,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 statement_timeout_seconds=workers.news_item_process.statement_timeout_seconds,
             ),
             wake_emitter=ctx.wake_bus,
-            wake_waiter=ctx.db.wake_listener(worker_name, workers.news_item_process.wakes_on),
+            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
 
     brief_provider = news_providers.brief_provider
@@ -91,7 +84,6 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 db=ctx.db,
                 telemetry=ctx.telemetry,
                 provider=brief_provider,
-                wake_waiter=ctx.db.wake_listener(worker_name, NEWS_ITEM_BRIEF_WAKE_CHANNELS),
             )
         else:
             constructed[worker_name] = unavailable_worker(ctx, worker_name, "missing_news_item_brief_provider")
@@ -108,7 +100,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
                 telemetry=ctx.telemetry,
                 provider=brief_provider,
                 wake_emitter=ctx.wake_bus,
-                wake_waiter=ctx.db.wake_listener(worker_name, workers.news_story_brief.wakes_on),
+                wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
             )
         else:
             constructed[worker_name] = unavailable_worker(ctx, worker_name, "missing_news_story_brief_provider")
@@ -120,7 +112,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             settings=workers.news_page_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_waiter=ctx.db.wake_listener(worker_name, NEWS_PAGE_PROJECTION_WAKE_CHANNELS),
+            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
 
     if workers.news_source_quality_projection.enabled:
@@ -131,7 +123,7 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             db=ctx.db,
             telemetry=ctx.telemetry,
             wake_emitter=ctx.wake_bus,
-            wake_waiter=ctx.db.wake_listener(worker_name, workers.news_source_quality_projection.wakes_on),
+            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
     return constructed
 

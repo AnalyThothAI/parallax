@@ -452,10 +452,6 @@ class _SourceBackedEntityKeySupport:
         return {key for key in keys if key}
 
 
-def source_backed_entity_keys(packet: NewsBriefValidationPacket) -> set[str]:
-    return _source_backed_entity_key_support(packet).all_keys
-
-
 def _packet_news_item(packet: NewsBriefValidationPacket) -> NewsItemBriefNewsItem:
     if isinstance(packet, NewsItemBriefInputPacket):
         return packet.news_item
@@ -1148,6 +1144,5 @@ def _norm(value: Any) -> str:
 
 __all__ = [
     "EntitySupportDecision",
-    "source_backed_entity_keys",
     "validate_affected_entity_support",
 ]

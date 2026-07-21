@@ -952,6 +952,7 @@ def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
         ("pulse_candidate", "pulse_agent_jobs"),
         ("pulse_candidate", "pulse_trigger_dirty_targets"),
         ("token_image_mirror", "token_image_source_dirty_targets"),
+        ("token_profile_current", "token_profile_current_dirty_targets"),
         ("token_radar_projection", "token_radar_dirty_targets"),
         ("token_radar_projection", "token_radar_source_dirty_events"),
         ("macro_view_projection", "macro_projection_dirty_targets"),

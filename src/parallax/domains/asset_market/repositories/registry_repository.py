@@ -15,7 +15,6 @@ class RegistryRepository:
         self,
         *,
         base_symbol: str,
-        project_id: str | None,
         source: str,
         observed_at_ms: int,
         commit: bool = True,
@@ -26,7 +25,6 @@ class RegistryRepository:
             with _transaction(self.conn):
                 return self.upsert_cex_token(
                     base_symbol=symbol,
-                    project_id=project_id,
                     source=source,
                     observed_at_ms=observed_at_ms,
                     commit=False,
@@ -34,19 +32,18 @@ class RegistryRepository:
         cursor = self.conn.execute(
             """
             INSERT INTO cex_tokens(
-              cex_token_id, project_id, base_symbol, status, evidence_level,
+              cex_token_id, base_symbol, status, evidence_level,
               first_seen_at_ms, updated_at_ms
             )
-            VALUES (%s, %s, %s, 'canonical', %s, %s, %s)
+            VALUES (%s, %s, 'canonical', %s, %s, %s)
             ON CONFLICT(cex_token_id) DO UPDATE SET
-              project_id = COALESCE(excluded.project_id, cex_tokens.project_id),
               base_symbol = excluded.base_symbol,
               status = 'canonical',
               evidence_level = excluded.evidence_level,
               updated_at_ms = excluded.updated_at_ms
             RETURNING *
             """,
-            (cex_token_id, project_id, symbol, source, int(observed_at_ms), int(observed_at_ms)),
+            (cex_token_id, symbol, source, int(observed_at_ms), int(observed_at_ms)),
         )
         row = cursor.fetchone()
         return _required_returning_row(cursor, row)
@@ -57,7 +54,6 @@ class RegistryRepository:
         chain_id: str,
         address: str,
         observed_at_ms: int,
-        project_id: str | None = None,
         token_standard: str | None = None,
         status: str = "candidate",
         commit: bool = True,
@@ -72,7 +68,6 @@ class RegistryRepository:
                     chain_id=normalized_chain,
                     address=normalized_address,
                     observed_at_ms=observed_at_ms,
-                    project_id=project_id,
                     token_standard=standard,
                     status=status,
                     commit=False,
@@ -95,8 +90,7 @@ class RegistryRepository:
             ),
             updated AS (
               UPDATE registry_assets
-                 SET project_id = COALESCE(%s, registry_assets.project_id),
-                     chain_id = %s,
+                 SET chain_id = %s,
                      token_standard = %s,
                      address = %s,
                      status = CASE
@@ -109,12 +103,11 @@ class RegistryRepository:
             ),
             inserted AS (
               INSERT INTO registry_assets(
-                asset_id, project_id, chain_id, token_standard, address, status, first_seen_at_ms, updated_at_ms
+                asset_id, chain_id, token_standard, address, status, first_seen_at_ms, updated_at_ms
               )
-              SELECT %s, %s, %s, %s, %s, %s, %s, %s
+              SELECT %s, %s, %s, %s, %s, %s, %s
                WHERE NOT EXISTS (SELECT 1 FROM updated)
               ON CONFLICT(chain_id, lower(address)) DO UPDATE SET
-                project_id = COALESCE(excluded.project_id, registry_assets.project_id),
                 status = CASE
                   WHEN registry_assets.status = 'demoted_search' THEN 'candidate'
                   ELSE registry_assets.status
@@ -134,13 +127,11 @@ class RegistryRepository:
                 normalized_chain,
                 normalized_address,
                 asset_id,
-                project_id,
                 normalized_chain,
                 standard,
                 normalized_address,
                 int(observed_at_ms),
                 asset_id,
-                project_id,
                 normalized_chain,
                 standard,
                 normalized_address,
@@ -165,7 +156,6 @@ class RegistryRepository:
         address: str | None = None,
         base_asset_id: str | None = None,
         base_cex_token_id: str | None = None,
-        base_project_id: str | None = None,
         base_symbol: str | None = None,
         quote_symbol: str | None = None,
         multiplier: Any = None,
@@ -196,7 +186,6 @@ class RegistryRepository:
                     address=normalized_address,
                     base_asset_id=base_asset_id,
                     base_cex_token_id=base_cex_token_id,
-                    base_project_id=base_project_id,
                     base_symbol=_symbol(base_symbol) if base_symbol else None,
                     quote_symbol=quote_symbol.upper() if quote_symbol else None,
                     multiplier=multiplier,
@@ -206,11 +195,11 @@ class RegistryRepository:
             """
             INSERT INTO price_feeds(
               pricefeed_id, feed_type, provider, subject_type, subject_id, chain_id, address,
-              native_market_id, base_asset_id, base_cex_token_id, base_project_id, base_symbol,
+              native_market_id, base_asset_id, base_cex_token_id, base_symbol,
               quote_symbol, multiplier, status, evidence_level, first_seen_at_ms, updated_at_ms
             )
             VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               'canonical', 'price_observation', %s, %s
             )
             ON CONFLICT(pricefeed_id) DO UPDATE SET
@@ -218,7 +207,6 @@ class RegistryRepository:
               subject_id = excluded.subject_id,
               base_asset_id = COALESCE(excluded.base_asset_id, price_feeds.base_asset_id),
               base_cex_token_id = COALESCE(excluded.base_cex_token_id, price_feeds.base_cex_token_id),
-              base_project_id = COALESCE(excluded.base_project_id, price_feeds.base_project_id),
               base_symbol = COALESCE(excluded.base_symbol, price_feeds.base_symbol),
               quote_symbol = COALESCE(excluded.quote_symbol, price_feeds.quote_symbol),
               multiplier = COALESCE(excluded.multiplier, price_feeds.multiplier),
@@ -236,7 +224,6 @@ class RegistryRepository:
                 normalized_market,
                 base_asset_id,
                 base_cex_token_id,
-                base_project_id,
                 _symbol(base_symbol) if base_symbol else None,
                 quote_symbol.upper() if quote_symbol else None,
                 multiplier,

@@ -112,16 +112,20 @@ class IngestService:
 
     def ingest_event(self, event: TwitterEvent, *, is_watched: bool) -> IngestedEvent:
         prepared = self.prepare_event(event, is_watched=is_watched)
-        if self.event_already_exists(prepared):
-            return self.duplicate_result(prepared)
-        self.prepare_registry_for_resolution(prepared)
-        decisions = self.resolve_prepared(prepared, persist=False)
-        captures = [
-            _unavailable_capture(prepared, market_resolution, reason="missing_capture_service")
-            for decision in decisions
-            if (market_resolution := self.market_resolution_for_decision(decision)) is not None
-        ]
-        return self.commit_prepared_event(prepared, resolutions=decisions, captures=captures)
+        # Registry preparation participates in the same unit of work as the
+        # material event facts.  Otherwise an autocommit connection can leave
+        # orphan registry assets when a later event write fails.
+        with self.evidence.unit_of_work():
+            if self.event_already_exists(prepared):
+                return self.duplicate_result(prepared)
+            self.prepare_registry_for_resolution(prepared)
+            decisions = self.resolve_prepared(prepared, persist=False)
+            captures = [
+                _unavailable_capture(prepared, market_resolution, reason="missing_capture_service")
+                for decision in decisions
+                if (market_resolution := self.market_resolution_for_decision(decision)) is not None
+            ]
+            return self.commit_prepared_event(prepared, resolutions=decisions, captures=captures)
 
     @staticmethod
     def prepare_event(event: TwitterEvent, *, is_watched: bool) -> PreparedIngest:
@@ -471,13 +475,6 @@ class IngestService:
                     }
                 )
         return alerts
-
-
-def _event_text(event: TwitterEvent) -> str | None:
-    parts = [event.content.text]
-    if event.reference and event.reference.text:
-        parts.append(event.reference.text)
-    return "\n".join(part for part in parts if part)
 
 
 def _event_surfaces(event: TwitterEvent) -> list[TextSurface]:

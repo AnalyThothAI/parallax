@@ -123,7 +123,6 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
         return object()
 
     def fake_news_item_brief(
-        settings: Settings,
         *,
         agent_gateway: object,
         **kwargs: Any,
@@ -133,7 +132,6 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
         calls.append(("news_story_brief", settings.agent_runtime_model_for_lane("news.story_brief"), agent_gateway))
         return object()
 
-    db_pool_token = object()
     monkeypatch.setattr(model_execution, "litellm_pulse_decision_provider", fake_pulse)
     monkeypatch.setattr(model_execution, "litellm_news_item_brief_provider", fake_news_item_brief)
 
@@ -141,7 +139,6 @@ def test_wire_providers_passes_one_agent_execution_gateway_to_model_execution_fa
         settings,
         start_collector=False,
         agent_execution_gateway=agent_gateway,
-        db_pool=db_pool_token,
     )
 
     assert providers.agent_execution_gateway is agent_gateway

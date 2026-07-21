@@ -151,18 +151,16 @@ def _db_bundle(**kwargs: Any) -> DBPoolBundle:
 
 def _fake_wake_sizing_workers(**overrides: Any) -> SimpleNamespace:
     worker_settings = {
-        manifest.name: SimpleNamespace(enabled=False, wakes_on=manifest.wakes_on, concurrency=1)
-        for manifest in all_worker_manifests()
-        if manifest.wakes_on
+        manifest.name: SimpleNamespace(enabled=False, concurrency=1) for manifest in all_worker_manifests()
     }
     pulse_candidate = worker_settings.get("pulse_candidate")
     if pulse_candidate is None:
-        pulse_candidate = SimpleNamespace(enabled=False, wakes_on=("token_radar_updated",), concurrency=1)
+        pulse_candidate = SimpleNamespace(enabled=False, concurrency=1)
         worker_settings["pulse_candidate"] = pulse_candidate
     pulse_candidate.job_running_timeout_ms = 300_000
     notification_delivery = worker_settings.get("notification_delivery")
     if notification_delivery is None:
-        notification_delivery = SimpleNamespace(enabled=False, wakes_on=(), concurrency=1)
+        notification_delivery = SimpleNamespace(enabled=False, concurrency=1)
         worker_settings["notification_delivery"] = notification_delivery
     notification_delivery.running_timeout_ms = 300_000
     notification_delivery.stale_running_terminalization_batch_size = 100
@@ -236,22 +234,18 @@ def test_create_sizes_wake_pool_for_configured_wake_listeners(monkeypatch) -> No
         workers=_fake_wake_sizing_workers(
             market_tick_current_projection=SimpleNamespace(
                 enabled=True,
-                wakes_on=("market_tick_written",),
                 concurrency=1,
             ),
             token_radar_projection=SimpleNamespace(
                 enabled=True,
-                wakes_on=("market_tick_current_updated",),
                 concurrency=1,
             ),
             news_page_projection=SimpleNamespace(
                 enabled=True,
-                wakes_on=("news_item_written",),
                 concurrency=2,
             ),
             narrative_admission=SimpleNamespace(
                 enabled=False,
-                wakes_on=("ignored",),
                 concurrency=1,
             ),
         )
@@ -284,7 +278,6 @@ def test_enabled_wake_listener_concurrency_rejects_malformed_concurrency_before_
         workers=SimpleNamespace(
             market_tick_current_projection=SimpleNamespace(
                 enabled=True,
-                wakes_on=("market_tick_written",),
                 concurrency=0,
             )
         )
@@ -557,6 +550,13 @@ def test_wake_listener_uses_wake_pool_and_configured_channels() -> None:
     assert isinstance(waiter, WakeWaiter)
     assert waiter.wait(timeout=0.01) is False
     assert conn.executed == [("LISTEN token_radar_updated", None)]
+
+
+def test_wake_listener_rejects_empty_channels_before_allocating_waiter() -> None:
+    bundle = _db_bundle(api_pool=FakePool(), worker_pool=FakePool(), wake_pool=FakePool())
+
+    with pytest.raises(ValueError, match="wake_listener_channels_required:news_item_brief"):
+        bundle.wake_listener("news_item_brief", channels=())
 
 
 def test_db_pool_bundle_aclose_closes_all_pool_roles_once() -> None:

@@ -62,7 +62,10 @@ RUNTIME_WORKER_CONTRACTS: tuple[RuntimeWorkerHardCutContract, ...] = (
     ),
     RuntimeWorkerHardCutContract(
         path=SRC / "domains/asset_market/runtime/asset_profile_refresh_worker.py",
-        banned_calls=("select_due_asset_profile_rows",),
+        banned_calls=(
+            "select_due_asset_profile_rows",
+            "enqueue_missing_token_radar_current_targets_for_ops",
+        ),
         control_claim_markers=("asset_profile_refresh_targets.claim_due",),
     ),
     RuntimeWorkerHardCutContract(
@@ -134,7 +137,6 @@ INTENT_RESOLUTION_REPOSITORY_PATH = SRC / "domains/token_intel/repositories/inte
 PROJECTION_REPOSITORY_PATH = SRC / "domains/token_intel/repositories/projection_repository.py"
 TOKEN_RADAR_RANK_SOURCE_REPOSITORY_PATH = SRC / "domains/token_intel/repositories/token_radar_rank_source_repository.py"
 TOKEN_RADAR_RANK_SOURCE_QUERY_PATH = SRC / "domains/token_intel/queries/token_radar_rank_source_query.py"
-TOKEN_FACTOR_EVALUATION_REPOSITORY_PATH = SRC / "domains/token_intel/repositories/token_factor_evaluation_repository.py"
 SIGNAL_REPOSITORY_PATH = SRC / "domains/token_intel/repositories/signal_repository.py"
 EVIDENCE_REPOSITORY_PATH = SRC / "domains/evidence/repositories/evidence_repository.py"
 ENTITY_REPOSITORY_PATH = SRC / "domains/evidence/repositories/entity_repository.py"
@@ -703,7 +705,6 @@ def test_token_capture_tier_projection_requires_session_transaction_without_manu
     forbidden = (
         "_commit_if_supported",
         "commit: bool",
-        "commit=True",
         'getattr(conn, "commit", None)',
         'getattr(repos, "commit", None)',
         "commit()",
@@ -711,7 +712,9 @@ def test_token_capture_tier_projection_requires_session_transaction_without_manu
 
     assert 'repos.require_transaction(operation="token_capture_tier_projection")' in project_once_source
     assert "with repos.transaction():" in worker_project_source
-    assert worker_project_source.index("with repos.transaction():") < worker_project_source.index("claim_due(")
+    assert worker_project_source.index("claim_due(") < worker_project_source.index("with repos.transaction():")
+    assert "commit=True" in worker_project_source
+    assert "token_capture_tier_dirty_targets.mark_error(" in worker_project_source
     assert all(token not in worker_text for token in forbidden)
 
 
@@ -768,11 +771,6 @@ def test_token_intent_reprocess_and_rebuild_require_session_transaction_without_
         for node in ast.walk(rebuild_tree)
         if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "rebuild_recent_token_intents"
     )
-    rebuild_event_source = "\n".join(
-        _function_source(TOKEN_INTENT_REBUILD_PATH, node)
-        for node in ast.walk(rebuild_tree)
-        if isinstance(node, (ast.FunctionDef, ast.AsyncFunctionDef)) and node.name == "rebuild_event_token_intents"
-    )
     rebuild_inner_source = "\n".join(
         _function_source(TOKEN_INTENT_REBUILD_PATH, node)
         for node in ast.walk(rebuild_tree)
@@ -804,7 +802,6 @@ def test_token_intent_reprocess_and_rebuild_require_session_transaction_without_
     )
 
     assert "with repos.transaction():" in rebuild_recent_source
-    assert "with repos.transaction():" in rebuild_event_source
     assert 'repos.require_transaction(operation="token_intent_rebuild")' in rebuild_inner_source
     assert "with repos.transaction():" in reprocess_source
     assert 'repos.require_transaction(operation="token_resolution_refresh")' in reprocess_inner_source
@@ -1082,7 +1079,7 @@ def test_projection_repository_uses_connection_transaction_without_manual_commit
 
     assert "def _run_repository_write" in repository_text
     assert "projection_repository_transaction_required" in repository_text
-    assert repository_text.count("_run_repository_write(self.conn, commit,") == 6
+    assert repository_text.count("_run_repository_write(self.conn, commit,") == 4
     assert all(token not in repository_text for token in forbidden)
 
 
@@ -1091,9 +1088,7 @@ def test_projection_repository_diagnostic_reads_require_explicit_limits_without_
     repository_text = PROJECTION_REPOSITORY_PATH.read_text(encoding="utf-8")
 
     assert "def list_runs(self, *, limit: int," in repository_text
-    assert "def list_dirty_ranges(self, *, limit: int," in repository_text
     assert "limit: int = 20" not in repository_text
-    assert "limit: int = 50" not in repository_text
     assert "max(0, int(limit))" not in repository_text
     assert "projection_repository_limit_required" in repository_text
     assert "def _required_nonnegative_int(value: Any, error_code: str) -> int:" in repository_text
@@ -1117,32 +1112,6 @@ def test_projection_repository_stale_run_accounting_requires_real_cursor_rowcoun
 
     assert [token for token in forbidden if token in repository_text] == []
     assert [token for token in required if token not in repository_text] == []
-
-
-@pytest.mark.architecture
-def test_projection_repository_claim_dirty_ranges_requires_returning_rowcount_match() -> None:
-    repository_text = PROJECTION_REPOSITORY_PATH.read_text(encoding="utf-8")
-    repository_tree = _parse(PROJECTION_REPOSITORY_PATH)
-    claim_source = "\n".join(
-        _function_source(PROJECTION_REPOSITORY_PATH, node)
-        for node in ast.walk(repository_tree)
-        if isinstance(node, ast.FunctionDef) and node.name == "claim_dirty_ranges"
-    )
-    forbidden = (
-        ").fetchall()",
-        "len(rows)",
-    )
-    required = (
-        "def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:",
-        "projection_repository_rowcount_required",
-        "projection_repository_rowcount_invalid",
-        "cursor = self.conn.execute(",
-        "rows = cursor.fetchall()",
-        "_returned_rowcount(cursor, rows)",
-    )
-
-    assert [token for token in forbidden if token in claim_source] == []
-    assert [token for token in required if token not in repository_text + claim_source] == []
 
 
 @pytest.mark.architecture
@@ -1172,10 +1141,6 @@ def test_projection_repository_required_control_writes_require_rowcount_and_retu
             "return _required_returning_row(cursor, row)",
         ),
         "finish_run": (
-            "cursor = self.conn.execute(",
-            "_required_single_rowcount(cursor)",
-        ),
-        "enqueue_dirty_range": (
             "cursor = self.conn.execute(",
             "_required_single_rowcount(cursor)",
         ),
@@ -1214,22 +1179,6 @@ def test_token_radar_rank_source_repository_owns_write_transactions_without_quer
     assert repository_text.count("_run_repository_write(self.conn, commit,") == 3
     assert all(token not in repository_text for token in repository_forbidden)
     assert all(token not in query_text for token in query_forbidden)
-
-
-@pytest.mark.architecture
-def test_token_factor_evaluation_repository_uses_connection_transaction_without_manual_commit_fallback() -> None:
-    repository_text = TOKEN_FACTOR_EVALUATION_REPOSITORY_PATH.read_text(encoding="utf-8")
-
-    forbidden = (
-        "self.conn.commit()",
-        'getattr(self.conn, "transaction", None)',
-        "return nullcontext()",
-    )
-
-    assert "def _run_repository_write" in repository_text
-    assert "token_factor_evaluation_repository_transaction_required" in repository_text
-    assert repository_text.count("_run_repository_write(self.conn, commit,") == 2
-    assert all(token not in repository_text for token in forbidden)
 
 
 @pytest.mark.architecture
@@ -1459,9 +1408,9 @@ def test_ops_repair_backfill_limits_reject_runtime_int_repairs() -> None:
 
     assert [token for token in forbidden if token in source] == []
     assert [token for token in required if token not in source] == []
-    assert 'type=_nonnegative_int, default=0' in parser_source
-    assert 'type=_positive_int, default=5000' in parser_source
-    assert 'type=_positive_int, default=500' in parser_source
+    assert "type=_nonnegative_int, default=0" in parser_source
+    assert "type=_positive_int, default=5000" in parser_source
+    assert "type=_positive_int, default=500" in parser_source
 
 
 def test_ops_one_shot_worker_lifecycle_uses_formal_db_and_lock_contracts() -> None:
@@ -1535,32 +1484,6 @@ def test_ops_one_shot_worker_settings_overrides_use_formal_model_copy_contract()
     assert "return model_copy(update=overrides)" in helper_source
 
 
-def test_ops_market_tick_current_rebuild_uses_formal_worker_settings_contract() -> None:
-    source = (SRC / "app/surfaces/cli/commands/ops.py").read_text()
-    rebuild_source = source.split("def _run_market_tick_current_rebuild", 1)[1].split(
-        "\n\ndef _market_tick_current_projection_lock_key",
-        1,
-    )[0]
-    lock_key_source = source.split("def _market_tick_current_projection_lock_key", 1)[1].split(
-        "\n\ndef _enqueue_token_radar_dirty_targets",
-        1,
-    )[0]
-    forbidden_tokens = (
-        'getattr(getattr(settings, "workers", SimpleNamespace())',
-        "worker_settings or SimpleNamespace()",
-        'getattr(worker_settings, "statement_timeout_seconds", None)',
-        'getattr(self.settings, "advisory_lock_key", None)',
-        "class _LockProbe",
-    )
-    combined = f"{rebuild_source}\n{lock_key_source}"
-    violations = [token for token in forbidden_tokens if token in combined]
-
-    assert violations == []
-    assert "worker_settings = settings.workers.market_tick_current_projection" in rebuild_source
-    assert "statement_timeout_seconds=worker_settings.statement_timeout_seconds" in rebuild_source
-    assert "return int(settings.workers.market_tick_current_projection.advisory_lock_key)" in lock_key_source
-
-
 def test_ops_asset_market_provider_cleanup_uses_bundle_aclose_without_provider_field_probe() -> None:
     source = (SRC / "app/surfaces/cli/commands/ops.py").read_text()
     cleanup_source = source.split("def _close_asset_market_providers", 1)[1].split(
@@ -1600,7 +1523,6 @@ def test_token_capture_tier_dirty_repository_uses_connection_transaction_without
 
     assert "def _run_repository_write" in repository_text
     assert "token_capture_tier_dirty_target_transaction_required" in repository_text
-    assert repository_text.count("_run_repository_write(self.conn, commit,") == 3
     assert all(token not in repository_text for token in forbidden)
 
 
@@ -2011,27 +1933,6 @@ def test_token_profile_current_dirty_repository_queue_policy_rejects_runtime_int
 
 
 @pytest.mark.architecture
-def test_token_profile_current_dirty_completion_counts_require_real_cursor_rowcount() -> None:
-    repository_text = TOKEN_PROFILE_CURRENT_DIRTY_TARGET_REPOSITORY_PATH.read_text(encoding="utf-8")
-    tree = _parse(TOKEN_PROFILE_CURRENT_DIRTY_TARGET_REPOSITORY_PATH)
-    completion_sources = "\n".join(
-        _function_source(TOKEN_PROFILE_CURRENT_DIRTY_TARGET_REPOSITORY_PATH, node)
-        for node in ast.walk(tree)
-        if isinstance(node, ast.FunctionDef) and node.name in {"mark_done", "mark_error"}
-    )
-    forbidden = (
-        'getattr(cursor, "rowcount", 0)',
-        'int(getattr(cursor, "rowcount", 0) or 0)',
-    )
-
-    assert [token for token in forbidden if token in completion_sources] == []
-    assert "def _cursor_rowcount(cursor: Any) -> int:" in repository_text
-    assert "token_profile_current_dirty_target_rowcount_required" in repository_text
-    assert "token_profile_current_dirty_target_rowcount_invalid" in repository_text
-    assert completion_sources.count("return _cursor_rowcount(cursor)") == 2
-
-
-@pytest.mark.architecture
 def test_token_profile_current_repository_uses_connection_transaction_without_manual_commit_fallback() -> None:
     repository_text = TOKEN_PROFILE_CURRENT_REPOSITORY_PATH.read_text(encoding="utf-8")
 
@@ -2333,7 +2234,7 @@ def test_asset_profile_refresh_target_repository_uses_connection_transaction_wit
     assert "def _run_repository_write" in repository_text
     assert "asset_profile_refresh_target_transaction_required" in repository_text
     assert repository_text.count("_run_repository_write(self.conn, commit,") == 5
-    assert "enqueue_missing_token_radar_current_targets" in repository_text
+    assert "enqueue_missing_token_radar_current_targets_for_ops" in repository_text
     assert all(token not in repository_text for token in forbidden)
 
 
@@ -3367,6 +3268,23 @@ def test_dirty_target_claim_due_returning_rows_require_cursor_rowcount_match() -
         assert claim_source.index("_returned_rowcount(cursor, rows)") < claim_source.index(
             "return [dict(row) for row in rows]"
         ), name
+
+
+@pytest.mark.architecture
+def test_bulk_dirty_target_enqueue_counts_use_database_rowcount_not_input_length() -> None:
+    enqueue_repositories = {
+        "asset_profile_refresh": ASSET_PROFILE_REFRESH_TARGET_REPOSITORY_PATH,
+        "token_image_source": TOKEN_IMAGE_SOURCE_DIRTY_TARGET_REPOSITORY_PATH,
+        "token_profile_current": TOKEN_PROFILE_CURRENT_DIRTY_TARGET_REPOSITORY_PATH,
+        "narrative_admission": NARRATIVE_ADMISSION_DIRTY_TARGET_REPOSITORY_PATH,
+        "pulse_trigger": PULSE_TRIGGER_DIRTY_TARGET_REPOSITORY_PATH,
+    }
+
+    for name, path in enqueue_repositories.items():
+        source = _function_source_by_name(path, "enqueue_targets")
+        assert 'return {"targets": len(records)}' not in source, name
+        assert "cursor = self.conn.execute" in source, name
+        assert 'return {"targets": _cursor_rowcount(cursor)}' in source, name
 
 
 @pytest.mark.architecture

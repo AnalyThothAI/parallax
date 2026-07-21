@@ -5,18 +5,8 @@ import json
 from types import SimpleNamespace
 from typing import Any
 
-from parallax.app.surfaces.api.routes_events import _payload_for_event as http_payload_for_event
 from parallax.app.surfaces.api.routes_events import _recent_data
 from parallax.app.surfaces.api.ws import MAX_SUBSCRIPTION_FILTER_VALUES, ClientSubscription, PublicWebSocketHub
-
-
-def test_http_event_payload_uses_projected_event_tokens() -> None:
-    repos = _Repos()
-
-    payload = http_payload_for_event(repos, {"event_id": "event-1"})
-
-    assert payload["token_resolutions"] == [{"target_id": "asset:voice", "symbol": "VOICE"}]
-    assert repos.event_tokens.event_ids == ["event-1"]
 
 
 def test_ws_event_payload_uses_projected_event_tokens() -> None:

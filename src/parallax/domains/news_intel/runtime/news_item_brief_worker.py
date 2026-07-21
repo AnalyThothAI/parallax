@@ -98,18 +98,7 @@ class NewsItemBriefWorker(WorkerBase):
             return WorkerResult(skipped=1, notes={"reason": "no_due_brief_targets"})
 
         rate_units = min(self._batch_size(), queue_depth)
-        try:
-            reservation = provider.try_reserve_execution(NEWS_ITEM_BRIEF_LANE, rate_units=rate_units)
-        except Exception as exc:
-            return WorkerResult(
-                skipped=1,
-                notes={
-                    "claimed": 0,
-                    "queue_depth": queue_depth,
-                    "backpressure": 1,
-                    "agent_reservation_error": type(exc).__name__,
-                },
-            )
+        reservation = provider.try_reserve_execution(NEWS_ITEM_BRIEF_LANE, rate_units=rate_units)
         if not reservation.acquired:
             backpressure_outcome = _backpressure_outcome(reservation)
             return WorkerResult(
@@ -278,7 +267,7 @@ class NewsItemBriefWorker(WorkerBase):
         try:
             request_audit = self.provider.request_audit(run_id=run_id, packet=packet)
         except Exception as exc:
-            return await self._record_request_audit_failure(error=exc)
+            raise RuntimeError("news_item_brief_request_audit_failed") from exc
 
         try:
             result = await self.provider.brief_item(run_id=run_id, packet=packet, reservation=reservation)
@@ -473,15 +462,6 @@ class NewsItemBriefWorker(WorkerBase):
             notes={"backpressure": 1, outcome: 1},
             retry_ms=self._backpressure_cooldown_ms(),
             retry_reason=outcome,
-            retry_counts_attempt=False,
-        )
-
-    async def _record_request_audit_failure(self, *, error: Exception) -> _CandidateOutcome:
-        del error
-        return _CandidateOutcome(
-            notes={"backpressure": 1, "request_audit_failed": 1},
-            retry_ms=self._backpressure_cooldown_ms(),
-            retry_reason="request_audit_failed",
             retry_counts_attempt=False,
         )
 

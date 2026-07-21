@@ -325,7 +325,7 @@ def test_asset_market_wiring_closes_okx_partial_provider_when_gmgn_wiring_fails(
     monkeypatch.setattr(gmgn_wiring, "gmgn_dex_market", fail_gmgn)
 
     with pytest.raises(RuntimeError, match="gmgn failed"):
-        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn(), start_collector=True)
+        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn())
 
     assert binance_cex_provider.close_count == 1
     assert okx_provider.close_count == 1
@@ -347,7 +347,7 @@ def test_asset_market_wiring_preserves_gmgn_error_when_partial_cleanup_fails(mon
     monkeypatch.setattr(gmgn_wiring, "gmgn_dex_market", fail_gmgn)
 
     with pytest.raises(RuntimeError, match="gmgn failed") as exc_info:
-        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn(), start_collector=True)
+        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn())
 
     assert "cleanup failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
     assert "cex close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
@@ -367,7 +367,7 @@ def test_asset_market_wiring_records_malformed_okx_bundle_fields_during_partial_
     monkeypatch.setattr(gmgn_wiring, "gmgn_dex_market", fail_gmgn)
 
     with pytest.raises(RuntimeError, match="gmgn failed") as exc_info:
-        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn(), start_collector=True)
+        providers_wiring.wire_asset_market_providers(_settings_with_okx_and_gmgn())
 
     notes = "\n".join(getattr(exc_info.value, "__notes__", []))
     assert okx_provider.close_count == 1
@@ -417,7 +417,6 @@ def test_okx_bundle_wiring_preserves_original_error_when_partial_cleanup_fails(m
 
 def test_litellm_providers_receive_agent_execution_gateway(monkeypatch) -> None:
     gateway = object()
-    db_pool = object()
     created: list[object] = []
 
     def fake_pulse_client(**kwargs):
@@ -445,7 +444,6 @@ def test_litellm_providers_receive_agent_execution_gateway(monkeypatch) -> None:
         _settings_with_all_llm_models(),
         start_collector=True,
         agent_execution_gateway=gateway,
-        db_pool=db_pool,
     )
 
     assert providers.pulse_lab.decision_provider is not None
@@ -468,7 +466,6 @@ def test_litellm_provider_wiring_requires_agent_execution_gateway() -> None:
             _settings_with_all_llm_models(),
             start_collector=True,
             agent_execution_gateway=None,
-            db_pool=object(),
         )
 
 
@@ -489,7 +486,6 @@ def test_news_item_brief_provider_wiring_requires_agent_execution_gateway_for_ne
             settings,
             start_collector=False,
             agent_execution_gateway=None,
-            db_pool=object(),
         )
 
 
@@ -509,17 +505,6 @@ def test_news_feed_client_returns_registry_backed_provider_and_closes_underlying
 
     assert rss_client.close_count == 1
     assert cryptopanic_client.close_count == 1
-
-
-def test_litellm_pulse_provider_wiring_does_not_require_db_pool() -> None:
-    providers = providers_wiring.wire_providers(
-        _settings_with_all_llm_models(),
-        start_collector=True,
-        agent_execution_gateway=object(),
-        db_pool=None,
-    )
-
-    assert providers.pulse_lab.decision_provider is not None
 
 
 def test_unknown_numeric_okx_dex_chain_indexes_round_trip_through_discovery_provider() -> None:

@@ -48,7 +48,6 @@ from parallax.domains.token_intel.interfaces import (
 )
 from parallax.platform.agent_execution import AgentCapacityReservation, AgentExecutionErrorClass
 
-PULSE_TRIGGER_METRICS_KEY = "pulse_trigger_metrics"
 ADVISORY_LOCK_KEY = 2026051502
 PULSE_SCOPE_WATCHED_ONLY = {
     "all": False,
@@ -235,9 +234,7 @@ class PulseCandidateWorker(WorkerBase):
                 try:
                     with repos.transaction():
                         if not window or not scope or not target_type or not target_id:
-                            result["asset_skipped"] += 1
-                            result["dirty_triggers_done"] += _mark_trigger_done(repos, claim, now_ms=resolved_now_ms)
-                            continue
+                            raise ValueError("pulse_trigger_dirty_target_identity_required")
                         window = _required_configured_claim_dimension(
                             window,
                             allowed=self.windows,
@@ -427,8 +424,6 @@ class PulseCandidateWorker(WorkerBase):
         if not _is_asset_trigger(row, thresholds=self.trigger_thresholds):
             return None
         factor_snapshot = _factor_snapshot(row)
-        if factor_snapshot is None:
-            return None
         target_type = _clean(row.get("target_type"))
         target_id = _clean(row.get("target_id"))
         if not target_type or not target_id:
@@ -610,8 +605,6 @@ class PulseCandidateWorker(WorkerBase):
 
 def _is_asset_trigger(row: dict[str, Any], *, thresholds: PulseTriggerThresholds) -> bool:
     factor_snapshot = _factor_snapshot(row)
-    if factor_snapshot is None:
-        return False
     if not _clean(row.get("target_type")) or not _clean(row.get("target_id")):
         return False
     score = safe_int(_nested(factor_snapshot, "composite", "rank_score"))
@@ -1134,7 +1127,7 @@ def _priority(row: dict[str, Any]) -> int:
 def _source_event_ids(row: dict[str, Any]) -> list[str]:
     values = row.get("source_event_ids_json")
     if not isinstance(values, list):
-        return []
+        raise ValueError("pulse_candidate_source_event_ids_json_list_required")
     return _stable_strings(values)
 
 
@@ -1146,12 +1139,9 @@ def _score_bucket(score: int | float | None) -> str:
     return f"{lower}-{lower + 9}"
 
 
-def _factor_snapshot(row: dict[str, Any]) -> dict[str, Any] | None:
+def _factor_snapshot(row: dict[str, Any]) -> dict[str, Any]:
     snapshot = row.get("factor_snapshot_json")
-    try:
-        valid_snapshot = require_token_factor_snapshot(snapshot, field_name="factor_snapshot_json")
-    except ValueError:
-        return None
+    valid_snapshot = require_token_factor_snapshot(snapshot, field_name="factor_snapshot_json")
     return _mapping(_jsonable(valid_snapshot))
 
 

@@ -57,7 +57,6 @@ class AssetProfileRefreshWorker(WorkerBase):
             "queue_depth": 0,
             "source_rows_scanned": 0,
             "targets_loaded": 0,
-            "targets_enqueued": 0,
             "rows_written": 0,
             "ready": 0,
             "missing": 0,
@@ -80,7 +79,6 @@ class AssetProfileRefreshWorker(WorkerBase):
                 "queue_depth",
                 "source_rows_scanned",
                 "targets_loaded",
-                "targets_enqueued",
                 "rows_written",
                 "ready",
                 "missing",
@@ -99,7 +97,6 @@ class AssetProfileRefreshWorker(WorkerBase):
             "queue_depth": 0,
             "source_rows_scanned": 0,
             "targets_loaded": 0,
-            "targets_enqueued": 0,
             "rows_written": 0,
             "ready": 0,
             "missing": 0,
@@ -113,17 +110,6 @@ class AssetProfileRefreshWorker(WorkerBase):
             self.name,
             statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
-            backfill_result = repos.asset_profile_refresh_targets.enqueue_missing_token_radar_current_targets(
-                provider=profile_source.provider,
-                now_ms=now_ms,
-                limit=_required_positive_int(
-                    self.settings.batch_size,
-                    error_code="asset_profile_refresh_batch_size_required",
-                ),
-                commit=True,
-            )
-            source_result["targets_enqueued"] = int(backfill_result.get("targets") or 0)
-            source_result["source_rows_scanned"] = int(backfill_result.get("source_rows_scanned") or 0)
             rows = repos.asset_profile_refresh_targets.claim_due(
                 provider=profile_source.provider,
                 now_ms=now_ms,

@@ -11,7 +11,7 @@ from parallax.domains.news_intel.types.news_story_brief import (
 )
 
 
-def test_story_stage_uses_story_current_read_tool() -> None:
+def test_story_stage_is_traceable() -> None:
     representative = {
         "news_item_id": "news-1",
         "title": "Bitcoin ETF flow update",
@@ -54,6 +54,5 @@ def test_story_stage_uses_story_current_read_tool() -> None:
     assert stage.agent_name == NEWS_STORY_BRIEF_AGENT_NAME
     assert stage.output_type is NewsItemBriefPayload
     assert stage.group_id == "news_story:news-story:event:btc-etf:t412000"
-    assert stage.read_only_tool_refs == ("news.story_current_briefs",)
     assert stage.trace_metadata["story_key"] == "news-story:event:btc-etf:t412000"
     assert stage.trace_metadata["run_id"] == "run-1"

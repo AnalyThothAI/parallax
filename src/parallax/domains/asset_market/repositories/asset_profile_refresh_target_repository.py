@@ -26,7 +26,7 @@ class AssetProfileRefreshTargetRepository:
             return {"targets": 0}
 
         def _write() -> dict[str, int]:
-            self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 WITH incoming AS (
                   SELECT *
@@ -127,11 +127,11 @@ class AssetProfileRefreshTargetRepository:
                 """,
                 {**_target_params(records), "dirty_reason": str(reason), "now_ms": int(now_ms)},
             )
-            return {"targets": len(records)}
+            return {"targets": _cursor_rowcount(cursor)}
 
         return _run_repository_write(self.conn, commit, _write)
 
-    def enqueue_missing_token_radar_current_targets(
+    def enqueue_missing_token_radar_current_targets_for_ops(
         self,
         *,
         provider: str,

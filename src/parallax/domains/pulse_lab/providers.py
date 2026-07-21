@@ -21,7 +21,6 @@ class PulseDecisionStageSpec:
     prompt_text: str
     input_payload: dict[str, Any]
     knowledge_refs: tuple[str, ...] = ()
-    read_only_tool_refs: tuple[str, ...] = ()
 
 
 _DEFAULT_STAGE_NAMES = ("pulse_decision",)

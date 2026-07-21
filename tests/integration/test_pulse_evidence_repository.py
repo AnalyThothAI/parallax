@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import json
 from types import SimpleNamespace
 from typing import Any
 
@@ -176,57 +175,6 @@ def test_pulse_evidence_source_reads_cex_market_tick_by_pricefeed_id(tmp_path) -
     assert float(rows[0]["open_interest_usd"]) == 3_200_000
 
 
-def test_pulse_evidence_source_returns_last_ready_digest_with_currentness_when_admission_changed(tmp_path) -> None:
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    try:
-        migrate(conn)
-        _insert_narrative_admission(
-            conn,
-            target_type="chain_token",
-            target_id="solana:abc",
-            window="24h",
-            scope="matched",
-            source_event_ids=["event-old", "event-new"],
-            source_fingerprint="fingerprint-current",
-            source_event_count=2,
-            independent_author_count=2,
-        )
-        _insert_discussion_digest(
-            conn,
-            digest_id="digest-last-ready",
-            target_type="chain_token",
-            target_id="solana:abc",
-            window="24h",
-            scope="matched",
-            source_event_ids=["event-old"],
-            source_fingerprint="fingerprint-old",
-            source_event_count=1,
-            independent_author_count=1,
-            is_current=False,
-        )
-        conn.commit()
-
-        with repository_session_for_connection(conn) as repos:
-            digest = repos.pulse_evidence_sources.get_current_discussion_digest(
-                target_type="chain_token",
-                target_id="solana:abc",
-                window="24h",
-                scope="matched",
-                schema_version="narrative_intel_v1",
-            )
-    finally:
-        conn.close()
-
-    assert digest is not None
-    assert digest["digest_id"] == "digest-last-ready"
-    assert digest["currentness"]["display_status"] == "updating"
-    assert digest["currentness"]["reason"] == "digest_updating"
-    assert digest["currentness"]["ready_source_fingerprint"] == "fingerprint-old"
-    assert digest["currentness"]["current_source_fingerprint"] == "fingerprint-current"
-    assert digest["currentness"]["delta_source_event_count"] == 1
-    assert digest["currentness"]["delta_independent_author_count"] == 1
-
-
 def _insert_run(conn: Any, *, run_id: str, candidate_id: str) -> None:
     conn.execute(
         """
@@ -265,114 +213,6 @@ def _insert_run(conn: Any, *, run_id: str, candidate_id: str) -> None:
         (run_id, candidate_id),
     )
     conn.commit()
-
-
-def _insert_narrative_admission(
-    conn: Any,
-    *,
-    target_type: str,
-    target_id: str,
-    window: str,
-    scope: str,
-    source_event_ids: list[str],
-    source_fingerprint: str,
-    source_event_count: int,
-    independent_author_count: int,
-) -> None:
-    conn.execute(
-        """
-        INSERT INTO narrative_admissions(
-          admission_id, target_type, target_id, "window", scope, schema_version,
-          status, reason, priority, source_event_ids_json, source_fingerprint,
-          source_max_received_at_ms, admitted_at_ms, last_seen_at_ms,
-          next_semantics_due_at_ms, next_digest_due_at_ms, suppressed_at_ms,
-          updated_at_ms, projection_computed_at_ms, source_window_start_ms,
-          source_window_end_ms, source_event_count, independent_author_count,
-          admission_generation, payload_hash
-        )
-        VALUES (
-          'admission-current', %s, %s, %s, %s, 'narrative_intel_v1',
-          'admitted', 'test', 10, %s::jsonb, %s,
-          1800000000200, 1800000000000, 1800000000200,
-          0, 0, NULL, 1800000000200, 1800000000200, 1800000000000,
-          1800000000200, %s, %s, 'test-generation', 'test-admission-hash'
-        )
-        """,
-        (
-            target_type,
-            target_id,
-            window,
-            scope,
-            json.dumps(source_event_ids),
-            source_fingerprint,
-            source_event_count,
-            independent_author_count,
-        ),
-    )
-
-
-def _insert_discussion_digest(
-    conn: Any,
-    *,
-    digest_id: str,
-    target_type: str,
-    target_id: str,
-    window: str,
-    scope: str,
-    source_event_ids: list[str],
-    source_fingerprint: str,
-    source_event_count: int,
-    independent_author_count: int,
-    is_current: bool,
-) -> None:
-    conn.execute(
-        """
-        INSERT INTO token_discussion_digests(
-          digest_id, target_type, target_id, "window", scope, schema_version,
-          model_version, status, is_current, source_fingerprint, label_fingerprint,
-          headline_zh, dominant_narratives_json, bull_view_json, bear_view_json,
-          stance_mix_json, attention_valence_mix_json, propagation_read_json,
-          reflexivity_read_json, watch_triggers_json, invalidation_conditions_json,
-          data_gaps_json, semantic_coverage, source_event_count,
-          labeled_event_count, independent_author_count, evidence_refs_json,
-          model_run_id, computed_at_ms, expires_at_ms, superseded_at_ms,
-          epoch_id, epoch_policy_version, source_event_ids_json,
-          source_window_start_ms, source_window_end_ms, epoch_closed_at_ms,
-          display_current_until_ms, refresh_reason, payload_hash
-        )
-        VALUES (
-          %s, %s, %s, %s, %s, 'narrative_intel_v1',
-          'test-model', 'ready', %s, %s, 'labels-old',
-          '上一版叙事', %s::jsonb, %s::jsonb, %s::jsonb,
-          '{}'::jsonb, '{}'::jsonb, '{}'::jsonb,
-          '{}'::jsonb, '[]'::jsonb, '[]'::jsonb,
-          '[]'::jsonb, 0.8, %s,
-          %s, %s, %s::jsonb,
-          NULL, 1800000000100, 1800003600100, NULL,
-          'epoch-old', 'token-narrative-epoch-v1', %s::jsonb,
-          1800000000000, 1800000000100, 1800000000100,
-          1800003600100, 'material_delta_due', %s
-        )
-        """,
-        (
-            digest_id,
-            target_type,
-            target_id,
-            window,
-            scope,
-            is_current,
-            source_fingerprint,
-            json.dumps([{"cluster_key": "last-ready", "summary_zh": "上一版叙事"}]),
-            json.dumps({"summary_zh": "多头背景", "evidence_refs": [{"ref_id": "event:event-old"}]}),
-            json.dumps({"summary_zh": "风险背景", "evidence_refs": [{"ref_id": "event:event-old"}]}),
-            source_event_count,
-            source_event_count,
-            independent_author_count,
-            json.dumps([{"ref_id": "event:event-old"}]),
-            json.dumps(source_event_ids),
-            f"test-digest-hash:{digest_id}",
-        ),
-    )
 
 
 def _packet(*, run_id: str, candidate_id: str, packet_id: str) -> PulseEvidencePacket:

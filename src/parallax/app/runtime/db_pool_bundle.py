@@ -192,7 +192,9 @@ class DBPoolBundle:
         return WakeBus(self.wake_pool.connection)
 
     def wake_listener(self, name: str, channels: tuple[str, ...]) -> WakeWaiter:
-        _normalize_worker_name(name)
+        normalized_name = _normalize_worker_name(name)
+        if not channels:
+            raise ValueError(f"wake_listener_channels_required:{normalized_name}")
         return WakeWaiter(self.wake_pool, channels=channels)
 
     async def aclose(self) -> None:
@@ -326,9 +328,6 @@ def enabled_wake_listener_concurrency(settings: Any) -> int:
             continue
         worker_settings = getattr(workers, manifest.name)
         if not bool(worker_settings.enabled):
-            continue
-        wakes_on = tuple(worker_settings.wakes_on or ())
-        if not wakes_on:
             continue
         wake_slots += _worker_wake_concurrency(worker_name=manifest.name, worker_settings=worker_settings)
     return wake_slots

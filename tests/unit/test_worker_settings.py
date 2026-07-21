@@ -48,7 +48,6 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.market_tick_current_projection.interval_seconds == 5
     assert settings.market_tick_current_projection.batch_size == 100
     assert settings.market_tick_current_projection.advisory_lock_key == 2026052401
-    assert settings.market_tick_current_projection.wakes_on == ("market_tick_written",)
     assert settings.event_anchor_backfill.interval_seconds == 1
     assert settings.event_anchor_backfill.batch_size == 50
     assert settings.event_anchor_backfill.concurrency == 8
@@ -80,7 +79,6 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_profile_current.batch_size == 500
     assert settings.token_capture_tier.advisory_lock_key == 2026051503
     assert settings.token_radar_projection.advisory_lock_key == 2026051501
-    assert settings.token_radar_projection.wakes_on == ("market_tick_current_updated", "resolution_updated")
     assert settings.token_radar_projection.batch_size == 100
     assert settings.token_radar_projection.retry_ms == 30_000
     assert settings.token_radar_projection.private_cache_retention_enabled is True
@@ -92,7 +90,6 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.narrative_admission.soft_timeout_seconds == 180
     assert settings.narrative_admission.hard_timeout_seconds == 300
     assert settings.narrative_admission.advisory_lock_key == 2026051901
-    assert settings.narrative_admission.wakes_on == ("token_radar_updated", "resolution_updated")
     assert settings.narrative_admission.windows == ("1h",)
     assert settings.narrative_admission.scopes == ("all",)
     assert settings.narrative_admission.admission_limit == 200
@@ -149,8 +146,6 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.macro_view_projection.limit_per_series == 800
     assert settings.macro_view_projection.lease_ms == 300_000
     assert settings.macro_view_projection.retry_ms == 300_000
-    assert settings.macro_view_projection.wakes_on == ("macro_observations_imported",)
-    assert settings.macro_daily_brief_projection.wakes_on == ("macro_view_snapshot_updated",)
     assert settings.macro_daily_brief_projection.statement_timeout_seconds == 30
     assert settings.notification_rule.batch_size == 50
     assert settings.notification_rule.statement_timeout_seconds == 30
@@ -158,15 +153,23 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.notification_delivery.max_attempts == 5
     assert settings.notification_delivery.statement_timeout_seconds == 30
     assert settings.news_item_brief.enabled is False
-    assert settings.news_item_brief.wakes_on == ()
     assert settings.news_story_brief.enabled is True
-    assert settings.news_story_brief.wakes_on == ("news_item_processed",)
 
 
 def test_worker_settings_schema_matches_manifest_worker_names() -> None:
     worker_fields = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
 
     assert worker_fields == _manifest_worker_names()
+
+
+def test_worker_wake_channels_are_manifest_only_and_rejected_in_workers_yaml() -> None:
+    payload = yaml.safe_load(default_workers_yaml())
+
+    assert all("wakes_on" not in worker_config for worker_config in payload.values() if isinstance(worker_config, dict))
+    payload["news_item_process"]["wakes_on"] = ["news_item_written"]
+
+    with pytest.raises(ValidationError, match="wakes_on"):
+        WorkersSettings(**payload)
 
 
 def test_default_config_excludes_deleted_product_settings() -> None:
@@ -239,21 +242,6 @@ def test_narrative_runtime_rejects_non_1h_windows() -> None:
 
     with pytest.raises(ValidationError, match=r"narrative_admission.windows"):
         WorkersSettings(**payload)
-
-    payload = yaml.safe_load(default_workers_yaml())
-    payload["mention_semantics"] = {"enabled": True}
-
-    with pytest.raises(ValidationError):
-        WorkersSettings(**payload)
-
-
-def test_narrative_runtime_rejects_deleted_worker_keys() -> None:
-    payload = yaml.safe_load(default_workers_yaml())
-
-    payload["token_discussion_digest"] = {"enabled": True}
-    with pytest.raises(ValidationError):
-        WorkersSettings(**payload)
-
 
 def test_worker_settings_reject_unknown_worker_key():
     payload = yaml.safe_load(default_workers_yaml())
@@ -509,7 +497,6 @@ def test_news_workers_have_defaults():
     assert settings.news_item_process.max_attempts == 3
     assert settings.news_item_process.retry_delay_ms == 60_000
     assert settings.news_item_process.statement_timeout_seconds == 30
-    assert settings.news_item_process.wakes_on == ("news_item_written",)
     assert not hasattr(settings, "news_story_projection")
     assert settings.news_item_brief.interval_seconds == 10
     assert settings.news_item_brief.soft_timeout_seconds == 180
@@ -520,25 +507,17 @@ def test_news_workers_have_defaults():
     assert settings.news_item_brief.statement_timeout_seconds == 30
     assert settings.news_item_brief.advisory_lock_key == 2026052001
     assert settings.news_item_brief.backpressure_cooldown_ms == 60_000
-    assert settings.news_item_brief.wakes_on == ()
     assert settings.news_page_projection.batch_size == 100
     assert settings.news_page_projection.lease_ms == 120_000
     assert settings.news_page_projection.retry_ms == 30_000
     assert settings.news_page_projection.statement_timeout_seconds == 30
     assert settings.news_page_projection.advisory_lock_key == 2026051904
-    assert settings.news_page_projection.wakes_on == (
-        "news_item_written",
-        "news_item_processed",
-        "news_story_brief_updated",
-        "news_page_dirty",
-    )
     assert settings.news_source_quality_projection.interval_seconds == 60
     assert settings.news_source_quality_projection.batch_size == 100
     assert settings.news_source_quality_projection.lease_ms == 120_000
     assert settings.news_source_quality_projection.retry_ms == 30_000
     assert settings.news_source_quality_projection.statement_timeout_seconds == 30
     assert settings.news_source_quality_projection.advisory_lock_key == 2026052201
-    assert settings.news_source_quality_projection.wakes_on == ("news_item_written",)
     assert settings.news_source_quality_projection.windows == ("24h", "7d")
 
 

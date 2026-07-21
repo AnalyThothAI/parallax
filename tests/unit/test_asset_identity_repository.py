@@ -162,14 +162,6 @@ def test_recompute_current_identity_returning_changed_rejects_rowcount_returning
     "operation",
     [
         pytest.param(
-            lambda repo: repo.ensure_asset(
-                chain_id="eth",
-                address=ADDRESS,
-                observed_at_ms=NOW_MS,
-            ),
-            id="ensure_asset",
-        ),
-        pytest.param(
             lambda repo: repo.upsert_identity_evidence(
                 asset_id=ASSET_ID,
                 evidence_kind=EVIDENCE_TWEET_CONTRACT_MENTION,
@@ -202,14 +194,6 @@ def test_identity_evidence_mutations_require_connection_transaction_before_sql_w
 @pytest.mark.parametrize(
     "operation",
     [
-        pytest.param(
-            lambda repo: repo.ensure_asset(
-                chain_id="eth",
-                address=ADDRESS,
-                observed_at_ms=NOW_MS,
-            ),
-            id="ensure_asset",
-        ),
         pytest.param(
             lambda repo: repo.upsert_identity_evidence(
                 asset_id=ASSET_ID,
@@ -294,7 +278,6 @@ class FakeIdentityConnection:
                 [
                     {
                         "asset_id": ASSET_ID,
-                        "project_id": None,
                         "chain_id": "eip155:1",
                         "token_standard": "erc20",
                         "address": ADDRESS,

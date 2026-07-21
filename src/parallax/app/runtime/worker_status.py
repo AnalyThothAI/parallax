@@ -51,10 +51,6 @@ def _runtime_worker_statuses(runtime: object) -> dict[str, dict[str, Any]]:
     return workers
 
 
-def canonical_workers_status_payload(runtime: object) -> dict[str, dict[str, Any]]:
-    return workers_status_payload(runtime)["workers"]
-
-
 def manifest_worker_statuses(payload: dict[str, dict[str, Any]]) -> dict[str, dict[str, Any]]:
     manifests = manifest_by_name()
     unknown_workers = set(payload) - set(manifests)
@@ -241,6 +237,7 @@ def _lane_queue_health(statuses: list[dict[str, Any]]) -> dict[str, Any]:
         "running_count": _sum_health_int(queue_healths, "running_count"),
         "failed_count": failed_count,
         "blocked_count": blocked_count,
+        "source_terminal_count": _sum_health_int(queue_healths, "source_terminal_count"),
         "terminal_count": _sum_health_int(queue_healths, "terminal_count"),
         "unresolved_terminal_count": _sum_health_int(queue_healths, "unresolved_terminal_count"),
         "oldest_due_age_ms": _max_int(health.get("oldest_due_age_ms") for health in queue_healths),

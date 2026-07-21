@@ -20,6 +20,7 @@ class AccountQualityBackfillService:
         with _transaction(self.repository.conn):
             rows = self._account_token_rows(limit=limit)
             handles_touched: set[str] = set()
+            stats_upserted = 0
             for row in rows:
                 handle = str(row["handle"])
                 token_id = str(row["target_id"])
@@ -43,7 +44,7 @@ class AccountQualityBackfillService:
                     watched_status=watched_status,
                     commit=False,
                 )
-                self.repository.upsert_token_call_stat(
+                stats_upserted += self.repository.upsert_token_call_stat(
                     handle=handle,
                     token_id=token_id,
                     first_mention_ms=first_mention_ms,
@@ -61,7 +62,7 @@ class AccountQualityBackfillService:
                 self._write_quality_snapshot(handle)
         return {
             "accounts_touched": len(handles_touched),
-            "stats_upserted": len(rows),
+            "stats_upserted": stats_upserted,
         }
 
     def _account_token_rows(self, *, limit: int) -> list[dict[str, Any]]:

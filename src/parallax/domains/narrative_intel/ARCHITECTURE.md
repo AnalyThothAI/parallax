@@ -1,107 +1,83 @@
 # Narrative Intel Architecture
 
-Narrative Intel is now an admission read-model lane downstream of Token Radar.
-Its active runtime truth starts with material facts (`events`, token
-resolutions, market facts, and current `token_radar_current_rows`) and writes
-one current read model:
+Narrative Intel is a deterministic admission read-model lane downstream of
+Token Radar. Its active chain is intentionally small:
 
 ```text
-token_radar_current_rows
+material facts + token_radar_current_rows
   -> narrative_admission_dirty_targets
+  -> NarrativeAdmissionWorker
   -> narrative_admissions
-  -> API / WebSocket / CLI reads
+  -> API narrative_admission
 ```
 
-## Source-Set Truth
+## Truth and identity
 
-`narrative_admissions.source_event_ids_json` is the only current source-set
-truth for a target/window/scope/schema. Public readers may compare this frontier
-with historical semantic or digest rows, but those rows do not define current
-source volume and are not refreshed by active runtime workers.
+`events`, current token resolutions, market facts, and
+`token_radar_current_rows` are material inputs. `narrative_admissions` is the
+only Narrative serving read model. Its stable identity is
+`(target_type, target_id, window, scope)`; schema, run, attempt, generation,
+timestamp, and UUID values are not row identity.
 
-## Writer Ownership
+`source_event_ids_json`, `source_max_received_at_ms`, source counts, and author
+counts describe the admission source frontier. Provider frames and removed
+semantic/digest rows are not current facts or fallback inputs.
 
-`NarrativeAdmissionWorker` is the runtime writer for `narrative_admissions`.
-It claims `narrative_admission_dirty_targets`, exact-loads the target Radar
-context, recomputes the source set from material facts, and upserts only changed
-admission rows. Empty queues return without scanning Token Radar or event
-history.
-The worker is wake-in only: `token_radar_updated` and `resolution_updated`
-may wake it, but it emits no downstream wake. Its admission limit, source-set
-limit, dirty-target lease, retry delay, rank thresholds, and worker-session
-statement timeout are formal `settings.workers.narrative_admission` fields;
-there are no runtime `lease_seconds` / `error_retry_seconds` fallbacks, no
-service-local rank-threshold defaults, no carry-forward TTL compatibility, and
-no `wake_bus` / `wake_emitter` constructor aliases.
-Claimed dirty-target `window` and `scope` are validated against the same formal
-worker settings before admission-target or source-set reads, and dirty-target
-claim `UPDATE ... RETURNING` rowcount must match returned claimed rows before
-source-set evidence is loaded. Malformed claim dimensions fail through
-dirty-target error/retry; the worker must not treat an unknown scope as
-all-public or restore an unknown window to a 24h source-set width.
-Worker claim/done/error writes are caller-owned inside
-`RepositorySession.transaction`. Repository-owned dirty-target enqueue, claim,
-done, error, and reschedule mutations require a callable connection
-transaction before queue SQL; missing transaction support is a contract failure,
-not permission to call `self.conn.commit()`.
-Dirty-target enqueue requires a positive producer-supplied
-`source_watermark_ms`; missing, zero, negative, boolean, or string watermarks
-fail before queue SQL, and enqueue SQL does not carry a zero-watermark
-compatibility branch.
-Dirty-target done/error/reschedule completion keys require the positive
-`attempt_count`, non-empty `lease_owner`, and `payload_hash` returned by
-`claim_due`; malformed keys fail before SQL instead of being restored to zero
-attempts, empty owners, or empty payload hashes.
-Dirty-target done/error/reschedule changed-row counts require PostgreSQL
-`cursor.rowcount`; missing or invalid rowcount is malformed repository/driver
-state, not zero changed narrative dirty-target work.
-Repository-owned `narrative_admissions` upsert and stale-target deletion also
-require a callable connection transaction before serving-row SQL; the worker
-path remains caller-owned with `commit=False` inside `RepositorySession.transaction`.
-Their returned write counts require PostgreSQL `cursor.rowcount` evidence;
-missing or invalid rowcount is malformed repository/driver state, not zero
-changed admission work.
-Source, label, and text fingerprint primitives live in
-`narrative_intel.types.fingerprints`; repositories depend on that leaf type
-module and must not import deterministic service modules for payload identity.
+## Writer ownership
 
-The former runtime LLM agents are removed:
+`NarrativeAdmissionWorker` is the sole runtime writer for
+`narrative_admissions`. It claims `narrative_admission_dirty_targets`, validates
+the claimed window and scope against worker settings, exact-loads the Radar
+target, recomputes the source set from material facts, and upserts only when the
+stable payload changes. An empty queue never causes a Radar or event scan.
 
-- `MentionSemanticsWorker`
-- `TokenDiscussionDigestWorker`
-- narrative LiteLLM provider/client wiring
-- narrative prompt files
-- `ops rebuild-narrative-intel`
+The worker is wake-in only. `token_radar_updated` and `resolution_updated` may
+wake it, but it emits no downstream wake. The queue lease, retry delay, limits,
+rank thresholds, and statement timeout come from
+`settings.workers.narrative_admission`; runtime aliases and service-local
+defaults are not supported.
 
-Do not reintroduce disabled compatibility workers, aliases, shadow queues, or
-HTTP maintenance paths for those agents.
+Queue mutations and admission serving-row writes use an explicit connection
+transaction. Claimed completion keys require the positive `attempt_count`,
+non-empty `lease_owner`, and `payload_hash` returned by the claim. Changed-row
+counts come from PostgreSQL `cursor.rowcount`; missing or invalid rowcount is a
+driver contract failure, not zero work.
 
-## Public Read Contract
+The admission source watermark comes only from positive Token Radar
+`source_max_received_at_ms`. Publication time and runtime time are not source
+watermark substitutes. Payload hashes exclude lifecycle timestamps so an
+unchanged recomputation writes zero serving rows.
 
-Public Token Radar and Token Case reads may still expose
-`discussion_digest.currentness` for legacy rows. That field is read-only
-composition: the last historical ready digest, when present, is compared with
-the current `narrative_admissions` frontier. Missing, stale, or out-of-frontier
-state must be explicit. Token Radar hydration reads formal target identity from
-the public row `target.target_type` / `target.target_id` object, or from direct
-formal `target_type` / `target_id` fields when a non-API caller already owns that
-shape. API routes must not synthesize top-level target fields for hydration;
-legacy `type` / `id` aliases are treated as missing narrative target identity
-rather than restored. API routes never run providers and never write narrative
-tables.
-Product reads do not expose retired semantic backlog or imply a semantic worker
-will continue processing. Selected post detail may show a historical labeled
-semantic row when one already exists; missing legacy semantics are explicit
-missing context, not runtime queue state. Post-detail semantic hydration reads
-the selected post keyset through one SQL statement with
-`unnest(%s::text[], %s::text[], %s::text[]) WITH ORDINALITY`, `distinct_posts`,
-and a lateral latest-row probe; it must not loop over posts and query
-`token_mention_semantics` once per post.
+## Public read contract
 
-## Hard Cut
+Token Radar and Token Case expose `narrative_admission`, never a generated
+narrative digest. The object contains only:
 
-This domain does not keep runtime compatibility aliases for removed behavior.
-Source-age prune compatibility, old fallback digest hydration, old collapsed
-`digest_not_ready` reasons, Token Radar `type` / `id` target identity aliases,
-narrative LLM lanes, and narrative rebuild CLI surfaces are removed rather than
-shadowed by runtime aliases.
+- `status`: `admitted`, `suppressed`, or `missing`;
+- `reason` and `is_current`;
+- `computed_at_ms`;
+- `currentness.display_status` and `currentness.reason`;
+- `coverage.source_mentions` and `coverage.independent_authors`;
+- explicit `data_gaps` for missing, suppressed, or unsupported states.
+
+The payload is derived only from `narrative_admissions`. Unsupported windows
+use `status=missing` with `currentness.display_status=unsupported_window`.
+Target identity comes from formal `target_type` / `target_id` fields; legacy
+`type` / `id` aliases are not repaired. API routes do not call providers or
+write Narrative tables. Target-post responses remain raw evidence pages and do
+not attach per-post semantic placeholders.
+
+## Hard cut
+
+The following runtime and storage surfaces are removed, not disabled:
+
+- per-post mention semantics and discussion-digest workers;
+- `token_mention_semantics`, `token_discussion_digests`, narrative model-run,
+  and digest dirty-target tables;
+- Narrative model-provider/client and prompt wiring;
+- digest/currentness compatibility readers and per-post semantic hydration;
+- Pulse evidence-packet Narrative digest dependencies;
+- `ops rebuild-narrative-intel` and other repair shims for removed lanes.
+
+Do not reintroduce aliases, shadow queues, ghost payload fields, or tests that
+imply these removed lanes will resume processing.

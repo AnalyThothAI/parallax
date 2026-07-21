@@ -136,31 +136,17 @@ describe("token radar factor snapshot mapper", () => {
     expect((item as { profile?: unknown }).profile).toEqual(profile);
   });
 
-  it("preserves hydrated narrative and pulse overlays from asset flow rows", () => {
+  it("preserves hydrated narrative admission and pulse overlays from asset flow rows", () => {
     const row = productionFactorSnapshotRow();
-    row.discussion_digest = {
-      status: "ready",
+    row.narrative_admission = {
+      status: "admitted",
+      reason: "rank_score",
       currentness: {
         display_status: "current",
-        reason: "fingerprint_match",
-        delta_source_event_count: 0,
-        delta_independent_author_count: 0,
-        last_ready_computed_at_ms: 1_777_746_000_000,
+        reason: "rank_score",
       },
-      dominant_narrative: {
-        title: "privacy rotation",
-        summary_zh: "隐私币重新获得注意力",
-        evidence_refs: [],
-      },
-      stance_mix: { bullish: 0.7, bearish: 0.1, neutral: 0.2 },
-      coverage: {
-        semantic_coverage: 0.8,
-        source_mentions: 5,
-        labeled_mentions: 4,
-        independent_authors: 3,
-      },
+      coverage: { source_mentions: 5, independent_authors: 3 },
       data_gaps: [],
-      evidence_refs: [],
     };
     row.pulse_overlay = {
       status: "ready",
@@ -170,7 +156,7 @@ describe("token radar factor snapshot mapper", () => {
 
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
-    expect(item.discussion_digest).toEqual(row.discussion_digest);
+    expect(item.narrative_admission).toEqual(row.narrative_admission);
     expect(item.pulse_overlay).toEqual(row.pulse_overlay);
   });
 

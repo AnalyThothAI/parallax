@@ -115,8 +115,12 @@ def test_worker_writes_ready_story_brief_and_emits_wake() -> None:
     asyncio.run(_test_worker_writes_ready_story_brief_and_emits_wake())
 
 
-def test_worker_request_audit_failure_retries_without_burning_attempt() -> None:
-    asyncio.run(_test_worker_request_audit_failure_retries_without_burning_attempt())
+def test_worker_request_audit_failure_counts_as_failed_claim() -> None:
+    asyncio.run(_test_worker_request_audit_failure_counts_as_failed_claim())
+
+
+def test_worker_reservation_exception_fails_before_claim() -> None:
+    asyncio.run(_test_worker_reservation_exception_fails_before_claim())
 
 
 def test_worker_execute_no_start_backpressure_retries_without_run_or_attempt() -> None:
@@ -900,7 +904,7 @@ async def _test_worker_rejects_failed_story_run_missing_execution_started_before
     assert result.notes["failed"] == 1
 
 
-async def _test_worker_request_audit_failure_retries_without_burning_attempt() -> None:
+async def _test_worker_request_audit_failure_counts_as_failed_claim() -> None:
     db = FakeDB([_story_candidate()])
     provider = FakeStoryBriefProvider(request_error=RuntimeError("audit down"))
     worker = _worker(
@@ -916,12 +920,28 @@ async def _test_worker_request_audit_failure_retries_without_burning_attempt() -
     assert db.news.briefs == []
     assert db.dirty.done == []
     assert len(db.dirty.errors) == 1
-    assert db.dirty.error_kwargs[0]["retry_ms"] == 12_000
-    assert db.dirty.error_kwargs[0]["count_attempt"] is False
-    assert result.failed == 0
-    assert result.skipped == 1
-    assert result.notes["backpressure"] == 1
-    assert result.notes["request_audit_failed"] == 1
+    assert db.dirty.error_kwargs[0]["retry_ms"] == 60_000
+    assert db.dirty.error_kwargs[0]["count_attempt"] is True
+    assert db.dirty.error_kwargs[0]["error"] == "news_story_brief_request_audit_failed"
+    assert result.failed == 1
+    assert result.skipped == 0
+    assert result.notes["failed"] == 1
+    assert result.notes["backpressure"] == 0
+
+
+async def _test_worker_reservation_exception_fails_before_claim() -> None:
+    db = FakeDB([_story_candidate()])
+    provider = FakeStoryBriefProvider(reserve_error=RuntimeError("reserve exploded"))
+    worker = _worker(db=db, provider=provider)
+
+    with pytest.raises(RuntimeError, match="reserve exploded"):
+        await worker.run_once()
+
+    assert provider.reserve_calls == [NEWS_STORY_BRIEF_LANE]
+    assert provider.execution_calls == 0
+    assert db.dirty.claim_thread_ids == []
+    assert db.news.runs == []
+    assert db.news.briefs == []
 
 
 async def _test_worker_execute_no_start_backpressure_retries_without_run_or_attempt() -> None:
@@ -1302,6 +1322,7 @@ class FakeStoryBriefProvider:
         *,
         request_error: Exception | None = None,
         brief_error: Exception | None = None,
+        reserve_error: Exception | None = None,
         reservation: Any | None = None,
         omit_result_latency: bool = False,
         omit_result_usage: bool = False,
@@ -1315,6 +1336,7 @@ class FakeStoryBriefProvider:
         self.db: FakeDB | None = None
         self.request_error = request_error
         self.brief_error = brief_error
+        self.reserve_error = reserve_error
         self.omit_result_latency = omit_result_latency
         self.omit_result_usage = omit_result_usage
         self.omit_result_trace_metadata = omit_result_trace_metadata
@@ -1323,6 +1345,8 @@ class FakeStoryBriefProvider:
         assert self.db is None or self.db.in_session is False
         self.reserve_calls.append(lane)
         self.reserve_rate_units.append(rate_units)
+        if self.reserve_error is not None:
+            raise self.reserve_error
         self.reservation.rate_units = rate_units
         return self.reservation
 

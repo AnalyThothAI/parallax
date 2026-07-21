@@ -190,23 +190,8 @@ class CliTests(unittest.TestCase):
             ["ops", "rebuild-token-radar", "--window", "1h"],
             ["ops", "audit-token-radar", "--window", "5m", "--scope", "all"],
             ["ops", "factor-diagnostics", "--window", "1h", "--scope", "all", "--limit", "200"],
-            [
-                "ops",
-                "settle-token-factors",
-                "--window",
-                "1h",
-                "--scope",
-                "all",
-                "--horizon",
-                "1h",
-                "--limit",
-                "1000",
-                "--now-ms",
-                "1700000000000",
-            ],
             ["ops", "sync-us-equity-symbols"],
             ["ops", "rebuild-token-profiles", "--limit", "5"],
-            ["ops", "rebuild-market-tick-current", "--dry-run"],
             ["ops", "enqueue-token-radar-dirty-targets", "--source", "events", "--since-ms", "0", "--dry-run"],
             [
                 "ops",
@@ -254,24 +239,20 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[18].ops_command, "audit-token-radar")
         self.assertEqual(parsed[19].ops_command, "factor-diagnostics")
         self.assertEqual(parsed[19].limit, 200)
-        self.assertEqual(parsed[20].ops_command, "settle-token-factors")
-        self.assertEqual(parsed[20].now_ms, 1_700_000_000_000)
-        self.assertEqual(parsed[21].ops_command, "sync-us-equity-symbols")
-        self.assertEqual(parsed[22].ops_command, "rebuild-token-profiles")
-        self.assertEqual(parsed[22].limit, 5)
-        self.assertEqual(parsed[23].ops_command, "rebuild-market-tick-current")
-        self.assertTrue(parsed[23].dry_run)
-        self.assertEqual(parsed[24].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[24].source, "events")
-        self.assertEqual(parsed[24].since_ms, 0)
-        self.assertEqual(parsed[24].limit, 5000)
-        self.assertTrue(parsed[24].dry_run)
-        self.assertEqual(parsed[25].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[25].source, "market-current")
-        self.assertTrue(parsed[25].execute)
-        self.assertEqual(parsed[26].ops_command, "enqueue-token-capture-tier-rank-set")
-        self.assertEqual(parsed[26].window, "24h")
-        self.assertTrue(parsed[26].execute)
+        self.assertEqual(parsed[20].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[21].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[21].limit, 5)
+        self.assertEqual(parsed[22].ops_command, "enqueue-token-radar-dirty-targets")
+        self.assertEqual(parsed[22].source, "events")
+        self.assertEqual(parsed[22].since_ms, 0)
+        self.assertEqual(parsed[22].limit, 5000)
+        self.assertTrue(parsed[22].dry_run)
+        self.assertEqual(parsed[23].ops_command, "enqueue-token-radar-dirty-targets")
+        self.assertEqual(parsed[23].source, "market-current")
+        self.assertTrue(parsed[23].execute)
+        self.assertEqual(parsed[24].ops_command, "enqueue-token-capture-tier-rank-set")
+        self.assertEqual(parsed[24].window, "24h")
+        self.assertTrue(parsed[24].execute)
 
     def test_cli_ops_rebuild_narrative_intel_is_not_registered(self):
         parser = build_parser()
@@ -594,7 +575,6 @@ def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypa
             token_radar_projection=FakeWorkerSettings(
                 advisory_lock_key=configured_lock_key,
                 batch_size=100,
-                wakes_on=("market_tick_written",),
             ),
             narrative_admission=SimpleNamespace(enabled=True),
         )
@@ -675,7 +655,6 @@ def test_rebuild_token_radar_one_shot_skips_when_live_worker_holds_lock(monkeypa
             token_radar_projection=FakeWorkerSettings(
                 advisory_lock_key=configured_lock_key,
                 batch_size=100,
-                wakes_on=("market_tick_written",),
             ),
             narrative_admission=SimpleNamespace(enabled=True),
         )
@@ -898,94 +877,8 @@ def test_cli_ops_cleanup_news_intel_hard_cut_is_not_registered() -> None:
         parser.parse_args(["ops", "cleanup-news-intel-hard-cut", "--execute"])
 
 
-def test_cli_ops_settle_token_factors_dispatches_to_service_with_hidden_now_ms(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    captured = {}
-
-    class FakeRepos:
-        pass
-
-    @contextmanager
-    def fake_repositories(_settings):
-        yield FakeRepos()
-
-    def fake_settle_token_factor_scores(**kwargs):
-        captured.update(kwargs)
-        return {"settled_count": 3, "generated_at_ms": kwargs["generated_at_ms"]}
-
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "settle_token_factor_scores", fake_settle_token_factor_scores)
-    stdout = io.StringIO()
-
-    code = main(
-        [
-            "ops",
-            "settle-token-factors",
-            "--window",
-            "1h",
-            "--scope",
-            "all",
-            "--horizon",
-            "1h",
-            "--limit",
-            "9",
-            "--now-ms",
-            "1700000000123",
-        ],
-        stdout=stdout,
-    )
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert captured["repos"].__class__ is FakeRepos
-    assert captured["window"] == "1h"
-    assert captured["scope"] == "all"
-    assert captured["horizon"] == "1h"
-    assert captured["limit"] == 9
-    assert captured["generated_at_ms"] == 1_700_000_000_123
-    assert payload == {"ok": True, "data": {"settled_count": 3, "generated_at_ms": 1_700_000_000_123}}
-
-
-def test_cli_ops_settle_token_factors_respects_zero_hidden_now_ms(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    captured = {}
-
-    class FakeRepos:
-        pass
-
-    @contextmanager
-    def fake_repositories(_settings):
-        yield FakeRepos()
-
-    def fake_settle_token_factor_scores(**kwargs):
-        captured.update(kwargs)
-        return {"generated_at_ms": kwargs["generated_at_ms"]}
-
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "settle_token_factor_scores", fake_settle_token_factor_scores)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 9_999)
-    stdout = io.StringIO()
-
-    code = main(
-        ["ops", "settle-token-factors", "--window", "1h", "--scope", "all", "--horizon", "1h", "--now-ms", "0"],
-        stdout=stdout,
-    )
-
-    assert code == 0
-    assert captured["generated_at_ms"] == 0
-    assert json.loads(stdout.getvalue())["data"]["generated_at_ms"] == 0
-
-
 def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(monkeypatch, tmp_path):
     from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    captured = {}
 
     @contextmanager
     def fake_repositories(_settings):
@@ -999,8 +892,7 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
         async def aclose(self):
             return None
 
-    def fake_wire_asset_market_providers(settings, *, start_collector):
-        captured["start_collector"] = start_collector
+    def fake_wire_asset_market_providers(settings):
         return FakeAssetMarketProviders(dex_profile_sources=())
 
     write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
@@ -1018,7 +910,6 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
-    assert captured["start_collector"] is True
     assert payload == {
         "ok": True,
         "data": {
@@ -1038,6 +929,7 @@ def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(m
             "sources": {},
             "started_at_ms": 1_700_000_000_000,
             "finished_at_ms": 1_700_000_000_000,
+            "discovery": {},
         },
     }
 
@@ -1086,8 +978,7 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
         def counts(self):
             return {"found": 0}
 
-    def fake_wire_asset_market_providers(settings, *, start_collector):
-        captured["start_collector"] = start_collector
+    def fake_wire_asset_market_providers(settings):
         return FakeAssetMarketProviders(
             dex_discovery_market=object(),
             dex_quote_market=None,
@@ -1106,7 +997,6 @@ def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_ses
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
-    assert captured["start_collector"] is True
     assert captured["session_names"] == ["resolution_refresh", "resolution_refresh"]
     assert captured["claim_due_lookup_kwargs"]["limit"] == 3
     assert payload["data"]["lookups_selected"] == 0
@@ -1530,7 +1420,7 @@ def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(mon
             self.worker_pool.close()
             self.wake_pool.close()
 
-    def fake_wire_asset_market_providers(settings, *, start_collector):
+    def fake_wire_asset_market_providers(settings):
         raise RuntimeError("provider wiring failed")
 
     write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")

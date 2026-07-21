@@ -18,6 +18,10 @@ unbounded overview source query.
 `/api/watchlist/handle/{handle}/timeline` remains a paged fact read over
 `events` ordered by `(received_at_ms, event_id)` with a caller-owned cursor and
 limit. Token resolution details are looked up only for the visible page.
+Visible event rows require a non-empty `event_id`, positive `received_at_ms`,
+and list-shaped `cashtags_json`, `hashtags_json`, and `mentions_json`; malformed
+persisted facts fail the read instead of being repaired to empty identity,
+epoch time, or empty lists.
 
 `/api/watchlist/handles/overview` must keep configured-handle metrics as a
 batch read. The repository query owns the input handle keyset, preserves input

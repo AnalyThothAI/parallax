@@ -47,11 +47,6 @@ def rebuild_recent_token_intents(
     }
 
 
-def rebuild_event_token_intents(*, repos: Any, event_row: dict[str, Any]) -> dict[str, int]:
-    with repos.transaction():
-        return _rebuild_event_token_intents(repos=repos, event_row=event_row)
-
-
 def _rebuild_event_token_intents(*, repos: Any, event_row: dict[str, Any]) -> dict[str, int]:
     repos.require_transaction(operation="token_intent_rebuild")
     event_id = str(event_row["event_id"])

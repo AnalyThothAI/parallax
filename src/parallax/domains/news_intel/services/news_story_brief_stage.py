@@ -14,7 +14,6 @@ from parallax.platform.agent_hashing import text_sha256
 from parallax.platform.agent_knowledge import render_agent_instructions
 
 _NEWS_STORY_BRIEF_KNOWLEDGE_REFS = ("market_research_harness",)
-_NEWS_STORY_BRIEF_READ_ONLY_TOOL_REFS = ("news.story_current_briefs",)
 _STORY_DELTA_INSTRUCTIONS = """
 The input is a story-level packet, not a single article packet. Treat representative_item as the lead article,
 member_items as the bounded story evidence set, and evidence refs beginning with story:member: as source-backed
@@ -46,7 +45,6 @@ def build_news_story_brief_stage(*, packet: NewsStoryBriefInputPacket, run_id: s
         agent_name=NEWS_STORY_BRIEF_AGENT_NAME,
         group_id=f"news_story:{packet.story_key}",
         knowledge_refs=_NEWS_STORY_BRIEF_KNOWLEDGE_REFS,
-        read_only_tool_refs=_NEWS_STORY_BRIEF_READ_ONLY_TOOL_REFS,
         trace_metadata={
             "story_brief_key": packet.story_brief_key,
             "story_key": packet.story_key,

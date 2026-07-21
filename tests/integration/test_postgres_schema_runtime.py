@@ -1,10 +1,13 @@
 from __future__ import annotations
 
+from alembic import command
+
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from parallax.platform.db.postgres_migrations import latest_migration_version
+from parallax.platform.db.postgres_migrations import alembic_config, latest_migration_version
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
 
 
 def test_postgres_schema_bootstraps_core_tables(tmp_path):
@@ -15,6 +18,49 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
             row["name"]
             for row in conn.execute(
                 "SELECT table_name AS name FROM information_schema.tables WHERE table_schema = 'public'"
+            ).fetchall()
+        }
+        hard_cut_columns = {
+            (row["table_name"], row["column_name"])
+            for row in conn.execute(
+                """
+                SELECT table_name, column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name IN (
+                    'projection_runs',
+                    'narrative_admissions',
+                    'cex_detail_snapshots',
+                    'macro_view_snapshots',
+                    'account_quality_snapshots',
+                    'registry_assets',
+                    'cex_tokens',
+                    'price_feeds'
+                  )
+                """
+            ).fetchall()
+        }
+        hard_cut_primary_keys = {
+            row["table_name"]: _postgres_array_text(row["columns"])
+            for row in conn.execute(
+                """
+                SELECT tc.table_name,
+                       array_agg(kcu.column_name ORDER BY kcu.ordinal_position) AS columns
+                FROM information_schema.table_constraints AS tc
+                JOIN information_schema.key_column_usage AS kcu
+                  ON tc.constraint_name = kcu.constraint_name
+                 AND tc.table_schema = kcu.table_schema
+                 AND tc.table_name = kcu.table_name
+                WHERE tc.table_schema = 'public'
+                  AND tc.constraint_type = 'PRIMARY KEY'
+                  AND tc.table_name IN (
+                    'narrative_admissions',
+                    'cex_detail_snapshots',
+                    'macro_view_snapshots',
+                    'account_quality_snapshots'
+                  )
+                GROUP BY tc.table_name
+                """
             ).fetchall()
         }
     finally:
@@ -28,15 +74,29 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
     assert "notifications" in names
     assert "projection_offsets" in names
     assert "projection_runs" in names
-    assert "projection_dirty_ranges" in names
     assert "token_evidence" in names
     assert "token_intents" in names
     assert "token_intent_evidence" in names
     assert "token_intent_resolutions" in names
     assert "token_radar_current_rows" in names
     assert "token_radar_publication_state" in names
-    assert "token_radar_storage_maintenance_runs" in names
     for legacy_table in (
+        "projection_dirty_ranges",
+        "token_radar_storage_maintenance_runs",
+        "token_radar_publications",
+        "token_flow_window_snapshots",
+        "token_social_bucket_authors",
+        "token_social_buckets",
+        "model_runs",
+        "discussion_digest_dirty_targets",
+        "narrative_model_runs",
+        "token_mention_semantics",
+        "token_discussion_digests",
+        "registry_aliases",
+        "registry_versions",
+        "schema_migrations",
+        "token_aliases",
+        "projects",
         "token_radar_projection_coverage",
         "token_radar_snapshot_audit",
         "token_radar_rank_history",
@@ -69,6 +129,198 @@ def test_postgres_schema_bootstraps_core_tables(tmp_path):
         "harness_weights",
     ):
         assert legacy_table not in names
+    assert hard_cut_primary_keys == {
+        "narrative_admissions": ["target_type", "target_id", "window", "scope"],
+        "cex_detail_snapshots": ["exchange", "native_market_id"],
+        "macro_view_snapshots": ["projection_version"],
+        "account_quality_snapshots": ["handle", "window"],
+    }
+    assert {
+        ("projection_runs", "dirty_ranges_written"),
+        ("narrative_admissions", "admission_id"),
+        ("cex_detail_snapshots", "snapshot_id"),
+        ("macro_view_snapshots", "snapshot_id"),
+        ("account_quality_snapshots", "snapshot_id"),
+        ("registry_assets", "project_id"),
+        ("cex_tokens", "project_id"),
+        ("price_feeds", "base_project_id"),
+    }.isdisjoint(hard_cut_columns)
+
+
+def test_backend_kappa_hard_cut_migrates_nonempty_0182_state(tmp_path):
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        conn.execute("CREATE SCHEMA public")
+        conn.execute("GRANT ALL ON SCHEMA public TO public")
+        conn.commit()
+        config = alembic_config()
+        config.attributes["database_url"] = _test_postgres_dsn()
+        command.upgrade(config, "20260623_0182")
+
+        conn.execute(
+            """
+            INSERT INTO projects(project_id, status, evidence_level, primary_source, first_seen_at_ms, updated_at_ms)
+            VALUES ('project-1', 'active', 'verified', 'seed', 1, 2);
+            INSERT INTO registry_assets(
+              asset_id, project_id, chain_id, token_standard, address, status, first_seen_at_ms, updated_at_ms
+            ) VALUES ('asset-1', 'project-1', 'solana', 'spl', 'address-1', 'active', 1, 2);
+            INSERT INTO cex_tokens(
+              cex_token_id, project_id, base_symbol, status, evidence_level, first_seen_at_ms, updated_at_ms
+            ) VALUES ('cex-1', 'project-1', 'AAA', 'active', 'verified', 1, 2);
+            INSERT INTO price_feeds(
+              pricefeed_id, feed_type, provider, subject_type, subject_id,
+              base_asset_id, base_cex_token_id, base_project_id,
+              status, evidence_level, first_seen_at_ms, updated_at_ms
+            ) VALUES (
+              'feed-1', 'cex', 'seed', 'Asset', 'asset-1', 'asset-1', 'cex-1', 'project-1',
+              'active', 'verified', 1, 2
+            );
+            INSERT INTO asset_profiles(
+              asset_id, provider, status, observed_at_ms, next_refresh_at_ms, created_at_ms, updated_at_ms
+            ) VALUES ('asset-1', 'gmgn', 'ready', 777, 999, 1, 2);
+            INSERT INTO token_profile_current_dirty_targets(
+              target_type, target_id, dirty_reason, payload_hash, source_watermark_ms,
+              priority, due_at_ms, leased_until_ms, lease_owner, attempt_count,
+              last_error, first_dirty_at_ms, updated_at_ms
+            ) VALUES
+              ('Asset', 'asset-1', 'old', 'old', 0, 100, 999999, 888, 'worker', 4, 'boom', 1, 2),
+              ('Asset', 'orphan', 'old', 'old', 0, 100, 999999, NULL, NULL, 0, NULL, 1, 2);
+            INSERT INTO token_radar_target_features(
+              projection_version, "window", scope, lane, target_type_key, identity_id,
+              target_type, target_id, latest_event_received_at_ms,
+              payload_hash, last_scored_at_ms, created_at_ms, updated_at_ms
+            ) VALUES (
+              'token-radar-v13-social-attention', '1h', 'all', 'resolved',
+              'Asset', 'asset-feature', 'Asset', 'asset-feature', 555, 'feature-hash', 555, 1, 2
+            );
+            INSERT INTO token_radar_current_rows(
+              row_id, projection_version, "window", scope, lane, target_type_key, identity_id,
+              computed_at_ms, source_max_received_at_ms, rank, rank_score,
+              factor_version, decision, payload_hash, listed_at_ms, created_at_ms,
+              generation_id, published_at_ms, source_frontier_ms, quality_status
+            ) VALUES (
+              'row-1', 'token-radar-v13-social-attention', '1h', 'all', 'resolved',
+              'Asset', 'asset-current', 600, 600, 1, 1.0,
+              'factor-v1', 'observe', 'row-hash', 1, 1, 'generation-1', 600, 600, 'ready'
+            );
+            INSERT INTO token_radar_dirty_targets(
+              target_type_key, identity_id, dirty_reason, payload_hash, due_at_ms,
+              leased_until_ms, lease_owner, attempt_count, last_error,
+              first_dirty_at_ms, updated_at_ms, market_dirty, repair_dirty
+            ) VALUES (
+              'Asset', 'asset-feature', 'market', 'market-hash', 999999,
+              888, 'worker', 3, 'boom', 1, 2, true, false
+            );
+            INSERT INTO narrative_admissions(
+              admission_id, target_type, target_id, "window", scope, schema_version,
+              status, reason, priority, source_max_received_at_ms,
+              admitted_at_ms, last_seen_at_ms, updated_at_ms, projection_computed_at_ms,
+              source_event_count, independent_author_count, payload_hash
+            ) VALUES
+              ('admission-current', 'Asset', 'narrative-1', '1h', 'all', 'narrative_intel_v1',
+               'admitted', 'seed', 1, 100, 1, 100, 100, 100, 1, 1, 'current'),
+              ('admission-legacy-newer', 'Asset', 'narrative-1', '1h', 'all', 'legacy_v0',
+               'admitted', 'seed', 1, 900, 1, 900, 900, 900, 1, 1, 'legacy-newer'),
+              ('admission-legacy-only', 'Asset', 'narrative-2', '1h', 'all', 'legacy_v0',
+               'admitted', 'seed', 1, 700, 1, 700, 700, 700, 1, 1, 'legacy-only');
+            INSERT INTO narrative_admission_dirty_targets(
+              target_type, target_id, "window", scope, projection_version, schema_version,
+              dirty_reason, payload_hash, source_watermark_ms, priority, due_at_ms,
+              leased_until_ms, lease_owner, attempt_count, last_error, first_dirty_at_ms, updated_at_ms
+            ) VALUES (
+              'Asset', 'narrative-1', '1h', 'all', 'old-projection', 'legacy_v0',
+              'old', 'old', 50, 100, 999999, 888, 'worker', 3, 'boom', 1, 2
+            );
+            INSERT INTO cex_detail_snapshots(
+              snapshot_id, target_id, exchange, native_market_id, base_symbol,
+              status, baseline_status, coinglass_status, computed_at_ms, payload_hash
+            ) VALUES (
+              'cex-snapshot', 'cex-1', 'binance', 'AAAUSDT', 'AAA',
+              'ready', 'ready', 'ready', 101, 'cex-hash'
+            );
+            INSERT INTO macro_view_snapshots(
+              snapshot_id, projection_version, asof_date, status, regime, computed_at_ms, payload_hash
+            ) VALUES ('macro-snapshot', 'macro-v1', '2026-07-13', 'ready', 'risk_on', 102, 'macro-hash');
+            INSERT INTO account_quality_snapshots(snapshot_id, handle, "window", sample_size, updated_at_ms)
+            VALUES ('account-quality:alice:30d:current', 'alice', '30d', 12, 103)
+            """
+        )
+        conn.commit()
+
+        command.upgrade(config, "head")
+
+        narratives = conn.execute(
+            """
+            SELECT target_id, schema_version, source_max_received_at_ms
+            FROM narrative_admissions
+            ORDER BY target_id
+            """
+        ).fetchall()
+        narrative_queue = conn.execute(
+            """
+            SELECT target_id, schema_version, source_watermark_ms,
+                   leased_until_ms, lease_owner, attempt_count, last_error
+            FROM narrative_admission_dirty_targets
+            ORDER BY target_id
+            """
+        ).fetchall()
+        radar_queue = conn.execute(
+            """
+            SELECT identity_id, dirty_reason, leased_until_ms, lease_owner,
+                   attempt_count, last_error, market_dirty, repair_dirty
+            FROM token_radar_dirty_targets
+            ORDER BY identity_id
+            """
+        ).fetchall()
+        profile_queue = conn.execute(
+            """
+            SELECT target_id, source_watermark_ms, leased_until_ms,
+                   lease_owner, attempt_count, last_error
+            FROM token_profile_current_dirty_targets
+            ORDER BY target_id
+            """
+        ).fetchall()
+        target_feature_count = conn.execute("SELECT count(*) AS count FROM token_radar_target_features").fetchone()[
+            "count"
+        ]
+        retained_snapshots = (
+            conn.execute("SELECT exchange, native_market_id FROM cex_detail_snapshots").fetchall(),
+            conn.execute("SELECT projection_version FROM macro_view_snapshots").fetchall(),
+            conn.execute('SELECT handle, "window" FROM account_quality_snapshots').fetchall(),
+        )
+        retained_registry_rows = (
+            conn.execute("SELECT asset_id FROM registry_assets").fetchall(),
+            conn.execute("SELECT cex_token_id FROM cex_tokens").fetchall(),
+            conn.execute("SELECT pricefeed_id, base_asset_id, base_cex_token_id FROM price_feeds").fetchall(),
+        )
+        tables = {
+            row["table_name"]
+            for row in conn.execute(
+                "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
+            ).fetchall()
+        }
+    finally:
+        conn.close()
+
+    assert [tuple(row.values()) for row in narratives] == [("narrative-1", "narrative_intel_v1", 100)]
+    assert [tuple(row.values()) for row in narrative_queue] == [
+        ("narrative-1", "narrative_intel_v1", 900, None, None, 0, None),
+        ("narrative-2", "narrative_intel_v1", 700, None, None, 0, None),
+    ]
+    assert [tuple(row.values()) for row in radar_queue] == [
+        ("asset-current", "schema_hard_cut_0183", None, None, 0, None, False, True),
+        ("asset-feature", "mixed", None, None, 0, None, True, True),
+    ]
+    assert [tuple(row.values()) for row in profile_queue] == [("asset-1", 777, None, None, 0, None)]
+    assert target_feature_count == 0
+    assert [tuple(row.values()) for row in retained_snapshots[0]] == [("binance", "AAAUSDT")]
+    assert [tuple(row.values()) for row in retained_snapshots[1]] == [("macro-v1",)]
+    assert [tuple(row.values()) for row in retained_snapshots[2]] == [("alice", "30d")]
+    assert [tuple(row.values()) for row in retained_registry_rows[0]] == [("asset-1",)]
+    assert [tuple(row.values()) for row in retained_registry_rows[1]] == [("cex-1",)]
+    assert [tuple(row.values()) for row in retained_registry_rows[2]] == [("feed-1", "asset-1", "cex-1")]
+    assert "projects" not in tables
 
 
 def test_postgres_generated_tsvector_matches_inserted_event(tmp_path):
@@ -203,10 +455,10 @@ def test_token_radar_schema_supports_hard_cut_targets(tmp_path):
     finally:
         conn.close()
 
-    assert {"projects", "registry_assets", "cex_tokens", "price_feeds"}.issubset(table_names)
+    assert {"registry_assets", "cex_tokens", "price_feeds"}.issubset(table_names)
     assert {"market_ticks", "enriched_events", "token_capture_tier"}.issubset(table_names)
     assert _legacy_price_table() not in table_names
-    assert {"token_discovery_results", "registry_versions", "token_intent_lookup_keys"}.issubset(table_names)
+    assert {"token_discovery_results", "token_intent_lookup_keys"}.issubset(table_names)
     assert "discovery_tasks" not in table_names
     assert {"target_type", "target_id", "pricefeed_id", "reason_codes_json", "lookup_keys_json"}.issubset(
         resolution_columns
@@ -283,6 +535,17 @@ def test_runtime_schema_contains_signal_pulse_tables(tmp_path):
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
             ).fetchall()
         }
+        snapshot_columns = {
+            row["column_name"]
+            for row in conn.execute(
+                """
+                SELECT column_name
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'pulse_playbook_snapshots'
+                """
+            ).fetchall()
+        }
     finally:
         conn.close()
 
@@ -291,35 +554,19 @@ def test_runtime_schema_contains_signal_pulse_tables(tmp_path):
         "pulse_agent_runs",
         "pulse_candidates",
         "pulse_playbook_snapshots",
-        "pulse_playbook_outcomes",
     }.issubset(table_names)
+    assert "outcome_status" not in snapshot_columns
 
 
-def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
+def test_runtime_schema_drops_dead_token_factor_evaluations_and_keeps_market_fact_indexes(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
-        columns = {
-            row["column_name"]: row
-            for row in conn.execute(
-                """
-                SELECT column_name, data_type, is_nullable, column_default
-                FROM information_schema.columns
-                WHERE table_schema = 'public' AND table_name = 'token_score_evaluations'
-                """
-            ).fetchall()
-        }
-        token_factor_indexes = {
-            row["indexname"]
-            for row in conn.execute(
-                """
-                SELECT indexname
-                FROM pg_indexes
-                WHERE schemaname = 'public'
-                  AND tablename = 'token_score_evaluations'
-                """
-            ).fetchall()
-        }
+        token_factor_table = conn.execute(
+            """
+            SELECT to_regclass('public.token_score_evaluations') AS table_name
+            """
+        ).fetchone()
         market_fact_indexes = {
             row["indexname"]
             for row in conn.execute(
@@ -334,14 +581,7 @@ def test_runtime_schema_contains_token_factor_evaluation_diagnostics(tmp_path):
     finally:
         conn.close()
 
-    assert columns["sample_start_ms"]["data_type"] == "bigint"
-    assert columns["sample_end_ms"]["data_type"] == "bigint"
-    assert columns["spearman_ic"]["data_type"] == "double precision"
-    assert columns["icir"]["data_type"] == "double precision"
-    assert columns["score_stddev"]["data_type"] == "double precision"
-    assert columns["score_stddev"]["is_nullable"] == "YES"
-    assert columns["diagnostics_json"]["is_nullable"] == "NO"
-    assert "idx_token_score_evaluations_generated" in token_factor_indexes
+    assert token_factor_table["table_name"] is None
     assert {
         "idx_market_ticks_target_observed",
         "idx_enriched_events_target_time",
@@ -576,8 +816,8 @@ def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signa
         "token_radar_current_rows",
         "token_radar_publication_state",
         "token_radar_target_first_seen",
-        "token_radar_storage_maintenance_runs",
     }.issubset(tables)
+    assert "token_radar_storage_maintenance_runs" not in tables
     assert "social_event_extractions" not in tables
     assert "watchlist_handle_signal_stats" not in tables
     assert "watchlist_handle_signal_events" not in tables
@@ -586,6 +826,7 @@ def test_runtime_schema_contains_token_radar_current_storage_and_watchlist_signa
     assert "token_radar_rank_history" not in tables
     assert "token_radar_snapshot_audit" not in tables
     assert "token_radar_retention_runs" not in tables
+    assert "pulse_playbook_outcomes" not in tables
     assert first_seen_columns["target_type_key"]["data_type"] == "text"
     assert first_seen_columns["target_type_key"]["is_nullable"] == "NO"
     assert first_seen_columns["identity_id"]["data_type"] == "text"
@@ -698,6 +939,17 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
                 """
             ).fetchall()
         }
+        target_feature_columns = {
+            row["column_name"]: row
+            for row in conn.execute(
+                """
+                SELECT column_name, data_type, is_nullable, column_default
+                FROM information_schema.columns
+                WHERE table_schema = 'public'
+                  AND table_name = 'token_radar_target_features'
+                """
+            ).fetchall()
+        }
         reloptions = {
             row["relname"]: set(row["reloptions"] or [])
             for row in conn.execute(
@@ -767,6 +1019,9 @@ def test_token_radar_postgres_hard_cut_runtime_schema_uses_partitioned_facts_and
     assert current_row_columns["degraded_reasons_json"]["is_nullable"] == "NO"
     assert current_row_columns["factor_snapshot_json"]["data_type"] == "jsonb"
     assert current_row_columns["factor_snapshot_json"]["is_nullable"] == "NO"
+    for column in ("intent_json", "resolution_json"):
+        assert target_feature_columns[column]["data_type"] == "jsonb"
+        assert target_feature_columns[column]["is_nullable"] == "NO"
     for table_options in reloptions.values():
         assert "fillfactor=70" in table_options
         assert "autovacuum_vacuum_scale_factor=0.02" in table_options

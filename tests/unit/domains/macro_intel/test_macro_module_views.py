@@ -6,13 +6,18 @@ from parallax.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
 from parallax.domains.macro_intel.services import macro_module_views
 from parallax.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
 from parallax.domains.macro_intel.services.macro_module_catalog import (
+    MACRO_MODULE_IDS,
     UnsupportedMacroModuleError,
-    list_macro_module_configs,
+    get_macro_module_config,
 )
 from parallax.domains.macro_intel.services.macro_module_views import build_macro_module_view
 from parallax.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
 
 NOW_MS = 1_779_000_000_000
+
+
+def _module_configs():
+    return tuple(get_macro_module_config(module_id) for module_id in MACRO_MODULE_IDS)
 
 
 def test_build_macro_module_view_projects_v3_display_contract() -> None:
@@ -54,7 +59,6 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
         "asof_label": "截至 2026-05-20",
         "computed_at_ms": NOW_MS,
         "computed_at_label": "计算于 2026-05-17 06:40 UTC",
-        "source_snapshot_id": "snapshot-1",
         "source_projection_version": "macro_regime_v4",
     }
     assert view["tiles"][0] == {
@@ -140,7 +144,7 @@ def test_build_macro_module_view_projects_v3_display_contract() -> None:
 
 
 def test_availability_table_does_not_emit_placeholder_gap_cells_or_empty_rows() -> None:
-    config = next(item for item in list_macro_module_configs() if item.module_id == "rates/yield-curve")
+    config = get_macro_module_config("rates/yield-curve")
 
     empty_table = macro_module_views._availability_table(
         config=config,
@@ -251,7 +255,7 @@ def test_feature_surfaces_require_history_points_without_optional_gap(builder_na
 def test_availability_table_requires_present_feature_history_points_without_history_missing_label() -> None:
     feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
     del feature["history_points"]
-    config = next(config for config in list_macro_module_configs() if config.module_id == "rates/yield-curve")
+    config = get_macro_module_config("rates/yield-curve")
 
     with pytest.raises(ValueError, match="macro_module_view_feature_history_points_required:rates:dgs10"):
         macro_module_views._availability_table(
@@ -275,7 +279,7 @@ def test_availability_table_requires_present_feature_latest_without_observed_at_
     message: str,
 ) -> None:
     feature = _feature("rates:dgs10", 4.7, unit="percent", source_name="fred")
-    config = next(config for config in list_macro_module_configs() if config.module_id == "rates/yield-curve")
+    config = get_macro_module_config("rates/yield-curve")
     if missing_field == "latest":
         del feature["latest"]
     else:
@@ -297,7 +301,7 @@ def test_availability_table_requires_present_feature_latest_unit_without_catalog
     latest = feature["latest"]
     assert isinstance(latest, dict)
     del latest["unit"]
-    config = next(config for config in list_macro_module_configs() if config.module_id == "rates/yield-curve")
+    config = get_macro_module_config("rates/yield-curve")
 
     with pytest.raises(ValueError, match="macro_module_view_feature_latest_unit_required:rates:dgs10"):
         macro_module_views._availability_table(
@@ -4108,7 +4112,7 @@ def test_required_concept_error_gap_keeps_module_missing() -> None:
 
 def test_module_view_uses_semantic_chart_table_titles_for_every_catalog_spec() -> None:
     snapshot = _snapshot()
-    for config in list_macro_module_configs():
+    for config in _module_configs():
         view = build_macro_module_view(config.module_id, snapshot=snapshot, observations=[])
 
         chart = view["primary_chart"]
@@ -8463,7 +8467,6 @@ def test_build_macro_module_view_rejects_parent_category_ids(module_id: str) -> 
 
 def _snapshot() -> dict[str, object]:
     return {
-        "snapshot_id": "snapshot-1",
         "projection_version": "macro_regime_v4",
         "asof_date": "2026-05-20",
         "status": "partial",

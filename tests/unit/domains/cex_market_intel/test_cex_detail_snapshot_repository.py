@@ -140,9 +140,9 @@ def test_detail_payload_hash_rejects_legacy_source_ref_keys():
 
 @pytest.mark.parametrize(
     "field",
-    ("snapshot_id", "target_type", "target_id", "exchange", "native_market_id", "base_symbol", "quote_symbol"),
+    ("target_type", "target_id", "exchange", "native_market_id", "base_symbol", "quote_symbol"),
 )
-def test_detail_payload_hash_requires_formal_snapshot_identity_without_defaults(field):
+def test_detail_payload_hash_requires_formal_current_identity_without_defaults(field):
     snapshot = _snapshot(computed_at_ms=1_778_000_000_000)
     snapshot[field] = ""
 
@@ -274,9 +274,9 @@ def test_upsert_snapshot_requires_connection_transaction_before_sql_when_committ
 
 @pytest.mark.parametrize(
     "field",
-    ("snapshot_id", "target_type", "target_id", "exchange", "native_market_id", "base_symbol", "quote_symbol"),
+    ("target_type", "target_id", "exchange", "native_market_id", "base_symbol", "quote_symbol"),
 )
-def test_upsert_snapshot_requires_formal_snapshot_identity_before_sql(field):
+def test_upsert_snapshot_requires_formal_current_identity_before_sql(field):
     conn = _RecordingConn(rowcounts=[1])
     snapshot = _snapshot(computed_at_ms=1_778_000_000_000)
     snapshot[field] = ""
@@ -439,6 +439,44 @@ def test_latest_snapshot_by_market_requires_formal_query_identity_before_sql(fie
     assert conn.sql_calls == []
 
 
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    (
+        ("level_bands_json", None, "cex_detail_snapshot_persisted_payload_invalid:level_bands_json"),
+        ("degraded_reasons_json", {}, "cex_detail_snapshot_persisted_payload_invalid:degraded_reasons_json"),
+        ("source_refs_json", "[]", "cex_detail_snapshot_persisted_payload_invalid:source_refs_json"),
+    ),
+)
+def test_latest_snapshot_rejects_malformed_persisted_list_payloads(
+    field: str,
+    value: object,
+    error: str,
+) -> None:
+    row = _persisted_snapshot_row()
+    row[field] = value
+
+    with pytest.raises(ValueError, match=error):
+        CexDetailSnapshotRepository(_ReadConn(row)).latest_snapshot(
+            target_type="CexToken",
+            target_id="cex_token:BTC",
+        )
+
+
+def test_latest_snapshot_maps_formal_persisted_list_payloads() -> None:
+    row = _persisted_snapshot_row()
+
+    result = CexDetailSnapshotRepository(_ReadConn(row)).latest_snapshot(
+        target_type="CexToken",
+        target_id="cex_token:BTC",
+    )
+
+    assert result is not None
+    assert result["level_bands"] == row["level_bands_json"]
+    assert result["degraded_reasons"] == []
+    assert result["source_refs"] == row["source_refs_json"]
+    assert "level_bands_json" not in result
+
+
 def _snapshot(
     *,
     computed_at_ms: int,
@@ -454,7 +492,6 @@ def _snapshot(
 ) -> dict:
     source_observed_at_ms = observed_at_ms or computed_at_ms
     snapshot = {
-        "snapshot_id": "cex-detail:binance:BTCUSDT",
         "target_type": "CexToken",
         "target_id": "cex_token:BTC",
         "exchange": "binance",
@@ -497,6 +534,14 @@ def _snapshot(
     return snapshot
 
 
+def _persisted_snapshot_row() -> dict:
+    row = _snapshot(computed_at_ms=1_778_000_000_000)
+    row["level_bands_json"] = row.pop("level_bands")
+    row["degraded_reasons_json"] = row.pop("degraded_reasons")
+    row["source_refs_json"] = row.pop("source_refs")
+    return row
+
+
 class _RecordingCursor:
     def __init__(self, rowcount: object, *, row=None) -> None:
         self.rowcount = rowcount
@@ -525,6 +570,14 @@ class _RecordingConn:
 
     def transaction(self):
         return _Transaction(self)
+
+
+class _ReadConn:
+    def __init__(self, row: dict) -> None:
+        self.row = row
+
+    def execute(self, _sql, _params=None):
+        return _RecordingCursor(1, row=self.row)
 
 
 class _NoTransactionConn(_RecordingConn):

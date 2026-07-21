@@ -45,7 +45,6 @@ def sync_binance_usdt_perp_routes(
             for route in routes:
                 cex_token = registry.upsert_cex_token(
                     base_symbol=route.base_symbol,
-                    project_id=None,
                     source="binance_cex",
                     observed_at_ms=observed_at_ms,
                     commit=False,

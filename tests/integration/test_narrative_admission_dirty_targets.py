@@ -14,8 +14,6 @@ from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSI
 from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 from tests.integration.test_narrative_repository import (
     _insert_intent,
-    _insert_legacy_digest,
-    _insert_legacy_semantic,
     _insert_radar_publication_state,
     _insert_radar_row,
     make_event,
@@ -68,7 +66,6 @@ def test_token_radar_publish_enqueues_narrative_admission_in_same_transaction(tm
             lease_owner="test-narrative",
             lease_ms=60_000,
         )[0]
-        digest_count = conn.execute("SELECT count(*) AS count FROM discussion_digest_dirty_targets").fetchone()
     finally:
         conn.close()
 
@@ -82,7 +79,6 @@ def test_token_radar_publish_enqueues_narrative_admission_in_same_transaction(tm
     assert target["dirty_reason"] == "token_radar_entered"
     assert target["source_watermark_ms"] == 1_778_000_000_000
     assert target["attempt_count"] == 1
-    assert digest_count["count"] == 0
 
 
 def test_token_radar_refresh_rolls_back_current_rows_when_narrative_enqueue_fails(tmp_path) -> None:
@@ -120,8 +116,7 @@ def test_token_radar_refresh_rolls_back_current_rows_when_narrative_enqueue_fail
             SELECT
               (SELECT count(*) FROM token_radar_current_rows) AS current_count,
               (SELECT count(*) FROM pulse_trigger_dirty_targets) AS pulse_count,
-              (SELECT count(*) FROM narrative_admission_dirty_targets) AS narrative_count,
-              (SELECT count(*) FROM discussion_digest_dirty_targets) AS digest_count
+              (SELECT count(*) FROM narrative_admission_dirty_targets) AS narrative_count
             """
         ).fetchone()
     finally:
@@ -130,7 +125,6 @@ def test_token_radar_refresh_rolls_back_current_rows_when_narrative_enqueue_fail
     assert counts["current_count"] == 0
     assert counts["pulse_count"] == 0
     assert counts["narrative_count"] == 0
-    assert counts["digest_count"] == 0
 
 
 class _FailingNarrativeAdmissionDirtyTargets:
@@ -219,10 +213,19 @@ def test_stale_admission_target_only_removes_claimed_target_window_scope(tmp_pat
                     "window": "1h",
                     "scope": "matched",
                     "schema_version": NARRATIVE_SCHEMA_VERSION,
+                    "status": "admitted",
+                    "reason": "radar_row",
+                    "priority": 10,
+                    "last_radar_rank": 1,
+                    "last_rank_score": 88.5,
                     "source_event_ids": ["event-exited"],
                     "source_max_received_at_ms": 2_000,
+                    "projection_computed_at_ms": 2_000,
+                    "source_window_start_ms": 1_000,
+                    "source_window_end_ms": 2_000,
                     "source_event_count": 1,
                     "independent_author_count": 1,
+                    "admission_generation": "1h:matched:2000",
                 },
                 {
                     "target_type": "chain_token",
@@ -230,67 +233,33 @@ def test_stale_admission_target_only_removes_claimed_target_window_scope(tmp_pat
                     "window": "1h",
                     "scope": "matched",
                     "schema_version": NARRATIVE_SCHEMA_VERSION,
+                    "status": "admitted",
+                    "reason": "radar_row",
+                    "priority": 9,
+                    "last_radar_rank": 2,
+                    "last_rank_score": 80.0,
                     "source_event_ids": ["event-other"],
                     "source_max_received_at_ms": 2_000,
+                    "projection_computed_at_ms": 2_000,
+                    "source_window_start_ms": 1_000,
+                    "source_window_end_ms": 2_000,
                     "source_event_count": 1,
                     "independent_author_count": 1,
+                    "admission_generation": "1h:matched:2000",
                 },
             ],
             now_ms=2_000,
         )
-        _insert_legacy_semantic(
-            conn,
-            event_id="event-exited",
-            target_id="solana:Exited",
-            status="labeled",
-            computed_at_ms=2_100,
-        )
-        _insert_legacy_semantic(
-            conn,
-            event_id="event-other",
-            target_id="solana:Other",
-            status="labeled",
-            computed_at_ms=2_100,
-        )
-        for target_id, event_id in [("solana:Exited", "event-exited"), ("solana:Other", "event-other")]:
-            source_fingerprint = conn.execute(
-                """
-                SELECT source_fingerprint
-                FROM narrative_admissions
-                WHERE target_id = %s
-                """,
-                (target_id,),
-            ).fetchone()["source_fingerprint"]
-            _insert_legacy_digest(
-                conn,
-                digest_id=f"digest:{target_id}",
-                target_id=target_id,
-                window="1h",
-                scope="matched",
-                source_event_ids=[event_id],
-                source_fingerprint=source_fingerprint,
-                headline=f"Ready digest {target_id}",
-                computed_at_ms=2_200,
-            )
-
         result = repo.stale_admission_target(
             target_type="chain_token",
             target_id="solana:Exited",
             window="1h",
             scope="matched",
-            schema_version=NARRATIVE_SCHEMA_VERSION,
-            now_ms=3_000,
         )
         remaining_admissions = {
             row["target_id"] for row in conn.execute("SELECT target_id FROM narrative_admissions").fetchall()
         }
-        remaining_digests = {
-            row["target_id"] for row in conn.execute("SELECT target_id FROM token_discussion_digests").fetchall()
-        }
-        remaining_semantics = {
-            row["target_id"] for row in conn.execute("SELECT target_id FROM token_mention_semantics").fetchall()
-        }
-        current = repo.current_digests_for_targets(
+        current = repo.current_narrative_admissions_for_targets(
             [{"target_type": "chain_token", "target_id": "solana:Exited"}],
             window="1h",
             scope="matched",
@@ -299,8 +268,6 @@ def test_stale_admission_target_only_removes_claimed_target_window_scope(tmp_pat
     finally:
         conn.close()
 
-    assert result == {"staled_admissions": 1, "staled_digests": 0, "staled_semantics": 0}
+    assert result == {"staled_admissions": 1}
     assert remaining_admissions == {"solana:Other"}
-    assert remaining_digests == {"solana:Exited", "solana:Other"}
-    assert remaining_semantics == {"solana:Exited", "solana:Other"}
-    assert current[("chain_token", "solana:Exited")]["currentness"]["display_status"] == "out_of_frontier"
+    assert current[("chain_token", "solana:Exited")]["currentness"]["display_status"] == "not_ready"

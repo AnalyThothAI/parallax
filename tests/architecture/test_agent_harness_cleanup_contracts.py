@@ -39,7 +39,7 @@ def test_narrative_llm_provider_client_and_prompts_are_removed() -> None:
     assert "litellm_narrative_intel_provider" not in model_execution_wiring
 
 
-def test_agent_stage_spec_has_explicit_read_only_harness_context() -> None:
+def test_agent_stage_spec_has_explicit_knowledge_context() -> None:
     from pydantic import BaseModel
 
     from parallax.platform.agent_execution import AgentStageSpec
@@ -58,8 +58,6 @@ def test_agent_stage_spec_has_explicit_read_only_harness_context() -> None:
         workflow_name="news_item_brief",
         agent_name="NewsItemBriefAgent",
         knowledge_refs=("market_research_harness",),
-        read_only_tool_refs=("news.story_current_briefs",),
     )
 
     assert stage.knowledge_refs == ("market_research_harness",)
-    assert stage.read_only_tool_refs == ("news.story_current_briefs",)

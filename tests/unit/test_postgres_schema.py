@@ -224,6 +224,9 @@ MACRO_EVENT_TEXT_SERIES_NULLABLE_MIGRATION = Path(
 NEWS_PAGE_MACRO_EVENT_FLOW_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260623_0182_news_page_macro_event_flow.py"
 )
+BACKEND_KAPPA_CQRS_HARD_CUT_MIGRATION = Path(
+    "src/parallax/platform/db/alembic/versions/20260713_0183_backend_kappa_cqrs_hard_cut.py"
+)
 NEWS_AGENT_MARKET_ADMISSION_HARD_CUT_MIGRATION = Path(
     "src/parallax/platform/db/alembic/versions/20260606_0151_news_agent_market_admission_hard_cut.py"
 )
@@ -2804,7 +2807,6 @@ def test_signal_pulse_agent_hard_cut_migration_defines_pulse_tables() -> None:
         "pulse_agent_runs",
         "pulse_candidates",
         "pulse_playbook_snapshots",
-        "pulse_playbook_outcomes",
     ):
         assert f"CREATE TABLE IF NOT EXISTS {table}" in text
 
@@ -2818,8 +2820,6 @@ def test_signal_pulse_agent_hard_cut_migration_defines_pulse_tables() -> None:
     assert "confirmation_json JSONB NOT NULL" in text
     assert "invalidation_json JSONB NOT NULL" in text
     assert "risk_json JSONB NOT NULL" in text
-    assert "actual_return DOUBLE PRECISION" in text
-    assert "confirmation_hit BOOLEAN NOT NULL DEFAULT false" in text
     assert "idx_pulse_candidates_latest" in text
     assert 'ON pulse_candidates(pulse_version, "window", scope, pulse_status, updated_at_ms DESC)' in text
     assert "idx_pulse_candidates_target" in text
@@ -2828,7 +2828,6 @@ def test_signal_pulse_agent_hard_cut_migration_defines_pulse_tables() -> None:
     assert "idx_pulse_agent_runs_job_finished" in text
     assert "idx_pulse_playbook_snapshots_candidate" in text
     assert "idx_pulse_playbook_snapshots_target" in text
-    assert "idx_pulse_playbook_outcomes_settled" in text
 
 
 def test_signal_pulse_public_search_migration_adds_trigram_indexes() -> None:
@@ -2872,6 +2871,7 @@ def test_macro_event_text_series_nullable_migration_allows_text_event_rows() -> 
     assert "DELETE FROM macro_observation_series_rows" not in text
     assert "ANALYZE macro_observation_series_rows" in text
 
+
 def test_news_page_macro_event_flow_migration_adds_formal_projection_column() -> None:
     assert NEWS_PAGE_MACRO_EVENT_FLOW_MIGRATION.exists(), (
         f"{NEWS_PAGE_MACRO_EVENT_FLOW_MIGRATION} missing; macro overview news rows need formal event-flow projection"
@@ -2891,6 +2891,64 @@ def test_news_page_macro_event_flow_migration_adds_formal_projection_column() ->
     assert "CREATE INDEX CONCURRENTLY IF NOT EXISTS ix_news_page_rows_macro_event_flow_latest" in text
     assert "ON news_page_rows(projection_version, latest_at_ms DESC, row_id DESC)" in normalized_text
     assert "DROP COLUMN IF EXISTS macro_event_flow_json" in text
+
+
+def test_backend_kappa_cqrs_hard_cut_requeues_then_drops_dead_or_malformed_derived_state() -> None:
+    text = BACKEND_KAPPA_CQRS_HARD_CUT_MIGRATION.read_text(encoding="utf-8")
+
+    assert 'revision = "20260713_0183"' in text
+    assert 'down_revision = "20260623_0182"' in text
+    assert "SET LOCAL lock_timeout = '5s'" in text
+    assert "SET LOCAL statement_timeout = '10min'" in text
+    assert "DROP TABLE IF EXISTS pulse_playbook_outcomes" in text
+    assert "ALTER TABLE pulse_playbook_snapshots DROP COLUMN IF EXISTS outcome_status" in text
+    assert "ADD COLUMN intent_json JSONB" in text
+    assert "ADD COLUMN resolution_json JSONB" in text
+    assert "ALTER COLUMN intent_json SET NOT NULL" in text
+    assert "ALTER COLUMN resolution_json SET NOT NULL" in text
+    assert "FROM token_radar_target_features" in text
+    assert "UNION ALL" in text
+    assert "FROM token_radar_current_rows" in text
+    assert "repair_dirty" in text
+    assert "market_dirty = false" not in text
+    assert "TRUNCATE TABLE token_radar_target_features" in text
+    assert "DROP TABLE IF EXISTS token_score_evaluations" in text
+    assert "DROP TABLE IF EXISTS cex_derivative_series" in text
+    assert "DROP TABLE IF EXISTS projection_dirty_ranges" in text
+    assert "ALTER TABLE projection_runs DROP COLUMN dirty_ranges_written" in text
+    for dead_table in (
+        "discussion_digest_dirty_targets",
+        "token_discussion_digests",
+        "token_mention_semantics",
+        "narrative_model_runs",
+        "model_runs",
+        "registry_aliases",
+        "registry_versions",
+        "schema_migrations",
+        "token_aliases",
+        "token_flow_window_snapshots",
+        "token_radar_publications",
+        "token_radar_storage_maintenance_runs",
+        "token_social_bucket_authors",
+        "token_social_buckets",
+        "projects",
+    ):
+        assert f"DROP TABLE IF EXISTS {dead_table}" in text
+    assert "ALTER TABLE registry_assets DROP COLUMN project_id" in text
+    assert "ALTER TABLE cex_tokens DROP COLUMN project_id" in text
+    assert "ALTER TABLE price_feeds DROP COLUMN base_project_id" in text
+    assert "DELETE FROM token_profile_current_dirty_targets WHERE source_watermark_ms <= 0" in text
+    assert "ck_token_profile_current_dirty_source_watermark_positive" in text
+    assert "max(source_watermark_ms)::bigint AS source_watermark_ms" in text
+    assert "WHERE schema_version IS DISTINCT FROM 'narrative_intel_v1'" in text
+    assert 'PRIMARY KEY (target_type, target_id, "window", scope)' in text
+    assert "DROP COLUMN admission_id" in text
+    assert "LOCK TABLE narrative_admissions, narrative_admission_dirty_targets" in text
+    assert "PRIMARY KEY USING INDEX ux_cex_detail_snapshots_market" in text
+    assert "PRIMARY KEY USING INDEX ux_macro_view_snapshots_current" in text
+    assert "PRIMARY KEY USING INDEX ux_account_quality_snapshots_handle_window" in text
+    assert text.count("DROP COLUMN snapshot_id") == 3
+    assert "irreversible hard cut" in text
 
 
 def test_token_search_demotion_migration_demotes_only_unprotected_search_assets() -> None:

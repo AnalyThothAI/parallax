@@ -952,6 +952,7 @@ def test_build_news_page_row_includes_ready_compact_agent_brief() -> None:
         & row["agent_brief"].keys()
     )
 
+
 @pytest.mark.parametrize(
     ("market_impacts", "error"),
     [

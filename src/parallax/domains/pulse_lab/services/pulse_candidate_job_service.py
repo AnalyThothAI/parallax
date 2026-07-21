@@ -70,7 +70,6 @@ from parallax.platform.agent_execution import (
 )
 from parallax.platform.cancellation import is_worker_hard_timeout_cancelled
 
-_PLAYBOOK_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
 _NO_START_BACKPRESSURE_CLASSES = {
     AgentExecutionErrorClass.CAPACITY_DENIED,
     AgentExecutionErrorClass.CIRCUIT_OPEN,
@@ -1033,7 +1032,6 @@ def _playbook_snapshot_payload(
         },
         "entry_market": _entry_market(context.factor_snapshot),
         "playbook_version": PULSE_PLAYBOOK_VERSION,
-        "outcome_status": "pending",
         "created_at_ms": now_ms,
     }
 

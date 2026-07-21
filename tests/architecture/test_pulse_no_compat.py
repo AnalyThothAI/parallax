@@ -326,7 +326,7 @@ def test_pulse_candidate_worker_backpressure_requires_formal_reservation_without
     forbidden_reflection = (
         'getattr(reservation, "reason"',
         'getattr(reason, "value"',
-        'reservation: Any',
+        "reservation: Any",
     )
     required = (
         "isinstance(reservation, AgentCapacityReservation)",
@@ -631,10 +631,7 @@ def test_pulse_agent_write_repositories_use_shared_transaction_helper_without_ma
             "upsert_candidate",
             "hide_public_candidate_for_low_information",
         ),
-        PULSE_PLAYBOOKS_REPOSITORY: (
-            "upsert_playbook_snapshot",
-            "upsert_playbook_outcome",
-        ),
+        PULSE_PLAYBOOKS_REPOSITORY: ("upsert_playbook_snapshot",),
         PULSE_ADMISSION_REPOSITORY: (
             "record_edge_observation",
             "claim_edge_budget",
@@ -669,10 +666,7 @@ def test_pulse_admission_returning_writes_require_cursor_rowcount_match() -> Non
         _function_source(PULSE_ADMISSION_REPOSITORY, "mark_edge_budget_rejected"),
         _function_source(PULSE_ADMISSION_REPOSITORY, "mark_edge_run_finished"),
     )
-    private_returning_sources = (
-        _function_source(PULSE_ADMISSION_REPOSITORY, "_mark_edge_suppressed"),
-        _function_source(PULSE_ADMISSION_REPOSITORY, "_mark_edge_admitted"),
-    )
+    private_returning_sources = (_function_source(PULSE_ADMISSION_REPOSITORY, "_mark_edge_suppressed"),)
     forbidden = (
         "return row is not None",
         'getattr(cursor, "rowcount", 0)',
@@ -697,7 +691,6 @@ def test_pulse_admission_returning_writes_require_cursor_rowcount_match() -> Non
 def test_pulse_playbooks_repository_returning_writes_require_cursor_rowcount_match() -> None:
     repository_text = PULSE_PLAYBOOKS_REPOSITORY.read_text(encoding="utf-8")
     snapshot_source = _function_source(PULSE_PLAYBOOKS_REPOSITORY, "upsert_playbook_snapshot")
-    outcome_source = _function_source(PULSE_PLAYBOOKS_REPOSITORY, "upsert_playbook_outcome")
     forbidden = (
         "return _row(row)",
         "row = self.conn.execute(",
@@ -710,12 +703,9 @@ def test_pulse_playbooks_repository_returning_writes_require_cursor_rowcount_mat
     assert "def _cursor_rowcount(cursor: Any) -> int:" in repository_text
     assert "pulse_playbooks_repository_rowcount_required" in repository_text
     assert "pulse_playbooks_repository_rowcount_invalid" in repository_text
-    assert "def _required_returning_row(" in repository_text
     assert "def _optional_returning_row(" in repository_text
-    for source in (snapshot_source, outcome_source):
-        assert [token for token in forbidden if token in source] == []
+    assert [token for token in forbidden if token in snapshot_source] == []
     assert "_optional_returning_row(cursor, row)" in snapshot_source
-    assert "_required_returning_row(cursor, row)" in outcome_source
 
 
 def test_pulse_candidates_repository_returning_writes_require_cursor_rowcount_match() -> None:
@@ -990,7 +980,6 @@ def test_pulse_evidence_builder_requires_source_repository_contracts_without_opt
         "self._sources.list_enriched_events",
         "self._sources.list_market_facts",
         "self._sources.list_identity_facts",
-        "self._sources.get_current_discussion_digest",
     )
 
     assert [token for token in forbidden if token in text] == []
@@ -1283,9 +1272,7 @@ def test_pulse_freshness_health_requires_explicit_since_hours_without_defaults()
 
 def test_pulse_operator_lookback_queries_reject_instead_of_repairing() -> None:
     cost_report_source = (SRC / "domains/pulse_lab/queries/pulse_agent_cost_report.py").read_text(encoding="utf-8")
-    policy_evaluator_source = (SRC / "domains/pulse_lab/queries/pulse_policy_evaluator.py").read_text(
-        encoding="utf-8"
-    )
+    policy_evaluator_source = (SRC / "domains/pulse_lab/queries/pulse_policy_evaluator.py").read_text(encoding="utf-8")
 
     assert "pulse_agent_cost_report_lookback_hours_required" in cost_report_source
     assert "pulse_policy_lookback_hours_required" in policy_evaluator_source

@@ -77,9 +77,13 @@ forced into a resolved asset.
   missing-link observations may attach to an existing canonical item only
   through bounded deterministic material identity.
   Canonical item identity values and provider-global article-key policy live in
-  `news_intel.types.news_canonical_identity`; repositories and workers import
-  that leaf type module directly instead of reaching upward into deterministic
-  services.
+  `news_intel.types.news_canonical_identity`; the canonical-item repository
+  computes that identity once from the persisted provider observation and the
+  normalized item payload instead of accepting a second caller-supplied
+  identity path.
+- Provider-item persistence accepts one required `raw_payload` mapping. The
+  retired `raw_payload_json` argument alias and an omitted-payload-to-empty-map
+  fallback are not repository compatibility surfaces.
 - `news_item_agent_runs` is the append-only audit ledger for single-item
   agent brief attempts. `news_item_agent_briefs` is the item-scoped audit
   current table for those attempts, not public story-current state.

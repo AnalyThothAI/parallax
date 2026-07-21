@@ -2,8 +2,6 @@ from __future__ import annotations
 
 from parallax.platform.config.settings import Settings
 
-SHARED_HEADERS = {"User-Agent": "parallax/0.1"}
-
 
 class LLMGateway:
     def __init__(

@@ -209,7 +209,7 @@ def test_token_case_cex_detail_requires_snapshot_repository_contract() -> None:
 
     assert [token for token in forbidden_service_tokens if token in cex_detail_source] == []
     assert "self.cex_detail_snapshots.latest_snapshot" in cex_detail_source
-    assert '"snapshot_id": None' in cex_detail_source
+    assert '"snapshot_id"' not in cex_detail_source
     assert '"exchange": None' in cex_detail_source
     assert "cex_detail_snapshots=self.cex_detail_snapshots" in inspect_source
     assert "cex_detail_snapshots=repos.cex_detail_snapshots" in route_source
@@ -227,7 +227,8 @@ def test_manifest_classifies_cache_and_delivery_without_product_fact_drift() -> 
     assert live_price_gateway.wakes_out == ()
 
     notification_rule = manifests["notification_rule"]
-    assert notification_rule.writes_facts == ("notifications",)
+    assert notification_rule.writes_facts == ()
+    assert notification_rule.writes_read_models == ("notifications",)
     assert "notification_deliveries" in notification_rule.writes_control_plane
 
     notification_delivery = manifests["notification_delivery"]

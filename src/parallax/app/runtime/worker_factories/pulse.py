@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker, unavailable_worker
-from parallax.app.runtime.worker_manifest import manifest_names_for_factory
+from parallax.app.runtime.worker_manifest import manifest_names_for_factory, require_worker_manifest
 from parallax.domains.pulse_lab.runtime.pulse_candidate_worker import PulseCandidateWorker
 
 WORKER_KEYS = manifest_names_for_factory("pulse.py")
@@ -24,6 +24,6 @@ def construct_pulse_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
             db=ctx.db,
             telemetry=ctx.telemetry,
             decision_client=ctx.providers.pulse_lab.decision_provider,
-            wake_waiter=ctx.db.wake_listener(worker_name, workers.pulse_candidate.wakes_on),
+            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
     }

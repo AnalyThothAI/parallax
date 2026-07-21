@@ -1,5 +1,9 @@
-from parallax.domains.evidence.services.entity_extractor import extract_entities
+from parallax.domains.evidence.services.entity_extractor import TextSurface, extract_entities_from_surfaces
 from parallax.domains.evidence.types.entity import normalize_ca
+
+
+def _extract_primary(text: str):
+    return extract_entities_from_surfaces((TextSurface("primary", text),))
 
 
 def test_extract_entities_returns_deterministic_structured_entities():
@@ -8,8 +12,8 @@ def test_extract_entities_returns_deterministic_structured_entities():
         "#memecoin 0x6982508145454ce325ddbe47a25d4ec3d2311933"
     )
 
-    first = extract_entities(text)
-    second = extract_entities(text)
+    first = _extract_primary(text)
+    second = _extract_primary(text)
 
     assert first == second
     assert {
@@ -26,7 +30,7 @@ def test_extract_entities_returns_deterministic_structured_entities():
 def test_extract_entities_resolves_evm_chain_from_local_hint():
     text = "CA: 0xa4b79ddc047d301e1cfa21e1d4b524d1260e4444 Get more: BSC"
 
-    entities = extract_entities(text)
+    entities = _extract_primary(text)
 
     ca = next(entity for entity in entities if entity.entity_type == "ca")
     assert ca.chain == "bsc"
@@ -40,7 +44,7 @@ def test_extract_entities_resolves_evm_chain_from_explorer_url():
         "$SPIKE CA: 0xa949101be849184c77e5ac1405aaf3cdf41da1b2"
     )
 
-    chains = {entity.normalized_value: entity.chain for entity in extract_entities(text) if entity.entity_type == "ca"}
+    chains = {entity.normalized_value: entity.chain for entity in _extract_primary(text) if entity.entity_type == "ca"}
 
     assert chains == {
         "0x6801Bda730124FA7661a960b9261E9Bb01EF99af": "eth",
@@ -49,7 +53,7 @@ def test_extract_entities_resolves_evm_chain_from_explorer_url():
 
 
 def test_extract_entities_leaves_evm_ca_unknown_without_chain_hint():
-    entities = extract_entities("new ca 0xcfecf68e3359de205c3f0cffb00b6d488280ffff")
+    entities = _extract_primary("new ca 0xcfecf68e3359de205c3f0cffb00b6d488280ffff")
 
     ca = next(entity for entity in entities if entity.entity_type == "ca")
     assert ca.chain == "evm_unknown"
@@ -57,13 +61,13 @@ def test_extract_entities_leaves_evm_ca_unknown_without_chain_hint():
 
 
 def test_plain_words_do_not_become_entities_without_structural_markers():
-    entities = extract_entities("airdropper listed nothing")
+    entities = _extract_primary("airdropper listed nothing")
 
     assert entities == []
 
 
 def test_nan_cashtag_sentinel_is_not_a_token_symbol():
-    entities = extract_entities(
+    entities = _extract_primary(
         "Detect PAID DEXScreener: $MTGA DEDUST TON CA: EQC1RZb5BF_eWrR0AYCtpUig5c4CQoupQ_v-ABsRmO5pbgQL MC: $NaN"
     )
 

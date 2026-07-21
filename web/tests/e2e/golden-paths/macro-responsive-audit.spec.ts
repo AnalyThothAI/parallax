@@ -39,7 +39,7 @@ const HARD_DELETED_CATEGORY_ROUTES = [
 ];
 
 const RATES_PRIMARY_RAW_TEXT_PATTERN =
-  /macro_module_view_v3|source_snapshot_id|\b(?:rates|fed|liquidity|inflation):[a-z0-9_:-]+\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)*_missing\b|\{|\}/;
+  /macro_module_view_v3|\b(?:rates|fed|liquidity|inflation):[a-z0-9_:-]+\b|\b[a-z][a-z0-9]*(?:_[a-z0-9]+)*_missing\b|\{|\}/;
 
 test.describe("macro responsive audit", () => {
   test("macro product routes satisfy responsive layout contract", async ({ page }, testInfo) => {

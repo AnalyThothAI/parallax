@@ -71,7 +71,6 @@ def build_cex_detail_snapshot(
         level_bands=level_bands,
     )
     return {
-        "snapshot_id": f"cex-detail:{snapshot_exchange}:{native_market_id}",
         "target_type": "CexToken",
         "target_id": target_id,
         "exchange": snapshot_exchange,

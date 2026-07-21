@@ -13,10 +13,6 @@ from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
-DISPLAY_PULSE_STATUSES = ("trade_candidate", "token_watch", "risk_rejected_high_info")
-SUMMARY_PULSE_STATUSES = (*DISPLAY_PULSE_STATUSES, "blocked_low_information")
-DISPLAY_PULSE_STATUS_SQL = "('trade_candidate', 'token_watch', 'risk_rejected_high_info')"
-
 
 @dataclass(frozen=True, slots=True)
 class PulseAdmissionClaim:

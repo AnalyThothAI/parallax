@@ -5,143 +5,64 @@ import { describe, expect, it } from "vitest";
 const TOKEN_IMAGE_URL = "/api/token-images/hansa-local";
 
 describe("buildTokenRadarCompactCase", () => {
-  it("drives WHY NOW from a ready discussion digest", () => {
+  it("renders current admission status and source coverage", () => {
     const view = buildTokenRadarCompactCase(tokenFlowFixture());
 
-    expect(view.narrative.value).toBe("Expansion chase · bullish 62%");
-    expect(view.narrative.detail).toContain("retail is rotating into contract-confirmed posts");
-    expect(view.narrative.detail).toContain("coverage 82%");
-    expect(view.narrative.detail).not.toContain("有效讨论");
+    expect(view.admission.value).toBe("Admitted");
+    expect(view.admission.detail).toBe("22 posts · 9 authors");
+    expect(view.admission.tone).toBe("health");
   });
 
-  it("labels reused non-1h overlays as 1h narrative context", () => {
+  it("renders a missing admission without synthesizing narrative text", () => {
     const view = buildTokenRadarCompactCase({
       ...tokenFlowFixture(),
-      flow: { ...tokenFlowFixture().flow, window: "4h" },
-      discussion_digest: {
-        ...tokenFlowFixture().discussion_digest!,
-        analysis_window: "1h",
-        source_window: "1h",
-        surface_window: "4h",
-        reuse_reason: "target_current_1h_narrative",
-      },
-      pulse_overlay: {
-        status: "ready",
-        pulse_status: "confirmed",
-        verdict: "accumulation holding",
-      },
+      narrative_admission: null,
     });
 
-    expect(view.narrative.value).toBe("Expansion chase · 1h叙事 · bullish 62%");
-    expect(view.narrative.detail).toContain("1h context");
-    expect(view.narrative.detail).toContain("retail is rotating into contract-confirmed posts");
-    expect(view.narrative.detail).toContain("coverage 82%");
-    expect(view.narrative.detail).toContain("Pulse accumulation holding");
-  });
-
-  it("labels non-1h windows without reusable 1h digest as pending 1h narrative", () => {
-    const view = buildTokenRadarCompactCase({
-      ...tokenFlowFixture(),
-      flow: { ...tokenFlowFixture().flow, window: "24h" },
-      discussion_digest: {
-        status: "pending",
-        currentness: {
-          display_status: "not_ready",
-          reason: "no_reusable_1h_digest",
-        },
-        data_gaps: [{ reason: "no_reusable_1h_digest" }],
-        reuse_reason: "no_reusable_1h_digest",
-        surface_window: "24h",
-      },
+    expect(view.admission).toEqual({
+      detail: "no current admission",
+      tone: "info",
+      value: "Admission missing",
     });
-
-    expect(view.narrative.value).toBe("1h 叙事待生成");
-    expect(view.narrative.detail).toBe("1h 叙事待生成");
-    expect(view.narrative.value).not.toBe("叙事分析中");
-    expect(view.narrative.value).not.toBe("5m 实时信号");
   });
 
-  it.each([
-    ["pending", "semantic_labeling_pending", "叙事分析中"],
-    ["insufficient", "low_source_volume", "叙事样本不足"],
-    ["semantic_unavailable", "low_semantic_coverage", "语义覆盖不足"],
-  ] as const)(
-    "surfaces %s not-ready currentness without falling back to factor text",
-    (status, reason, title) => {
-      const view = buildTokenRadarCompactCase({
-        ...tokenFlowFixture(),
-        discussion_digest: {
-          status,
-          currentness: {
-            display_status: "not_ready",
-            reason: "no_ready_digest",
-          },
-          data_gaps: [{ reason }],
-        },
-      });
-
-      expect(view.narrative.value).toBe(title);
-      expect(view.narrative.detail).toBe(title);
-      expect(view.narrative.detail).not.toContain("关注源");
-      expect(view.narrative.detail).not.toContain("催化");
-    },
-  );
-
-  it("keeps last-ready digest visible while currentness is updating", () => {
+  it("renders out-of-frontier admission state", () => {
     const view = buildTokenRadarCompactCase({
       ...tokenFlowFixture(),
-      discussion_digest: {
-        ...tokenFlowFixture().discussion_digest!,
+      narrative_admission: {
+        status: "suppressed",
+        reason: "out_of_frontier",
         currentness: {
-          display_status: "updating",
-          reason: "digest_updating",
-          delta_source_event_count: 6,
-          delta_independent_author_count: 2,
-          last_ready_computed_at_ms: 1_777_746_000_000,
-        },
-        data_gaps: [{ reason: "digest_updating", delta_source_event_count: 6 }],
-      },
-    });
-
-    expect(view.narrative.value).toBe("Expansion chase · 更新中 +6");
-    expect(view.narrative.detail).toContain("retail is rotating into contract-confirmed posts");
-  });
-
-  it("marks stale ready digest as the previous version", () => {
-    const view = buildTokenRadarCompactCase({
-      ...tokenFlowFixture(),
-      discussion_digest: {
-        ...tokenFlowFixture().discussion_digest!,
-        currentness: {
-          display_status: "stale",
+          display_status: "out_of_frontier",
           reason: "out_of_frontier",
-          delta_source_event_count: 0,
-          last_ready_computed_at_ms: 1_777_746_000_000,
         },
+        coverage: { source_mentions: 4, independent_authors: 2 },
         data_gaps: [{ reason: "out_of_frontier" }],
       },
     });
 
-    expect(view.narrative.value).toBe("Expansion chase · 上一版");
-    expect(view.narrative.detail).toContain("coverage 82%");
+    expect(view.admission.value).toBe("Out of current frontier");
+    expect(view.admission.detail).toBe("4 posts · 2 authors");
+    expect(view.admission.tone).toBe("warn");
   });
 
-  it("renders unsupported 5m windows as realtime signal only", () => {
+  it("renders unsupported admission state", () => {
     const view = buildTokenRadarCompactCase({
       ...tokenFlowFixture(),
-      flow: { ...tokenFlowFixture().flow, window: "5m" },
-      discussion_digest: {
-        status: "pending",
+      narrative_admission: {
+        status: "unsupported_window",
+        reason: "narrative_not_supported_for_window",
         currentness: {
           display_status: "unsupported_window",
-          reason: "unsupported_window",
+          reason: "narrative_not_supported_for_window",
         },
+        coverage: { source_mentions: 0, independent_authors: 0 },
         data_gaps: [{ reason: "narrative_not_supported_for_window" }],
       },
     });
 
-    expect(view.narrative.value).toBe("5m 实时信号");
-    expect(view.narrative.detail).toBe("5m 实时信号");
+    expect(view.admission.value).toBe("Admission unsupported");
+    expect(view.admission.detail).toBe("0 posts · 0 authors");
   });
 
   it("keeps local mirrored logo URLs", () => {
@@ -299,22 +220,15 @@ function tokenFlowFixture(): TokenFlowItem {
       reasons: [],
       risks: [],
     },
-    discussion_digest: {
-      status: "ready",
+    narrative_admission: {
+      status: "admitted",
+      reason: "hot_rank",
       currentness: {
         display_status: "current",
-        reason: "fingerprint_match",
-        delta_source_event_count: 0,
-        delta_independent_author_count: 0,
-        last_ready_computed_at_ms: 1_777_746_000_000,
+        reason: "hot_rank",
       },
-      dominant_narrative: {
-        title: "Expansion chase",
-        summary_zh: "retail is rotating into contract-confirmed posts",
-        evidence_refs: [{ ref_type: "event", event_id: "event-hansa-1" }],
-      },
-      stance_mix: { bullish: 0.62, bearish: 0.16, neutral: 0.22 },
-      coverage: { semantic_coverage: 0.82, labeled_mentions: 18, source_mentions: 22 },
+      computed_at_ms: 1_777_746_000_000,
+      coverage: { source_mentions: 22, independent_authors: 9 },
       data_gaps: [],
     },
     evidence_total_count: 21,

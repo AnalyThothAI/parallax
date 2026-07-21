@@ -24,13 +24,11 @@ CORE_TABLES = (
     "token_radar_publication_state",
     "token_radar_target_first_seen",
     "notifications",
-    "token_score_evaluations",
 )
 
 PROJECTION_TABLES = (
     "projection_offsets",
     "projection_runs",
-    "projection_dirty_ranges",
     "token_radar_current_rows",
     "token_radar_publication_state",
 )

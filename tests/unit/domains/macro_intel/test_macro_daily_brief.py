@@ -11,7 +11,6 @@ NOW_MS = 1_779_000_000_000
 def test_build_macro_daily_brief_projects_timsun_style_asset_judgment_from_snapshot() -> None:
     module = importlib.import_module("parallax.domains.macro_intel.services.macro_daily_brief")
     snapshot = {
-        "snapshot_id": "macro-view:macro_regime_v4:current",
         "projection_version": "macro_regime_v4",
         "asof_date": "2026-05-20",
         "status": "partial",
@@ -56,9 +55,6 @@ def test_build_macro_daily_brief_projects_timsun_style_asset_judgment_from_snaps
     }
     dollar_block = next(block for block in brief["blocks"] if block["id"] == "dollar_commodity")
     assert "WTI 20日变化 +2.40" in dollar_block["body"]
-    rendered = str(brief)
-    assert "macro-view:macro_regime_v4:current" not in rendered
-    assert "snapshot_id" not in rendered
 
 
 def test_macro_daily_brief_worker_reads_formal_settings_for_session_timeout_and_zero_write() -> None:

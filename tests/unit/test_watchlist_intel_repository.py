@@ -120,6 +120,30 @@ def test_timeline_rejects_malformed_limit_before_sql(limit: object) -> None:
 
 
 @pytest.mark.parametrize(
+    ("field_name", "value", "error"),
+    [
+        pytest.param("event_id", "", "watchlist_event_id_required", id="blank-event-id"),
+        pytest.param("received_at_ms", 0, "watchlist_event_received_at_ms_required", id="zero-timestamp"),
+        pytest.param("cashtags_json", "not-json", "watchlist_event_cashtags_json_required", id="invalid-json"),
+        pytest.param("hashtags_json", {}, "watchlist_event_hashtags_json_required", id="wrong-json-shape"),
+    ],
+)
+def test_timeline_rejects_malformed_persisted_event_rows(
+    field_name: str,
+    value: object,
+    error: str,
+) -> None:
+    row = _event_row("event-1", received_at_ms=1_000)
+    row[field_name] = value
+    conn = _RecordingConn([_FakeResult(many=[row])])
+
+    with pytest.raises(ValueError, match=error):
+        WatchlistIntelRepository(conn).timeline(handle="marionawfal", scope="signal", cursor=None, limit=1)
+
+    assert len(conn.calls) == 1
+
+
+@pytest.mark.parametrize(
     ("field", "value", "error"),
     [
         ("source_limit", 0, "watchlist_source_limit_required"),

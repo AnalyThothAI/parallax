@@ -360,11 +360,4 @@ const providerDetail: NewsItemDetail = {
     summary_zh: "ETF 资金流持续增强。",
     market_read_zh: "AI reads this as a liquidity signal worth watching.",
   },
-  agent_run: {
-    status: "completed",
-    outcome: "ready",
-    model: "deepseek-v4-flash",
-    provider: "litellm",
-    latency_ms: 1200,
-  },
 };

@@ -18,7 +18,6 @@ from parallax.platform.agent_hashing import text_sha256
 from parallax.platform.agent_knowledge import render_agent_instructions
 
 _NEWS_ITEM_BRIEF_KNOWLEDGE_REFS = ("market_research_harness",)
-_NEWS_ITEM_BRIEF_READ_ONLY_TOOL_REFS: tuple[str, ...] = ()
 
 
 @lru_cache(maxsize=1)
@@ -51,7 +50,6 @@ def build_news_item_brief_stage(*, packet: NewsItemBriefInputPacket, run_id: str
         agent_name=NEWS_ITEM_BRIEF_AGENT_NAME,
         group_id=f"news_item:{news_item_id}",
         knowledge_refs=_NEWS_ITEM_BRIEF_KNOWLEDGE_REFS,
-        read_only_tool_refs=_NEWS_ITEM_BRIEF_READ_ONLY_TOOL_REFS,
         trace_metadata={
             "news_item_id": news_item_id,
             "run_id": str(run_id),

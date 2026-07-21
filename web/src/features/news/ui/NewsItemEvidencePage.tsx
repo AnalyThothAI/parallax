@@ -31,7 +31,6 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
   const facts = item.fact_lanes ?? [];
   const displaySignal = item.signal.display_signal;
   const brief = item.agent_brief ?? null;
-  const run = item.agent_run ?? null;
   const displayTitle = brief?.title_zh || displaySignal.title_zh || item.headline;
   const sourceDomains = sourceDomainList(item);
   const marketScope = marketScopeForItem(item);
@@ -90,13 +89,9 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
           detail={eligibility.external_push_block_reason || eligibility.external_push_basis}
         />
         <EvidenceMetric
-          label="Agent run"
-          value={run?.outcome || brief?.status || "pending"}
-          detail={
-            run?.latency_ms == null
-              ? run?.model
-              : `${formatDuration(run.latency_ms)} · ${run.model || ""}`
-          }
+          label="Agent brief"
+          value={brief?.status || "absent"}
+          detail={brief?.decision_class || formatTimestamp(brief?.computed_at_ms)}
         />
       </section>
 
@@ -108,7 +103,7 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
         <aside className="news-evidence-side" aria-label="news evidence metadata">
           <MarketScopeEvidence item={item} />
           <SignalEvidence item={item} />
-          <AgentBriefState item={item} brief={brief} run={run} />
+          <AgentBriefState item={item} brief={brief} />
           <TokenIdentityEvidence tokens={tokenIdentities} />
           <FactEvidence facts={facts} />
           <ObservationEvidence item={item} />
@@ -366,11 +361,9 @@ function FactEvidence({ facts }: { facts: NewsFactLane[] }) {
 function AgentBriefState({
   item,
   brief,
-  run,
 }: {
   item: NewsItemDetail;
   brief?: NewsAgentBrief | null;
-  run?: NewsItemDetail["agent_run"] | null;
 }) {
   return (
     <section className="news-evidence-section">
@@ -379,13 +372,11 @@ function AgentBriefState({
         <FieldRow label="Admission" value={item.agent_admission_status} />
         <FieldRow label="Admission reason" value={item.agent_admission_reason} />
         <FieldRow label="Representative" value={item.agent_representative_news_item_id} />
-        <FieldRow label="Status" value={brief?.status || run?.status || "absent"} />
+        <FieldRow label="Status" value={brief?.status || "absent"} />
         <FieldRow
           label="Push block"
           value={item.signal.alert_eligibility?.external_push_block_reason}
         />
-        <FieldRow label="Outcome" value={run?.outcome} />
-        <FieldRow label="Lane" value={run?.lane} />
         <FieldRow label="Computed" value={formatTimestamp(brief?.computed_at_ms)} />
       </dl>
     </section>
@@ -612,11 +603,6 @@ function evidenceRefLabel(ref: NewsAgentEvidenceRef): string {
 function formatTimestamp(value?: number | null): string | null {
   if (!value) return null;
   return `${formatRelativeTime(value)} ago · ${new Date(value).toLocaleString()}`;
-}
-
-function formatDuration(value: number): string {
-  if (value >= 1000) return `${(value / 1000).toFixed(1)}s`;
-  return `${value}ms`;
 }
 
 function displayScalar(value: unknown): string {

@@ -204,7 +204,6 @@ function newsItemDetailData(path: string) {
       evidence_refs: [],
       computed_at_ms: NOW,
     },
-    agent_run: null,
   };
 }
 
@@ -1237,7 +1236,6 @@ function watchlistHandleTimelineData(handle: string) {
 function macroData() {
   return {
     snapshot: {
-      snapshot_id: "macro-view:macro_regime_v4:e2e",
       projection_version: "macro_regime_v4",
       asof_date: "2026-05-20",
       status: "partial",

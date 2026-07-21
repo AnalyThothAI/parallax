@@ -216,7 +216,6 @@ def _pulse_settings() -> SimpleNamespace:
         statement_timeout_seconds=30,
         stale_job_ttl_by_window_seconds={"1h": 3600},
         advisory_lock_key=2026051502,
-        wakes_on=("token_radar_updated",),
         trigger_thresholds=SimpleNamespace(min_rank_score=45),
         gate_thresholds=SimpleNamespace(
             trade_candidate_min=72,

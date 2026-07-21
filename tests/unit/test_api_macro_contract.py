@@ -24,7 +24,6 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
     data_gaps = build_macro_data_gaps(["insufficient_history:20d", "missing:asset:spx"])
     repo = FakeMacroIntelRepository(
         snapshot={
-            "snapshot_id": "macro-view:macro_regime_v4:1",
             "projection_version": "macro_regime_v4",
             "asof_date": "2026-05-20",
             "status": "partial",
@@ -142,7 +141,6 @@ def test_macro_api_returns_latest_snapshot_without_postgres() -> None:
         "ok": True,
         "data": {
             "snapshot": {
-                "snapshot_id": "macro-view:macro_regime_v4:1",
                 "projection_version": "macro_regime_v4",
                 "asof_date": "2026-05-20",
                 "status": "partial",
@@ -337,7 +335,6 @@ def test_macro_public_payload_rejects_misshaped_snapshot_json_sections(field_nam
 def test_macro_api_rejects_timestamp_text_for_currentness_dates() -> None:
     repo = FakeMacroIntelRepository(
         snapshot={
-            "snapshot_id": "macro-view:macro_regime_v4:timestamp",
             "projection_version": "macro_regime_v4",
             "asof_date": "2026-05-27",
             "status": "ready",
@@ -424,7 +421,6 @@ def test_macro_asset_correlation_api_rejects_provider_series_keys() -> None:
 def test_macro_module_api_returns_backend_module_view() -> None:
     repo = FakeMacroIntelRepository(
         snapshot={
-            "snapshot_id": "snapshot-1",
             "projection_version": "macro_regime_v4",
             "asof_date": "2026-05-20",
             "status": "partial",
@@ -976,7 +972,6 @@ def _macro_observation(concept_key: str, observed_at: str, value: float) -> dict
 
 def _macro_snapshot() -> dict[str, object]:
     return {
-        "snapshot_id": "macro-view:macro_regime_v4:current",
         "projection_version": "macro_regime_v4",
         "asof_date": "2026-05-20",
         "status": "ready",

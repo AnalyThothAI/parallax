@@ -25,7 +25,6 @@ export function macroModuleFixture(overrides: Partial<MacroModuleView> = {}): Ma
       status_label: "部分可用",
       asof_date: "2026-05-20",
       asof_label: "截至 2026-05-20",
-      source_snapshot_id: "macro-view:macro_regime_v4:1779000000000",
       source_projection_version: "macro_regime_v4",
       computed_at_ms: NOW_MS,
     },

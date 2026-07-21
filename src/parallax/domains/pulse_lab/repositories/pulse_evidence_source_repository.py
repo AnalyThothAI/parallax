@@ -197,7 +197,7 @@ class PulseEvidenceSourceRepository:
         effective_now_ms = int(now_ms)
         rows: list[dict[str, Any]] = []
         seen_ticks: set[str] = set()
-        seen_snapshots: set[str] = set()
+        seen_snapshots: set[tuple[str, str]] = set()
         for target_type, target_id in _market_lookup_keys(context):
             snapshot = self.get_latest_cex_detail_snapshot(
                 target_type,
@@ -205,9 +205,14 @@ class PulseEvidenceSourceRepository:
                 max_age_ms,
                 now_ms=effective_now_ms,
             )
-            if snapshot is not None and str(snapshot.get("snapshot_id") or "") not in seen_snapshots:
-                seen_snapshots.add(str(snapshot.get("snapshot_id") or ""))
-                rows.append(_market_fact_from_cex_detail_snapshot(snapshot))
+            if snapshot is not None:
+                snapshot_key = (
+                    str(snapshot.get("exchange") or "").lower(),
+                    str(snapshot.get("native_market_id") or "").upper(),
+                )
+                if snapshot_key not in seen_snapshots:
+                    seen_snapshots.add(snapshot_key)
+                    rows.append(_market_fact_from_cex_detail_snapshot(snapshot))
             tick = self.get_latest_market_tick(target_type, target_id, max_age_ms, now_ms=effective_now_ms)
             if tick is not None and str(tick.get("tick_id") or "") not in seen_ticks:
                 seen_ticks.add(str(tick.get("tick_id") or ""))
@@ -249,156 +254,9 @@ class PulseEvidenceSourceRepository:
             )
         return rows
 
-    def get_current_discussion_digest(
-        self,
-        *,
-        target_type: str,
-        target_id: str,
-        window: str,
-        scope: str,
-        schema_version: str,
-    ) -> dict[str, Any] | None:
-        normalized_scope = "matched" if scope == "watched" else scope
-        row = _optional_row(
-            self.conn.execute(
-                """
-                SELECT digest.digest_id, digest.target_type, digest.target_id, digest."window", digest.scope,
-                       digest.schema_version, digest.status, digest.is_current, digest.epoch_id,
-                       digest.epoch_policy_version, digest.source_event_ids_json,
-                       digest.source_window_start_ms, digest.source_window_end_ms,
-                       digest.epoch_closed_at_ms, digest.display_current_until_ms,
-                       digest.refresh_reason, digest.source_fingerprint, digest.label_fingerprint,
-                       digest.headline_zh, digest.dominant_narratives_json, digest.bull_view_json,
-                       digest.bear_view_json, digest.stance_mix_json, digest.attention_valence_mix_json,
-                       digest.propagation_read_json, digest.reflexivity_read_json,
-                       digest.watch_triggers_json, digest.invalidation_conditions_json,
-                       digest.data_gaps_json, digest.semantic_coverage, digest.source_event_count,
-                       digest.labeled_event_count, digest.independent_author_count,
-                       digest.evidence_refs_json, digest.computed_at_ms, digest.expires_at_ms,
-                       admissions.status AS admission_status,
-                       admissions.source_fingerprint AS admission_source_fingerprint,
-                       admissions.source_event_ids_json AS admission_source_event_ids_json,
-                       admissions.source_event_count AS admission_source_event_count,
-                       admissions.independent_author_count AS admission_independent_author_count,
-                       admissions.source_window_start_ms AS admission_source_window_start_ms,
-                       admissions.source_window_end_ms AS admission_source_window_end_ms,
-                       admissions.updated_at_ms AS admission_updated_at_ms
-                FROM token_discussion_digests AS digest
-                LEFT JOIN narrative_admissions AS admissions
-                  ON admissions.target_type = digest.target_type
-                 AND admissions.target_id = digest.target_id
-                 AND admissions."window" = digest."window"
-                 AND admissions.scope = digest.scope
-                 AND admissions.schema_version = digest.schema_version
-                WHERE digest.target_type = %s
-                  AND digest.target_id = %s
-                  AND digest."window" = %s
-                  AND digest.scope = %s
-                  AND digest.schema_version = %s
-                  AND digest.status = 'ready'
-                ORDER BY digest.computed_at_ms DESC, digest.digest_id DESC
-                LIMIT 1
-                """,
-                (target_type, target_id, window, normalized_scope, schema_version),
-            ).fetchone()
-        )
-        if row is None:
-            return None
-        row["currentness"] = _digest_currentness(row)
-        return row
-
-    def list_semantic_refs(self, semantic_ids: Sequence[str]) -> list[dict[str, Any]]:
-        ids = _stable_ids(semantic_ids)
-        if not ids:
-            return []
-        rows = self.conn.execute(
-            """
-            SELECT semantic_id, event_id, target_type, target_id, schema_version,
-                   status, trade_stance, attention_valence, narrative_cluster_key,
-                   claim_type, evidence_type, semantic_confidence, evidence_refs_json,
-                   computed_at_ms, source_received_at_ms
-            FROM token_mention_semantics
-            WHERE semantic_id = ANY(%s)
-            ORDER BY source_received_at_ms DESC, semantic_id ASC
-            """,
-            (ids,),
-        ).fetchall()
-        return [_row(row) for row in rows]
-
 
 def _stable_ids(values: Sequence[str]) -> list[str]:
     return sorted({str(value).strip() for value in values if str(value).strip()})
-
-
-def _digest_currentness(row: dict[str, Any]) -> dict[str, Any]:
-    ready_ids = set(_json_string_list(row.get("source_event_ids_json")))
-    current_ids = set(_json_string_list(row.get("admission_source_event_ids_json")))
-    ready_count = _positive_count(row.get("source_event_count"), len(ready_ids))
-    current_count = _positive_count(row.get("admission_source_event_count"), len(current_ids))
-    ready_authors = _int_value(row.get("independent_author_count"))
-    current_authors = _int_value(row.get("admission_independent_author_count"))
-    admission_status = str(row.get("admission_status") or "")
-    ready_fingerprint = _clean(row.get("source_fingerprint"))
-    current_fingerprint = _clean(row.get("admission_source_fingerprint"))
-
-    display_status = "stale"
-    reason = "digest_stale"
-    if admission_status == "admitted":
-        same_fingerprint = (
-            ready_fingerprint == current_fingerprint if ready_fingerprint or current_fingerprint else True
-        )
-        same_source_set = current_ids == ready_ids if current_ids or ready_ids else current_count == ready_count
-        if same_fingerprint and same_source_set:
-            display_status = "current"
-            reason = "current"
-        else:
-            display_status = "updating"
-            reason = "digest_updating"
-
-    delta_source_count = (
-        len(current_ids - ready_ids) if current_ids or ready_ids else max(0, current_count - ready_count)
-    )
-    return {
-        "display_status": display_status,
-        "epoch_id": _clean(row.get("epoch_id")),
-        "epoch_policy_version": _clean(row.get("epoch_policy_version")),
-        "ready_source_fingerprint": ready_fingerprint,
-        "current_source_fingerprint": current_fingerprint,
-        "ready_source_event_count": ready_count,
-        "current_source_event_count": current_count,
-        "delta_source_event_count": max(0, delta_source_count),
-        "delta_independent_author_count": max(0, current_authors - ready_authors),
-        "delta_since_ms": _optional_int(row.get("source_window_end_ms")),
-        "last_ready_computed_at_ms": _optional_int(row.get("computed_at_ms")),
-        "next_refresh_due_at_ms": _optional_int(row.get("display_current_until_ms") or row.get("expires_at_ms")),
-        "reason": reason,
-    }
-
-
-def _json_string_list(value: Any) -> list[str]:
-    if isinstance(value, str):
-        return [value] if value.strip() else []
-    if isinstance(value, list | tuple | set):
-        return [str(item).strip() for item in value if str(item or "").strip()]
-    return []
-
-
-def _positive_count(value: Any, fallback: int) -> int:
-    parsed = _int_value(value)
-    return parsed if parsed > 0 else int(fallback)
-
-
-def _optional_int(value: Any) -> int | None:
-    if value is None:
-        return None
-    return _int_value(value)
-
-
-def _int_value(value: Any) -> int:
-    try:
-        return int(value)
-    except (TypeError, ValueError):
-        return 0
 
 
 def _market_lookup_keys(context: PulseCandidateContext) -> list[tuple[str, str]]:

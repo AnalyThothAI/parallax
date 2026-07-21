@@ -51,30 +51,6 @@ DROPPED_CURRENT_ROW_COLUMNS = {
 }
 
 
-def test_token_radar_row_id_is_unique_per_window_and_scope():
-    source_row = {
-        "event_id": "event-1",
-        "intent_id": "intent-1",
-        "received_at_ms": 1_777_800_000_000,
-        "author_handle": "toly",
-        "is_watched": True,
-        "resolution_status": "NIL",
-        "target_type": None,
-        "target_id": None,
-        "pricefeed_id": None,
-        "display_symbol": "VERSA",
-        "reason_codes_json": ["SYMBOL_NOT_IN_REGISTRY"],
-        "candidate_ids_json": [],
-        "lookup_keys_json": ["symbol:VERSA"],
-    }
-
-    all_5m = _project_group([source_row], now_ms=1_777_800_060_000, window="5m", scope="all")
-    matched_5m = _project_group([source_row], now_ms=1_777_800_060_000, window="5m", scope="matched")
-    all_1h = _project_group([source_row], now_ms=1_777_800_060_000, window="1h", scope="all")
-
-    assert len({all_5m["row_id"], matched_5m["row_id"], all_1h["row_id"]}) == 3
-
-
 def test_token_radar_projection_uses_factor_snapshot_contract():
     assert TOKEN_RADAR_PROJECTION_NAME == "token-radar"
     assert TOKEN_RADAR_PROJECTION_VERSION == "token-radar-v13-social-attention"
@@ -565,6 +541,22 @@ def test_row_from_target_feature_derives_cex_live_key_from_pricefeed_id():
     assert current_row["native_market_id"] == "BTCUSDT"
 
 
+def test_row_from_target_feature_preserves_selected_intent_resolution_and_event_provenance():
+    row = source_row("event-selected", received_at_ms=1_777_800_000_000)
+    row["reason_codes_json"] = ["CHAIN_ADDRESS_EXACT"]
+    row["candidate_ids_json"] = ["asset-candidate-1"]
+    row["lookup_keys_json"] = ["address:eip155:1:0xabc"]
+
+    projected = _project_group([row], now_ms=1_777_800_060_000, window="1h", scope="all")
+
+    assert projected is not None
+    current_row = _row_from_target_feature(_compact_rank_input_from_factor_row(projected))
+    assert current_row["intent_id"] == "intent-event-selected"
+    assert current_row["event_id"] == "event-selected"
+    assert current_row["intent_json"] == projected["intent_json"]
+    assert current_row["resolution_json"] == projected["resolution_json"]
+
+
 @pytest.mark.parametrize(
     ("field", "aliases"),
     [
@@ -614,6 +606,14 @@ def test_row_from_target_feature_requires_formal_row_id_dimensions_without_empty
     [
         pytest.param("factor_snapshot_json", None, id="missing-snapshot"),
         pytest.param("factor_snapshot_json", [], id="invalid-snapshot-list"),
+        pytest.param("intent_json", None, id="missing-intent"),
+        pytest.param("intent_json", [], id="invalid-intent-list"),
+        pytest.param("resolution_json", None, id="missing-resolution"),
+        pytest.param("resolution_json", [], id="invalid-resolution-list"),
+        pytest.param("source_event_ids_json", None, id="missing-source-events"),
+        pytest.param("source_event_ids_json", [], id="empty-source-events"),
+        pytest.param("source_intent_ids_json", None, id="missing-source-intents"),
+        pytest.param("source_intent_ids_json", [], id="empty-source-intents"),
         pytest.param("latest_event_received_at_ms", None, id="missing-latest-seen"),
         pytest.param("latest_event_received_at_ms", "not-an-int", id="invalid-latest-seen"),
     ],
@@ -1027,7 +1027,6 @@ def test_projection_stale_write_does_not_advance_offset(monkeypatch):
             "status": "stale_skipped",
             "rows_read": 1,
             "rows_written": 0,
-            "dirty_ranges_written": 0,
             "error": "newer_projection_exists",
             "commit": False,
         }
@@ -5061,6 +5060,8 @@ def _compact_rank_input_from_factor_row(row: dict[str, object]) -> dict[str, obj
     if target_id is None:
         target_id = snapshot["subject"].get("target_id")
     target_id = str(target_id) if target_id is not None else None
+    intent_id = str(row.get("intent_id") or "intent-1")
+    event_id = str(row.get("event_id") or "event-1")
     return {
         "projection_version": row.get("projection_version") or PROJECTION_VERSION,
         "window": row.get("window") or "5m",
@@ -5097,8 +5098,21 @@ def _compact_rank_input_from_factor_row(row: dict[str, object]) -> dict[str, obj
         "recommended_decision": snapshot["composite"].get("recommended_decision") or "discard",
         "gates_max_decision": snapshot["gates"].get("max_decision") or "discard",
         "factor_snapshot_json": snapshot,
+        "intent_json": row.get("intent_json")
+        or {
+            "intent_id": intent_id,
+            "event_id": event_id,
+            "display_symbol": snapshot["subject"].get("symbol"),
+        },
+        "resolution_json": row.get("resolution_json")
+        or {
+            "status": "EXACT" if target_id else "NIL",
+            "reason_codes": [],
+            "candidate_ids": [],
+            "lookup_keys": [],
+        },
         "source_event_ids_json": row.get("source_event_ids_json") or ["event-1"],
-        "source_intent_ids_json": row.get("source_intent_ids_json") or [row.get("intent_id") or "intent-1"],
+        "source_intent_ids_json": row.get("source_intent_ids_json") or [intent_id],
         "source_resolution_ids_json": row.get("source_resolution_ids_json")
         or [row.get("resolution_id") or "resolution-1"],
         "payload_hash": row.get("payload_hash") or f"feature-hash:{target_id}",

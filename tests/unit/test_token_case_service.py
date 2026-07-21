@@ -193,7 +193,6 @@ def test_token_case_returns_cex_detail_snapshot_for_cex_tokens():
         profiles=FakeProfiles(),
         cex_detail_snapshots=FakeCexDetailSnapshots(
             snapshot={
-                "snapshot_id": "cex-detail:binance:BTCUSDT",
                 "target_type": "CexToken",
                 "target_id": "cex_token:BTC",
                 "exchange": "binance",
@@ -259,7 +258,7 @@ def test_token_case_requires_cex_detail_snapshot_repository_for_cex_tokens():
         )
 
 
-def test_token_case_missing_cex_detail_does_not_synthesize_snapshot_identity():
+def test_token_case_missing_cex_detail_does_not_synthesize_persisted_fields():
     service = TokenCaseService(
         targets=FakeTargets(
             rows=[],
@@ -294,7 +293,7 @@ def test_token_case_missing_cex_detail_does_not_synthesize_snapshot_identity():
     )
 
     assert dossier["cex_detail"]["status"] == "missing"
-    assert dossier["cex_detail"]["snapshot_id"] is None
+    assert "snapshot_id" not in dossier["cex_detail"]
     assert dossier["cex_detail"]["exchange"] is None
     assert dossier["cex_detail"]["native_market_id"] == "BTCUSDT"
     assert dossier["cex_detail"]["degraded_reasons"] == ["cex_detail_snapshot_missing"]

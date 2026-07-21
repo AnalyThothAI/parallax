@@ -8,9 +8,7 @@ SIGNAL_PULSE_WINDOWS = set(SIGNAL_PULSE_WINDOW_SET)
 SCOPES = {"all", "matched"}
 TOKEN_RADAR_VENUES = {"all", "sol", "eth", "base", "bsc", "cex"}
 ALERT_TYPES = {"account_token", "token"}
-JOB_STATUSES = {"pending", "running", "failed", "dead", "done"}
 DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
-HORIZONS = {"6h", "24h"}
 PUBLIC_SIGNAL_PULSE_STATUSES = {"trade_candidate", "token_watch", "risk_rejected_high_info"}
 SIGNAL_PULSE_VISIBILITIES = {"public", "hidden"}
 WATCHLIST_TIMELINE_SCOPES = {"signal", "all"}
@@ -41,10 +39,6 @@ def _api_limit_int(value: int, *, field: str) -> int:
 
 def _handle_set(raw: str) -> set[str]:
     return {item.strip().lstrip("@").lower() for item in raw.split(",") if item.strip()}
-
-
-def _csv_set(raw: str) -> set[str]:
-    return {item.strip() for item in raw.split(",") if item.strip()}
 
 
 def _scope(value: str) -> str:
@@ -87,10 +81,6 @@ def _target_type(value: str) -> str | None:
     return value if value in {"Asset", "CexToken"} else None
 
 
-def _horizon(value: str) -> str:
-    return value if value in HORIZONS else "6h"
-
-
 def _alert_type(value: str | None) -> str | None:
     return value if value in ALERT_TYPES else None
 
@@ -109,10 +99,6 @@ def _signal_pulse_visibility(value: str) -> str:
     if value in SIGNAL_PULSE_VISIBILITIES:
         return value
     raise ApiBadRequest("invalid_visibility", field="visibility")
-
-
-def _job_status(value: str | None) -> str | None:
-    return value if value in JOB_STATUSES else None
 
 
 def _delivery_status(value: str | None) -> str | None:

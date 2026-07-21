@@ -421,7 +421,7 @@ export function tokenRadarRowToTokenItem(
       risks: watched ? [] : ["no_watched_confirmation"],
     },
     profile: row.profile ?? null,
-    discussion_digest: row.discussion_digest ?? null,
+    narrative_admission: row.narrative_admission ?? null,
     pulse_overlay: row.pulse_overlay ?? null,
     factor_data_health: dataHealth,
     factor_gates: gates,

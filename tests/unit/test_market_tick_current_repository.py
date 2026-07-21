@@ -12,9 +12,6 @@ from parallax.domains.asset_market.repositories.market_tick_current_dirty_target
 from parallax.domains.asset_market.repositories.market_tick_current_repository import (
     MarketTickCurrentRepository,
 )
-from parallax.domains.asset_market.services.market_tick_current_rebuild import (
-    MarketTickCurrentRebuildService,
-)
 
 
 def test_enqueue_targets_coalesces_by_target() -> None:
@@ -244,8 +241,7 @@ def test_mark_error_terminalizes_exhausted_claims_into_queue_terminal() -> None:
 
     assert changed == 1
     assert any(
-        "DELETE FROM market_tick_current_dirty_targets queue" in sql and "RETURNING queue.*" in sql
-        for sql in conn.sql
+        "DELETE FROM market_tick_current_dirty_targets queue" in sql and "RETURNING queue.*" in sql for sql in conn.sql
     )
     assert any("INSERT INTO worker_queue_terminal_events" in sql for sql in conn.sql)
     terminal_params = conn.params[-1]
@@ -517,42 +513,6 @@ def test_upsert_current_from_tick_repairs_created_at_once_then_becomes_unchanged
     assert conn.current_created_at_ms == tick["created_at_ms"]
 
 
-def test_rebuild_all_wraps_truncate_and_upserts_in_one_transaction() -> None:
-    tick = _tick_row(tick_id="tick-rebuild")
-    repos = _RebuildRepos(ticks=[tick])
-
-    result = MarketTickCurrentRebuildService(repos).rebuild_all(now_ms=9999)
-
-    assert result == {"scanned": 1, "changed": 1}
-    assert repos.events == [
-        "begin",
-        "truncate",
-        "latest_ticks_for_all_targets",
-        ("upsert", "tick-rebuild", 9999),
-        "commit",
-    ]
-
-
-def test_rebuild_all_rolls_back_when_upsert_fails() -> None:
-    tick = _tick_row(tick_id="tick-fail")
-    repos = _RebuildRepos(ticks=[tick], fail_on_upsert=True)
-
-    try:
-        MarketTickCurrentRebuildService(repos).rebuild_all(now_ms=9999)
-    except RuntimeError as exc:
-        assert str(exc) == "rebuild upsert failed"
-    else:
-        raise AssertionError("expected rebuild failure")
-
-    assert repos.events == [
-        "begin",
-        "truncate",
-        "latest_ticks_for_all_targets",
-        ("upsert", "tick-fail", 9999),
-        "rollback",
-    ]
-
-
 def test_repository_session_exposes_market_tick_current_repository() -> None:
     session = repositories_for_connection(
         _ScriptedConnection([]),
@@ -726,46 +686,3 @@ class _StatefulCurrentConnection:
 
     def fetchone(self) -> dict[str, Any] | None:
         return self.pending_row
-
-
-class _RebuildRepos:
-    def __init__(self, *, ticks: list[dict[str, Any]], fail_on_upsert: bool = False) -> None:
-        self.events: list[Any] = []
-        self.in_transaction = False
-        self.market_tick_current = _RebuildCurrentRepo(self, ticks=ticks, fail_on_upsert=fail_on_upsert)
-
-    def transaction(self) -> _RebuildRepos:
-        return self
-
-    def __enter__(self) -> _RebuildRepos:
-        self.events.append("begin")
-        self.in_transaction = True
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        self.events.append("rollback" if exc_type is not None else "commit")
-        self.in_transaction = False
-        return False
-
-
-class _RebuildCurrentRepo:
-    def __init__(self, owner: _RebuildRepos, *, ticks: list[dict[str, Any]], fail_on_upsert: bool) -> None:
-        self.owner = owner
-        self.ticks = ticks
-        self.fail_on_upsert = fail_on_upsert
-
-    def truncate_current(self) -> None:
-        assert self.owner.in_transaction is True
-        self.owner.events.append("truncate")
-
-    def latest_ticks_for_all_targets(self) -> list[dict[str, Any]]:
-        assert self.owner.in_transaction is True
-        self.owner.events.append("latest_ticks_for_all_targets")
-        return list(self.ticks)
-
-    def upsert_current_from_tick(self, tick_row: dict[str, Any], *, now_ms: int) -> bool:
-        assert self.owner.in_transaction is True
-        self.owner.events.append(("upsert", tick_row["tick_id"], now_ms))
-        if self.fail_on_upsert:
-            raise RuntimeError("rebuild upsert failed")
-        return True

@@ -46,7 +46,11 @@ Repository-owned `AccountQualityRepository` writes follow the same rule:
 `account_quality_snapshots` mutations must enter a callable connection
 transaction before SQL when the repository owns the commit. Ops backfill and
 GMGN directory sync keep repository writes caller-owned with `commit=False`
-inside their outer transaction.
+inside their outer transaction. Current-row upserts compare the complete
+stable payload with `IS DISTINCT FROM`; an unchanged replay performs zero
+updates and preserves `updated_at_ms`. Repository changed counts come from a
+validated PostgreSQL rowcount of exactly zero or one, so backfill reporting does
+not count scanned-but-unchanged rows as writes.
 
 ## Writer Ownership
 
@@ -77,10 +81,10 @@ same change. Do not hide runtime work behind API reads or read-model services.
 
 - Account identity is normalized `handle`.
 - Token-call statistics are stable by `(handle, token_id)`.
-- Quality snapshots are stable by `(handle, window)` with
-  `snapshot_id = account-quality:{handle}:{window}:current`.
-- Snapshot identity must not include run ids, attempts, timestamps, or random
-  UUIDs.
+- Quality snapshots use `(handle, window)` directly as the stable natural
+  current-row key. No synthetic snapshot identifier is stored.
+- Snapshot insertion reports the actual PostgreSQL `cursor.rowcount`, so
+  conflict/no-op behavior cannot be mistaken for candidate input length.
 - Account-quality reads are bounded by requested handles and repository limits.
 - Multi-handle account-quality reads use one normalized input keyset and fixed
   batch SQL for profiles, token-call stats, and snapshots. They must not call

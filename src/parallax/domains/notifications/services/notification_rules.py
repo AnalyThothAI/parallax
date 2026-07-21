@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
+from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any
 
@@ -49,7 +50,7 @@ class NotificationRuleEngine:
         candidates: list[NotificationCandidate] = []
         candidates.extend(self._watched_account_activity(now_ms=now))
         candidates.extend(self._watched_account_token_alerts(now_ms=now))
-        candidates.extend(self._signal_pulse_candidates(now_ms=now))
+        candidates.extend(self._signal_pulse_candidates())
         candidates.extend(self._news_high_signal_candidates(now_ms=now))
         return candidates
 
@@ -66,12 +67,14 @@ class NotificationRuleEngine:
         )
         candidates: list[NotificationCandidate] = []
         for event in events:
-            received_at_ms = _int(event.get("received_at_ms"))
+            received_at_ms = _required_source_timestamp_ms(
+                event,
+                "received_at_ms",
+                rule_id=rule_id,
+            )
             if received_at_ms < since_ms:
                 continue
-            event_id = str(event.get("event_id") or "")
-            if not event_id:
-                continue
+            event_id = _required_source_text(event, "event_id", rule_id=rule_id)
             author_handle = _handle(event.get("author_handle"))
             action = str(event.get("action") or "activity")
             title = f"@{author_handle} new {action}" if author_handle else f"Watched account {action}"
@@ -120,10 +123,12 @@ class NotificationRuleEngine:
         )
         candidates: list[NotificationCandidate] = []
         for alert in alerts:
-            alert_id = str(alert.get("alert_id") or "")
-            if not alert_id:
-                continue
-            received_at_ms = _int(alert.get("received_at_ms") or now_ms)
+            alert_id = _required_source_text(alert, "alert_id", rule_id=rule_id)
+            received_at_ms = _required_source_timestamp_ms(
+                alert,
+                "received_at_ms",
+                rule_id=rule_id,
+            )
             author_handle = _handle(alert.get("author_handle"))
             symbol = _symbol(alert.get("normalized_value"))
             first_global = bool(alert.get("is_first_seen_global"))
@@ -169,7 +174,7 @@ class NotificationRuleEngine:
             )
         return candidates
 
-    def _signal_pulse_candidates(self, *, now_ms: int) -> list[NotificationCandidate]:
+    def _signal_pulse_candidates(self) -> list[NotificationCandidate]:
         rule = self._rule(SIGNAL_PULSE_RULE_ID)
         if not rule.enabled or self.pulse is None:
             return []
@@ -188,8 +193,8 @@ class NotificationRuleEngine:
         ):
             if not isinstance(row, dict):
                 continue
-            candidate_id = str(row.get("candidate_id") or "")
-            if not candidate_id or candidate_id in seen:
+            candidate_id = _required_source_text(row, "candidate_id", rule_id=SIGNAL_PULSE_RULE_ID)
+            if candidate_id in seen:
                 continue
             seen.add(candidate_id)
             rows.append(row)
@@ -209,7 +214,11 @@ class NotificationRuleEngine:
             if severity in {"high", "critical"} and not _has_resolved_pulse_target(row, factor_snapshot):
                 continue
             candidate_id = str(row.get("candidate_id") or "")
-            occurrence_at_ms = _int(row.get("updated_at_ms") or now_ms)
+            occurrence_at_ms = _required_source_timestamp_ms(
+                row,
+                "updated_at_ms",
+                rule_id=SIGNAL_PULSE_RULE_ID,
+            )
             semantic_signature = _pulse_semantic_signature(row)
             push_policy = _pulse_external_push_policy(
                 row,
@@ -383,10 +392,6 @@ class NotificationRuleEngine:
 
     def _signal_pulse_per_scope_status_limit(self) -> int:
         return self._limit() * int(self.settings.notifications.signal_pulse_max_pages)
-
-
-def _score_version(block: Any) -> str | None:
-    return str(block.get("score_version")) if isinstance(block, dict) and block.get("score_version") else None
 
 
 def _cooldown_bucket(occurrence_at_ms: int, cooldown_seconds: int) -> int:
@@ -738,11 +743,21 @@ def _stable_hash(payload: Any) -> str:
     return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
 
 
-def _int(value: Any) -> int:
+def _required_source_timestamp_ms(row: Mapping[str, Any], field_name: str, *, rule_id: str) -> int:
     try:
-        return int(value or 0)
-    except (TypeError, ValueError):
-        return 0
+        value = row[field_name]
+    except KeyError as exc:
+        raise ValueError(f"notification_source_timestamp_required:{rule_id}:{field_name}") from exc
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"notification_source_timestamp_required:{rule_id}:{field_name}")
+    return int(value)
+
+
+def _required_source_text(row: Mapping[str, Any], field_name: str, *, rule_id: str) -> str:
+    value = row.get(field_name)
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"notification_source_identity_required:{rule_id}:{field_name}")
+    return value.strip()
 
 
 def _handle(value: Any) -> str | None:

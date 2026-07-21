@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_factories import WorkerFactoryContext
-from parallax.app.runtime.worker_manifest import manifest_names_for_factory
+from parallax.app.runtime.worker_manifest import manifest_names_for_factory, require_worker_manifest
 from parallax.domains.narrative_intel.runtime.narrative_admission_worker import NarrativeAdmissionWorker
 
 WORKER_KEYS = manifest_names_for_factory("narrative_intel.py")
@@ -19,7 +19,10 @@ def construct_narrative_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Wo
             settings=workers.narrative_admission,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_waiter=ctx.db.wake_listener("narrative_admission", workers.narrative_admission.wakes_on),
+            wake_waiter=ctx.db.wake_listener(
+                "narrative_admission",
+                require_worker_manifest("narrative_admission").wakes_on,
+            ),
         )
     }
 

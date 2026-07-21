@@ -59,18 +59,6 @@ class TokenEvidenceRepository:
         cursor = self.conn.execute("DELETE FROM token_evidence WHERE event_id = %s", (event_id,))
         _cursor_rowcount(cursor)
 
-    def evidence_for_event(self, event_id: str) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            SELECT *
-            FROM token_evidence
-            WHERE event_id = %s
-            ORDER BY text_surface, span_start, evidence_id
-            """,
-            (event_id,),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
     def evidence_for_intent(self, intent_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """

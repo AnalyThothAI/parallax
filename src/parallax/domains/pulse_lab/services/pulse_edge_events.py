@@ -1,22 +1,8 @@
 from __future__ import annotations
 
-import hashlib
-import json
 from typing import Any
 
 from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateResult
-
-PULSE_EDGE_EVENTS = (
-    "pulse_version_bumped",
-    "pulse_status_changed",
-    "score_band_crossed",
-    "hard_risk_added",
-    "recommended_decision_changed",
-    "watched_confirmation_appeared",
-    "independent_author_bucket_changed",
-    "trigger_evidence_changed",
-    "timeline_evidence_changed",
-)
 
 
 def build_pulse_edge_state(
@@ -93,30 +79,6 @@ def diff_pulse_edge_events(previous: dict[str, Any] | None, current: dict[str, A
     return events
 
 
-def pulse_edge_signature(state: dict[str, Any]) -> str:
-    payload = {
-        "candidate_id": state.get("candidate_id"),
-        "candidate_type": state.get("candidate_type"),
-        "target_type": state.get("target_type"),
-        "target_id": state.get("target_id"),
-        "window": state.get("window"),
-        "scope": state.get("scope"),
-        "pulse_version": state.get("pulse_version"),
-        "gate_version": state.get("gate_version"),
-        "pulse_status": state.get("pulse_status"),
-        "score_band": state.get("score_band"),
-        "candidate_score_bucket": state.get("candidate_score_bucket"),
-        "rank_score_bucket": state.get("rank_score_bucket"),
-        "recommended_decision": state.get("recommended_decision"),
-        "watched_confirmation": bool(state.get("watched_confirmation")),
-        "independent_author_count_bucket": state.get("independent_author_count_bucket"),
-        "hard_risks": _stable_strings(state.get("hard_risks")),
-        "trigger_signature": state.get("trigger_signature"),
-        "timeline_signature": state.get("timeline_signature"),
-    }
-    return _stable_hash(payload)
-
-
 def _mapping(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
 
@@ -179,9 +141,4 @@ def _stable_strings(values: Any) -> list[str]:
     return result
 
 
-def _stable_hash(payload: Any) -> str:
-    encoded = json.dumps(payload, ensure_ascii=False, sort_keys=True, separators=(",", ":"))
-    return "sha256:" + hashlib.sha256(encoded.encode("utf-8")).hexdigest()
-
-
-__all__ = ["PULSE_EDGE_EVENTS", "build_pulse_edge_state", "diff_pulse_edge_events", "pulse_edge_signature"]
+__all__ = ["build_pulse_edge_state", "diff_pulse_edge_events"]

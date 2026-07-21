@@ -228,10 +228,10 @@ function tokenRadarColumns({
       cell: ({ row }) => <SocialCell item={row.original} />,
     },
     {
-      id: "why",
-      header: "Why now",
-      accessorFn: (item) => item.discussion_quality.informative_post_count,
-      cell: ({ row }) => <WhyNowCell item={row.original} />,
+      id: "admission",
+      header: "Admission",
+      accessorFn: (item) => item.narrative_admission?.coverage.source_mentions ?? 0,
+      cell: ({ row }) => <AdmissionCell item={row.original} />,
     },
     {
       id: "market",
@@ -349,12 +349,12 @@ function SocialCell({ item }: { item: TokenFlowItem }) {
   );
 }
 
-function WhyNowCell({ item }: { item: TokenFlowItem }) {
+function AdmissionCell({ item }: { item: TokenFlowItem }) {
   const tokenCase = buildTokenRadarCompactCase(item);
   return (
-    <span className="radar-fact narrative-fact" data-case-section="why-now">
-      <b>{tokenCase.narrative.value}</b>
-      <em>{tokenCase.narrative.detail}</em>
+    <span className="radar-fact admission-fact" data-case-section="admission">
+      <b>{tokenCase.admission.value}</b>
+      <em>{tokenCase.admission.detail}</em>
     </span>
   );
 }
@@ -413,7 +413,7 @@ function headerLabel(columnId: string): string {
   const labels: Record<string, string> = {
     case: "token case",
     social: "social",
-    why: "why now",
+    admission: "admission",
     market: "market",
     listed: "listed",
     score: "score",

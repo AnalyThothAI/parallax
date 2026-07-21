@@ -33,35 +33,6 @@ NARRATIVE_REALTIME_WINDOWS = ("1h",)
 NARRATIVE_REALTIME_WINDOW_SET = frozenset(NARRATIVE_REALTIME_WINDOWS)
 NARRATIVE_REALTIME_SCOPES = ("all",)
 NARRATIVE_REALTIME_SCOPE_SET = frozenset(NARRATIVE_REALTIME_SCOPES)
-RETIRED_WORKER_SETTING_KEYS = frozenset({"mention_semantics", "token_discussion_digest"})
-NEWS_PROVIDER_TYPES = (
-    "rss",
-    "atom",
-    "json_feed",
-    "cryptopanic",
-    "opennews",
-    "openbb",
-    "telegram_public",
-    "twitter_profile",
-    "twitter_thread_context",
-    "reddit",
-    "hackernews",
-    "github",
-    "ossinsight",
-    "manual_api",
-)
-NEWS_SOURCE_ROLES = (
-    "official_exchange",
-    "official_regulator",
-    "official_protocol",
-    "official_issuer",
-    "specialist_media",
-    "aggregator",
-    "social",
-    "community",
-    "developer_signal",
-    "observed_source",
-)
 NEWS_SOURCE_QUALITY_WINDOWS = ("1h", "4h", "24h", "7d")
 NEWS_SOURCE_QUALITY_WINDOW_SET = frozenset(NEWS_SOURCE_QUALITY_WINDOWS)
 REMOVED_OPENNEWS_WEBSOCKET_POLICY_KEYS = frozenset(
@@ -413,13 +384,6 @@ class UpstreamConfig(BaseModel):
         if normalized.lower() in {"", "none", "false", "off", "direct"}:
             return None
         return normalized
-
-
-class CollectorConfig(BaseModel):
-    model_config = ConfigDict(extra="forbid")
-
-    watchdog_interval: float = 30.0
-    stale_timeout: float = 180.0
 
 
 class NotificationRuleConfig(BaseModel):
@@ -956,12 +920,6 @@ class MarketTickCurrentProjectionWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=100, ge=1)
     retry_ms: int = Field(default=30_000, ge=1)
     advisory_lock_key: int = 2026052401
-    wakes_on: tuple[str, ...] = ("market_tick_written",)
-
-    @field_validator("wakes_on", mode="before")
-    @classmethod
-    def parse_wakes_on(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
 
 
 class EventAnchorBackfillWorkerSettings(PerWorkerSettings):
@@ -1025,6 +983,7 @@ class TokenCaptureTierWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=500, ge=1)
     ws_limit: int = Field(default=100, ge=0)
     poll_limit: int = Field(default=500, ge=0)
+    retry_ms: int = Field(default=30_000, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
     advisory_lock_key: int = 2026051503
 
@@ -1037,14 +996,13 @@ class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     private_cache_retention_ms: int = Field(default=172_800_000, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
     advisory_lock_key: int = 2026051501
-    wakes_on: tuple[str, ...] = ("market_tick_current_updated", "resolution_updated")
     windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")
     scopes: tuple[str, ...] = ("all", "matched")
     venues: tuple[str, ...] = ("all", "sol", "eth", "base", "bsc", "cex")
     hot_windows: tuple[str, ...] = ("5m",)
     cold_interval_seconds: float = Field(default=60.0, ge=0)
 
-    @field_validator("wakes_on", "windows", "scopes", "venues", "hot_windows", mode="before")
+    @field_validator("windows", "scopes", "venues", "hot_windows", mode="before")
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
@@ -1077,24 +1035,12 @@ class MacroViewProjectionWorkerSettings(PerWorkerSettings):
     advisory_lock_key: int = 2026052109
     lookback_days: int = Field(default=1095, ge=1095)
     limit_per_series: int = Field(default=800, ge=800)
-    wakes_on: tuple[str, ...] = ("macro_observations_imported",)
-
-    @field_validator("wakes_on", mode="before")
-    @classmethod
-    def parse_wakes_on(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
 
 
 class MacroDailyBriefProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=86_400.0, ge=0)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026060901
-    wakes_on: tuple[str, ...] = ("macro_view_snapshot_updated",)
-
-    @field_validator("wakes_on", mode="before")
-    @classmethod
-    def parse_wakes_on(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
 
 
 class MacroSyncWorkerSettings(PerWorkerSettings):
@@ -1173,13 +1119,12 @@ class PulseCandidateWorkerSettings(PerWorkerSettings):
         default_factory=lambda: dict(PULSE_CANDIDATE_STALE_JOB_TTL_SECONDS)
     )
     advisory_lock_key: int = 2026051502
-    wakes_on: tuple[str, ...] = ("token_radar_updated",)
     windows: tuple[str, ...] = PULSE_CANDIDATE_WINDOWS
     scopes: tuple[str, ...] = ("all", "matched")
     trigger_thresholds: PulseCandidateTriggerThresholds = Field(default_factory=PulseCandidateTriggerThresholds)
     gate_thresholds: PulseCandidateGateThresholds = Field(default_factory=PulseCandidateGateThresholds)
 
-    @field_validator("wakes_on", "windows", "scopes", "failure_circuit_reasons", mode="before")
+    @field_validator("windows", "scopes", "failure_circuit_reasons", mode="before")
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
@@ -1221,7 +1166,6 @@ class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
     soft_timeout_seconds: float = Field(default=180.0, ge=0)
     hard_timeout_seconds: float = Field(default=300.0, ge=0)
     advisory_lock_key: int = 2026051901
-    wakes_on: tuple[str, ...] = ("token_radar_updated", "resolution_updated")
     windows: tuple[str, ...] = NARRATIVE_REALTIME_WINDOWS
     scopes: tuple[str, ...] = ("all",)
     admission_limit: int = Field(default=200, ge=1)
@@ -1233,7 +1177,7 @@ class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
     min_rank_score: int = Field(default=30, ge=0)
     hot_rank_limit: int = Field(default=50, ge=1)
 
-    @field_validator("wakes_on", "windows", "scopes", mode="before")
+    @field_validator("windows", "scopes", mode="before")
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
@@ -1279,12 +1223,6 @@ class NewsItemProcessWorkerSettings(PerWorkerSettings):
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026051902
     retry_delay_ms: int = Field(default=60_000, ge=1)
-    wakes_on: tuple[str, ...] = ("news_item_written",)
-
-    @field_validator("wakes_on", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
 
 
 class NewsItemBriefWorkerSettings(PerWorkerSettings):
@@ -1298,12 +1236,6 @@ class NewsItemBriefWorkerSettings(PerWorkerSettings):
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026052001
     backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
-    wakes_on: tuple[str, ...] = ()
-
-    @field_validator("wakes_on", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
 
 
 class NewsStoryBriefWorkerSettings(PerWorkerSettings):
@@ -1316,12 +1248,6 @@ class NewsStoryBriefWorkerSettings(PerWorkerSettings):
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026061801
     backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
-    wakes_on: tuple[str, ...] = ("news_item_processed",)
-
-    @field_validator("wakes_on", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
 
 
 class NewsPageProjectionWorkerSettings(PerWorkerSettings):
@@ -1330,17 +1256,6 @@ class NewsPageProjectionWorkerSettings(PerWorkerSettings):
     retry_ms: int = Field(default=30_000, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026051904
-    wakes_on: tuple[str, ...] = (
-        "news_item_written",
-        "news_item_processed",
-        "news_story_brief_updated",
-        "news_page_dirty",
-    )
-
-    @field_validator("wakes_on", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
 
 
 class NewsSourceQualityProjectionWorkerSettings(PerWorkerSettings):
@@ -1350,10 +1265,9 @@ class NewsSourceQualityProjectionWorkerSettings(PerWorkerSettings):
     retry_ms: int = Field(default=30_000, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     advisory_lock_key: int = 2026052201
-    wakes_on: tuple[str, ...] = ("news_item_written",)
     windows: tuple[str, ...] = ("24h", "7d")
 
-    @field_validator("wakes_on", "windows", mode="before")
+    @field_validator("windows", mode="before")
     @classmethod
     def parse_tuple(cls, value: Any) -> tuple[str, ...]:
         return tuple(_split_values(value))
@@ -1727,7 +1641,7 @@ def load_settings(*, require_ws_token: bool = True) -> Settings:
     data = _load_yaml_mapping(path)
     if "workers" in data:
         raise ValueError("workers runtime settings must be configured in workers.yaml, not config.yaml")
-    workers = WorkersSettings(**_normalize_workers_yaml_mapping(_load_yaml_mapping(workers_path)))
+    workers = WorkersSettings(**_load_yaml_mapping(workers_path))
     settings = Settings(**dict(data), workers=workers)
     settings.set_config_dir(path.parent)
     if require_ws_token and not settings.ws_token:
@@ -1938,7 +1852,6 @@ market_tick_current_projection:
   batch_size: 100
   retry_ms: 30000
   advisory_lock_key: 2026052401
-  wakes_on: ["market_tick_written"]
 event_anchor_backfill:
   enabled: true
   interval_seconds: 1.0
@@ -1953,6 +1866,7 @@ token_capture_tier:
   batch_size: 500
   ws_limit: 100
   poll_limit: 500
+  retry_ms: 30000
   statement_timeout_seconds: 120.0
   advisory_lock_key: 2026051503
 live_price_gateway:
@@ -1995,7 +1909,6 @@ token_radar_projection:
   private_cache_retention_ms: 172800000
   statement_timeout_seconds: 120.0
   advisory_lock_key: 2026051501
-  wakes_on: ["market_tick_current_updated", "resolution_updated"]
   windows: ["5m", "1h", "4h", "24h"]
   scopes: ["all", "matched"]
   venues: ["all", "sol", "eth", "base", "bsc", "cex"]
@@ -2051,20 +1964,17 @@ macro_view_projection:
   advisory_lock_key: 2026052109
   lookback_days: 1095
   limit_per_series: 800
-  wakes_on: ["macro_observations_imported"]
 macro_daily_brief_projection:
   enabled: true
   interval_seconds: 86400.0
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026060901
-  wakes_on: ["macro_view_snapshot_updated"]
 narrative_admission:
   enabled: true
   interval_seconds: 60.0
   soft_timeout_seconds: 180.0
   hard_timeout_seconds: 300.0
   advisory_lock_key: 2026051901
-  wakes_on: ["token_radar_updated", "resolution_updated"]
   windows: ["1h"]
   scopes: ["all"]
   admission_limit: 200
@@ -2090,7 +2000,6 @@ news_item_process:
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026051902
   retry_delay_ms: 60000
-  wakes_on: ["news_item_written"]
 news_item_brief:
   enabled: false
   interval_seconds: 10.0
@@ -2102,7 +2011,6 @@ news_item_brief:
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052001
   backpressure_cooldown_ms: 60000
-  wakes_on: []
 news_story_brief:
   enabled: true
   interval_seconds: 10.0
@@ -2114,7 +2022,6 @@ news_story_brief:
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026061801
   backpressure_cooldown_ms: 60000
-  wakes_on: ["news_item_processed"]
 news_page_projection:
   enabled: true
   batch_size: 100
@@ -2122,13 +2029,6 @@ news_page_projection:
   retry_ms: 30000
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026051904
-  wakes_on:
-    [
-      "news_item_written",
-      "news_item_processed",
-      "news_story_brief_updated",
-      "news_page_dirty",
-    ]
 news_source_quality_projection:
   enabled: true
   interval_seconds: 60.0
@@ -2137,7 +2037,6 @@ news_source_quality_projection:
   retry_ms: 30000
   statement_timeout_seconds: 30.0
   advisory_lock_key: 2026052201
-  wakes_on: ["news_item_written"]
   windows: ["24h", "7d"]
 pulse_candidate:
   enabled: true
@@ -2166,7 +2065,6 @@ pulse_candidate:
     1h: 3600
     4h: 14400
   advisory_lock_key: 2026051502
-  wakes_on: ["token_radar_updated"]
   windows: ["1h", "4h"]
   scopes: ["all", "matched"]
   trigger_thresholds:
@@ -2211,19 +2109,6 @@ def _load_yaml_mapping(path: Path) -> Mapping[str, Any]:
     return data
 
 
-def _normalize_workers_yaml_mapping(data: Mapping[str, Any]) -> dict[str, Any]:
-    payload = dict(data)
-    for key in RETIRED_WORKER_SETTING_KEYS:
-        if key not in payload:
-            continue
-        value = payload[key]
-        if isinstance(value, Mapping) and set(value) == {"enabled"} and value.get("enabled") is False:
-            payload.pop(key)
-            continue
-        raise ValueError(f"retired worker setting {key!r} is no longer supported; remove it from workers.yaml")
-    return payload
-
-
 def _split_values(value: Any) -> list[str]:
     if value is None:
         return []
@@ -2256,22 +2141,6 @@ def _validate_narrative_realtime_scopes(field_name: str, value: tuple[str, ...])
     if tuple(value) != NARRATIVE_REALTIME_SCOPES:
         raise ValueError(f"{field_name} must be exactly ['all']")
     return value
-
-
-def _clamp_int(value: Any, *, low: int, high: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        parsed = low
-    return max(low, min(high, parsed))
-
-
-def _clamp_float(value: Any, *, low: float, high: float) -> float:
-    try:
-        parsed = float(value)
-    except (TypeError, ValueError):
-        parsed = low
-    return max(low, min(high, parsed))
 
 
 def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:

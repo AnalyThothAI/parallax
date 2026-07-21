@@ -135,40 +135,29 @@ describe("TokenRadarTable rows", () => {
     expect(screen.getAllByRole("article")).toHaveLength(4);
   });
 
-  it("renders hydrated narrative digest in the why-now cell", () => {
+  it("renders hydrated narrative admission coverage", () => {
     renderTokenRadarTable([
       {
         ...mixedFreshnessToken(),
-        discussion_digest: {
-          status: "ready",
+        narrative_admission: {
+          status: "admitted",
+          reason: "hot_rank",
           currentness: {
             display_status: "current",
-            reason: "fingerprint_match",
-            delta_source_event_count: 0,
-            delta_independent_author_count: 0,
-            last_ready_computed_at_ms: 1_777_746_000_000,
+            reason: "hot_rank",
           },
-          dominant_narrative: {
-            title: "隐私轮动",
-            summary_zh: "资金转向隐私叙事",
-            evidence_refs: [],
-          },
-          stance_mix: { bullish: 0.7 },
           coverage: {
-            semantic_coverage: 0.75,
             source_mentions: 4,
-            labeled_mentions: 3,
             independent_authors: 2,
           },
           data_gaps: [],
-          evidence_refs: [],
         },
       },
     ]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
-    expect(within(row).getByText("隐私轮动 · bullish 70%")).toBeInTheDocument();
-    expect(within(row).getByText("资金转向隐私叙事 · coverage 75%")).toBeInTheDocument();
+    expect(within(row).getByText("Admitted")).toBeInTheDocument();
+    expect(within(row).getByText("4 posts · 2 authors")).toBeInTheDocument();
   });
 
   it("renders empty state when not loading and no items, instead of a skeleton", () => {
@@ -428,7 +417,7 @@ describe("TokenRadarTable rows", () => {
     expect(children.map((child) => child.className)).toEqual([
       "token-radar-cell case",
       "token-radar-cell social",
-      "token-radar-cell why",
+      "token-radar-cell admission",
       "token-radar-cell market",
       "token-radar-cell score",
       "token-radar-cell listed",

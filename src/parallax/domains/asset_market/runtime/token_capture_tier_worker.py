@@ -57,6 +57,7 @@ class TokenCaptureTierWorker(WorkerBase):
         result = await asyncio.to_thread(self._project_once, observed_now_ms)
         return WorkerResult(
             processed=int(result.get("rows_written") or 0),
+            failed=int(result.get("error") or 0),
             skipped=1 if int(result.get("claimed") or 0) == 0 else 0,
             notes={
                 "claimed": int(result.get("claimed") or 0),
@@ -76,34 +77,61 @@ class TokenCaptureTierWorker(WorkerBase):
                 "source_rows_scanned": 0,
                 "targets_loaded": 0,
                 "rows_written": 0,
+                "error": 0,
                 "started_at_ms": int(now_ms),
                 "finished_at_ms": int(now_ms),
             }
-            with repos.transaction():
-                claims = repos.token_capture_tier_dirty_targets.claim_due(
-                    now_ms=now_ms,
-                    limit=1,
-                    lease_owner=self.name,
-                    lease_ms=_required_positive_int(
-                        self.settings.lease_ms,
-                        error_code="token_capture_tier_lease_ms_required",
-                    ),
-                    commit=False,
-                )
-                result["claimed"] = len(claims)
-                result["queue_depth"] = repos.token_capture_tier_dirty_targets.queue_depth(now_ms=now_ms)
-                result["targets_loaded"] = len(claims)
-                if not claims:
-                    result["reason"] = "no_due_token_capture_tier_rank_sets"
-                    return result
-                result["rows_written"] = project_once(
-                    repos,
-                    now_ms=now_ms,
-                    batch_size=self.batch_size,
-                    ws_limit=self.ws_limit,
-                    poll_limit=self.poll_limit,
-                )
-                repos.token_capture_tier_dirty_targets.mark_done(claims, now_ms=now_ms, commit=False)
+            lease_ms = _required_positive_int(
+                self.settings.lease_ms,
+                error_code="token_capture_tier_lease_ms_required",
+            )
+            retry_ms = _required_positive_int(
+                self.settings.retry_ms,
+                error_code="token_capture_tier_retry_ms_required",
+            )
+            max_attempts = _required_positive_int(
+                self.settings.max_attempts,
+                error_code="token_capture_tier_max_attempts_required",
+            )
+            claims = repos.token_capture_tier_dirty_targets.claim_due(
+                now_ms=now_ms,
+                limit=1,
+                lease_owner=self.name,
+                lease_ms=lease_ms,
+                commit=True,
+            )
+            result["claimed"] = len(claims)
+            result["queue_depth"] = repos.token_capture_tier_dirty_targets.queue_depth(now_ms=now_ms)
+            result["targets_loaded"] = len(claims)
+            if not claims:
+                result["reason"] = "no_due_token_capture_tier_rank_sets"
+                return result
+            try:
+                with repos.transaction():
+                    rows_written = project_once(
+                        repos,
+                        now_ms=now_ms,
+                        batch_size=self.batch_size,
+                        ws_limit=self.ws_limit,
+                        poll_limit=self.poll_limit,
+                    )
+                    done = repos.token_capture_tier_dirty_targets.mark_done(claims, now_ms=now_ms, commit=False)
+                    if done != len(claims):
+                        raise RuntimeError("token_capture_tier_dirty_target_stale_completion")
+                result["rows_written"] = rows_written
+            except Exception as exc:
+                with repos.transaction():
+                    repos.token_capture_tier_dirty_targets.mark_error(
+                        claims,
+                        error=_error_text(exc),
+                        retry_ms=retry_ms,
+                        max_attempts=max_attempts,
+                        worker_name=self.name,
+                        now_ms=now_ms,
+                        commit=False,
+                    )
+                result["error"] = len(claims)
+                result["last_error"] = _error_text(exc)
             return result
 
 
@@ -285,3 +313,8 @@ def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
+
+
+def _error_text(exc: BaseException) -> str:
+    text = str(exc).strip()
+    return f"{type(exc).__name__}: {text}" if text else type(exc).__name__

@@ -11,35 +11,6 @@ from parallax.domains.token_intel.services.token_intent_resolver import (
 TOKEN_REPROCESS_WINDOW = "24h"
 
 
-def refresh_recent_token_state(
-    *,
-    repos: Any,
-    lookup_keys: list[str],
-    now_ms: int,
-    window: str,
-    reprocess_limit: int,
-) -> dict[str, Any]:
-    keys = sorted({key for key in lookup_keys if key})
-    result = {
-        "lookup_keys": keys,
-        "reprocess": None,
-        "reprocessed_intents": 0,
-        "projection": deferred_token_radar_projection(),
-    }
-    if not keys:
-        return result
-    reprocess = reprocess_recent_token_intents(
-        repos=repos,
-        lookup_keys=keys,
-        now_ms=now_ms,
-        window=window,
-        limit=reprocess_limit,
-    )
-    result["reprocess"] = reprocess
-    result["reprocessed_intents"] = reprocess["reprocessed_intents"]
-    return result
-
-
 def reprocess_recent_token_intents(
     *,
     repos: Any,

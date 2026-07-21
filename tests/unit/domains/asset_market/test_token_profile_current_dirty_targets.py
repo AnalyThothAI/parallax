@@ -13,6 +13,7 @@ from parallax.domains.asset_market.repositories.token_profile_current_dirty_targ
 
 def test_enqueue_targets_coalesces_by_target_and_uses_lower_priority() -> None:
     conn = _ScriptedConnection([])
+    conn.rowcount = 1
 
     count = TokenProfileCurrentDirtyTargetRepository(conn).enqueue_targets(
         [
@@ -207,7 +208,7 @@ def test_mark_done_requires_full_stale_completion_token() -> None:
     assert conn.params[-1]["attempt_counts"] == [2]
 
 
-def test_mark_error_releases_claim_without_terminal_attempt_limit() -> None:
+def test_mark_error_releases_claim_below_terminal_attempt_limit() -> None:
     conn = _ScriptedConnection([])
     conn.rowcount = 1
 
@@ -218,11 +219,13 @@ def test_mark_error_releases_claim_without_terminal_attempt_limit() -> None:
                 "target_id": "asset-1",
                 "payload_hash": "payload-1",
                 "lease_owner": "profile-a",
-                "attempt_count": 3,
+                "attempt_count": 2,
             }
         ],
         error="source failed",
         retry_ms=30_000,
+        max_attempts=3,
+        worker_name="token_profile_current",
         now_ms=1_700_000_010_000,
         commit=False,
     )
@@ -233,9 +236,42 @@ def test_mark_error_releases_claim_without_terminal_attempt_limit() -> None:
     assert "leased_until_ms = NULL" in sql
     assert "lease_owner = NULL" in sql
     assert "attempt_count =" not in set_clause
-    assert "max_attempt" not in sql.lower()
     assert conn.params[-1]["due_at_ms"] == 1_700_000_040_000
     assert conn.params[-1]["last_error"] == "source failed"
+
+
+def test_mark_error_terminalizes_claim_at_retry_budget() -> None:
+    exhausted = {
+        **_dirty_claim(),
+        "attempt_count": 3,
+        "first_dirty_at_ms": 1_700_000_000_000,
+        "updated_at_ms": 1_700_000_009_000,
+    }
+    conn = _ScriptedConnection(
+        [
+            [exhausted],
+            [],
+            [{"terminal_generation": 1}],
+            [{"terminal_id": "terminal-1", "terminal_generation": 1}],
+        ]
+    )
+
+    changed = TokenProfileCurrentDirtyTargetRepository(conn).mark_error(
+        [exhausted],
+        error="source failed",
+        retry_ms=30_000,
+        max_attempts=3,
+        worker_name="token_profile_current",
+        now_ms=1_700_000_010_000,
+        commit=False,
+    )
+
+    assert changed == 1
+    assert "RETURNING queue.*" in conn.sql[0]
+    assert "INSERT INTO worker_queue_terminal_events" in conn.sql[-1]
+    assert conn.params[-1]["source_table"] == "token_profile_current_dirty_targets"
+    assert conn.params[-1]["target_key"] == "Asset:asset-1"
+    assert conn.params[-1]["final_reason"].startswith("retry_budget_exhausted:")
 
 
 @pytest.mark.parametrize("retry_ms", [0, True, "30000"])
@@ -247,6 +283,8 @@ def test_profile_current_dirty_mark_error_rejects_malformed_retry_before_transac
             [_dirty_claim()],
             error="source failed",
             retry_ms=retry_ms,  # type: ignore[arg-type]
+            max_attempts=3,
+            worker_name="token_profile_current",
             now_ms=1_700_000_010_000,
         )
 
@@ -280,6 +318,8 @@ def test_completion_rejects_claim_without_payload_hash() -> None:
                 [claim],
                 error="source failed",
                 retry_ms=30_000,
+                max_attempts=3,
+                worker_name="token_profile_current",
                 now_ms=1_700_000_010_000,
                 commit=False,
             ),
@@ -340,6 +380,8 @@ def test_profile_current_dirty_completion_counts_reject_invalid_cursor_rowcount(
             [_dirty_claim()],
             error="source failed",
             retry_ms=30_000,
+            max_attempts=3,
+            worker_name="token_profile_current",
             now_ms=1_700_000_010_000,
             commit=False,
         )
@@ -375,6 +417,8 @@ def test_repository_session_exposes_token_profile_current_dirty_targets() -> Non
             [_dirty_claim()],
             error="source failed",
             retry_ms=30_000,
+            max_attempts=3,
+            worker_name="token_profile_current",
             now_ms=1_700_000_010_000,
         ),
     ],

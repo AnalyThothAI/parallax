@@ -8,9 +8,6 @@ CEX_DETAIL_REPOSITORY = ROOT / "src/parallax/domains/cex_market_intel/repositori
 CEX_DETAIL_BUILDER = ROOT / "src/parallax/domains/cex_market_intel/services/cex_detail_snapshot_builder.py"
 CEX_BINANCE_OI_BUILDER = ROOT / "src/parallax/domains/cex_market_intel/services/binance_oi_radar_builder.py"
 CEX_COINGLASS_DETAIL_ENRICHER = ROOT / "src/parallax/domains/cex_market_intel/services/coinglass_detail_enricher.py"
-CEX_DERIVATIVE_SERIES_REPOSITORY = (
-    ROOT / "src/parallax/domains/cex_market_intel/repositories/cex_derivative_series_repository.py"
-)
 CEX_OI_WORKER = ROOT / "src/parallax/domains/cex_market_intel/runtime/cex_oi_radar_board_worker.py"
 
 
@@ -75,7 +72,6 @@ def test_cex_read_model_repositories_require_explicit_transactions() -> None:
     repository_paths = (
         CEX_OI_REPOSITORY,
         CEX_DETAIL_REPOSITORY,
-        CEX_DERIVATIVE_SERIES_REPOSITORY,
     )
 
     for path in repository_paths:
@@ -118,55 +114,11 @@ def test_cex_oi_runtime_limits_are_formal_contracts_without_runtime_repairs() ->
         "isinstance(value, bool) or not isinstance(value, int)",
     )
 
-    violations = {
-        name: [token for token in forbidden if token in source]
-        for name, source in sources.items()
-    }
+    violations = {name: [token for token in forbidden if token in source] for name, source in sources.items()}
     combined = "\n".join(sources.values())
 
     assert violations == {name: [] for name in sources}
     assert [token for token in required if token not in combined] == []
-
-
-def test_cex_derivative_series_upsert_skips_unchanged_conflict_rows() -> None:
-    text = CEX_DERIVATIVE_SERIES_REPOSITORY.read_text(encoding="utf-8")
-
-    assert "written += 1" not in text
-    assert 'getattr(cursor, "rowcount", default)' not in text
-    assert "return default" not in text
-    assert "return max(0, int(rowcount))" not in text
-    assert "isinstance(rowcount, bool)" in text
-    assert "_cursor_rowcount(cursor)" in text
-    assert "WHERE cex_derivative_series.value_numeric IS DISTINCT FROM excluded.value_numeric" in text
-    assert "cex_derivative_series.value_usd IS DISTINCT FROM excluded.value_usd" in text
-    assert "cex_derivative_series.raw_payload_json IS DISTINCT FROM excluded.raw_payload_json" in text
-
-
-def test_cex_derivative_series_requires_formal_identity_without_empty_hash_segments() -> None:
-    text = CEX_DERIVATIVE_SERIES_REPOSITORY.read_text(encoding="utf-8")
-    forbidden = (
-        "provider.strip().lower()",
-        "native_market_id.strip().upper()",
-        "metric.strip().lower()",
-        "period.strip().lower()",
-    )
-    required = (
-        '_required_series_text(provider, "provider")',
-        '_required_series_text(exchange, "exchange")',
-        '_required_series_text(native_market_id, "native_market_id")',
-        '_required_series_text(metric, "metric")',
-        '_required_series_text(period, "period")',
-    )
-
-    assert [token for token in forbidden if token in text] == []
-    assert [token for token in required if token not in text] == []
-
-
-def test_cex_derivative_series_requires_formal_raw_payload_without_empty_default() -> None:
-    text = CEX_DERIVATIVE_SERIES_REPOSITORY.read_text(encoding="utf-8")
-
-    assert 'Jsonb(point.get("raw_payload") or {})' not in text
-    assert "_required_raw_payload(point)" in text
 
 
 def test_cex_detail_snapshot_repository_requires_formal_identity_without_defaults() -> None:
@@ -187,11 +139,11 @@ def test_cex_detail_snapshot_repository_requires_formal_identity_without_default
         'Jsonb(list(snapshot.get("level_bands") or []))',
         'Jsonb(list(snapshot.get("degraded_reasons") or []))',
         'Jsonb(list(snapshot.get("source_refs") or []))',
+        '"snapshot_id"',
         "(target_type, target_id)",
         "(exchange.lower(), native_market_id.upper())",
     )
     required = (
-        '_required_snapshot_text(snapshot, "snapshot_id")',
         '_required_snapshot_text(snapshot, "target_type")',
         '_required_snapshot_text(snapshot, "target_id")',
         '_required_snapshot_text(snapshot, "exchange")',

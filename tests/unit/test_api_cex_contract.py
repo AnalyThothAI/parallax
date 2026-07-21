@@ -45,6 +45,21 @@ def test_cex_detail_api_rejects_partial_target_identity_before_repository_call()
     assert snapshots.calls == []
 
 
+def test_cex_detail_api_rejects_missing_query_identity_before_repository_call() -> None:
+    snapshots = FakeCexDetailSnapshots()
+    app = _app(snapshots)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/cex/detail",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {"ok": False, "error": "invalid_cex_detail_query", "field": "query"}
+    assert snapshots.calls == []
+
+
 def test_cex_detail_api_rejects_blank_market_exchange_before_repository_call() -> None:
     snapshots = FakeCexDetailSnapshots()
     app = _app(snapshots)
@@ -88,7 +103,7 @@ class FakeCexDetailSnapshots:
 
     def latest_snapshot(self, *, target_type: str, target_id: str) -> dict[str, object]:
         self.calls.append({"method": "latest_snapshot", "target_type": target_type, "target_id": target_id})
-        return {"snapshot_id": "snapshot-target"}
+        return {"target_type": target_type, "target_id": target_id}
 
     def latest_snapshot_by_market(self, *, exchange: str, native_market_id: str) -> dict[str, object]:
         self.calls.append(
@@ -98,7 +113,7 @@ class FakeCexDetailSnapshots:
                 "native_market_id": native_market_id,
             }
         )
-        return {"snapshot_id": "snapshot-market"}
+        return {"exchange": exchange, "native_market_id": native_market_id}
 
 
 class FakeRepositoryContext:

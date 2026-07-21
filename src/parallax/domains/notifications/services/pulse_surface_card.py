@@ -1,7 +1,6 @@
 """Pulse SurfaceCard renderer.
 
 Renders signal_pulse_candidate notification body from FinalDecision v2.
-Replaces the legacy _pulse_body markdown that dropped 80% of payload information.
 
 Body sections (in order):
 1. Header: $SYMBOL · {route} · {recommendation} · conf {pct}
@@ -64,7 +63,7 @@ def render_pulse_surface_card(
 
     header = _render_header(row=row, decision=decision)
     playbook = _render_playbook(decision)
-    links = _render_links(row=row, decision=decision, factor_snapshot=factor_snapshot, asset_profile=asset_profile)
+    links = _render_links(row=row, factor_snapshot=factor_snapshot, asset_profile=asset_profile)
     narrative = _render_narrative(decision)
     bull = _render_view("看多", decision.get("bull_view"), decision=decision)
     bear = _render_view("看空", decision.get("bear_view"), decision=decision)
@@ -178,7 +177,6 @@ def _render_playbook(decision: dict[str, Any]) -> str:
 def _render_links(
     *,
     row: dict[str, Any],
-    decision: dict[str, Any],
     factor_snapshot: dict[str, Any],
     asset_profile: dict[str, Any],
 ) -> str:

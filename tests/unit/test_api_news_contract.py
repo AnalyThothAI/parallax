@@ -18,7 +18,6 @@ from parallax.domains.news_intel._constants import (
 )
 from parallax.domains.news_intel.repositories.news_repository import (
     _public_agent_brief_payload,
-    _public_agent_run_payload,
 )
 from parallax.domains.news_intel.types.news_item_brief_contract import CURRENT_NEWS_ITEM_BRIEF_CONTRACT
 
@@ -566,7 +565,7 @@ def test_news_public_agent_brief_rejects_malformed_optional_nonnegative_int_fiel
         _public_agent_brief_payload(payload)
 
 
-def test_news_item_detail_hides_agent_runtime_audit_fields() -> None:
+def test_news_item_detail_hides_agent_brief_runtime_audit_fields() -> None:
     news = FakeNewsRepository()
     news.item_detail = {
         "news_item_id": "news-1",
@@ -594,39 +593,6 @@ def test_news_item_detail_hides_agent_runtime_audit_fields() -> None:
                 "evidence_refs": ["news:item"],
                 "research_todos_zh": ["retired"],
             },
-        },
-        "agent_run": {
-            "run_id": "run-news-1",
-            "backend": "agent_runtime",
-            "status": "completed",
-            "outcome": "ready",
-            "provider": "litellm",
-            "model": "gpt-test",
-            "lane": "news.item_brief",
-            "workflow_name": "parallax.news_item_brief",
-            "agent_name": "NewsItemBriefAgent",
-            "execution_trace_id": "trace-1",
-            "artifact_version_hash": "artifact-hash",
-            "prompt_version": "prompt-v1",
-            "schema_version": "schema-v1",
-            "validator_version": "validator-v1",
-            "guardrail_version": "guardrail-v1",
-            "input_hash": "input-hash",
-            "output_hash": "output-hash",
-            "request_json": {"secret": "request"},
-            "response_json": {"summary_zh": "raw"},
-            "validation_errors_json": [{"path": "x"}],
-            "usage_json": {"input_tokens": 10},
-            "trace_metadata_json": {"sdk_trace_id": "trace-1"},
-            "research_plan": {"legacy": True},
-            "tool_results": [{"tool_name": "legacy"}],
-            "research_execution": {"legacy": True},
-            "research_hashes": {"legacy": True},
-            "base_packet": {"legacy": True},
-            "latency_ms": 1200,
-            "started_at_ms": 100,
-            "finished_at_ms": 1300,
-            "execution_started": True,
         },
     }
     app = _app(news)
@@ -661,43 +627,6 @@ def test_news_item_detail_hides_agent_runtime_audit_fields() -> None:
     ):
         assert key not in data["agent_brief"]
 
-    assert data["agent_run"] == {
-        "backend": "agent_runtime",
-        "status": "completed",
-        "outcome": "ready",
-        "provider": "litellm",
-        "model": "gpt-test",
-        "lane": "news.item_brief",
-        "workflow_name": "parallax.news_item_brief",
-        "agent_name": "NewsItemBriefAgent",
-        "latency_ms": 1200,
-        "started_at_ms": 100,
-        "finished_at_ms": 1300,
-        "execution_started": True,
-    }
-    for key in (
-        "run_id",
-        "execution_trace_id",
-        "artifact_version_hash",
-        "prompt_version",
-        "schema_version",
-        "validator_version",
-        "guardrail_version",
-        "input_hash",
-        "output_hash",
-        "request_json",
-        "response_json",
-        "validation_errors_json",
-        "usage_json",
-        "trace_metadata_json",
-        "research_plan",
-        "tool_results",
-        "research_execution",
-        "research_hashes",
-        "base_packet",
-    ):
-        assert key not in data["agent_run"]
-
 
 def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None:
     app = _app(FakeNewsRepository())
@@ -713,7 +642,6 @@ def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None
     signal_summary_props = schemas["NewsSignalSummary"]["properties"]
     token_lane_props = schemas["NewsTokenLane"]["properties"]
     agent_brief_props = schemas["NewsAgentBrief"]["properties"]
-    agent_run_props = schemas["NewsAgentRunSummary"]["properties"]
     news_query_params = {param["name"] for param in schema["paths"]["/api/news"]["get"]["parameters"]}
 
     assert {"market_scope", "agent_admission", "agent_admission_status", "provider_rating"} <= set(row_props)
@@ -730,6 +658,7 @@ def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None
     assert "provider_score" not in eligibility_props
     assert "provider_score" not in token_lane_props
     assert "provider_signal" not in token_lane_props
+    assert "agent_run" not in detail_props
     for field in (
         "agent_run_id",
         "artifact_version_hash",
@@ -739,22 +668,6 @@ def test_news_openapi_schema_exposes_market_scope_not_legacy_admission() -> None
         "research_todos_zh",
     ):
         assert field not in agent_brief_props
-    for field in (
-        "run_id",
-        "execution_trace_id",
-        "artifact_version_hash",
-        "input_hash",
-        "output_hash",
-        "request_json",
-        "response_json",
-        "trace_metadata_json",
-        "research_plan",
-        "tool_results",
-        "research_execution",
-        "research_hashes",
-        "base_packet",
-    ):
-        assert field not in agent_run_props
     assert "market_scope" in serialized
     assert "agent_admission" in serialized
     assert _legacy_admission_prefix() not in serialized
@@ -797,8 +710,6 @@ class FakeNewsRepository:
         if self.item_detail is not None:
             item_detail = dict(self.item_detail)
             item_detail["agent_brief"] = _public_agent_brief_payload(item_detail.get("agent_brief"))
-            if item_detail.get("agent_run") is not None:
-                item_detail["agent_run"] = _public_agent_run_payload(item_detail["agent_run"])
             return item_detail
         return {"news_item_id": news_item_id}
 

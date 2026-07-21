@@ -87,18 +87,7 @@ class NewsStoryBriefWorker(WorkerBase):
             return WorkerResult(skipped=1, notes={"reason": "no_due_story_brief_targets"})
 
         rate_units = min(self._batch_size(), queue_depth)
-        try:
-            reservation = provider.try_reserve_execution(NEWS_STORY_BRIEF_LANE, rate_units=rate_units)
-        except Exception as exc:
-            return WorkerResult(
-                skipped=1,
-                notes={
-                    "claimed": 0,
-                    "queue_depth": queue_depth,
-                    "backpressure": 1,
-                    "agent_reservation_error": type(exc).__name__,
-                },
-            )
+        reservation = provider.try_reserve_execution(NEWS_STORY_BRIEF_LANE, rate_units=rate_units)
         if not reservation.acquired:
             backpressure_outcome = _backpressure_outcome(reservation)
             return WorkerResult(
@@ -234,7 +223,7 @@ class NewsStoryBriefWorker(WorkerBase):
         try:
             request_audit = self.provider.request_story_audit(run_id=run_id, packet=packet)
         except Exception as exc:
-            raise _NoStartBackpressure("request_audit_failed") from exc
+            raise RuntimeError("news_story_brief_request_audit_failed") from exc
 
         try:
             result = await self.provider.brief_story(run_id=run_id, packet=packet, reservation=reservation)

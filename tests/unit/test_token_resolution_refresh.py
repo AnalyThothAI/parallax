@@ -4,7 +4,6 @@ import pytest
 
 from parallax.domains.token_intel.services.deterministic_token_resolver import DeterministicResolution
 from parallax.domains.token_intel.services.token_resolution_refresh import (
-    refresh_recent_token_state,
     reprocess_recent_token_intents,
 )
 
@@ -260,32 +259,6 @@ def test_reprocess_requires_explicit_window_and_limit_contract() -> None:
 
     assert lookup.calls == []
     assert repos.transaction_entries == 0
-
-
-def test_refresh_recent_token_state_defers_projection_to_worker(monkeypatch):
-    def fake_reprocess(**kwargs):
-        return {"reprocessed_intents": 1, "resolved_intents": 1}
-
-    monkeypatch.setattr(
-        "parallax.domains.token_intel.services.token_resolution_refresh.reprocess_recent_token_intents",
-        fake_reprocess,
-    )
-
-    result = refresh_recent_token_state(
-        repos=object(),
-        lookup_keys=["symbol:HANTA"],
-        now_ms=1_778_162_003_774,
-        window="24h",
-        reprocess_limit=500,
-    )
-
-    assert result["reprocessed_intents"] == 1
-    assert result["projection"] == {
-        "status": "deferred_to_worker",
-        "rows_written": 0,
-        "source_rows": 0,
-        "windows": {},
-    }
 
 
 class FakeLookup:

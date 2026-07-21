@@ -91,116 +91,20 @@ export function tokenCaseFixture(): TokenCaseDossier {
       has_more: false,
     },
     posts: tokenCasePostsFixture(),
-    discussion_digest: {
-      schema_version: "token_discussion_digest_v1",
-      status: "ready",
-      generated_at_ms: BASE_MS - 30_000,
+    narrative_admission: {
+      status: "admitted",
+      reason: "hot_rank",
+      computed_at_ms: BASE_MS - 30_000,
       currentness: {
         display_status: "current",
-        reason: "fingerprint_match",
-        ready_source_event_count: 18,
-        current_source_event_count: 18,
-        delta_source_event_count: 0,
-        delta_independent_author_count: 0,
-        last_ready_computed_at_ms: BASE_MS - 30_000,
-        epoch_policy_version: "token-narrative-epoch-v1",
-      },
-      dominant_narrative: {
-        title: "Contract-confirmed Solana rotation",
-        summary_zh: "HANSA 的核心叙事是 CA 证据帖被 scanner 与观察账号同步复述。",
-        propagation_state: "expansion",
-        trade_stance: "bullish",
-        attention_valence: "informational",
-        evidence_refs: [{ ref_type: "event", event_id: "event-hansa-1" }],
+        reason: "hot_rank",
       },
       coverage: {
-        semantic_coverage: 0.84,
-        labeled_mentions: 15,
         source_mentions: 18,
         independent_authors: 7,
       },
-      stance_mix: { bullish: 0.58, skeptical: 0.24, neutral: 0.18 },
-      attention_valence_mix: { informational: 0.65, mixed: 0.35 },
-      propagation: {
-        state: "expansion",
-        summary_zh: "语义扩散从 CA 证据帖进入 scanner 复述。",
-        evidence_refs: [{ ref_type: "event", event_id: "event-hansa-2" }],
-      },
-      bull_bear: {
-        stance: "watch",
-        bull: {
-          thesis_zh: "多个独立账号围绕 CA 证据复述，说明讨论已经脱离单一喊单源。",
-          bullets_zh: [
-            "market cap and liquidity become ready",
-            "watched account follow-up appears",
-          ],
-          evidence_refs: [
-            { ref_type: "event", event_id: "event-hansa-1" },
-            { ref_type: "event", event_id: "event-hansa-3" },
-          ],
-        },
-        bear: {
-          thesis_zh: "市场快照和官方流动性路由仍缺失，scanner 复述可能高估了真实需求。",
-          bullets_zh: ["liquidity remains missing", "follow-up authors collapse to one cluster"],
-          evidence_refs: [{ ref_type: "event", event_id: "event-hansa-2" }],
-        },
-      },
-      key_accounts: [
-        { handle: "earlyape", role: "seed lead", posts: 3, first_seen_ms: BASE_MS - 42 * 60_000 },
-        {
-          handle: "scannerjoe",
-          role: "ignition lead",
-          posts: 2,
-          first_seen_ms: BASE_MS - 24 * 60_000,
-        },
-        {
-          handle: "solwatch",
-          role: "expansion lead",
-          posts: 2,
-          first_seen_ms: BASE_MS - 9 * 60_000,
-        },
-      ],
-      data_gaps: ["live market snapshot missing", "official liquidity route not confirmed"],
-      evidence_refs: [{ ref_type: "event", event_id: "event-hansa-3" }],
+      data_gaps: [],
     },
-    narrative_clusters: [
-      {
-        cluster_key: "ca-proof",
-        title: "CA proof",
-        summary_zh: "种子账号先给出合约线索。",
-        propagation_state: "seed",
-        trade_stance: "bullish",
-        attention_valence: "informational",
-        mention_count: 3,
-        author_count: 2,
-        lead_accounts: [{ handle: "earlyape", role: "seed lead", posts: 3 }],
-        evidence_refs: [{ ref_type: "event", event_id: "event-hansa-1" }],
-      },
-      {
-        cluster_key: "scanner-pickup",
-        title: "Scanner pickup",
-        summary_zh: "scanner 账号开始把 HANSA 推给更宽受众。",
-        propagation_state: "ignition",
-        trade_stance: "neutral",
-        attention_valence: "informational",
-        mention_count: 7,
-        author_count: 4,
-        lead_accounts: [{ handle: "scannerjoe", role: "ignition lead", posts: 2 }],
-        evidence_refs: [{ ref_type: "event", event_id: "event-hansa-2" }],
-      },
-      {
-        cluster_key: "independent-follow-through",
-        title: "Independent follow-through",
-        summary_zh: "独立作者加入，重复文本占比仍低。",
-        propagation_state: "expansion",
-        trade_stance: "bullish",
-        attention_valence: "mixed",
-        mention_count: 8,
-        author_count: 5,
-        lead_accounts: [{ handle: "solwatch", role: "expansion lead", posts: 2 }],
-        evidence_refs: [{ ref_type: "event", event_id: "event-hansa-3" }],
-      },
-    ],
     pulse_overlay: null,
     market_live: {
       status: "missing",
@@ -318,30 +222,5 @@ function post(eventId: string, handle: string, text: string, quality: number, wa
       ],
       risk_caps: [],
     },
-    semantic: semanticForPost(eventId),
-  };
-}
-
-function semanticForPost(eventId: string) {
-  const isExpansion = eventId.endsWith("3");
-  const isIgnition = eventId.endsWith("2");
-  return {
-    status: "ready",
-    trade_stance: isIgnition ? "neutral" : "bullish",
-    attention_valence: isExpansion ? "mixed" : "informational",
-    narrative_cluster_key: isExpansion
-      ? "independent-follow-through"
-      : isIgnition
-        ? "scanner-pickup"
-        : "ca-proof",
-    narrative_cluster_title: isExpansion
-      ? "Independent follow-through"
-      : isIgnition
-        ? "Scanner pickup"
-        : "CA proof",
-    claim_type: isIgnition ? "scanner-repeat" : "contract-evidence",
-    evidence_type: "post_text",
-    semantic_confidence: 0.84,
-    evidence_refs: [{ ref_type: "event", event_id: eventId }],
   };
 }

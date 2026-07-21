@@ -8,8 +8,6 @@ from psycopg.types.json import Jsonb
 
 from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 
-EPHEMERAL_FACTOR_SNAPSHOT_PATH = "factor_snapshot_json.provenance.computed_at_ms"
-
 
 def canonical_token_radar_payload(payload: Any) -> Any:
     """Return Token Radar payload data with product-ephemeral fields removed."""

@@ -707,10 +707,16 @@ def _bool_text(value: Any) -> str:
 
 
 def _since_ms(*, now_ms: int, lookback_hours: int) -> int:
-    return int(now_ms) - _required_positive_int(
-        lookback_hours,
-        "pulse_policy_lookback_hours_required",
-    ) * 60 * 60 * 1000
+    return (
+        int(now_ms)
+        - _required_positive_int(
+            lookback_hours,
+            "pulse_policy_lookback_hours_required",
+        )
+        * 60
+        * 60
+        * 1000
+    )
 
 
 def _int(value: Any) -> int:

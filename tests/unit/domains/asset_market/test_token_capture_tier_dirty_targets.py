@@ -29,6 +29,14 @@ NOW_MS = 1_700_000_000_000
             lease_ms=600_000,
         ),
         lambda repo: repo.mark_done([_claim()], now_ms=NOW_MS),
+        lambda repo: repo.mark_error(
+            [_claim()],
+            error="projection failed",
+            retry_ms=30_000,
+            max_attempts=3,
+            worker_name="token_capture_tier",
+            now_ms=NOW_MS,
+        ),
     ),
 )
 def test_token_capture_tier_dirty_mutations_require_connection_transaction_before_sql_when_committing(
@@ -109,6 +117,41 @@ def test_token_capture_tier_dirty_write_counts_require_cursor_rowcount() -> None
             reason="token_radar_updated",
             rows=[_rank_row()],
             source_watermark_ms=NOW_MS,
+            now_ms=NOW_MS,
+            commit=False,
+        )
+
+
+def test_token_capture_tier_dirty_error_releases_claim_below_retry_budget() -> None:
+    conn = _RowcountConnection(rowcount=1)
+
+    changed = TokenCaptureTierDirtyTargetRepository(conn).mark_error(
+        [_claim()],
+        error="projection failed",
+        retry_ms=30_000,
+        max_attempts=3,
+        worker_name="token_capture_tier",
+        now_ms=NOW_MS,
+        commit=False,
+    )
+
+    assert changed == 1
+    assert "UPDATE token_capture_tier_dirty_targets queue" in conn.sql
+    assert "leased_until_ms = NULL" in conn.sql
+    assert conn.params["due_at_ms"] == NOW_MS + 30_000
+
+
+@pytest.mark.parametrize("max_attempts", [0, True, "3"])
+def test_token_capture_tier_dirty_error_requires_formal_attempt_budget(max_attempts: object) -> None:
+    conn = _ScriptedConnection()
+
+    with pytest.raises(ValueError, match="token_capture_tier_dirty_target_max_attempts_required"):
+        TokenCaptureTierDirtyTargetRepository(conn).mark_error(
+            [_claim()],
+            error="projection failed",
+            retry_ms=30_000,
+            max_attempts=max_attempts,  # type: ignore[arg-type]
+            worker_name="token_capture_tier",
             now_ms=NOW_MS,
             commit=False,
         )

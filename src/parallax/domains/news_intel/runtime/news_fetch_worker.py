@@ -19,7 +19,6 @@ from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
     validate_news_provider_contract,
 )
-from parallax.domains.news_intel.types.news_canonical_identity import canonical_identity_for_observation
 from parallax.domains.news_intel.types.source_provider import (
     NewsProviderObservation,
     NewsSourceHttpCache,
@@ -293,24 +292,8 @@ class NewsFetchWorker(WorkerBase):
                 body_text=observation.body_text,
             )
             item_title_fingerprint = title_fingerprint(observation.title)
-            item_published_at_ms = int(
-                observation.published_at_ms if observation.published_at_ms is not None else fetched_at_ms
-            )
-            canonical_identity = canonical_identity_for_observation(
-                provider_type=str(source["provider_type"]),
-                source_id=source_id,
-                provider_article_id=str(provider.get("provider_article_id") or ""),
-                canonical_url=observation.canonical_url,
-                content_hash=item_content_hash,
-                title_fingerprint=item_title_fingerprint,
-                title=observation.title,
-                summary=observation.summary,
-                body_text=observation.body_text,
-                published_at_ms=item_published_at_ms,
-            )
             news = repository.upsert_canonical_news_item(
                 provider_item_id=provider["provider_item_id"],
-                canonical_identity=canonical_identity,
                 canonical_url=observation.canonical_url,
                 title=observation.title,
                 summary=observation.summary,

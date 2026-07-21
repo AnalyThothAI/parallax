@@ -105,7 +105,7 @@ class NewsPageProjectionWorker(WorkerBase):
                         )
                         story_keys.append(str(story["story_key"]))
                         story_groups_projected += 1
-                        member_item_ids.extend(_member_news_item_ids(member_items=member_items, story=story, item=item))
+                        member_item_ids.extend(_member_news_item_ids(member_items=member_items, item=item))
                     story_member_items = len(set(member_item_ids))
             except Exception as exc:
                 marked_error = mark_work_error(
@@ -238,10 +238,8 @@ def _projection_parts(
 def _member_news_item_ids(
     *,
     member_items: list[dict[str, Any]],
-    story: Mapping[str, Any],
     item: Mapping[str, Any],
 ) -> list[str]:
-    del story
     member_ids = [_required_member_news_item_id(row, item=item) for row in member_items]
     if not member_ids:
         news_item_id = str(item.get("news_item_id") or "")

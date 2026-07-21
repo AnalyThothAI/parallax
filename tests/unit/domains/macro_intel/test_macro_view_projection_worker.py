@@ -84,7 +84,6 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
         "limit_per_series": 800,
     }
     assert len(repo.snapshots) == 1
-    assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v4:current"
     assert repo.snapshots[0]["panels_json"]["volatility"]["regime"] == "carry"
     assert repo.done_targets == [(target, NOW_MS, False)]
     assert wake_bus.macro_view_snapshot_updates == [
@@ -339,7 +338,6 @@ def test_macro_view_projection_worker_current_target_rebuilds_snapshot_when_seri
     ]
     assert repo.done_targets == [(target, NOW_MS, False)]
     assert len(repo.snapshots) == 1
-    assert repo.snapshots[0]["snapshot_id"] == "macro-view:macro_regime_v4:current"
     assert wake_bus.macro_view_snapshot_updates == [
         {
             "projection_version": repo.snapshots[0]["projection_version"],
@@ -399,9 +397,7 @@ def test_macro_view_projection_worker_refresh_failure_marks_dirty_target_error()
         "refresh_observation_series_rows_for_concepts",
         "mark_macro_projection_dirty_targets_error",
     ]
-    assert repo.error_targets == [
-        (target, "boom", 300_000, 3, "macro_view_projection", NOW_MS, False)
-    ]
+    assert repo.error_targets == [(target, "boom", 300_000, 3, "macro_view_projection", NOW_MS, False)]
     assert repo.call_depths == [
         ("claim_macro_projection_dirty_targets", 1),
         ("refresh_observation_series_rows_for_concepts", 2),
@@ -464,9 +460,7 @@ def test_macro_view_projection_worker_reads_formal_settings_for_claim_history_se
     error_result = error_worker.run_once_sync()
 
     assert error_result.failed == 1
-    assert error_repo.error_targets == [
-        (target, "boom", 90_000, 4, "macro_view_projection", NOW_MS, False)
-    ]
+    assert error_repo.error_targets == [(target, "boom", 90_000, 4, "macro_view_projection", NOW_MS, False)]
 
 
 def test_macro_view_projection_worker_requires_session_transaction_before_claiming_dirty_target() -> None:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from typing import TYPE_CHECKING, Any, cast
+from typing import TYPE_CHECKING, Any
 
 if TYPE_CHECKING:
     from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
@@ -54,8 +54,6 @@ class PulseEvidenceBuilder:
         enriched_events = list(self._sources.list_enriched_events(source_event_ids))
         market_facts = self._list_market_facts(context, now_ms=now_ms)
         identity_facts = list(self._sources.list_identity_facts(context))
-        discussion_digest = self._current_discussion_digest(context)
-
         refs: list[dict[str, Any]] = []
         social_rows = self._build_social_evidence(events, enriched_events, refs=refs)
         market_rows = self._build_market_evidence(market_facts, now_ms=now_ms, refs=refs)
@@ -97,15 +95,11 @@ class PulseEvidenceBuilder:
             },
             "data_gaps": tuple({key: value for key, value in gap.items() if key != "ref_id"} for gap in data_gaps),
             "risk_flags": tuple(),
-            "source_fingerprints": {
-                "factor_snapshot_sha256": _sha256_json(factor_snapshot),
-                "discussion_digest_id": _optional_str(_mapping(discussion_digest).get("digest_id")),
-            },
+            "source_fingerprints": {"factor_snapshot_sha256": _sha256_json(factor_snapshot)},
             "admission_context": {
                 "factor_snapshot": factor_snapshot,
                 "gate_result": _mapping(context.gate_result),
                 "selected_post_count": len(_sequence(context.selected_posts)),
-                "discussion_digest": _compact_discussion_digest(discussion_digest),
             },
             "summary_json": {
                 "social_rows": tuple(sorted(social_rows, key=lambda row: str(row.get("ref_id") or ""))),
@@ -113,7 +107,6 @@ class PulseEvidenceBuilder:
                     sorted(market_rows, key=lambda row: str(row.get("ref_id") or row.get("instrument_ref") or ""))
                 ),
                 "identity_rows": tuple(sorted(identity_rows, key=lambda row: str(row.get("ref_id") or ""))),
-                "discussion_digest": _compact_discussion_digest(discussion_digest),
             },
         }
         packet_payload["evidence_packet_hash"] = _sha256_json(
@@ -206,7 +199,6 @@ class PulseEvidenceBuilder:
             cex_snapshot = None
             if route == "cex" and (is_cex_snapshot or native_market_id):
                 cex_snapshot = {
-                    "snapshot_id": _optional_str(payload.get("snapshot_id")),
                     "exchange": _optional_str(payload.get("exchange")) or "binance",
                     "native_market_id": native_market_id,
                     "status": _optional_str(payload.get("status")),
@@ -390,24 +382,6 @@ class PulseEvidenceBuilder:
     def _list_market_facts(self, context: PulseCandidateContext, *, now_ms: int) -> list[Any]:
         return list(self._sources.list_market_facts(context, max_age_ms=self._market_freshness_ms, now_ms=now_ms))
 
-    def _current_discussion_digest(self, context: PulseCandidateContext) -> dict[str, Any] | None:
-        target_type = _optional_str(context.target_type)
-        target_id = _optional_str(context.target_id)
-        window = _optional_str(context.window)
-        scope = _optional_str(context.scope)
-        if not target_type or not target_id or not window or not scope:
-            return None
-        return cast(
-            dict[str, Any],
-            self._sources.get_current_discussion_digest(
-                target_type=target_type,
-                target_id=target_id,
-                window=window,
-                scope=scope,
-                schema_version="narrative_intel_v1",
-            ),
-        )
-
 
 def _packet_from_payload(payload: dict[str, Any]) -> PulseEvidencePacket:
     from parallax.domains.pulse_lab.types.evidence_packet import PulseEvidencePacket
@@ -552,45 +526,6 @@ def _identity_contract(rows: list[dict[str, Any]]) -> dict[str, Any]:
         "profile_refs": profile_refs,
         "summary_zh": "；".join(str(row.get("summary_zh") or "") for row in rows if row.get("summary_zh"))[:300],
     }
-
-
-def _compact_discussion_digest(row: dict[str, Any] | None) -> dict[str, Any] | None:
-    payload = _mapping(row)
-    if not payload:
-        return None
-    currentness = _mapping(payload.get("currentness"))
-    return {
-        "digest_id": _optional_str(payload.get("digest_id")),
-        "schema_version": _optional_str(payload.get("schema_version")),
-        "computed_at_ms": _int(payload.get("computed_at_ms")),
-        "semantic_coverage": payload.get("semantic_coverage"),
-        "currentness": currentness,
-        "headline_zh": _optional_str(payload.get("headline_zh")),
-        "dominant_narratives": payload.get("dominant_narratives_json") or (),
-        "bull_view": payload.get("bull_view_json") or {},
-        "bear_view": payload.get("bear_view_json") or {},
-        "propagation_read": payload.get("propagation_read_json") or {},
-        "reflexivity_read": payload.get("reflexivity_read_json") or {},
-        "evidence_refs": payload.get("evidence_refs_json") or (),
-        "data_gaps": _discussion_digest_data_gaps(payload, currentness=currentness),
-    }
-
-
-def _discussion_digest_data_gaps(payload: dict[str, Any], *, currentness: dict[str, Any]) -> list[dict[str, Any]]:
-    gaps = [_mapping(gap) for gap in _sequence(payload.get("data_gaps_json") or payload.get("data_gaps") or ())]
-    gaps = [gap for gap in gaps if gap]
-    display_status = str(currentness.get("display_status") or "")
-    if display_status not in {"updating", "stale"}:
-        return gaps
-    reason = str(currentness.get("reason") or ("digest_updating" if display_status == "updating" else "digest_stale"))
-    if any(str(gap.get("reason") or "") == reason for gap in gaps):
-        return gaps
-    gap: dict[str, Any] = {"reason": reason}
-    delta_source_event_count = currentness.get("delta_source_event_count")
-    if delta_source_event_count is not None:
-        gap["delta_source_event_count"] = delta_source_event_count
-    gaps.append(gap)
-    return gaps
 
 
 def _completeness_score(*, social: dict[str, Any], market: dict[str, Any], identity: dict[str, Any]) -> float:

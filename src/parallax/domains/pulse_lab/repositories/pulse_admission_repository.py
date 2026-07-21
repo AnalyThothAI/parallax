@@ -452,32 +452,6 @@ class PulseAdmissionRepository:
         row = cursor.fetchone()
         return _optional_returning_row(cursor, row)
 
-    def _mark_edge_admitted(
-        self,
-        *,
-        candidate_id: str,
-        edge_events_json: list[Any],
-        job_id: str,
-        admitted_at_ms: int,
-    ) -> dict[str, Any] | None:
-        cursor = self.conn.execute(
-            """
-            UPDATE pulse_candidate_edge_state
-            SET last_edge_events_json = %s,
-                last_job_id = %s,
-                last_suppressed_reason = NULL,
-                last_suppressed_at_ms = NULL,
-                pending_score_band = NULL,
-                pending_score_band_count = 0,
-                updated_at_ms = %s
-            WHERE candidate_id = %s
-            RETURNING *
-            """,
-            (_json(edge_events_json), job_id, int(admitted_at_ms), candidate_id),
-        )
-        row = cursor.fetchone()
-        return _optional_returning_row(cursor, row)
-
     def mark_edge_run_finished(
         self,
         *,

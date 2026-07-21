@@ -46,7 +46,7 @@ def test_account_quality_repository_commit_owned_writes_use_connection_transacti
         was_early_author=True,
         outcome_status="settled",
     )
-    snapshot_id = repository.insert_quality_snapshot(
+    changed = repository.insert_quality_snapshot(
         handle="Early",
         window="30d",
         precision_score=0.5,
@@ -56,7 +56,7 @@ def test_account_quality_repository_commit_owned_writes_use_connection_transacti
         sample_size=1,
     )
 
-    assert snapshot_id == "account-quality:early:30d:current"
+    assert changed == 1
     assert conn.sql_transaction_depths == [1, 1, 1, 1]
     assert conn.transaction_enter_count == 4
     assert conn.transaction_exit_count == 4
@@ -89,6 +89,40 @@ def test_account_quality_repository_caller_owned_writes_do_not_open_inner_transa
     assert conn.sql_transaction_depths == [0, 0]
     assert conn.transaction_enter_count == 0
     assert conn.commit_count == 0
+
+
+@pytest.mark.parametrize("rowcount", [0, 1])
+def test_account_quality_current_upsert_reports_database_changed_count(rowcount: int) -> None:
+    conn = FakeConn(rows=[], rowcount=rowcount)
+
+    changed = AccountQualityRepository(conn).upsert_token_call_stat(
+        handle="Early",
+        token_id="asset:eip155:1:erc20:dog",
+        first_mention_ms=1_700_000_000_000,
+        mention_count=2,
+        was_early_author=True,
+        outcome_status="settled",
+        commit=False,
+    )
+
+    assert changed == rowcount
+    assert "IS DISTINCT FROM" in conn.sql
+
+
+@pytest.mark.parametrize("rowcount", [-1, 2, True, None])
+def test_account_quality_current_upsert_rejects_malformed_database_changed_count(rowcount: object) -> None:
+    conn = FakeConn(rows=[], rowcount=rowcount)
+
+    with pytest.raises(TypeError, match="account_quality_repository_rowcount_invalid"):
+        AccountQualityRepository(conn).upsert_token_call_stat(
+            handle="Early",
+            token_id="asset:eip155:1:erc20:dog",
+            first_mention_ms=1_700_000_000_000,
+            mention_count=2,
+            was_early_author=True,
+            outcome_status="settled",
+            commit=False,
+        )
 
 
 def test_market_ticks_for_token_reads_tick_history_with_named_params():
@@ -187,7 +221,6 @@ def test_accounts_quality_batches_profiles_stats_and_snapshots_by_handle_keyset(
             ],
             [
                 {
-                    "snapshot_id": "account-quality:early:30d:current",
                     "handle": "early",
                     "window": "30d",
                     "precision_score": 0.7,
@@ -236,7 +269,6 @@ def test_accounts_quality_batches_profiles_stats_and_snapshots_by_handle_keyset(
             ],
             "quality_snapshots": [
                 {
-                    "snapshot_id": "account-quality:early:30d:current",
                     "handle": "early",
                     "window": "30d",
                     "precision_score": 0.7,
@@ -262,7 +294,7 @@ def test_accounts_quality_batches_profiles_stats_and_snapshots_by_handle_keyset(
 
 
 class FakeConn:
-    def __init__(self, *, rows):
+    def __init__(self, *, rows, rowcount: object = 1):
         self.rows = rows
         self.sql = ""
         self.sqls: list[str] = []
@@ -272,6 +304,7 @@ class FakeConn:
         self.transaction_exit_count = 0
         self.transaction_depth = 0
         self.sql_transaction_depths: list[int] = []
+        self.rowcount = rowcount
 
     def execute(self, sql, params=None):
         self.sql = str(sql)

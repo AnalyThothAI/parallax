@@ -11,10 +11,10 @@ def score_oi_radar_row(
     volume_24h_usd: Any,
     funding_rate: Any,
 ) -> dict[str, Any]:
-    oi_value = max(0.0, _float(open_interest_usd))
-    change_pct = _float(open_interest_change_pct_1h)
-    volume = max(0.0, _float(volume_24h_usd))
-    funding = abs(_float(funding_rate))
+    oi_value = max(0.0, _float(open_interest_usd, field="open_interest_usd"))
+    change_pct = _float(open_interest_change_pct_1h, field="open_interest_change_pct_1h")
+    volume = max(0.0, _float(volume_24h_usd, field="volume_24h_usd"))
+    funding = abs(_float(funding_rate, field="funding_rate"))
 
     oi_score = min(45.0, math.log10(max(1.0, oi_value)) * 4.5)
     change_score = min(30.0, abs(change_pct) * 1.5)
@@ -32,8 +32,12 @@ def score_oi_radar_row(
     }
 
 
-def _float(value: Any) -> float:
-    try:
-        return float(value or 0.0)
-    except (TypeError, ValueError):
+def _float(value: Any, *, field: str) -> float:
+    if value is None:
         return 0.0
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"cex_oi_radar_score_contract_required:{field}")
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError(f"cex_oi_radar_score_contract_required:{field}")
+    return parsed

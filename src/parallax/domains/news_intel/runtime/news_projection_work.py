@@ -27,27 +27,6 @@ def enqueue_page_reprojection(
     return _enqueue(repos, targets, reason=reason, now_ms=now_ms, commit=commit)
 
 
-def enqueue_item_brief_work(
-    repos: Any,
-    *,
-    news_item_ids: Iterable[str],
-    reason: str,
-    now_ms: int,
-    priority_by_news_item_id: Mapping[str, int] | None = None,
-    source_watermark_ms_by_news_item_id: Mapping[str, int] | None = None,
-    commit: bool = True,
-) -> int:
-    priorities = dict(priority_by_news_item_id or {})
-    watermarks = dict(source_watermark_ms_by_news_item_id or {})
-    targets: list[dict[str, Any]] = []
-    for news_item_id in _servable_news_item_ids(repos, news_item_ids):
-        target = _news_item_target(ITEM_BRIEF_INPUT, news_item_id, watermarks=watermarks)
-        if news_item_id in priorities:
-            target["priority"] = _priority_for_key(priorities, news_item_id)
-        targets.append(target)
-    return _enqueue(repos, targets, reason=reason, now_ms=now_ms, commit=commit)
-
-
 def enqueue_story_brief_work(
     repos: Any,
     *,
@@ -220,12 +199,8 @@ def mark_work_error(
                 commit=False,
             )
         )
-    retry_targets = [
-        target for target in target_rows if _completion_attempt_count(target) < parsed_max_attempts
-    ]
-    exhausted_targets = [
-        target for target in target_rows if _completion_attempt_count(target) >= parsed_max_attempts
-    ]
+    retry_targets = [target for target in target_rows if _completion_attempt_count(target) < parsed_max_attempts]
+    exhausted_targets = [target for target in target_rows if _completion_attempt_count(target) >= parsed_max_attempts]
     changed = 0
     if retry_targets:
         changed += int(
@@ -250,16 +225,6 @@ def mark_work_error(
             )
         )
     return changed
-
-
-def page_news_item_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
-    return _target_ids(
-        rows,
-        projection_name=PAGE_PROJECTION,
-        target_kind="news_item",
-        require_empty_window=True,
-        error_prefix="news_page_projection_claim",
-    )
 
 
 def item_brief_news_item_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:

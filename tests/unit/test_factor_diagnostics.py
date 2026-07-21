@@ -49,13 +49,12 @@ def test_factor_distribution_report_accepts_v3_family_keys() -> None:
     assert not any(item["code"] == "unexpected_factor_family_keys" for item in report["violations"])
 
 
-def test_factor_distribution_report_flags_old_v2_family_keys_and_hard_gates() -> None:
+def test_factor_distribution_report_flags_unexpected_family_keys() -> None:
     snapshot = _snapshot(rank_score=55)
     snapshot["families"]["attention_heat"] = _family(80)
     snapshot["families"]["diffusion_quality"] = _family(80)
     snapshot["families"]["semantic_quality"] = _family(80)
     snapshot["families"]["timing_response"] = _family(80)
-    snapshot["hard_gates"] = {"eligible_for_high_alert": True}
 
     report = factor_distribution_report([{"factor_snapshot_json": snapshot}])
 
@@ -69,7 +68,6 @@ def test_factor_distribution_report_flags_old_v2_family_keys_and_hard_gates() ->
         "semantic_quality",
         "timing_response",
     ]
-    assert any(item["code"] == "hard_gates_present" for item in report["violations"])
 
 
 def test_factor_distribution_report_flags_old_v1ish_family_keys() -> None:

@@ -615,9 +615,7 @@ def test_agent_execution_numeric_boundaries_reject_instead_of_repair() -> None:
         "requested_units = max(1, int(requested_rate_units))",
         'int(audit_extra.get("safety_net_retries") or 0)',
     )
-    forbidden_structured = (
-        "attempts = max(1, int(context.capability_profile.client_validation_retries) + 1)",
-    )
+    forbidden_structured = ("attempts = max(1, int(context.capability_profile.client_validation_retries) + 1)",)
 
     assert [token for token in forbidden_gateway if token in gateway_source] == []
     assert [token for token in forbidden_structured if token in structured_source] == []
@@ -742,13 +740,3 @@ def test_news_canonical_merge_does_not_rewrite_agent_outputs() -> None:
         "UPDATE news_item_agent_runs",
     )
     assert [token for token in forbidden_tokens if token in repository_text] == []
-
-
-def test_agent_execution_doc_names_current_read_tool_contract() -> None:
-    doc_text = (ROOT / "docs" / "AGENT_EXECUTION.md").read_text(encoding="utf-8")
-    agent_read_tools_tree = _parse(SRC / "platform" / "agent_read_tools.py")
-    class_names = {node.name for node in ast.walk(agent_read_tools_tree) if isinstance(node, ast.ClassDef)}
-
-    assert "ReadOnlySqlAgentTool" in class_names
-    assert "`ReadOnlySqlAgentTool`" in doc_text
-    assert "`AgentReadTool`" not in doc_text

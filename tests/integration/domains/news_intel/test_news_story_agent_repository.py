@@ -304,7 +304,7 @@ def _insert_processed_story_item(
         source_item_key=source_item_key,
         canonical_url=resolved_canonical_url,
         payload_hash=f"payload-{source_item_key}",
-        raw_payload_json={"title": title},
+        raw_payload={"title": title},
         fetched_at_ms=NOW_MS,
     )
     news_item = repo.upsert_canonical_news_item(

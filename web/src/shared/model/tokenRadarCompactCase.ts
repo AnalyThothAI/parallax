@@ -1,20 +1,17 @@
 import {
   compactNumber,
   formatRelativeTime,
-  formatRisk,
   formatSignedPercent,
   formatUsdCompact,
 } from "@lib/format";
-import type { NarrativeStatus, TokenDiscussionDigest, TokenFlowItem } from "@lib/types";
+import type { NarrativeAdmission, TokenFlowItem } from "@lib/types";
 
-import { narrativeGapLabel } from "./narrativeDataGaps";
 import { buildTokenCaseView, marketMeta } from "./tokenCase";
 
 export type TokenRadarCompactCase = ReturnType<typeof buildTokenRadarCompactCase>;
 
 export function buildTokenRadarCompactCase(item: TokenFlowItem) {
   const tokenCase = buildTokenCaseView(item);
-  const risk = compactRisk(item);
   const marketMove = compactMarketMove(item);
 
   return {
@@ -29,10 +26,10 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
       stats: compactMarketStats(item),
     },
     marketMove,
-    narrative: {
-      detail: compactWhyNowDetail(item),
-      tone: compactWhyNowTone(item.discussion_digest, risk, tokenCase.narrative.tone),
-      value: compactWhyNowTitle(item),
+    admission: {
+      detail: admissionDetail(item.narrative_admission),
+      tone: admissionTone(item.narrative_admission),
+      value: admissionTitle(item.narrative_admission),
     },
     score: tokenCase.score,
     socialDetail: `关注源 ${compactNumber(item.flow.watched_mentions)} · 较前窗 ${signedCompactNumber(
@@ -74,16 +71,6 @@ function link(
     return null;
   }
   return { href, label, tone };
-}
-
-function compactRisk(item: TokenFlowItem): string | null {
-  const risk =
-    item.tradeability.risks[0] ??
-    item.timing.risks[0] ??
-    item.discussion_quality.risks[0] ??
-    item.propagation.risks[0] ??
-    item.opportunity.risks[0];
-  return risk ? formatRisk(risk) : null;
 }
 
 function compactMarketMove(item: TokenFlowItem): {
@@ -170,142 +157,37 @@ function compactListedAt(item: TokenFlowItem): {
   };
 }
 
-function compactWhyNowTitle(item: TokenFlowItem): string {
-  const digest = item.discussion_digest;
-  if (!digest) {
-    return narrativeStatusTitle("semantic_unavailable");
+function admissionTitle(admission: NarrativeAdmission | null | undefined): string {
+  if (!admission) return "Admission missing";
+  if (admission.currentness.display_status === "unsupported_window") {
+    return "Admission unsupported";
   }
-  const currentness = digest.currentness;
-  const displayStatus = currentness.display_status;
-  if (displayStatus === "unsupported_window") {
-    return "5m 实时信号";
+  if (admission.currentness.display_status === "out_of_frontier") {
+    return "Out of current frontier";
   }
-  if (displayStatus === "not_ready" || displayStatus === "out_of_frontier") {
-    return firstGapLabel(digest) ?? currentnessTitle(displayStatus);
-  }
-  if (digest.status !== "ready") {
-    return firstGapLabel(digest) ?? narrativeStatusTitle(digest.status);
-  }
-  const title = cleanText(digest.dominant_narrative?.title) ?? "叙事已读取";
-  if (displayStatus === "updating") {
-    return `${title} · 更新中 +${compactNumber(currentness.delta_source_event_count ?? 0)}`;
-  }
-  if (displayStatus === "stale") {
-    return `${title} · 上一版`;
-  }
-  const stance = topMixLabel(digest.stance_mix);
-  const titleParts = isReused1hNarrative(digest) ? [title, "1h叙事"] : [title];
-  if (stance) {
-    titleParts.push(stance);
-  }
-  return titleParts.join(" · ");
+  const labels: Record<string, string> = {
+    admitted: "Admitted",
+    missing: "Not admitted",
+    suppressed: "Suppressed",
+    unsupported_window: "Admission unsupported",
+  };
+  return labels[admission.status] ?? admission.status.replaceAll("_", " ");
 }
 
-function compactWhyNowDetail(item: TokenFlowItem): string {
-  const digest = item.discussion_digest;
-  if (!digest) {
-    return "discussion digest missing";
-  }
-  const displayStatus = digest.currentness.display_status;
-  const gap = firstGapLabel(digest);
-  if (displayStatus === "unsupported_window") {
-    return "5m 实时信号";
-  }
-  if (displayStatus === "not_ready" || displayStatus === "out_of_frontier") {
-    return gap ?? currentnessTitle(displayStatus);
-  }
-  if (digest.status !== "ready") {
-    return gap ?? narrativeStatusTitle(digest.status);
-  }
-  const summary = cleanText(digest.dominant_narrative?.summary_zh) ?? gap ?? "ready";
-  const details = [
-    isReused1hNarrative(digest) ? "1h context" : null,
-    summary,
-    coverageLabel(digest),
-    pulseOverlayLabel(item),
-  ].filter(Boolean);
-  return details.join(" · ");
+function admissionDetail(admission: NarrativeAdmission | null | undefined): string {
+  if (!admission) return "no current admission";
+  const { independent_authors: authors, source_mentions: mentions } = admission.coverage;
+  return `${compactNumber(mentions)} posts · ${compactNumber(authors)} authors`;
 }
 
-function compactWhyNowTone(
-  digest: TokenDiscussionDigest | null | undefined,
-  risk: string | null,
-  fallbackTone: string,
-): string {
-  const displayStatus = digest?.currentness.display_status;
-  if (displayStatus === "updating") {
-    return "info";
+function admissionTone(admission: NarrativeAdmission | null | undefined): string {
+  if (admission?.status === "admitted" && admission.currentness.display_status === "current") {
+    return "health";
   }
-  if (displayStatus === "stale" || displayStatus === "out_of_frontier") {
+  if (admission?.status === "suppressed" || admission?.currentness.display_status === "out_of_frontier") {
     return "warn";
   }
-  if (displayStatus === "not_ready" || displayStatus === "unsupported_window") {
-    return risk ? "risk" : "info";
-  }
-  if (digest?.status === "ready") {
-    return fallbackTone;
-  }
-  if (digest?.status === "insufficient" || digest?.status === "semantic_unavailable" || risk) {
-    return "risk";
-  }
   return "info";
-}
-
-function narrativeStatusTitle(status: NarrativeStatus): string {
-  const labels: Record<string, string> = {
-    insufficient: "叙事样本不足",
-    pending: "叙事分析中",
-    semantic_unavailable: "叙事分析暂不可用",
-    stale: "叙事待刷新",
-  };
-  return labels[status] ?? status.replaceAll("_", " ");
-}
-
-function currentnessTitle(status: string): string {
-  const labels: Record<string, string> = {
-    current: "叙事已更新",
-    not_ready: "叙事待生成",
-    out_of_frontier: "不在当前雷达前沿",
-    stale: "上一版",
-    unsupported_window: "5m 实时信号",
-    updating: "叙事更新中",
-  };
-  return labels[status] ?? status.replaceAll("_", " ");
-}
-
-function firstGapLabel(digest: TokenDiscussionDigest): string | null {
-  return narrativeGapLabel(digest.data_gaps.find(Boolean));
-}
-
-function isReused1hNarrative(digest: TokenDiscussionDigest): boolean {
-  return digest.reuse_reason === "target_current_1h_narrative";
-}
-
-function topMixLabel(mix: TokenDiscussionDigest["stance_mix"]): string | null {
-  const top = Object.entries(mix ?? {})
-    .filter(([, value]) => typeof value === "number" && Number.isFinite(value))
-    .sort((left, right) => Number(right[1]) - Number(left[1]))[0];
-  if (!top) {
-    return null;
-  }
-  const [label, value] = top;
-  return `${label} ${Math.round(Number(value) * 100)}%`;
-}
-
-function coverageLabel(digest: TokenDiscussionDigest): string | null {
-  const coverage = digest.coverage?.semantic_coverage;
-  return typeof coverage === "number" && Number.isFinite(coverage)
-    ? `coverage ${Math.round(coverage * 100)}%`
-    : null;
-}
-
-function pulseOverlayLabel(item: TokenFlowItem): string | null {
-  const pulse = item.pulse_overlay;
-  if (!pulse || pulse.status !== "ready") {
-    return null;
-  }
-  const summary = cleanText(pulse.verdict) ?? cleanText(pulse.recommendation) ?? pulse.pulse_status;
-  return summary ? `Pulse ${summary}` : "Pulse ready";
 }
 
 function signedCompactNumber(value: number | null | undefined): string {

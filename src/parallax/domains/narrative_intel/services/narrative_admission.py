@@ -65,9 +65,14 @@ class NarrativeAdmissionService:
                 continue
             priority = _priority(rank=rank, score=score)
             source_event_ids = tuple(str(event_id) for event_id in row.get("source_event_ids") or [])
-            source_max_received_at_ms = _int(row.get("source_max_received_at_ms"))
-            if source_max_received_at_ms is None:
-                source_max_received_at_ms = _int(row.get("computed_at_ms"))
+            source_max_received_at_ms = _required_positive_int(
+                row.get("source_max_received_at_ms"),
+                error_code="narrative_admission_source_watermark_required",
+            )
+            projection_computed_at_ms = _required_positive_int(
+                row.get("computed_at_ms"),
+                error_code="narrative_admission_projection_computed_at_required",
+            )
             decisions[(target_type, target_id)] = NarrativeAdmissionDecision(
                 target_type=target_type,
                 target_id=target_id,
@@ -81,7 +86,7 @@ class NarrativeAdmissionService:
                 last_rank_score=score,
                 source_event_ids=source_event_ids,
                 source_max_received_at_ms=source_max_received_at_ms,
-                projection_computed_at_ms=_int(row.get("computed_at_ms")),
+                projection_computed_at_ms=projection_computed_at_ms,
             )
 
         return sorted(decisions.values(), key=lambda item: (-item.priority, item.target_type, item.target_id))

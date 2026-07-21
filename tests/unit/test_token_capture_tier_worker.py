@@ -28,6 +28,8 @@ def _worker_settings(
     poll_limit: int = 200,
     lease_ms: int = 60_000,
     interval_seconds: float = 30.0,
+    retry_ms: int = 30_000,
+    max_attempts: int = 3,
 ) -> SimpleNamespace:
     return SimpleNamespace(
         enabled=True,
@@ -39,6 +41,8 @@ def _worker_settings(
         ws_limit=ws_limit,
         poll_limit=poll_limit,
         lease_ms=lease_ms,
+        retry_ms=retry_ms,
+        max_attempts=max_attempts,
         advisory_lock_key=ADVISORY_LOCK_KEY,
     )
 
@@ -359,6 +363,44 @@ def test_worker_run_once_reports_zero_rows_written_when_projection_unchanged() -
     assert db.repos.token_capture_tier_dirty_targets.done_count == 1
 
 
+def test_worker_retries_claim_when_projection_fails_instead_of_rolling_back_attempt() -> None:
+    repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
+    repos.token_capture_tiers = InvalidChangedCountTokenCaptureTiers()
+    worker = TokenCaptureTierWorker(
+        pool_bundle=FakeDB(repos),
+        telemetry=object(),
+        settings=_worker_settings(batch_size=5, ws_limit=1, poll_limit=1, retry_ms=7_000, max_attempts=3),
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=1_800_000_000_000))
+
+    assert result.failed == 1
+    assert result.notes["claimed"] == 1
+    assert result.notes["rows_written"] == 0
+    assert repos.transaction_events == ["rollback", "commit"]
+    assert repos.token_capture_tier_dirty_targets.done_count == 0
+    assert repos.token_capture_tier_dirty_targets.errors[0]["retry_ms"] == 7_000
+    assert repos.token_capture_tier_dirty_targets.errors[0]["max_attempts"] == 3
+    assert repos.token_capture_tier_dirty_targets.errors[0]["worker_name"] == "token_capture_tier"
+
+
+def test_worker_does_not_report_rolled_back_rows_when_claim_completion_is_stale() -> None:
+    repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
+    repos.token_capture_tier_dirty_targets.mark_done = lambda claims, **kwargs: 0
+    worker = TokenCaptureTierWorker(
+        pool_bundle=FakeDB(repos),
+        telemetry=object(),
+        settings=_worker_settings(batch_size=5, ws_limit=1, poll_limit=1),
+    )
+
+    result = asyncio.run(worker.run_once(now_ms=1_800_000_000_000))
+
+    assert result.processed == 0
+    assert result.failed == 1
+    assert result.notes["rows_written"] == 0
+    assert "token_capture_tier_dirty_target_stale_completion" in result.notes["result"]["last_error"]
+
+
 def test_project_once_rejects_invalid_changed_count_without_zero_fallback() -> None:
     repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
     repos.token_capture_tiers = InvalidChangedCountTokenCaptureTiers()
@@ -412,7 +454,7 @@ def test_project_once_requires_external_session_transaction() -> None:
     assert repos.conn.commit_count == 0
 
 
-def test_worker_requires_session_transaction_before_claiming_dirty_target() -> None:
+def test_worker_requires_session_transaction_before_projecting_claimed_dirty_target() -> None:
     repos = FakeReposWithoutTransaction([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
     worker = TokenCaptureTierWorker(
         pool_bundle=FakeDB(repos),
@@ -423,7 +465,8 @@ def test_worker_requires_session_transaction_before_claiming_dirty_target() -> N
     with pytest.raises(AttributeError, match="transaction"):
         asyncio.run(worker.run_once(now_ms=1_800_000_000_000))
 
-    assert repos.token_capture_tier_dirty_targets.claim_calls == []
+    assert len(repos.token_capture_tier_dirty_targets.claim_calls) == 1
+    assert repos.token_capture_tier_dirty_targets.claim_calls[0]["commit"] is True
     assert repos.token_capture_tiers.upserts == []
     assert repos.token_capture_tier_dirty_targets.done_count == 0
 
@@ -459,6 +502,8 @@ def test_default_workers_yaml_includes_token_capture_tier_settings() -> None:
     assert workers.token_capture_tier.batch_size == 500
     assert workers.token_capture_tier.ws_limit == 100
     assert workers.token_capture_tier.poll_limit == 500
+    assert workers.token_capture_tier.retry_ms == 30_000
+    assert workers.token_capture_tier.max_attempts == 3
     assert workers.token_capture_tier.advisory_lock_key == ADVISORY_LOCK_KEY
 
 
@@ -674,6 +719,7 @@ class FakeCaptureDirtyTargets:
     def __init__(self) -> None:
         self.done_count = 0
         self.claim_calls: list[dict[str, object]] = []
+        self.errors: list[dict[str, Any]] = []
 
     def claim_due(self, **kwargs):
         self.claim_calls.append(dict(kwargs))
@@ -692,6 +738,10 @@ class FakeCaptureDirtyTargets:
 
     def mark_done(self, claims, **kwargs):
         self.done_count += len(claims)
+        return len(claims)
+
+    def mark_error(self, claims, **kwargs):
+        self.errors.extend({**dict(claim), **kwargs} for claim in claims)
         return len(claims)
 
 

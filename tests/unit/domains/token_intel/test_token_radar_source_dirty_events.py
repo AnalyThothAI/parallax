@@ -227,15 +227,15 @@ def test_source_dirty_event_recent_limit_rejects_malformed_before_sql(
             id="mark_done",
         ),
         pytest.param(
-                lambda repo: repo.mark_error(
-                    [_claim()],
-                    error="projection failed",
-                    retry_ms=30_000,
-                    max_attempts=3,
-                    worker_name="token_radar_projection",
-                    now_ms=1_700_000_000_000,
-                ),
-                id="mark_error",
+            lambda repo: repo.mark_error(
+                [_claim()],
+                error="projection failed",
+                retry_ms=30_000,
+                max_attempts=3,
+                worker_name="token_radar_projection",
+                now_ms=1_700_000_000_000,
+            ),
+            id="mark_error",
         ),
     ],
 )
@@ -258,15 +258,15 @@ def test_source_dirty_event_mutations_require_connection_transaction_before_sql_
     [
         pytest.param(lambda repo: repo.mark_done([_claim()], now_ms=1_700_000_000_000, commit=False), id="done"),
         pytest.param(
-                lambda repo: repo.mark_error(
-                    [_claim()],
-                    error="projection failed",
-                    retry_ms=30_000,
-                    max_attempts=3,
-                    worker_name="token_radar_projection",
-                    now_ms=1_700_000_000_000,
-                    commit=False,
-                ),
+            lambda repo: repo.mark_error(
+                [_claim()],
+                error="projection failed",
+                retry_ms=30_000,
+                max_attempts=3,
+                worker_name="token_radar_projection",
+                now_ms=1_700_000_000_000,
+                commit=False,
+            ),
             id="error",
         ),
     ],

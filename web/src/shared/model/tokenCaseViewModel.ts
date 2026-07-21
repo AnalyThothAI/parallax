@@ -77,26 +77,6 @@ export type TokenCaseCexDetailView = {
   dataGaps: string[];
 };
 
-export type TokenCaseThesisView = {
-  title: string;
-  thesis: string;
-  evidenceEventIds: string[];
-  bullets: string[];
-  tone: TokenCaseTone;
-};
-
-export type TokenCaseNarrativeCurrentnessView = {
-  displayStatus: string;
-  reason: string | null;
-  label: string;
-  tone: TokenCaseTone;
-  lastReadyComputedAtMs: number | null;
-  lastReadyComputedLabel: string | null;
-  deltaSourceEventCount: number;
-  deltaIndependentAuthorCount: number;
-  deltaLabel: string | null;
-};
-
 export type TokenCaseViewModel = {
   target: {
     targetType: "Asset" | "CexToken" | string;
@@ -121,20 +101,6 @@ export type TokenCaseViewModel = {
     actions: Array<{ label: string; href: string; tone: TokenCaseTone }>;
   };
   metrics: TokenCaseMetric[];
-  propagation: {
-    summaryZh: string;
-    currentness: TokenCaseNarrativeCurrentnessView;
-    statusPills: Array<{ label: string; tone: TokenCaseTone }>;
-    stages: Array<{
-      id: string;
-      phase: string;
-      count: number;
-      authors: number;
-      leadAccount: string | null;
-      readZh: string;
-      tone: TokenCaseTone;
-    }>;
-  };
   timeline: {
     sort: TokenCaseSort;
     items: TokenCasePostEvent[];
@@ -145,16 +111,5 @@ export type TokenCaseViewModel = {
   };
   market: TokenCaseMarketView;
   cexDetail: TokenCaseCexDetailView | null;
-  bullBear: {
-    stance: string;
-    bull: TokenCaseThesisView;
-    bear: TokenCaseThesisView;
-  };
-  amplifiers: Array<{
-    handle: string;
-    role: string;
-    posts: number;
-    firstSeenLabel: string | null;
-  }>;
   dataGaps: string[];
 };

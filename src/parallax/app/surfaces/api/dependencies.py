@@ -36,15 +36,6 @@ def _request_token(request: Request, *, allow_query_token: bool = True) -> str |
     return token.strip() if token else None
 
 
-def _worker_running(runtime: Any, worker_name: str) -> bool:
-    require_worker_manifest(worker_name)
-    scheduler = runtime.scheduler
-    task = scheduler.tasks.get(worker_name)
-    if task is not None:
-        return not task.done()
-    return bool(_scheduler_worker_status_payload(scheduler, worker_name).get("running"))
-
-
 def _worker_object(runtime: Any, worker_name: str) -> Any | None:
     require_worker_manifest(worker_name)
     scheduler = runtime.scheduler
@@ -53,16 +44,6 @@ def _worker_object(runtime: Any, worker_name: str) -> Any | None:
     if effective_worker_status(payload) in _INACTIVE_WORKER_STATUSES:
         return None
     return worker
-
-
-def _scheduler_worker_status_payload(scheduler: Any, worker_name: str) -> dict[str, Any]:
-    payload = scheduler.status_payload()
-    if not isinstance(payload, Mapping):
-        raise TypeError("api_status_payload_must_be_dict")
-    worker_payload = payload[worker_name]
-    if not isinstance(worker_payload, Mapping):
-        raise TypeError("api_worker_status_payload_must_be_dict")
-    return dict(worker_payload)
 
 
 def _worker_status_payload(worker: Any) -> dict[str, Any]:

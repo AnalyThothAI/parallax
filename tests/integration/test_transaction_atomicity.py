@@ -9,9 +9,6 @@ import pytest
 
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
 from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.asset_market.services.market_tick_current_rebuild import (
-    MarketTickCurrentRebuildService,
-)
 from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
 from parallax.domains.asset_market.types import MarketTick, market_tick_id
 from parallax.platform.db import postgres_client
@@ -193,51 +190,6 @@ def test_market_tick_persistence_rolls_back_tick_and_dirty_target_after_enqueue(
         pool.close()
 
 
-def test_market_tick_current_rebuild_rolls_back_truncate_and_upsert_on_failure() -> None:
-    conn = connect_postgres_test(read_only=False)
-    old_tick = _market_tick(observed_at_ms=1_900_000_100_000)
-    new_tick = _market_tick(observed_at_ms=1_900_000_200_000)
-    try:
-        _delete_market_tick_target(conn, old_tick)
-        repos = repositories_for_connection(
-            conn,
-            pulse_job_running_timeout_ms=300_000,
-            notification_delivery_running_timeout_ms=300_000,
-            notification_delivery_stale_running_terminalization_batch_size=100,
-        )
-        repos.market_ticks.insert_tick(old_tick)
-        old_row = repos.market_tick_current.latest_tick_for_target(
-            target_type=old_tick.target_type,
-            target_id=old_tick.target_id,
-        )
-        assert old_row is not None
-        repos.market_tick_current.upsert_current_from_tick(old_row, now_ms=old_tick.received_at_ms + 100)
-        repos.market_ticks.insert_tick(new_tick)
-        conn.commit()
-
-        failing_repos = SimpleNamespace(
-            transaction=repos.transaction,
-            market_tick_current=FailingMarketTickCurrentRepository(repos.market_tick_current),
-        )
-        with pytest.raises(RuntimeError, match="rebuild upsert failed"):
-            MarketTickCurrentRebuildService(failing_repos).rebuild_all(now_ms=new_tick.received_at_ms + 100)
-
-        current = conn.execute(
-            """
-            SELECT tick_id, updated_at_ms
-            FROM market_tick_current
-            WHERE target_type = %s AND target_id = %s
-            """,
-            (old_tick.target_type, old_tick.target_id),
-        ).fetchone()
-        assert current["tick_id"] == old_tick.tick_id
-        assert current["updated_at_ms"] == old_tick.received_at_ms
-    finally:
-        _delete_market_tick_target(conn, old_tick)
-        conn.commit()
-        conn.close()
-
-
 class FakeTransactionConnection:
     def __init__(self) -> None:
         self.events: list[str] = []
@@ -270,23 +222,6 @@ class DirtyTargetRecorder:
             }
         )
         return self.delegate.enqueue_targets(materialized, reason=reason, now_ms=now_ms, commit=commit)
-
-
-class FailingMarketTickCurrentRepository:
-    def __init__(self, delegate: Any) -> None:
-        self.delegate = delegate
-
-    def truncate_current(self) -> None:
-        self.delegate.truncate_current()
-
-    def latest_ticks_for_all_targets(self) -> list[dict[str, Any]]:
-        latest = self.delegate.latest_tick_for_target(target_type="chain_token", target_id="solana:atomicity")
-        assert latest is not None
-        return [latest]
-
-    def upsert_current_from_tick(self, tick_row: dict[str, Any], *, now_ms: int) -> bool:
-        self.delegate.upsert_current_from_tick(tick_row, now_ms=now_ms)
-        raise RuntimeError("rebuild upsert failed")
 
 
 def _delete_market_tick_target(conn: Any, tick: MarketTick) -> None:

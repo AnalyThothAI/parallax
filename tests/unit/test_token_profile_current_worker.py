@@ -53,6 +53,7 @@ def test_token_profile_current_worker_run_once_records_result_and_uses_one_db_se
             "lease_owner": "token_profile_current",
             "lease_ms": 60_000,
             "retry_ms": 30_000,
+            "max_attempts": 3,
         }
     ]
     assert db.session_names == ["token_profile_current"]
@@ -203,6 +204,7 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
         lease_owner="profile-worker",
         lease_ms=60_000,
         retry_ms=30_000,
+        max_attempts=3,
     )
 
     assert result["selected"] == 3
@@ -232,12 +234,12 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
     assert repos.token_profiles.rows[2]["logo_url"] == "/api/token-images/image-cex"
     assert repos.token_profiles.rows[2]["logo_image_id"] == "image-cex"
     assert repos.token_image_assets.source_url_calls == [
+        ["https://gmgn.ai/external-res/logo.png"],
         [
-            "https://gmgn.ai/external-res/logo.png",
             "https://bin.bnbstatic.com/static/images/binance.png",
             "https://gmgn.ai/external-res/stream.png",
-            "https://bin.bnbstatic.com/static/images/btc.png",
-        ]
+        ],
+        ["https://bin.bnbstatic.com/static/images/btc.png"],
     ]
     assert repos.token_image_source_dirty_targets.enqueued == []
     assert repos.token_profiles.commits == [False, False, False]
@@ -255,7 +257,67 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
         claim("Asset", "asset:stream"),
         claim("CexToken", "cex_token:BTC"),
     ]
-    assert repos.transactions == 1
+    assert repos.transactions == 4
+
+
+@pytest.mark.parametrize("failure_stage", ["admission", "upsert"])
+def test_rebuild_token_profile_current_once_isolates_bad_target_from_valid_claims(
+    monkeypatch,
+    failure_stage: str,
+) -> None:
+    bad_claim = claim("Asset", "asset:bad")
+    good_claim = claim("Asset", "asset:good")
+    repos = FakeRepos(
+        claims=[bad_claim, good_claim],
+        gmgn_openapi={
+            target_id: {
+                "asset_id": target_id,
+                "provider": "gmgn_dex_profile",
+                "status": "ready",
+                "symbol": target_id.rsplit(":", maxsplit=1)[-1].upper(),
+                "logo_url": f"https://gmgn.ai/external-res/{target_id.rsplit(':', maxsplit=1)[-1]}.png",
+                "raw_payload_json": {"profile": True},
+                "observed_at_ms": 1_000,
+            }
+            for target_id in ("asset:bad", "asset:good")
+        },
+        gmgn_stream={},
+        okx_dex={},
+    )
+    upsert_current = repos.token_profiles.upsert_current
+
+    def fail_one_target(row, *, commit=True):
+        if row["target_id"] == "asset:bad":
+            raise ValueError("malformed profile row")
+        return upsert_current(row, commit=commit)
+
+    if failure_stage == "upsert":
+        repos.token_profiles.upsert_current = fail_one_target
+    else:
+        admit_sources = module.admit_token_image_sources
+
+        def fail_one_admission(*, repos, candidates, now_ms):
+            materialized = list(candidates)
+            if any(candidate.target_id == "asset:bad" for candidate in materialized):
+                raise ValueError("malformed image candidate")
+            return admit_sources(repos=repos, candidates=materialized, now_ms=now_ms)
+
+        monkeypatch.setattr(module, "admit_token_image_sources", fail_one_admission)
+
+    result = module.rebuild_token_profile_current_once(
+        repos=repos,
+        now_ms=10_000,
+        limit=100,
+        lease_owner="profile-worker",
+        lease_ms=60_000,
+        retry_ms=30_000,
+        max_attempts=3,
+    )
+
+    assert result["ready"] == 1
+    assert result["error"] == 1
+    assert repos.dirty_targets.done == [good_claim]
+    assert [error["target_id"] for error in repos.dirty_targets.errors] == ["asset:bad"]
 
 
 def test_rebuild_token_profile_current_once_reports_zero_rows_written_when_projection_unchanged():
@@ -284,6 +346,7 @@ def test_rebuild_token_profile_current_once_reports_zero_rows_written_when_proje
         lease_owner="profile-worker",
         lease_ms=60_000,
         retry_ms=30_000,
+        max_attempts=3,
     )
 
     assert result["claimed"] == 1
@@ -320,6 +383,7 @@ def test_rebuild_token_profile_current_once_admits_missing_image_sources_before_
         lease_owner="profile-worker",
         lease_ms=60_000,
         retry_ms=30_000,
+        max_attempts=3,
     )
 
     assert result["image_candidates"] == 1
@@ -344,6 +408,7 @@ def test_rebuild_token_profile_current_once_empty_queue_does_not_load_profile_so
         lease_owner="profile-worker",
         lease_ms=60_000,
         retry_ms=30_000,
+        max_attempts=3,
     )
 
     assert result["reason"] == "no_due_token_profile_current_targets"
@@ -372,6 +437,7 @@ def test_rebuild_token_profile_current_once_marks_claim_error_when_exact_load_fa
         lease_owner="profile-worker",
         lease_ms=60_000,
         retry_ms=30_000,
+        max_attempts=3,
     )
 
     assert result["error"] == 1
@@ -381,10 +447,100 @@ def test_rebuild_token_profile_current_once_marks_claim_error_when_exact_load_fa
             **claim("Asset", "asset:gmgn"),
             "error": "RuntimeError: profile source boom",
             "retry_ms": 30_000,
+            "max_attempts": 3,
+            "worker_name": "profile-worker",
             "now_ms": 10_000,
             "commit": False,
         }
     ]
+
+
+def test_rebuild_token_profile_current_once_isolates_target_specific_source_load_failure():
+    bad = claim("Asset", "asset:bad")
+    good = claim("Asset", "asset:good")
+    repos = FakeRepos(
+        claims=[bad, good],
+        gmgn_openapi={},
+        gmgn_stream={},
+        okx_dex={},
+    )
+    repos.source_query.fail_target_ids.add("asset:bad")
+
+    result = module.rebuild_token_profile_current_once(
+        repos=repos,
+        now_ms=10_000,
+        limit=100,
+        lease_owner="profile-worker",
+        lease_ms=60_000,
+        retry_ms=30_000,
+        max_attempts=3,
+    )
+
+    assert result["error"] == 1
+    assert result["targets_loaded"] == 1
+    assert repos.dirty_targets.done == [good]
+    assert [row["target_id"] for row in repos.dirty_targets.errors] == ["asset:bad"]
+
+
+def test_rebuild_token_profile_current_once_does_not_let_malformed_claim_poison_valid_peer():
+    valid = claim("Asset", "asset:valid")
+    malformed = {**claim("Asset", "asset:bad"), "target_id": ""}
+    repos = FakeRepos(
+        claims=[malformed, valid],
+        gmgn_openapi={},
+        gmgn_stream={},
+        okx_dex={},
+    )
+
+    result = module.rebuild_token_profile_current_once(
+        repos=repos,
+        now_ms=10_000,
+        limit=100,
+        lease_owner="profile-worker",
+        lease_ms=60_000,
+        retry_ms=30_000,
+        max_attempts=3,
+    )
+
+    assert result["error"] == 1
+    assert result["targets_loaded"] == 1
+    assert repos.dirty_targets.done == [valid]
+    assert repos.dirty_targets.errors == [
+        {
+            **malformed,
+            "error": "ValueError: token_profile_current_dirty_target_identity_required",
+            "retry_ms": 30_000,
+            "max_attempts": 3,
+            "worker_name": "profile-worker",
+            "now_ms": 10_000,
+            "commit": False,
+        }
+    ]
+
+
+def test_rebuild_token_profile_current_once_isolates_malformed_claim_cas_contract():
+    valid = claim("Asset", "asset:valid")
+    malformed = {**claim("Asset", "asset:bad"), "payload_hash": ""}
+    repos = FakeRepos(
+        claims=[malformed, valid],
+        gmgn_openapi={},
+        gmgn_stream={},
+        okx_dex={},
+    )
+
+    result = module.rebuild_token_profile_current_once(
+        repos=repos,
+        now_ms=10_000,
+        limit=100,
+        lease_owner="profile-worker",
+        lease_ms=60_000,
+        retry_ms=30_000,
+        max_attempts=3,
+    )
+
+    assert result["error"] == 1
+    assert repos.dirty_targets.done == [valid]
+    assert [row["target_id"] for row in repos.dirty_targets.errors] == ["asset:bad"]
 
 
 def test_rebuild_token_profile_current_once_requires_session_source_query_contract():
@@ -403,6 +559,7 @@ def test_rebuild_token_profile_current_once_requires_session_source_query_contra
         lease_owner="profile-worker",
         lease_ms=60_000,
         retry_ms=30_000,
+        max_attempts=3,
     )
 
     assert result["error"] == 1
@@ -413,6 +570,8 @@ def test_rebuild_token_profile_current_once_requires_session_source_query_contra
             **claim("Asset", "asset:gmgn"),
             "error": result["last_error"],
             "retry_ms": 30_000,
+            "max_attempts": 3,
+            "worker_name": "profile-worker",
             "now_ms": 10_000,
             "commit": False,
         }
@@ -447,6 +606,7 @@ def worker_settings(**overrides):
         "batch_size": 500,
         "lease_ms": 60_000,
         "retry_ms": 30_000,
+        "max_attempts": 3,
         "advisory_lock_key": ADVISORY_LOCK_KEY,
     }
     values.update(overrides)
@@ -545,12 +705,14 @@ class FakeDirtyTargets:
         self.done.extend(dict(claim) for claim in claims)
         return len(claims)
 
-    def mark_error(self, claims, *, error, retry_ms, now_ms, commit=True):
+    def mark_error(self, claims, *, error, retry_ms, max_attempts, worker_name, now_ms, commit=True):
         self.errors.extend(
             {
                 **dict(claim),
                 "error": error,
                 "retry_ms": retry_ms,
+                "max_attempts": max_attempts,
+                "worker_name": worker_name,
                 "now_ms": now_ms,
                 "commit": commit,
             }
@@ -568,35 +730,38 @@ class FakeSourceQuery:
         self.cex_profiles = cex_profiles
         self.profile_loader_calls: list[str] = []
         self.fail_loader: BaseException | None = None
+        self.fail_target_ids: set[str] = set()
 
     def gmgn_openapi_profiles(self, asset_ids):
-        self._record_loader("gmgn_openapi_profiles")
+        self._record_loader("gmgn_openapi_profiles", asset_ids)
         return {asset_id: self.gmgn_openapi[asset_id] for asset_id in asset_ids if asset_id in self.gmgn_openapi}
 
     def binance_web3_profiles(self, asset_ids):
-        self._record_loader("binance_web3_profiles")
+        self._record_loader("binance_web3_profiles", asset_ids)
         return {asset_id: self.binance_web3[asset_id] for asset_id in asset_ids if asset_id in self.binance_web3}
 
     def gmgn_stream_profiles(self, asset_ids):
-        self._record_loader("gmgn_stream_profiles")
+        self._record_loader("gmgn_stream_profiles", asset_ids)
         return {asset_id: self.gmgn_stream[asset_id] for asset_id in asset_ids if asset_id in self.gmgn_stream}
 
     def okx_dex_profiles(self, asset_ids):
-        self._record_loader("okx_dex_profiles")
+        self._record_loader("okx_dex_profiles", asset_ids)
         return {asset_id: self.okx_dex[asset_id] for asset_id in asset_ids if asset_id in self.okx_dex}
 
     def cex_token_profiles(self, cex_token_ids):
-        self._record_loader("cex_token_profiles")
+        self._record_loader("cex_token_profiles", cex_token_ids)
         return {
             cex_token_id: self.cex_profiles[cex_token_id]
             for cex_token_id in cex_token_ids
             if cex_token_id in self.cex_profiles
         }
 
-    def _record_loader(self, name):
+    def _record_loader(self, name, target_ids):
         self.profile_loader_calls.append(name)
         if self.fail_loader is not None:
             raise self.fail_loader
+        if self.fail_target_ids.intersection(target_ids):
+            raise ValueError("malformed persisted profile source")
 
 
 class FakeTokenProfiles:

@@ -60,7 +60,7 @@ def test_quality_snapshot_identity_is_stable_per_handle_window(tmp_path, monkeyp
         migrate(conn)
         repo = AccountQualityRepository(conn)
 
-        first_id = repo.insert_quality_snapshot(
+        first_changed = repo.insert_quality_snapshot(
             handle="@Toly",
             window="30d",
             precision_score=40.0,
@@ -69,7 +69,7 @@ def test_quality_snapshot_identity_is_stable_per_handle_window(tmp_path, monkeyp
             avg_realized_return=1.5,
             sample_size=1,
         )
-        second_id = repo.insert_quality_snapshot(
+        second_changed = repo.insert_quality_snapshot(
             handle="toly",
             window="30d",
             precision_score=55.0,
@@ -80,20 +80,19 @@ def test_quality_snapshot_identity_is_stable_per_handle_window(tmp_path, monkeyp
         )
         rows = conn.execute(
             """
-            SELECT snapshot_id, handle, "window", precision_score, early_call_score,
+            SELECT handle, "window", precision_score, early_call_score,
                    spam_risk_score, avg_realized_return, sample_size, updated_at_ms
               FROM account_quality_snapshots
-             ORDER BY snapshot_id
+             ORDER BY handle, "window"
             """
         ).fetchall()
     finally:
         conn.close()
 
-    assert first_id == "account-quality:toly:30d:current"
-    assert second_id == first_id
+    assert first_changed == 1
+    assert second_changed == 1
     assert [dict(row) for row in rows] == [
         {
-            "snapshot_id": first_id,
             "handle": "toly",
             "window": "30d",
             "precision_score": 55.0,

@@ -116,9 +116,6 @@ class NotificationRepository:
             semantic_duplicate = self._semantic_signature_duplicate(
                 rule_id=rule_id,
                 payload=normalized_payload,
-                source_table=source_table,
-                source_id=source_id,
-                event_id=event_id,
             )
             if semantic_duplicate is not None:
                 aggregated = self._aggregate_notification_row(
@@ -234,9 +231,6 @@ class NotificationRepository:
         *,
         rule_id: str,
         payload: dict[str, Any],
-        source_table: str,
-        source_id: str,
-        event_id: str | None,
     ) -> dict[str, Any] | None:
         signature_key_sql = "payload_json->>'semantic_signature'"
         semantic_signature = str(payload.get("semantic_signature") or "").strip()

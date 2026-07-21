@@ -967,7 +967,6 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
         "latest_attempt_error": None,
     }
     repo.latest = {
-        "snapshot_id": "snapshot-1",
         "status": "partial",
         "computed_at_ms": NOW_MS,
         "asof_date": "2026-05-21",
@@ -1033,7 +1032,6 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
             "projection_lag_days": 1,
             "projection_behind_facts": True,
             "latest_snapshot": {
-                "snapshot_id": "snapshot-1",
                 "projection_version": None,
                 "asof_date": "2026-05-21",
                 "status": "partial",

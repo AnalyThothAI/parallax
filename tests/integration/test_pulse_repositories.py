@@ -1764,7 +1764,7 @@ def test_get_health_counts_candidates_blocked_low_information_and_dead_jobs(tmp_
     assert health["dead_job_count"] == 1
 
 
-def test_playbook_snapshot_and_outcome_use_explicit_spec_fields(tmp_path) -> None:
+def test_playbook_snapshot_uses_explicit_spec_fields(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -1785,21 +1785,7 @@ def test_playbook_snapshot_and_outcome_use_explicit_spec_fields(tmp_path) -> Non
             risk={"max_loss": 0.05},
             entry_market={"price": 145.2},
             playbook_version="playbook-v1",
-            outcome_status="pending",
             created_at_ms=3_100,
-        )
-        outcome = repo.playbooks.upsert_playbook_outcome(
-            playbook_id="playbook-1",
-            settled_at_ms=4_000,
-            actual_return=0.12,
-            benchmark_return=0.04,
-            abnormal_return=0.08,
-            max_favorable_excursion=0.15,
-            max_adverse_excursion=-0.03,
-            confirmation_hit=True,
-            invalidation_hit=False,
-            outcome={"label": "worked"},
-            created_at_ms=4_000,
         )
     finally:
         conn.close()
@@ -1810,10 +1796,6 @@ def test_playbook_snapshot_and_outcome_use_explicit_spec_fields(tmp_path) -> Non
     assert snapshot["invalidation_json"] == {"social": "attention fades"}
     assert snapshot["risk_json"] == {"max_loss": 0.05}
     assert snapshot["entry_market_json"] == {"price": 145.2}
-    assert outcome["playbook_id"] == "playbook-1"
-    assert outcome["actual_return"] == 0.12
-    assert outcome["confirmation_hit"] is True
-    assert outcome["outcome_json"] == {"label": "worked"}
 
 
 def test_playbook_snapshot_skips_update_when_only_runtime_timestamps_change(tmp_path) -> None:
@@ -1837,7 +1819,6 @@ def test_playbook_snapshot_skips_update_when_only_runtime_timestamps_change(tmp_
             risk={"max_loss": 0.05},
             entry_market={"price": 145.2},
             playbook_version="playbook-v1",
-            outcome_status="pending",
             created_at_ms=3_100,
         )
         second = repo.playbooks.upsert_playbook_snapshot(
@@ -1855,7 +1836,6 @@ def test_playbook_snapshot_skips_update_when_only_runtime_timestamps_change(tmp_
             risk={"max_loss": 0.05},
             entry_market={"price": 145.2},
             playbook_version="playbook-v1",
-            outcome_status="pending",
             created_at_ms=9_100,
         )
         stored = conn.execute(

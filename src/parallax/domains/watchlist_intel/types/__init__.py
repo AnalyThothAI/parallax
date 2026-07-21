@@ -3,7 +3,6 @@ from __future__ import annotations
 import base64
 import json
 import re
-from typing import Any
 
 WATCHLIST_HANDLE_RE = re.compile(r"^[A-Za-z0-9_.-]{1,64}$")
 
@@ -49,17 +48,10 @@ def decode_watchlist_timeline_cursor(cursor: str) -> tuple[int, str]:
     return received_at_ms, event_id
 
 
-def json_default(value: Any) -> Any:
-    if isinstance(value, tuple | set):
-        return list(value)
-    return str(value)
-
-
 __all__ = [
     "WATCHLIST_HANDLE_RE",
     "WatchlistTimelineCursorError",
     "decode_watchlist_timeline_cursor",
     "encode_watchlist_timeline_cursor",
-    "json_default",
     "normalize_watchlist_handle",
 ]

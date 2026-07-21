@@ -6,8 +6,6 @@ from urllib.parse import urlsplit
 
 from parallax.domains.news_intel.types.text_normalization import canonicalize_url
 
-URL_IDENTITY_KINDS = ("article", "live_page", "homepage", "aggregator", "unknown")
-
 _ARTICLE_ID_RE = re.compile(r"(?:^|[-_/])(?:[0-9]{6,}|[0-9a-f]{8,})(?:$|[-_/])", re.IGNORECASE)
 _DATE_SLUG_RE = re.compile(r"(?:19|20)\d{2}[-_/](?:0?[1-9]|1[0-2])[-_/](?:0?[1-9]|[12]\d|3[01])")
 _LOCALE_RE = re.compile(r"^[a-z]{2}(?:-[a-z]{2})?$", re.IGNORECASE)
@@ -207,7 +205,6 @@ def _social_status_identity_key(hostname: str, path: str) -> str:
 
 
 __all__ = [
-    "URL_IDENTITY_KINDS",
     "PublicUrlIdentityPolicy",
     "hard_public_url_identity_key",
     "public_url_identity_policy",

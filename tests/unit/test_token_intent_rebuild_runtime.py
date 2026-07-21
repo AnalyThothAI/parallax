@@ -2,11 +2,8 @@ from __future__ import annotations
 
 from types import SimpleNamespace
 
-import pytest
-
 from parallax.domains.token_intel.runtime import token_intent_rebuild
 from parallax.domains.token_intel.runtime.token_intent_rebuild import (
-    rebuild_event_token_intents,
     rebuild_recent_token_intents,
 )
 
@@ -57,17 +54,6 @@ def test_rebuild_recent_token_intents_uses_session_transaction(monkeypatch) -> N
             "commit": False,
         }
     ]
-
-
-def test_rebuild_event_token_intents_requires_session_transaction_before_writes(monkeypatch) -> None:
-    _install_rebuild_fakes(monkeypatch, object)
-    repos = FakeIntentRebuildReposWithoutTransaction()
-
-    with pytest.raises(AttributeError, match="transaction"):
-        rebuild_event_token_intents(repos=repos, event_row=_event_row())
-
-    assert repos.token_intents.deleted_event_ids == []
-    assert repos.token_evidence.deleted_event_ids == []
 
 
 def _install_rebuild_fakes(monkeypatch, query_cls) -> None:
@@ -137,17 +123,6 @@ class FakeIntentRebuildRepos:
         if self.transaction_depth < 1:
             raise AssertionError(f"{operation} ran outside session transaction")
         self.required_operations.append(operation)
-
-
-class FakeIntentRebuildReposWithoutTransaction:
-    def __init__(self):
-        self.conn = object()
-        self.token_intents = FakeIntentWrites()
-        self.token_evidence = FakeEvidenceWrites()
-        self.registry = object()
-        self.intent_resolutions = object()
-        self.token_intent_lookup = FakeLookupWrites()
-        self.identity_evidence = object()
 
 
 class FakeTransaction:

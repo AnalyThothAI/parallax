@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import json
 from dataclasses import dataclass
-from typing import Any, Protocol
+from typing import Any
 
 import litellm
 from pydantic import ValidationError
@@ -26,10 +26,6 @@ class StructuredOutputOutcome:
     final_output: Any
     raw_result: Any | None
     audit_extra: dict[str, Any]
-
-
-class StructuredOutputStrategy(Protocol):
-    async def run(self, context: StructuredOutputContext) -> StructuredOutputOutcome: ...
 
 
 class ChatJsonObjectStrategy:
@@ -79,7 +75,7 @@ class ChatJsonObjectStrategy:
                 )
             except (ValidationError, ValueError) as exc:
                 last_error = exc
-                messages = _append_validation_reask(messages, error=str(exc), schema=schema)
+                messages = _append_validation_reask(messages, error=str(exc))
         raise last_error or ValueError("json_object response validation failed")
 
 
@@ -130,9 +126,7 @@ def _append_validation_reask(
     messages: list[dict[str, str]],
     *,
     error: str,
-    schema: dict[str, Any],
 ) -> list[dict[str, str]]:
-    del schema
     return [
         *messages,
         {
@@ -166,6 +160,5 @@ __all__ = [
     "ChatJsonObjectStrategy",
     "StructuredOutputContext",
     "StructuredOutputOutcome",
-    "StructuredOutputStrategy",
     "runner_input_payload",
 ]

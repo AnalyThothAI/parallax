@@ -192,17 +192,19 @@ class WatchlistIntelRepository:
 
 
 def _decode_timeline_row(row: dict[str, Any]) -> dict[str, Any]:
+    event_id = _required_event_id(row)
+    received_at_ms = _required_event_received_at_ms(row)
     event = decode_event_row(row)
     return {
-        "event_id": str(row.get("event_id") or ""),
-        "received_at_ms": int(row.get("received_at_ms") or 0),
+        "event_id": event_id,
+        "received_at_ms": received_at_ms,
         "author_handle": row.get("author_handle"),
         "action": row.get("action"),
         "text_clean": row.get("text_clean") or row.get("text"),
         "canonical_url": row.get("canonical_url"),
-        "cashtags": _loads(row.get("cashtags_json"), []),
-        "hashtags": _loads(row.get("hashtags_json"), []),
-        "mentions": _loads(row.get("mentions_json"), []),
+        "cashtags": _required_json_list(row, "cashtags_json"),
+        "hashtags": _required_json_list(row, "hashtags_json"),
+        "mentions": _required_json_list(row, "mentions_json"),
         "event": event,
         "social_event": None,
     }
@@ -379,17 +381,32 @@ def _timeline_scope(value: str) -> str:
     raise ValueError("invalid_scope")
 
 
-def _loads(value: Any, default: Any) -> Any:
-    if value is None:
-        return default
-    if not isinstance(value, str):
-        return value
-    if not value.strip():
-        return default
-    try:
-        return json.loads(value)
-    except json.JSONDecodeError:
-        return default
+def _required_event_id(row: dict[str, Any]) -> str:
+    value = row.get("event_id")
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError("watchlist_event_id_required")
+    return value.strip()
+
+
+def _required_event_received_at_ms(row: dict[str, Any]) -> int:
+    value = row.get("received_at_ms")
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError("watchlist_event_received_at_ms_required")
+    return int(value)
+
+
+def _required_json_list(row: dict[str, Any], field_name: str) -> list[Any]:
+    if field_name not in row or row.get(field_name) is None:
+        raise ValueError(f"watchlist_event_{field_name}_required")
+    value = row[field_name]
+    if isinstance(value, str):
+        try:
+            value = json.loads(value)
+        except json.JSONDecodeError as exc:
+            raise ValueError(f"watchlist_event_{field_name}_required") from exc
+    if not isinstance(value, list):
+        raise ValueError(f"watchlist_event_{field_name}_required")
+    return value
 
 
 __all__ = ["WatchlistIntelRepository"]

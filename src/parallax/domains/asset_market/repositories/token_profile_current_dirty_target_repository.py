@@ -5,6 +5,7 @@ from contextlib import AbstractContextManager
 from typing import Any, cast
 
 from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
+from parallax.platform.db.queue_terminal import terminalize_source_row
 
 
 class TokenProfileCurrentDirtyTargetRepository:
@@ -29,7 +30,7 @@ class TokenProfileCurrentDirtyTargetRepository:
             return {"targets": 0}
 
         def _write() -> dict[str, int]:
-            self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 WITH incoming AS (
                   SELECT *
@@ -81,14 +82,12 @@ class TokenProfileCurrentDirtyTargetRepository:
                 FROM incoming
                 ON CONFLICT(target_type, target_id) DO UPDATE SET
                   dirty_reason = CASE
-                    WHEN token_profile_current_dirty_targets.source_watermark_ms = 0
-                      OR EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
+                    WHEN EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
                       THEN EXCLUDED.dirty_reason
                     ELSE token_profile_current_dirty_targets.dirty_reason
                   END,
                   payload_hash = CASE
-                    WHEN token_profile_current_dirty_targets.source_watermark_ms = 0
-                      OR EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
+                    WHEN EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
                       THEN EXCLUDED.payload_hash
                     ELSE token_profile_current_dirty_targets.payload_hash
                   END,
@@ -103,10 +102,7 @@ class TokenProfileCurrentDirtyTargetRepository:
                       AND (
                         EXCLUDED.source_watermark_ms > token_profile_current_dirty_targets.source_watermark_ms
                         OR (
-                          (
-                            token_profile_current_dirty_targets.source_watermark_ms = 0
-                            OR EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
-                          )
+                          EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
                           AND (
                             token_profile_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                             OR token_profile_current_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
@@ -121,10 +117,7 @@ class TokenProfileCurrentDirtyTargetRepository:
                       AND (
                         EXCLUDED.source_watermark_ms > token_profile_current_dirty_targets.source_watermark_ms
                         OR (
-                          (
-                            token_profile_current_dirty_targets.source_watermark_ms = 0
-                            OR EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
-                          )
+                          EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
                           AND (
                             token_profile_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                             OR token_profile_current_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
@@ -135,10 +128,7 @@ class TokenProfileCurrentDirtyTargetRepository:
                     ELSE token_profile_current_dirty_targets.lease_owner
                   END,
                   attempt_count = CASE
-                    WHEN (
-                      token_profile_current_dirty_targets.source_watermark_ms = 0
-                      OR EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
-                    )
+                    WHEN EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
                     AND token_profile_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                       THEN 0
                     ELSE token_profile_current_dirty_targets.attempt_count
@@ -153,7 +143,7 @@ class TokenProfileCurrentDirtyTargetRepository:
                     "now_ms": int(now_ms),
                 },
             )
-            return {"targets": len(records)}
+            return {"targets": _cursor_rowcount(cursor)}
 
         return _run_repository_write(self.conn, commit, _write)
 
@@ -266,6 +256,8 @@ class TokenProfileCurrentDirtyTargetRepository:
         error: str,
         now_ms: int,
         retry_ms: int,
+        max_attempts: int,
+        worker_name: str,
         commit: bool = True,
     ) -> int:
         records = _claim_records(claims)
@@ -275,16 +267,25 @@ class TokenProfileCurrentDirtyTargetRepository:
             retry_ms,
             "token_profile_current_dirty_target_retry_ms_required",
         )
+        parsed_max_attempts = _required_positive_int(
+            max_attempts,
+            "token_profile_current_dirty_target_max_attempts_required",
+        )
+        parsed_worker_name = _required_text(worker_name, "token_profile_current_dirty_target_worker_name_required")
+        retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
+        exhausted_records = [record for record in records if int(record["attempt_count"]) >= parsed_max_attempts]
         params: dict[str, Any] = {
-            **_claim_params(records),
+            **_claim_params(retry_records),
             "due_at_ms": int(now_ms) + parsed_retry_ms,
             "now_ms": int(now_ms),
             "last_error": str(error)[:2048],
         }
 
         def _write() -> int:
-            cursor = self.conn.execute(
-                """
+            changed = 0
+            if retry_records:
+                cursor = self.conn.execute(
+                    """
                 WITH failed AS (
                   SELECT *
                   FROM unnest(
@@ -313,12 +314,59 @@ class TokenProfileCurrentDirtyTargetRepository:
                   AND queue.payload_hash = failed.payload_hash
                   AND queue.lease_owner = failed.lease_owner
                   AND queue.attempt_count = failed.attempt_count
-                """,
-                params,
-            )
-            return _cursor_rowcount(cursor)
+                    """,
+                    params,
+                )
+                changed += _cursor_rowcount(cursor)
+            if exhausted_records:
+                deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
+                changed += deleted_count
+                for row in deleted_rows:
+                    terminalize_source_row(
+                        self.conn,
+                        worker_name=parsed_worker_name,
+                        source_table="token_profile_current_dirty_targets",
+                        target_key=f"{row['target_type']}:{row['target_id']}",
+                        source_row=row,
+                        final_status="terminal",
+                        final_reason=f"retry_budget_exhausted:{str(error)[:512]}",
+                        now_ms=int(now_ms),
+                        attempt_count=int(row["attempt_count"]),
+                        payload_hash=str(row["payload_hash"]),
+                        first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
+                        last_attempted_at_ms=int(now_ms),
+                        commit=False,
+                    )
+            return changed
 
         return _run_repository_write(self.conn, commit, _write)
+
+    def _delete_claims_returning(self, records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
+        cursor = self.conn.execute(
+            """
+            WITH done AS (
+              SELECT *
+              FROM unnest(
+                %(target_types)s::text[],
+                %(target_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS done(target_type, target_id, payload_hash, lease_owner, attempt_count)
+            )
+            DELETE FROM token_profile_current_dirty_targets queue
+            USING done
+            WHERE queue.target_type = done.target_type
+              AND queue.target_id = done.target_id
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            RETURNING queue.*
+            """,
+            _claim_params(records),
+        )
+        rows = cursor.fetchall()
+        return [dict(row) for row in rows], _returned_rowcount(cursor, rows)
 
     def queue_depth(self, *, now_ms: int) -> int:
         row = self.conn.execute(
@@ -532,6 +580,17 @@ def _required_positive_int(value: Any, error_code: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(error_code)
     return int(value)
+
+
+def _required_text(value: Any, error_code: str) -> str:
+    text = str(value or "").strip()
+    if not text:
+        raise ValueError(error_code)
+    return text
+
+
+def _optional_int(value: Any) -> int | None:
+    return None if value is None else int(value)
 
 
 def _required_nonnegative_int(value: Any, error_code: str) -> int:

@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const HANSA_TOKEN_IMAGE_URL = "/api/token-images/hansa-local";
 
 describe("buildTokenCaseViewModel", () => {
-  it("maps a token-case dossier into the narrative view model", () => {
+  it("maps a token-case dossier without synthesizing narrative output", () => {
     const dossier = tokenCaseFixture();
 
     const vm = buildTokenCaseViewModel({
@@ -17,116 +17,53 @@ describe("buildTokenCaseViewModel", () => {
     });
 
     expect(vm.hero.title).toContain("$HANSA");
-    expect(vm.hero.subtitle).toBe("Contract-confirmed Solana rotation");
+    expect(vm.hero.subtitle).toContain("solana");
     expect(vm.metrics.map((metric) => metric.key)).toEqual([
       "mentions",
-      "phase",
+      "admission",
       "watched",
       "readiness",
     ]);
+    expect(vm.metrics.find((metric) => metric.key === "admission")).toMatchObject({
+      value: "admitted",
+      detail: "18 posts · 7 authors",
+      tone: "health",
+    });
     expect(vm.hero.logoUrl).toBe(HANSA_TOKEN_IMAGE_URL);
-    expect(vm.propagation.stages).toHaveLength(3);
-    expect(vm.propagation.summaryZh).toBe("语义扩散从 CA 证据帖进入 scanner 复述。");
-    expect(vm.timeline.items[0].pills.map((pill) => pill.label)).toContain("bullish");
+    expect(vm.timeline.items[0]).toMatchObject({ phase: "expansion", role: "watched" });
+    expect(vm.timeline.items[0].pills).toEqual([]);
     expect(vm.timeline.items[0].pills.map((pill) => pill.label)).not.toContain("PQ 82");
     expect(vm.market.status).toBe("missing");
-    expect(vm.bullBear.bull.title).toBe("Bull · 多头");
-    expect(vm.bullBear.bull.thesis).toContain("多个独立账号围绕 CA 证据");
-    expect(vm.bullBear.bear.title).toBe("Bear · 空头");
-    expect(vm.propagation.currentness).toMatchObject({
-      displayStatus: "current",
-      deltaSourceEventCount: 0,
-      deltaIndependentAuthorCount: 0,
-      label: "叙事已更新",
-    });
-    expect(vm.propagation.statusPills.map((pill) => pill.label)).toContain("叙事已更新");
-    expect(vm.propagation.statusPills.some((pill) => pill.label.startsWith("last ready "))).toBe(
-      true,
-    );
-    expect(vm.dataGaps).toEqual([
-      "live market snapshot missing",
-      "official liquidity route not confirmed",
-    ]);
+    expect(vm.dataGaps).toEqual([]);
   });
 
-  it("does not read canonical token agent_brief as a fallback narrative", () => {
-    const dossier = tokenCaseFixture();
-    const dossierWithRemovedLegacyBrief = {
-      ...dossier,
-      agent_brief: undefined,
-    };
-
-    const vm = buildTokenCaseViewModel({
-      dossier: dossierWithRemovedLegacyBrief,
-      route: { window: "1h", scope: "all", postSort: "recent" },
-      posts: dossier.posts,
-    });
-
-    expect(vm.propagation.summaryZh).toBe("语义扩散从 CA 证据帖进入 scanner 复述。");
-    expect(vm.bullBear.stance).toBe("watch");
-  });
-
-  it("normalizes structured digest data gaps for the details rail", () => {
+  it("normalizes structured admission data gaps for the details rail", () => {
     const dossier = tokenCaseFixture();
 
     const vm = buildTokenCaseViewModel({
       dossier: {
         ...dossier,
-        discussion_digest: {
-          ...dossier.discussion_digest,
-          status: "pending",
+        narrative_admission: {
+          ...dossier.narrative_admission,
+          status: "missing",
+          reason: "no_current_admission",
           currentness: {
             display_status: "not_ready",
-            reason: "no_ready_digest",
-            delta_source_event_count: 0,
-            delta_independent_author_count: 0,
+            reason: "no_current_admission",
           },
-          data_gaps: [{ reason: "no_ready_digest" }],
+          coverage: { source_mentions: 0, independent_authors: 0 },
+          data_gaps: [{ reason: "no_current_admission" }],
         },
       },
       route: { window: "1h", scope: "all", postSort: "recent" },
       posts: dossier.posts,
     });
 
-    expect(vm.dataGaps).toEqual(["叙事待生成"]);
-    expect(vm.propagation.currentness.label).toBe("叙事待生成");
-  });
-
-  it("keeps ready narrative visible while currentness is updating", () => {
-    const dossier = tokenCaseFixture();
-
-    const vm = buildTokenCaseViewModel({
-      dossier: {
-        ...dossier,
-        discussion_digest: {
-          ...dossier.discussion_digest,
-          currentness: {
-            ...dossier.discussion_digest.currentness,
-            display_status: "updating",
-            reason: "digest_updating",
-            delta_source_event_count: 6,
-            delta_independent_author_count: 2,
-            last_ready_computed_at_ms: 1_777_746_000_000,
-          },
-          data_gaps: [{ reason: "digest_updating", delta_source_event_count: 6 }],
-        },
-      },
-      route: { window: "1h", scope: "all", postSort: "recent" },
-      posts: dossier.posts,
+    expect(vm.dataGaps).toEqual(["not admitted"]);
+    expect(vm.metrics.find((metric) => metric.key === "admission")).toMatchObject({
+      value: "not admitted",
+      detail: "0 posts · 0 authors",
     });
-
-    expect(vm.hero.subtitle).toBe("Contract-confirmed Solana rotation");
-    expect(vm.propagation.summaryZh).toBe("语义扩散从 CA 证据帖进入 scanner 复述。");
-    expect(vm.propagation.currentness).toMatchObject({
-      displayStatus: "updating",
-      deltaSourceEventCount: 6,
-      deltaIndependentAuthorCount: 2,
-      deltaLabel: "+6 posts · +2 authors",
-      label: "叙事更新中 +6",
-    });
-    expect(vm.propagation.statusPills.map((pill) => pill.label)).toEqual(
-      expect.arrayContaining(["叙事更新中 +6", "+6 posts · +2 authors"]),
-    );
   });
 
   it("surfaces event-level token prices in timeline pills", () => {
@@ -272,7 +209,6 @@ describe("buildTokenCaseViewModel", () => {
           address: null,
         },
         cex_detail: {
-          snapshot_id: "cex-detail:binance:BTCUSDT",
           target_type: "CexToken",
           target_id: "cex_token:BTC",
           exchange: "binance",

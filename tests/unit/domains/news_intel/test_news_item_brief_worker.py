@@ -1248,11 +1248,11 @@ async def _test_worker_quota_exhausted_does_not_write_failed_current_or_attempt(
     assert result.notes["backpressure_quota_exhausted"] == 1
 
 
-def test_worker_request_audit_error_requeues_without_business_ledger_or_current_write() -> None:
-    asyncio.run(_test_worker_request_audit_error_requeues_without_business_ledger_or_current_write())
+def test_worker_request_audit_error_counts_as_failed_claim_without_business_ledger_or_current_write() -> None:
+    asyncio.run(_test_worker_request_audit_error_counts_as_failed_claim_without_business_ledger_or_current_write())
 
 
-async def _test_worker_request_audit_error_requeues_without_business_ledger_or_current_write() -> None:
+async def _test_worker_request_audit_error_counts_as_failed_claim_without_business_ledger_or_current_write() -> None:
     db = FakeDB([_candidate()])
     provider = FakeBriefProvider(audit_error=RuntimeError("audit exploded"))
     worker = _worker(db=db, provider=provider)
@@ -1264,11 +1264,12 @@ async def _test_worker_request_audit_error_requeues_without_business_ledger_or_c
     assert db.news.runs == []
     assert db.news.briefs == []
     assert len(db.dirty.errors) == 1
-    assert db.dirty.error_kwargs[-1]["count_attempt"] is False
-    assert result.failed == 0
-    assert result.skipped == 1
-    assert result.notes["backpressure"] == 1
-    assert result.notes["request_audit_failed"] == 1
+    assert db.dirty.error_kwargs[-1]["count_attempt"] is True
+    assert db.dirty.error_kwargs[-1]["error"] == "news_item_brief_request_audit_failed"
+    assert result.failed == 1
+    assert result.skipped == 0
+    assert result.notes["failed"] == 1
+    assert result.notes["backpressure"] == 0
 
 
 def test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger() -> None:
@@ -1280,7 +1281,8 @@ async def _test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger
     provider = FakeBriefProvider(reserve_error=RuntimeError("reserve exploded"))
     worker = _worker(db=db, provider=provider)
 
-    result = await worker.run_once()
+    with pytest.raises(RuntimeError, match="reserve exploded"):
+        await worker.run_once()
 
     assert provider.reserve_calls == [NEWS_ITEM_BRIEF_LANE]
     assert provider.execution_calls == 0
@@ -1288,11 +1290,6 @@ async def _test_worker_reserve_error_does_not_claim_dirty_target_or_write_ledger
     assert db.news.loaded_target_ids == []
     assert db.news.runs == []
     assert db.news.briefs == []
-    assert result.failed == 0
-    assert result.skipped == 1
-    assert result.notes["claimed"] == 0
-    assert result.notes["backpressure"] == 1
-    assert result.notes["agent_reservation_error"] == "RuntimeError"
 
 
 def test_worker_provider_error_releases_acquired_reservation() -> None:

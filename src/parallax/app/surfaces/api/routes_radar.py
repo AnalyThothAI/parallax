@@ -112,7 +112,6 @@ def _token_radar_data(
             data,
             window=window,
             scope=scope,
-            now_ms=now_ms,
         )
 
 

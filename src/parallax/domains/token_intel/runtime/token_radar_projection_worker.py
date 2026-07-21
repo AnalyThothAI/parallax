@@ -351,15 +351,6 @@ class TokenRadarProjectionWorker(WorkerBase):
                         due.append(item)
         return due
 
-    def _latest_publication_state(self) -> dict[tuple[str, str, str], dict[str, Any]]:
-        with self._worker_session() as repos:
-            return _latest_publication_state_from_repos(
-                repos,
-                windows=self.windows,
-                scopes=self.scopes,
-                venues=self.venues,
-            )
-
     def _missing_work_items(
         self,
         publication_state: dict[tuple[str, str, str], dict[str, Any]],

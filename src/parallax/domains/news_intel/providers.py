@@ -13,28 +13,6 @@ from parallax.domains.news_intel.types.source_provider import (
 from parallax.platform.agent_execution import AgentCapacityReservation
 
 
-class NewsFeedFetchResult(Protocol):
-    status_code: int
-    entries: list[dict[str, Any]]
-    etag: str | None
-    last_modified: str | None
-    not_modified: bool
-
-
-class NewsFeedProvider(Protocol):
-    def fetch(
-        self,
-        url: str,
-        *,
-        etag: str | None = None,
-        last_modified: str | None = None,
-        provider_type: str | None = None,
-        source: dict[str, Any] | None = None,
-    ) -> NewsFeedFetchResult: ...
-
-    def close(self) -> None: ...
-
-
 class NewsSourceProvider(Protocol):
     @property
     def provider_type(self) -> str: ...
@@ -93,4 +71,4 @@ class NewsItemBriefProvider(Protocol):
     async def aclose(self) -> None: ...
 
 
-__all__ = ["NewsFeedFetchResult", "NewsFeedProvider", "NewsItemBriefProvider", "NewsSourceProvider"]
+__all__ = ["NewsItemBriefProvider", "NewsSourceProvider"]

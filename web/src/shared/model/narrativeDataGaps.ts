@@ -39,18 +39,9 @@ function cleanGap(value: unknown): string | null {
 }
 
 const REASON_LABELS: Record<string, string> = {
-  digest_updating: "叙事更新中",
-  low_independent_author_count: "独立作者不足",
-  low_semantic_coverage: "语义覆盖不足",
-  low_source_volume: "叙事样本不足",
-  material_delta_due: "叙事刷新排队中",
-  narrative_not_supported_for_window: "5m 实时信号",
-  no_ready_digest: "叙事待生成",
-  no_reusable_1h_digest: "1h 叙事待生成",
-  out_of_frontier: "不在当前雷达前沿",
-  not_in_current_frontier: "不在当前雷达前沿",
-  semantic_labeling_pending: "叙事分析中",
-  target_current_1h_narrative: "1h 叙事已读",
-  thresholds_met_partial_semantic_tail: "1h 叙事已读",
-  unsupported_window: "5m 实时信号",
+  narrative_not_supported_for_window: "admission unsupported",
+  no_current_admission: "not admitted",
+  out_of_frontier: "out of current frontier",
+  suppressed: "suppressed",
+  unsupported_window: "admission unsupported",
 };

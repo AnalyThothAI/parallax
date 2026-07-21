@@ -209,6 +209,44 @@ def test_watched_account_activity_does_not_fall_back_to_event_key_when_cooldown_
     assert candidate.dedup_key == f"watched_account_activity:account:toly:post:{NOW_MS // 1000}"
 
 
+@pytest.mark.parametrize("received_at_ms", (None, 0, True, "1700000000000"))
+def test_watched_account_activity_rejects_malformed_source_timestamp(received_at_ms: object) -> None:
+    with pytest.raises(
+        ValueError,
+        match="notification_source_timestamp_required:watched_account_activity:received_at_ms",
+    ):
+        engine(
+            events=[
+                {
+                    "event_id": "event-malformed-time",
+                    "author_handle": "toly",
+                    "action": "post",
+                    "received_at_ms": received_at_ms,
+                    "text": "malformed timestamp",
+                }
+            ]
+        ).evaluate(now_ms=NOW_MS)
+
+
+@pytest.mark.parametrize("event_id", (None, "", 123))
+def test_watched_account_activity_rejects_malformed_source_identity(event_id: object) -> None:
+    with pytest.raises(
+        ValueError,
+        match="notification_source_identity_required:watched_account_activity:event_id",
+    ):
+        engine(
+            events=[
+                {
+                    "event_id": event_id,
+                    "author_handle": "toly",
+                    "action": "post",
+                    "received_at_ms": NOW_MS,
+                    "text": "malformed identity",
+                }
+            ]
+        ).evaluate(now_ms=NOW_MS)
+
+
 @pytest.mark.parametrize("cooldown_seconds", [-1, True, "60"])
 def test_notification_activity_dedup_rejects_malformed_cooldown(cooldown_seconds: object) -> None:
     with pytest.raises(ValueError, match="notification_cooldown_seconds_required"):
@@ -323,6 +361,42 @@ def test_account_token_alert_candidate_preserves_first_seen_flags():
     assert candidate.payload["is_first_seen_global"] is True
 
 
+def test_watched_account_token_alert_rejects_missing_source_timestamp_without_runtime_clock_fallback() -> None:
+    with pytest.raises(
+        ValueError,
+        match="notification_source_timestamp_required:watched_account_token_alert:received_at_ms",
+    ):
+        engine(
+            alerts=[
+                {
+                    "alert_id": "alert-missing-time",
+                    "author_handle": "toly",
+                    "normalized_value": "PEPE",
+                    "entity_key": "symbol:PEPE",
+                }
+            ]
+        ).evaluate(now_ms=NOW_MS)
+
+
+@pytest.mark.parametrize("alert_id", (None, "", 123))
+def test_watched_account_token_alert_rejects_malformed_source_identity(alert_id: object) -> None:
+    with pytest.raises(
+        ValueError,
+        match="notification_source_identity_required:watched_account_token_alert:alert_id",
+    ):
+        engine(
+            alerts=[
+                {
+                    "alert_id": alert_id,
+                    "received_at_ms": NOW_MS,
+                    "author_handle": "toly",
+                    "normalized_value": "PEPE",
+                    "entity_key": "symbol:PEPE",
+                }
+            ]
+        ).evaluate(now_ms=NOW_MS)
+
+
 def test_watched_account_token_alert_uses_asset_author_bucket_when_cooldown_configured():
     notifications = NotificationsConfig(
         rules={
@@ -403,6 +477,16 @@ def test_signal_pulse_rule_is_enabled_by_default():
     assert rules["signal_pulse_candidate"].channels == ("in_app",)
 
 
+def test_signal_pulse_notification_rejects_blank_persisted_candidate_identity() -> None:
+    row = pulse_candidate("")
+
+    with pytest.raises(
+        ValueError,
+        match="notification_source_identity_required:signal_pulse_candidate:candidate_id",
+    ):
+        engine(pulse=FakePulse([row])).evaluate(now_ms=NOW_MS)
+
+
 def test_signal_pulse_notifications_use_materialized_candidates_and_severity_mapping():
     pulse = FakePulse(
         [
@@ -443,6 +527,17 @@ def test_signal_pulse_notifications_use_materialized_candidates_and_severity_map
     assert "top_risks" not in trade.payload
     assert "confirmation_triggers_zh" not in trade.payload
     assert "kind" not in trade.payload
+
+
+def test_signal_pulse_notification_rejects_missing_source_timestamp_without_runtime_clock_fallback() -> None:
+    row = pulse_candidate("missing-time", status="token_watch")
+    row.pop("updated_at_ms")
+
+    with pytest.raises(
+        ValueError,
+        match="notification_source_timestamp_required:signal_pulse_candidate:updated_at_ms",
+    ):
+        engine(pulse=FakePulse([row])).evaluate(now_ms=NOW_MS)
 
 
 def test_signal_pulse_notification_decision_uses_scalar_columns_not_json_fallback():
@@ -1226,11 +1321,7 @@ def test_news_high_signal_allows_blank_public_url_without_batch_abort() -> None:
         ]
     )
 
-    candidates = [
-        item
-        for item in engine(news=news).evaluate(now_ms=NOW_MS)
-        if item.rule_id == "news_high_signal"
-    ]
+    candidates = [item for item in engine(news=news).evaluate(now_ms=NOW_MS) if item.rule_id == "news_high_signal"]
 
     assert len(candidates) == 1
     candidate = candidates[0]

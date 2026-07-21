@@ -19,20 +19,12 @@ from parallax.domains.token_intel.repositories.token_radar_repository import (
 
 
 def test_json_payload_converts_decimal_values_before_jsonb_binding():
+    row = _valid_factor_row()
     snapshot = _valid_factor_snapshot(rank_score=12.5)
     snapshot["families"]["social_heat"]["facts"]["volume_24h_usd"] = Decimal("123.45")
-    payload = _json_payload(
-        {
-            "factor_snapshot_json": snapshot,
-            "intent_json": {},
-            "data_health_json": {},
-            "source_event_ids_json": [],
-            "degraded_reasons_json": [],
-            "rank_score": 12.5,
-            "quality_status": "ready",
-            "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
-        }
-    )
+    row["factor_snapshot_json"] = snapshot
+    row["rank_score"] = 12.5
+    payload = _json_payload(row)
 
     assert payload["factor_snapshot_json"].obj["composite"]["rank_score"] == 12.5
     assert payload["factor_snapshot_json"].obj["families"]["social_heat"]["facts"]["volume_24h_usd"] == 123.45
@@ -47,6 +39,86 @@ def test_json_payload_converts_decimal_values_before_jsonb_binding():
         "score_json",
     ):
         assert dropped_column not in payload
+
+
+@pytest.mark.parametrize(
+    ("field", "value", "error"),
+    [
+        pytest.param("intent_json", None, "token_radar_current_row_required:intent_json", id="missing-intent"),
+        pytest.param("intent_json", {}, "token_radar_current_row_invalid:intent_json", id="empty-intent"),
+        pytest.param(
+            "resolution_json", None, "token_radar_current_row_required:resolution_json", id="missing-resolution"
+        ),
+        pytest.param("resolution_json", [], "token_radar_current_row_invalid:resolution_json", id="resolution-list"),
+        pytest.param(
+            "data_health_json", None, "token_radar_current_row_required:data_health_json", id="missing-health"
+        ),
+        pytest.param("data_health_json", {}, "token_radar_current_row_invalid:data_health_json", id="empty-health"),
+        pytest.param(
+            "source_event_ids_json",
+            None,
+            "token_radar_current_row_required:source_event_ids_json",
+            id="missing-source",
+        ),
+        pytest.param(
+            "source_event_ids_json",
+            {},
+            "token_radar_current_row_invalid:source_event_ids_json",
+            id="source-mapping",
+        ),
+        pytest.param(
+            "source_event_ids_json",
+            [],
+            "token_radar_current_row_invalid:source_event_ids_json",
+            id="empty-source",
+        ),
+        pytest.param("intent_id", "", "token_radar_current_identity_required", id="empty-intent-id"),
+        pytest.param("event_id", "", "token_radar_current_identity_required", id="empty-event-id"),
+        pytest.param(
+            "degraded_reasons_json",
+            None,
+            "token_radar_current_row_required:degraded_reasons_json",
+            id="missing-reasons",
+        ),
+        pytest.param(
+            "degraded_reasons_json",
+            "market_missing",
+            "token_radar_current_row_invalid:degraded_reasons_json",
+            id="reasons-string",
+        ),
+    ],
+)
+def test_json_payload_rejects_missing_or_malformed_current_row_json_contract(field, value, error):
+    row = _valid_factor_row()
+    if value is None:
+        row.pop(field, None)
+    else:
+        row[field] = value
+
+    with pytest.raises(ValueError, match=error):
+        _json_payload(row)
+
+
+@pytest.mark.parametrize(
+    ("field", "value"),
+    [
+        pytest.param("status", None, id="missing-status"),
+        pytest.param("reason_codes", None, id="missing-reason-codes"),
+        pytest.param("candidate_ids", {}, id="candidate-ids-mapping"),
+        pytest.param("lookup_keys", "symbol:BOV", id="lookup-keys-string"),
+    ],
+)
+def test_json_payload_rejects_malformed_resolution_contract(field, value):
+    row = _valid_factor_row()
+    resolution = dict(row["resolution_json"])
+    if value is None:
+        resolution.pop(field, None)
+    else:
+        resolution[field] = value
+    row["resolution_json"] = resolution
+
+    with pytest.raises(ValueError, match=f"token_radar_current_resolution_(required|invalid):{field}"):
+        _json_payload(row)
 
 
 def test_publish_current_generation_upserts_current_rows_and_marks_ready_publication_state():
@@ -816,6 +888,18 @@ def test_upsert_target_feature_writes_compact_projection_row():
     assert conn.params["identity_id"] == "asset-1"
     assert conn.params["source_event_ids_json"].obj == ["event-1"]
     assert conn.params["source_intent_ids_json"].obj == ["intent-1"]
+    assert conn.params["intent_json"].obj == {
+        "intent_id": "intent-1",
+        "event_id": "event-1",
+        "display_symbol": "BOV",
+    }
+    assert conn.params["resolution_json"].obj == {
+        "status": "EXACT",
+        "reason_codes": [],
+        "candidate_ids": [],
+        "lookup_keys": [],
+    }
+    assert "intent_json, resolution_json" in conn.sql
     assert conn.params["payload_hash"]
     assert conn.params["social_heat_raw_score"] == 12.0
     assert conn.params["social_heat_weight"] == 1.0
@@ -858,6 +942,10 @@ _MISSING = object()
             "event-1",
             "token_radar_target_feature_payload_invalid:source_event_ids_json",
         ),
+        ("intent_json", _MISSING, "token_radar_target_feature_payload_required:intent_json"),
+        ("intent_json", {}, "token_radar_target_feature_payload_invalid:intent_json"),
+        ("resolution_json", _MISSING, "token_radar_target_feature_payload_required:resolution_json"),
+        ("resolution_json", [], "token_radar_target_feature_payload_invalid:resolution_json"),
         ("created_at_ms", _MISSING, "token_radar_target_feature_payload_required:created_at_ms"),
         ("created_at_ms", "bad", "token_radar_target_feature_payload_invalid:created_at_ms"),
     ),
@@ -1025,6 +1113,13 @@ def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_ver
                 "recommended_decision": "discard",
                 "gates_max_decision": "watch",
                 "factor_snapshot_json": _valid_factor_snapshot(rank_score=12.0),
+                "intent_json": {"intent_id": "intent-1", "event_id": "event-1", "display_symbol": "BOV"},
+                "resolution_json": {
+                    "status": "EXACT",
+                    "reason_codes": ["CHAIN_ADDRESS_EXACT"],
+                    "candidate_ids": [],
+                    "lookup_keys": ["address:eip155:1:0xabc"],
+                },
                 "source_event_ids_json": ["event-1"],
                 "source_intent_ids_json": ["intent-1"],
                 "source_resolution_ids_json": ["resolution-1"],
@@ -1044,6 +1139,8 @@ def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_ver
     assert "FROM token_radar_target_features" in conn.sql
     assert "SELECT *" not in conn.sql
     assert "factor_snapshot_json" in conn.sql
+    assert "intent_json" in conn.sql
+    assert "resolution_json" in conn.sql
     assert "source_event_ids_json" in conn.sql
     assert "rank_input_version" not in conn.sql
     assert "latest_event_received_at_ms >= %s" in conn.sql
@@ -1321,8 +1418,13 @@ def _valid_factor_row() -> dict[str, object]:
         "target_type": "Asset",
         "target_id": "asset-1",
         "pricefeed_id": "feed-1",
-        "intent_json": {"display_symbol": "BOV"},
-        "resolution_json": {},
+        "intent_json": {"intent_id": "intent-1", "event_id": "event-1", "display_symbol": "BOV"},
+        "resolution_json": {
+            "status": "EXACT",
+            "reason_codes": [],
+            "candidate_ids": [],
+            "lookup_keys": [],
+        },
         "factor_snapshot_json": _valid_factor_snapshot(),
         "factor_version": TOKEN_FACTOR_SNAPSHOT_VERSION,
         "decision": "discard",

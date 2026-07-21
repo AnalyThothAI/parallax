@@ -39,9 +39,6 @@ from parallax.domains.asset_market.repositories.token_image_source_dirty_target_
 from parallax.domains.asset_market.repositories.token_profile_current_dirty_target_repository import (
     TokenProfileCurrentDirtyTargetRepository,
 )
-from parallax.domains.cex_market_intel.repositories.cex_derivative_series_repository import (
-    CexDerivativeSeriesRepository,
-)
 from parallax.domains.cex_market_intel.repositories.cex_detail_snapshot_repository import (
     CexDetailSnapshotRepository,
 )
@@ -75,9 +72,6 @@ from parallax.domains.pulse_lab.repositories.pulse_trigger_dirty_target_reposito
 from parallax.domains.token_intel.interfaces import EventTokenProjectionQuery, SignalRepository
 from parallax.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
 from parallax.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
-from parallax.domains.token_intel.repositories.token_factor_evaluation_repository import (
-    TokenFactorEvaluationRepository,
-)
 from parallax.domains.token_intel.repositories.token_intent_lookup_repository import (
     TokenIntentLookupRepository,
 )
@@ -130,7 +124,6 @@ class RepositorySession:
     token_radar_source_dirty_events: TokenRadarSourceDirtyEventRepository
     token_radar_rank_sources: TokenRadarRankSourceRepository
     token_radar: TokenRadarRepository
-    token_factor_evaluations: TokenFactorEvaluationRepository
     token_targets: TokenTargetRepository
     notifications: NotificationRepository
     pulse_jobs: PulseJobsRepository
@@ -148,7 +141,6 @@ class RepositorySession:
     watchlist_intel: WatchlistIntelRepository
     news: NewsRepository
     news_projection_dirty_targets: NewsProjectionDirtyTargetRepository
-    cex_derivative_series: CexDerivativeSeriesRepository
     cex_detail_snapshots: CexDetailSnapshotRepository
     cex_oi_radar: CexOiRadarRepository
     macro_intel: MacroIntelRepository
@@ -202,7 +194,6 @@ def repositories_for_connection(
         token_radar_source_dirty_events=TokenRadarSourceDirtyEventRepository(conn),
         token_radar_rank_sources=TokenRadarRankSourceRepository(conn),
         token_radar=TokenRadarRepository(conn),
-        token_factor_evaluations=TokenFactorEvaluationRepository(conn),
         token_targets=TokenTargetRepository(conn),
         notifications=NotificationRepository(
             conn,
@@ -224,7 +215,6 @@ def repositories_for_connection(
         watchlist_intel=WatchlistIntelRepository(conn),
         news=NewsRepository(conn),
         news_projection_dirty_targets=NewsProjectionDirtyTargetRepository(conn),
-        cex_derivative_series=CexDerivativeSeriesRepository(conn),
         cex_detail_snapshots=CexDetailSnapshotRepository(conn),
         cex_oi_radar=CexOiRadarRepository(conn),
         macro_intel=MacroIntelRepository(conn),

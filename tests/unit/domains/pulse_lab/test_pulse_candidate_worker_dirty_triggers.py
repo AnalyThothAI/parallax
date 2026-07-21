@@ -162,6 +162,62 @@ def test_dirty_trigger_rejects_unconfigured_dimensions_before_payload_reads(
     assert repos.pulse_trigger_dirty_targets.errors[0]["retry_ms"] == 7_000
 
 
+@pytest.mark.parametrize(
+    ("row_override", "error_token"),
+    (
+        ({"factor_snapshot_json": None}, "factor_snapshot_json must be a non-empty factor snapshot"),
+        ({"source_event_ids_json": "event-1"}, "pulse_candidate_source_event_ids_json_list_required"),
+    ),
+)
+def test_dirty_trigger_retries_malformed_current_row_instead_of_acknowledging_it(
+    row_override: dict[str, Any],
+    error_token: str,
+) -> None:
+    claim = {
+        "target_type": "Asset",
+        "target_id": "asset-1",
+        "window": "1h",
+        "scope": "all",
+        "payload_hash": "pulse-trigger-malformed-current-row",
+        "lease_owner": "pulse-candidate",
+        "attempt_count": 1,
+        "dirty_reason": "token_radar_changed",
+        "source_watermark_ms": NOW_MS - 1_000,
+    }
+    row = _radar_row(factor_snapshot_json=_factor_snapshot(rank_score=80))
+    row.update(row_override)
+    repos = _FakeRepos(claims=[claim], exact_rows={("Asset", "asset-1", "1h", "all"): row})
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["dirty_triggers_done"] == 0
+    assert result["dirty_triggers_failed"] == 1
+    assert repos.pulse_trigger_dirty_targets.done == []
+    assert error_token in repos.pulse_trigger_dirty_targets.errors[0]["error"]
+
+
+def test_dirty_trigger_retries_malformed_claim_identity_instead_of_acknowledging_it() -> None:
+    claim = {
+        "target_type": "Asset",
+        "target_id": "",
+        "window": "1h",
+        "scope": "all",
+        "payload_hash": "pulse-trigger-malformed-identity",
+        "lease_owner": "pulse-candidate",
+        "attempt_count": 1,
+    }
+    repos = _FakeRepos(claims=[claim])
+    worker = _worker(repos)
+
+    result = worker.scan_triggers_once(now_ms=NOW_MS)
+
+    assert result["dirty_triggers_done"] == 0
+    assert result["dirty_triggers_failed"] == 1
+    assert repos.pulse_trigger_dirty_targets.done == []
+    assert "pulse_trigger_dirty_target_identity_required" in repos.pulse_trigger_dirty_targets.errors[0]["error"]
+
+
 def test_capacity_budget_reschedules_claim_without_job_enqueue_or_mark_done() -> None:
     claim = {
         "target_type": "Asset",

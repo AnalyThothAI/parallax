@@ -6,12 +6,8 @@ from typing import Any
 from parallax.app.runtime.queue_health import (
     fetch_queue_table_health,
     fill_worker_queue_healths,
-    queue_health_adapter_specs,
 )
-from parallax.app.runtime.worker_manifest import (
-    all_worker_manifests,
-    worker_queue_health_tables,
-)
+from parallax.app.runtime.worker_manifest import all_worker_manifests
 from parallax.app.runtime.worker_status import manifest_worker_statuses
 
 
@@ -46,6 +42,7 @@ class _QueueHealthConn:
                 [
                     {"status": "pending", "count": 2},
                     {"status": "running", "count": 1},
+                    {"status": "dead", "count": 2},
                 ]
             )
         if "FROM pulse_agent_jobs" in sql:
@@ -58,6 +55,7 @@ class _QueueHealthConn:
                         "running_count": 1,
                         "failed_count": 0,
                         "blocked_count": 0,
+                        "source_terminal_count": 2,
                         "oldest_due_at_ms": 900,
                         "oldest_running_at_ms": 950,
                         "max_attempt_count": 3,
@@ -89,6 +87,7 @@ class _DirtyTargetConn:
                         "running_count": 1,
                         "failed_count": 1,
                         "blocked_count": 0,
+                        "source_terminal_count": 0,
                         "oldest_due_at_ms": 850,
                         "oldest_running_at_ms": 980,
                         "max_attempt_count": 5,
@@ -99,23 +98,63 @@ class _DirtyTargetConn:
 
 
 def test_fetch_status_queue_health_uses_terminal_projection_for_terminal_backlog() -> None:
-    health = fetch_queue_table_health(_QueueHealthConn(), "pulse_agent_jobs", now_ms=1_000)
+    conn = _QueueHealthConn()
+    health = fetch_queue_table_health(conn, "pulse_agent_jobs", now_ms=1_000)
 
     assert health["available"] is True
     assert health["kind"] == "status_queue"
     assert health["status"] == "blocked"
-    assert health["counts_by_status"] == {"pending": 2, "running": 1}
+    assert health["counts_by_status"] == {"pending": 2, "running": 1, "dead": 2}
     assert health["queue_depth"] == 3
-    assert health["source_terminal_count"] == 0
+    assert health["source_terminal_count"] == 2
     assert health["terminal_count"] == 5
     assert health["unresolved_terminal_count"] == 4
     assert health["reason_buckets"] == {"llm_provider_522": 3, "stale_window_ttl": 1}
     assert health["due_count"] == 2
     assert health["running_count"] == 1
-    assert health["blocked_count"] == 4
+    assert health["blocked_count"] == 6
     assert health["oldest_due_age_ms"] == 100
     assert health["oldest_running_age_ms"] == 50
     assert health["max_attempt_count"] == 3
+    assert any("AS source_terminal_count" in sql and "'dead'" in sql for sql in conn.sql)
+
+
+def test_source_terminal_status_blocks_queue_health_even_if_terminal_projection_is_missing() -> None:
+    class Conn:
+        def execute(self, sql: str, params: object = ()) -> _Rows:
+            if "GROUP BY final_reason_bucket" in sql:
+                return _Rows([])
+            if "FROM worker_queue_terminal_events" in sql:
+                return _Rows([{"terminal_count": 0, "unresolved_terminal_count": 0}])
+            if "GROUP BY status" in sql:
+                return _Rows([{"status": "dead", "count": 2}])
+            if "FROM notification_deliveries" in sql:
+                return _Rows(
+                    [
+                        {
+                            "total_count": 2,
+                            "active_count": 0,
+                            "due_count": 0,
+                            "running_count": 0,
+                            "failed_count": 0,
+                            "blocked_count": 0,
+                            "source_terminal_count": 2,
+                            "oldest_due_at_ms": None,
+                            "oldest_running_at_ms": None,
+                            "max_attempt_count": 5,
+                        }
+                    ]
+                )
+            raise AssertionError(sql)
+
+    health = fetch_queue_table_health(Conn(), "notification_deliveries", now_ms=1_000)
+
+    assert health["available"] is True
+    assert health["counts_by_status"] == {"dead": 2}
+    assert health["source_terminal_count"] == 2
+    assert health["terminal_count"] == 0
+    assert health["blocked_count"] == 2
+    assert health["status"] == "blocked"
 
 
 def test_fetch_dirty_target_health_counts_due_leased_and_failed_rows() -> None:
@@ -254,14 +293,6 @@ def test_fill_worker_queue_healths_reuses_short_ttl_cache_without_db_query() -> 
     )
 
 
-def test_adapter_registry_declares_every_manifest_queue_table_without_fallback() -> None:
-    manifest_tables = {table for tables in worker_queue_health_tables().values() for table in tables}
-    specs = queue_health_adapter_specs()
-
-    assert set(specs) == manifest_tables
-    assert {spec.kind for spec in specs.values()} <= {"status_queue", "dirty_target", "terminal_projection"}
-
-
 def test_unregistered_manifest_queue_table_reports_manifest_mismatch() -> None:
     health = fetch_queue_table_health(_DirtyTargetConn(), "unknown_manifest_queue", now_ms=1_000)
 
@@ -301,19 +332,38 @@ def test_terminal_evidence_query_failure_is_adapter_error() -> None:
     assert health["adapter_error_kind"] == "RuntimeError"
 
 
-def test_malformed_queue_metric_row_reports_adapter_error_instead_of_idle_queue() -> None:
+def test_missing_required_queue_metric_reports_adapter_error_instead_of_idle_queue() -> None:
     class Conn:
         def execute(self, sql: str, params: object = ()) -> _Rows:
+            if "GROUP BY final_reason_bucket" in sql:
+                return _Rows([])
             if "FROM token_radar_dirty_targets" in sql:
-                return _Rows([object()])  # type: ignore[list-item]
-            raise AssertionError("terminal query must not run after malformed metric row")
+                return _Rows(
+                    [
+                        {
+                            "total_count": 1,
+                            # active_count is deliberately absent: missing metrics are contract damage.
+                            "due_count": 0,
+                            "running_count": 0,
+                            "failed_count": 0,
+                            "blocked_count": 0,
+                            "source_terminal_count": 0,
+                            "oldest_due_at_ms": None,
+                            "oldest_running_at_ms": None,
+                            "max_attempt_count": 0,
+                        }
+                    ]
+                )
+            if "FROM worker_queue_terminal_events" in sql:
+                return _Rows([{"terminal_count": 0, "unresolved_terminal_count": 0}])
+            raise AssertionError(sql)
 
     health = fetch_queue_table_health(Conn(), "token_radar_dirty_targets", now_ms=1_000)
 
     assert health["available"] is False
     assert health["status"] == "unavailable"
     assert health["error_code"] == "adapter_query_failure"
-    assert health["adapter_error_kind"] == "TypeError"
+    assert health["adapter_error_kind"] == "KeyError"
 
 
 def test_fill_worker_queue_healths_requires_api_pool_connection_contract() -> None:

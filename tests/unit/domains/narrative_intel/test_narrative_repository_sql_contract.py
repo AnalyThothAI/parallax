@@ -34,8 +34,6 @@ def test_load_radar_admission_target_reads_ready_publication_state_without_gener
                 target_id="asset-1",
                 window="1h",
                 scope="all",
-                schema_version="narrative_intel_v1",
-                now_ms=2_000,
             ),
             id="stale_admission_target",
         ),
@@ -64,10 +62,8 @@ def test_narrative_admission_mutations_require_connection_transaction_before_sql
                 target_id="asset-1",
                 window="1h",
                 scope="all",
-                schema_version="narrative_intel_v1",
-                now_ms=2_000,
             ),
-            {"staled_admissions": 1, "staled_digests": 0, "staled_semantics": 0},
+            {"staled_admissions": 1},
             id="stale_admission_target",
         ),
     ],
@@ -96,8 +92,6 @@ def test_narrative_admission_commit_owned_writes_use_connection_transaction_with
                 target_id="asset-1",
                 window="1h",
                 scope="all",
-                schema_version="narrative_intel_v1",
-                now_ms=2_000,
                 commit=False,
             ),
             id="stale_admission_target",
@@ -125,8 +119,6 @@ def test_narrative_admission_write_counts_require_cursor_rowcount(operation) -> 
                 target_id="asset-1",
                 window="1h",
                 scope="all",
-                schema_version="narrative_intel_v1",
-                now_ms=2_000,
                 commit=False,
             ),
             id="stale_admission_target",
@@ -155,6 +147,35 @@ def test_narrative_upsert_admissions_rejects_malformed_limit_before_transaction(
     assert conn.transaction_commits == 0
 
 
+@pytest.mark.parametrize(
+    ("removed_field", "legacy_field", "legacy_value"),
+    [
+        pytest.param("schema_version", None, None, id="schema-version"),
+        pytest.param("status", None, None, id="status"),
+        pytest.param("reason", None, None, id="reason"),
+        pytest.param("priority", None, None, id="priority"),
+        pytest.param("source_event_ids", "source_event_ids_json", ["event-legacy"], id="source-ids-alias"),
+        pytest.param("source_max_received_at_ms", "source_window_end_ms", 1_500, id="source-watermark-alias"),
+        pytest.param("projection_computed_at_ms", "computed_at_ms", 1_800, id="computed-at-alias"),
+    ],
+)
+def test_narrative_upsert_rejects_missing_formal_fields_without_legacy_alias_repair(
+    removed_field: str,
+    legacy_field: str | None,
+    legacy_value: object,
+) -> None:
+    row = _admission_row()
+    row.pop(removed_field)
+    if legacy_field is not None:
+        row[legacy_field] = legacy_value
+    conn = _ScriptedConnection()
+
+    with pytest.raises(ValueError, match=r"narrative_admission_repository_(required|invalid)"):
+        NarrativeRepository(conn).upsert_admissions([row], now_ms=2_000, commit=False)
+
+    assert conn.sql == []
+
+
 def test_admission_payload_hash_rejects_legacy_payload_keys() -> None:
     with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
         admission_payload_hash(
@@ -171,51 +192,39 @@ def test_admission_payload_hash_rejects_legacy_payload_keys() -> None:
         )
 
 
-def test_semantics_for_posts_batches_post_keyset_with_lateral_latest() -> None:
+def test_current_narrative_admissions_read_only_admissions() -> None:
     conn = _ReadConnection(
         rows=[
             {
-                "event_id": "event-1",
                 "target_type": "Asset",
                 "target_id": "asset-1",
+                "window": "1h",
+                "scope": "all",
                 "schema_version": "narrative_intel_v1",
-                "language": "zh",
-                "status": "ready",
-                "trade_stance": "bullish",
-                "attention_valence": "constructive",
-                "narrative_cluster_key": "cluster-1",
-                "claim_type": "catalyst",
-                "evidence_type": "post",
-                "semantic_confidence": 0.9,
-                "co_mentioned_targets_json": [],
-                "evidence_refs_json": [],
+                "status": "admitted",
+                "reason": "radar_row",
+                "source_event_count": 4,
+                "independent_author_count": 3,
+                "projection_computed_at_ms": 1_900,
             }
         ]
     )
 
-    result = NarrativeRepository(conn).semantics_for_posts(
-        [
-            {"event_id": "event-1", "target_type": "Asset", "target_id": "asset-1"},
-            {"event_id": "event-2", "target_type": "CexToken", "target_id": "cex-token-2"},
-            {"event_id": "event-1", "target_type": "Asset", "target_id": "asset-1"},
-        ],
+    result = NarrativeRepository(conn).current_narrative_admissions_for_targets(
+        [{"target_type": "Asset", "target_id": "asset-1"}],
+        window="1h",
+        scope="all",
         schema_version="narrative_intel_v1",
     )
 
-    assert result[("event-1", "Asset", "asset-1")]["trade_stance"] == "bullish"
+    snapshot = result[("Asset", "asset-1")]
+    assert snapshot["status"] == "admitted"
+    assert snapshot["currentness"] == {"display_status": "current", "reason": "radar_row"}
     assert len(conn.calls) == 1
-    sql, params = conn.calls[0]
-    assert "WITH input_posts AS" in sql
-    assert "unnest(%s::text[], %s::text[], %s::text[]) WITH ORDINALITY" in sql
-    assert "distinct_posts AS" in sql
-    assert "LEFT JOIN LATERAL" in sql
-    assert "LIMIT 1" in sql
-    assert params == (
-        ["event-1", "event-2", "event-1"],
-        ["Asset", "CexToken", "Asset"],
-        ["asset-1", "cex-token-2", "asset-1"],
-        "narrative_intel_v1",
-    )
+    sql, _params = conn.calls[0]
+    assert "FROM narrative_admissions" in sql
+    assert "token_discussion_digests" not in sql
+    assert "token_mention_semantics" not in sql
 
 
 def _admission_row() -> dict[str, Any]:
@@ -228,15 +237,16 @@ def _admission_row() -> dict[str, Any]:
         "status": "admitted",
         "reason": "radar_row",
         "priority": 10,
-        "rank": 1,
-        "rank_score": 88.5,
+        "last_radar_rank": 1,
+        "last_rank_score": 88.5,
         "source_event_ids": ["event-1"],
         "source_max_received_at_ms": 1_500,
-        "computed_at_ms": 1_800,
+        "projection_computed_at_ms": 1_800,
         "source_window_start_ms": 1_000,
         "source_window_end_ms": 1_500,
         "source_event_count": 1,
         "independent_author_count": 1,
+        "admission_generation": "1h:all:1500",
     }
 
 

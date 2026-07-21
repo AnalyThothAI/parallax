@@ -28,9 +28,6 @@ FRESHNESS_CRITICAL_CONCEPTS = (
     "credit:ig_oas",
     "asset:spx",
 )
-OPTIONAL_CONFIRMATION_CONCEPTS = ("asset:spx", "fx:broad_dollar", "commodity:wti")
-PANEL_NAMES = ("liquidity", "rates", "volatility", "credit", "cross_asset")
-CHAIN_NODE_NAMES = ("liquidity", "rates", "fed_corridor", "volatility", "credit", "positioning", "cross_asset")
 TRIGGER_METADATA = {
     "rrp_buffer_low": {
         "label": "RRP 缓冲偏低",
@@ -106,7 +103,6 @@ def build_macro_view_snapshot(
         data_gaps=internal_data_gaps,
     )
     return {
-        "snapshot_id": f"macro-view:{MACRO_VIEW_PROJECTION_VERSION}:current",
         "projection_version": MACRO_VIEW_PROJECTION_VERSION,
         "asof_date": asof_date,
         "status": status,

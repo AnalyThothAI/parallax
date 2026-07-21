@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_factories import WorkerFactoryContext, unavailable_worker
-from parallax.app.runtime.worker_manifest import manifest_names_for_factory
+from parallax.app.runtime.worker_manifest import manifest_names_for_factory, require_worker_manifest
 from parallax.domains.asset_market.runtime.asset_profile_refresh_worker import AssetProfileRefreshWorker
 from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from parallax.domains.asset_market.runtime.live_price_gateway import LivePriceGateway
@@ -88,7 +88,7 @@ def construct_asset_market_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             db=ctx.db,
             telemetry=ctx.telemetry,
             wake_emitter=ctx.wake_bus,
-            wake_waiter=ctx.db.wake_listener(worker_name, workers.market_tick_current_projection.wakes_on),
+            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
     if workers.event_anchor_backfill.enabled:
         constructed["event_anchor_backfill"] = EventAnchorBackfillWorker(

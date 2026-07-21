@@ -50,7 +50,7 @@ class CexDetailSnapshotRepository:
         cursor = self.conn.execute(
             """
             INSERT INTO cex_detail_snapshots(
-              snapshot_id, target_type, target_id, exchange, native_market_id, base_symbol, quote_symbol,
+              target_type, target_id, exchange, native_market_id, base_symbol, quote_symbol,
               status, baseline_status, coinglass_status, price_usd, mark_price, funding_rate,
               volume_24h_usd, open_interest_usd, oi_change_pct_1h, oi_change_pct_4h, oi_change_pct_24h,
               cvd_delta_1h, cvd_delta_4h, cvd_delta_24h, long_short_ratio, top_trader_position_ratio,
@@ -58,12 +58,14 @@ class CexDetailSnapshotRepository:
               payload_hash
             )
             VALUES (
-              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+              %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
               %s, %s, %s, %s, %s, %s
             )
-            ON CONFLICT(snapshot_id) DO UPDATE SET
+            ON CONFLICT(exchange, native_market_id) DO UPDATE SET
               target_type = excluded.target_type,
               target_id = excluded.target_id,
+              base_symbol = excluded.base_symbol,
+              quote_symbol = excluded.quote_symbol,
               status = excluded.status,
               baseline_status = excluded.baseline_status,
               coinglass_status = excluded.coinglass_status,
@@ -89,7 +91,6 @@ class CexDetailSnapshotRepository:
             WHERE cex_detail_snapshots.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
             """,
             (
-                snapshot["snapshot_id"],
                 _required_snapshot_text(snapshot, "target_type"),
                 _required_snapshot_text(snapshot, "target_id"),
                 _required_snapshot_text(snapshot, "exchange"),
@@ -160,16 +161,24 @@ def _public_snapshot(row: Any) -> dict[str, Any] | None:
     if row is None:
         return None
     payload = dict(row)
-    payload["level_bands"] = payload.pop("level_bands_json", None) or []
-    payload["degraded_reasons"] = payload.pop("degraded_reasons_json", None) or []
-    payload["source_refs"] = payload.pop("source_refs_json", None) or []
+    payload["level_bands"] = _required_persisted_snapshot_list(payload, "level_bands_json")
+    payload["degraded_reasons"] = _required_persisted_snapshot_list(payload, "degraded_reasons_json")
+    payload["source_refs"] = _required_persisted_snapshot_list(payload, "source_refs_json")
     return payload
+
+
+def _required_persisted_snapshot_list(payload: dict[str, Any], field: str) -> list[Any]:
+    if field not in payload:
+        raise ValueError(f"cex_detail_snapshot_persisted_payload_required:{field}")
+    value = payload.pop(field)
+    if not isinstance(value, list):
+        raise ValueError(f"cex_detail_snapshot_persisted_payload_invalid:{field}")
+    return value
 
 
 def _detail_payload_hash(snapshot: Mapping[str, Any]) -> str:
     _reject_legacy_json_aliases(snapshot)
     payload = {
-        "snapshot_id": _required_snapshot_text(snapshot, "snapshot_id"),
         "target_type": _required_snapshot_text(snapshot, "target_type"),
         "target_id": _required_snapshot_text(snapshot, "target_id"),
         "exchange": _required_snapshot_text(snapshot, "exchange"),

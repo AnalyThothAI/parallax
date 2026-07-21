@@ -12,6 +12,7 @@ def row(target_id: str | None, *, rank: int, score: int, computed_at_ms: int = 1
         "rank": rank,
         "rank_score": score,
         "computed_at_ms": computed_at_ms,
+        "source_max_received_at_ms": computed_at_ms - 1_000,
         "source_event_ids": [f"event-{target_id}"] if target_id else [],
     }
 
@@ -72,19 +73,21 @@ def test_admission_service_requires_formal_thresholds_without_runtime_repairs(kw
         NarrativeAdmissionService(**kwargs)
 
 
-def test_admission_preserves_zero_source_watermark():
+@pytest.mark.parametrize("watermark", [None, 0, -1, True, "9000"])
+def test_admission_rejects_missing_or_malformed_source_watermark(watermark):
     service = NarrativeAdmissionService(hot_rank_limit=10, min_rank_score=0)
-    candidate = row("zero-watermark", rank=1, score=99, computed_at_ms=10_000)
-    candidate["source_max_received_at_ms"] = 0
+    candidate = row("bad-watermark", rank=1, score=99, computed_at_ms=10_000)
+    if watermark is None:
+        candidate.pop("source_max_received_at_ms")
+    else:
+        candidate["source_max_received_at_ms"] = watermark
 
-    decisions = service.reconcile_from_radar_rows(
-        [candidate],
-        existing_admissions=[],
-        window="24h",
-        scope="matched",
-        schema_version="narrative_intel_v1",
-        now_ms=10_000,
-    )
-
-    assert len(decisions) == 1
-    assert decisions[0].source_max_received_at_ms == 0
+    with pytest.raises(ValueError, match="narrative_admission_source_watermark_required"):
+        service.reconcile_from_radar_rows(
+            [candidate],
+            existing_admissions=[],
+            window="24h",
+            scope="matched",
+            schema_version="narrative_intel_v1",
+            now_ms=10_000,
+        )

@@ -73,14 +73,6 @@ class ClaimEvidenceVerifier:
         )
 
 
-def verify_claim_evidence(
-    *,
-    packet: PulseEvidencePacket,
-    final_decision: FinalDecision,
-) -> ClaimEvidenceVerificationResult:
-    return ClaimEvidenceVerifier().verify(packet, final_decision)
-
-
 def _allowed_ref_ids(packet: PulseEvidencePacket) -> set[str]:
     return {ref.ref_id for ref in packet.allowed_evidence_refs if ref.ref_id.strip()}
 
@@ -101,4 +93,4 @@ def _string_tuple(value: Iterable[str]) -> tuple[str, ...]:
     return tuple(str(item).strip() for item in value if str(item or "").strip())
 
 
-__all__ = ["ClaimEvidenceVerificationResult", "ClaimEvidenceVerifier", "verify_claim_evidence"]
+__all__ = ["ClaimEvidenceVerificationResult", "ClaimEvidenceVerifier"]

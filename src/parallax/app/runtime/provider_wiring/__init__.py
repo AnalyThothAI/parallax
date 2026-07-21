@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 from parallax.app.runtime.provider_wiring.types import (
     AssetMarketProviders,
     CexMarketIntelProviders,
@@ -18,7 +16,6 @@ def wire_providers(
     *,
     start_collector: bool,
     agent_execution_gateway: object | None = None,
-    db_pool: Any | None = None,
 ) -> WiredProviders:
     from parallax.app.runtime.provider_wiring import (
         asset_market,
@@ -39,7 +36,6 @@ def wire_providers(
             if settings.news_intel.enabled and settings.workers.news_fetch.enabled
             else None,
             brief_provider=model_execution.litellm_news_item_brief_provider(
-                settings,
                 agent_gateway=_require_agent_execution_gateway(agent_execution_gateway),
             )
             if (
@@ -61,10 +57,10 @@ def wire_providers(
     )
 
 
-def wire_asset_market_providers(settings: Settings, *, start_collector: bool) -> AssetMarketProviders:
+def wire_asset_market_providers(settings: Settings) -> AssetMarketProviders:
     from parallax.app.runtime.provider_wiring import asset_market
 
-    return asset_market.wire_asset_market_providers(settings, start_collector=start_collector)
+    return asset_market.wire_asset_market_providers(settings)
 
 
 def _require_agent_execution_gateway(agent_execution_gateway: object | None) -> object:

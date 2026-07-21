@@ -23,7 +23,7 @@ from parallax.app.runtime.worker_factories import (
     construct_workers,
     intentionally_not_started_worker,
 )
-from parallax.app.runtime.worker_manifest import worker_names
+from parallax.app.runtime.worker_manifest import all_worker_manifests
 from parallax.app.runtime.worker_result import WorkerResult
 from parallax.app.runtime.worker_scheduler import WorkerScheduler
 from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
@@ -708,66 +708,14 @@ def test_worker_factory_wires_news_item_brief_when_configured() -> None:
     assert workers["news_item_brief"].provider is providers.news_intel.brief_provider
     assert not hasattr(workers["news_item_brief"], "wake_emitter")
     assert not hasattr(workers["news_item_brief"], "wake_bus")
-    assert workers["news_item_brief"].wake_waiter.channels == ()
+    assert workers["news_item_brief"].wake_waiter is None
+    assert not any(worker_name == "news_item_brief" for worker_name, _channels in db.wake_listener_calls)
     assert workers["news_item_brief"].settings.advisory_lock_key == 2026052001
     assert workers["news_item_brief"].settings.batch_size == 5
     assert workers["news_item_brief"].settings.lease_ms == 120_000
     assert workers["news_item_brief"].settings.retry_ms == 60_000
     assert workers["news_item_brief"].settings.statement_timeout_seconds == 30
     assert workers["news_item_brief"].settings.backpressure_cooldown_ms == 60_000
-
-
-def test_worker_factory_keeps_news_item_brief_interval_only_when_config_overrides_wakes() -> None:
-    db = FakeDB()
-    providers = FakeProviders(brief_provider=object())
-
-    workers = construct_workers(
-        settings=_settings(
-            news_item_brief_configured=True,
-            news_item_brief_wakes_on=("news_item_processed",),
-        ),
-        db=db,
-        telemetry=object(),
-        providers=providers,
-        hub=SimpleNamespace(publish=lambda payload: None),
-        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
-        collector_enabled=False,
-        wake_bus=db.wake,
-    )
-
-    assert isinstance(workers["news_item_brief"], NewsItemBriefWorker)
-    assert workers["news_item_brief"].wake_waiter.channels == ()
-
-
-def test_worker_factory_hard_cuts_news_page_projection_retired_item_brief_wake_override() -> None:
-    db = FakeDB()
-    providers = FakeProviders()
-
-    workers = construct_workers(
-        settings=_settings(
-            news_page_projection_wakes_on=(
-                "news_item_written",
-                "news_item_processed",
-                "news_item_brief_updated",
-                "news_page_dirty",
-            ),
-        ),
-        db=db,
-        telemetry=object(),
-        providers=providers,
-        hub=SimpleNamespace(publish=lambda payload: None),
-        collector=FakeCollector(name="collector", settings=SimpleNamespace(enabled=False), db=db, telemetry=object()),
-        collector_enabled=False,
-        wake_bus=db.wake,
-    )
-
-    assert isinstance(workers["news_page_projection"], NewsPageProjectionWorker)
-    assert workers["news_page_projection"].wake_waiter.channels == (
-        "news_item_written",
-        "news_item_processed",
-        "news_story_brief_updated",
-        "news_page_dirty",
-    )
 
 
 def test_worker_factory_wires_news_story_brief_when_configured() -> None:
@@ -836,7 +784,7 @@ def test_missing_worker_sentinel_requires_worker_settings_contract(monkeypatch: 
         WorkerFactorySpec(spec.name, spec.keys, empty_factory) for spec in worker_factories.worker_factory_specs()
     )
     monkeypatch.setattr(worker_factories, "worker_factory_specs", lambda: specs)
-    worker_settings = {name: SimpleNamespace(enabled=False) for name in worker_names()}
+    worker_settings = {manifest.name: SimpleNamespace(enabled=False) for manifest in all_worker_manifests()}
     del worker_settings["token_radar_projection"]
     settings = SimpleNamespace(workers=SimpleNamespace(**worker_settings))
     db = FakeDB()
@@ -967,9 +915,7 @@ def _settings(
     notifications_enabled: bool = False,
     notification_log_channel_enabled: bool = True,
     news_item_brief_configured: bool = False,
-    news_item_brief_wakes_on: tuple[str, ...] = (),
     news_story_brief_configured: bool = False,
-    news_page_projection_wakes_on: tuple[str, ...] | None = None,
     macro_view_projection_enabled: bool = True,
     macrodata_enabled: bool = True,
     token_radar_projection_enabled: bool = False,
@@ -1026,12 +972,7 @@ def _settings(
             "pulse_candidate": {"enabled": False},
             "notification_rule": {"enabled": notifications_enabled},
             "notification_delivery": {"enabled": notifications_enabled},
-            "news_item_brief": {"enabled": news_item_brief_configured, "wakes_on": list(news_item_brief_wakes_on)},
-            **(
-                {"news_page_projection": {"wakes_on": list(news_page_projection_wakes_on)}}
-                if news_page_projection_wakes_on is not None
-                else {}
-            ),
+            "news_item_brief": {"enabled": news_item_brief_configured},
         },
     )
 
@@ -1070,6 +1011,7 @@ class FakeDB:
     def __init__(self) -> None:
         self.api_pool = object()
         self.wake = object()
+        self.wake_listener_calls: list[tuple[str, tuple[str, ...]]] = []
         self.notification_delivery_running_timeout_ms = 300_000
         self.notification_delivery_stale_running_terminalization_batch_size = 50
 
@@ -1080,6 +1022,7 @@ class FakeDB:
         return self.wake
 
     def wake_listener(self, worker_name, channels):
+        self.wake_listener_calls.append((worker_name, tuple(channels)))
         return SimpleNamespace(worker_name=worker_name, channels=channels)
 
 

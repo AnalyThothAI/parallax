@@ -43,7 +43,6 @@ from parallax.domains.token_intel.services.token_intent_resolver import (
 from parallax.domains.token_intel.services.token_resolution_refresh import (
     TOKEN_REPROCESS_WINDOW,
     deferred_token_radar_projection,
-    refresh_recent_token_state,
     reprocess_recent_token_intents,
 )
 
@@ -95,7 +94,6 @@ __all__ = [
     "clamp_score",
     "deferred_token_radar_projection",
     "is_token_factor_snapshot",
-    "refresh_recent_token_state",
     "reprocess_recent_token_intents",
     "require_token_factor_snapshot",
     "safe_float",

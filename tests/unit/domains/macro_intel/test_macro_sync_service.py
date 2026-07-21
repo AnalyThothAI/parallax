@@ -61,6 +61,8 @@ def test_sync_success_status_requires_import_status() -> None:
     assert _sync_success_status("ok") == "ok"
     assert _sync_success_status("partial") == "partial"
     assert _sync_success_status("empty") == "partial"
+    with pytest.raises(ValueError, match="macro_sync_import_status_invalid"):
+        _sync_success_status("unknown")
 
 
 def test_sync_service_idle_claims_no_window_and_does_not_call_runner() -> None:

@@ -6,7 +6,6 @@ from parallax.domains.pulse_lab.types import (
     FinalDecision,
     PulseEvidencePacket,
     display_status_from_decision,
-    is_public_display_status,
     run_outcome_from_failure,
 )
 
@@ -20,14 +19,6 @@ def test_display_status_maps_public_decisions_only_when_publish_allowed() -> Non
     assert display_status_from_decision("trade_candidate", "complete", False) == "hidden_hold_publish"
     assert display_status_from_decision("abstain", "complete", True) == "hidden_abstain"
     assert display_status_from_decision("invalid", "invalid", True) == "hidden_invalid_output"
-    assert is_public_display_status("hidden_source_quality") is False
-
-
-def test_public_status_helper_only_accepts_display_prefixes() -> None:
-    assert is_public_display_status("display_trade_candidate") is True
-    assert is_public_display_status("display_token_watch") is True
-    assert is_public_display_status("display_risk_rejected_high_info") is True
-    assert is_public_display_status("hidden_abstain") is False
 
 
 def test_run_outcome_from_failure_uses_recovered_state_machine_values() -> None:

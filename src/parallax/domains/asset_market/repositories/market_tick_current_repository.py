@@ -122,23 +122,6 @@ class MarketTickCurrentRepository:
         row = cursor.fetchone()
         return _single_returning_changed(cursor, row)
 
-    def truncate_current(self) -> None:
-        self.conn.execute("TRUNCATE market_tick_current")
-
-    def latest_ticks_for_all_targets(self) -> list[dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            SELECT DISTINCT ON (target_type, target_id) *
-            FROM market_ticks
-            ORDER BY target_type ASC,
-                     target_id ASC,
-                     observed_at_ms DESC,
-                     received_at_ms DESC,
-                     tick_id DESC
-            """
-        ).fetchall()
-        return [dict(row) for row in rows]
-
 
 def _current_params(tick_row: Mapping[str, Any], *, now_ms: int) -> dict[str, Any]:
     return {

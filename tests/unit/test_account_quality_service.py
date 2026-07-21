@@ -49,6 +49,15 @@ def test_account_quality_backfill_runs_inside_one_connection_transaction():
     ]
 
 
+def test_account_quality_backfill_reports_actual_changed_stat_rows() -> None:
+    conn = FakeTransactionConn()
+    repository = FakeAccountQualityBackfillRepository(conn=conn, stat_write_count=0)
+
+    result = AccountQualityBackfillService(repository=repository).backfill_account_token_call_stats(limit=100)
+
+    assert result == {"accounts_touched": 1, "stats_upserted": 0}
+
+
 def test_account_quality_backfill_requires_connection_transaction_before_reads_or_writes():
     repository = FakeAccountQualityBackfillRepository(conn=object())
 
@@ -94,8 +103,9 @@ class FakeAccountQualityReadRepository:
 
 
 class FakeAccountQualityBackfillRepository:
-    def __init__(self, *, conn):
+    def __init__(self, *, conn, stat_write_count: int = 1):
         self.conn = conn
+        self.stat_write_count = stat_write_count
         self.calls: list[tuple[str, int]] = []
         self._stats_by_handle: dict[str, list[dict[str, object]]] = {}
 
@@ -156,6 +166,7 @@ class FakeAccountQualityBackfillRepository:
                 "price_change_1h_pct": None,
             }
         )
+        return self.stat_write_count
 
     def account_quality(self, handle: str):
         self._record("account_quality")
@@ -175,7 +186,7 @@ class FakeAccountQualityBackfillRepository:
         assert sample_size == 1
         assert commit is False
         self._record("insert_quality_snapshot")
-        return "account-quality:early:30d:current"
+        return 1
 
     def _record(self, name: str) -> None:
         self.calls.append((name, self.conn.transaction_depth))

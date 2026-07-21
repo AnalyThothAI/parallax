@@ -121,6 +121,36 @@ def test_build_binance_oi_radar_rows_rejects_malformed_provider_ticker_metrics()
         raise AssertionError("malformed Binance ticker DTO must not be converted to empty metrics")
 
 
+@pytest.mark.parametrize(
+    ("client_kind", "field"),
+    [
+        pytest.param("ticker", "quote_volume_24h", id="ticker-string"),
+        pytest.param("funding", "last_funding_rate", id="funding-nan"),
+        pytest.param("history", "observed_at_ms", id="history-timestamp-string"),
+    ],
+)
+def test_build_binance_oi_radar_rows_rejects_invalid_provider_numeric_values(client_kind: str, field: str):
+    client = {
+        "ticker": _InvalidNumericTickerClient,
+        "funding": _InvalidNumericFundingClient,
+        "history": _InvalidNumericHistoryClient,
+    }[client_kind]()
+    with pytest.raises(ValueError, match=rf"cex_oi_radar_provider_contract_required:{field}"):
+        build_binance_oi_radar_rows(
+            universe=[
+                {
+                    "pricefeed_id": "pricefeed:cex:binance:swap:BTCUSDT",
+                    "native_market_id": "BTCUSDT",
+                    "base_symbol": "BTC",
+                }
+            ],
+            client=client,
+            now_ms=1_778_000_000_000,
+            period="5m",
+            limit=10,
+        )
+
+
 def test_build_binance_oi_radar_rows_preserves_zero_mark_price_from_premium():
     rows = build_binance_oi_radar_rows(
         universe=[
@@ -289,6 +319,40 @@ class _MalformedTickerClient(_Client):
     def list_24h_tickers(self, symbol=None):
         assert symbol is None
         return [_MalformedTicker()]
+
+
+class _InvalidNumericTickerClient(_Client):
+    def list_24h_tickers(self, symbol=None):
+        assert symbol is None
+        return [
+            CexOiTicker24h(
+                symbol="BTCUSDT",
+                last_price=100.0,
+                quote_volume_24h="not-a-number",  # type: ignore[arg-type]
+                price_change_pct_24h=1.0,
+            )
+        ]
+
+
+class _InvalidNumericFundingClient(_Client):
+    def list_funding_premium(self, symbol=None):
+        assert symbol is None
+        return [CexFundingPremium(symbol="BTCUSDT", mark_price=101.0, last_funding_rate=float("nan"))]
+
+
+class _InvalidNumericHistoryClient(_Client):
+    def list_open_interest_history(self, symbol, period, limit):
+        assert symbol == "BTCUSDT"
+        assert period == "5m"
+        assert limit == 2
+        return [
+            CexOpenInterestPoint(symbol=symbol, open_interest_value=1000.0, observed_at_ms=1),
+            CexOpenInterestPoint(
+                symbol=symbol,
+                open_interest_value=1100.0,
+                observed_at_ms="bad",  # type: ignore[arg-type]
+            ),
+        ]
 
 
 class _ZeroMarkPriceClient(_Client):

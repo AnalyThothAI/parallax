@@ -238,7 +238,6 @@ class _MissingStageGroupRuntime(PulseDecisionRuntimeService):
             prompt_text=spec.prompt_text,
             input_payload={**spec.input_payload, "evidence_packet": {}},
             knowledge_refs=spec.knowledge_refs,
-            read_only_tool_refs=spec.read_only_tool_refs,
         )
 
 
@@ -413,7 +412,6 @@ def test_pulse_decision_stage_input_contains_packet_hash_and_allowed_refs() -> N
     assert "summary_json" not in spec.input_payload["evidence_packet"]
     assert "admission_context" not in spec.input_payload["evidence_packet"]
     assert spec.knowledge_refs == ("market_research_harness",)
-    assert spec.read_only_tool_refs == ("token_radar.current_rows", "pulse.current_candidates")
     assert "## Loaded Knowledge: Market Research Harness" in spec.prompt_text
 
 
@@ -616,10 +614,6 @@ def test_pulse_client_routes_single_stage_through_gateway_and_preserves_stage_au
     assert gateway.execute_calls[0]["stage"].output_type is FinalDecision
     assert isinstance(gateway.execute_calls[0]["stage"].input_payload, dict)
     assert gateway.execute_calls[0]["stage"].knowledge_refs == ("market_research_harness",)
-    assert gateway.execute_calls[0]["stage"].read_only_tool_refs == (
-        "token_radar.current_rows",
-        "pulse.current_candidates",
-    )
     assert len(result.stage_audits) == 1
     assert result.stage_audits[0].usage_json == {"input_tokens": 11, "output_tokens": 5}
     assert result.stage_audits[0].parse_mode == "safety_net_repaired"

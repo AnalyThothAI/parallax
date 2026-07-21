@@ -714,7 +714,6 @@ class TokenRadarProjection:
                         status="stale_skipped",
                         rows_read=len(rank_inputs),
                         rows_written=0,
-                        dirty_ranges_written=0,
                         error="newer_projection_exists",
                         commit=False,
                     )
@@ -743,7 +742,6 @@ class TokenRadarProjection:
                     status="ready" if publication_status == "published" else "unchanged",
                     rows_read=len(rank_inputs),
                     rows_written=publication_rows_written,
-                    dirty_ranges_written=0,
                     commit=False,
                 )
             return {
@@ -1148,15 +1146,6 @@ class TokenRadarProjection:
             now_ms=computed_at_ms,
             commit=False,
         )
-
-    @staticmethod
-    def _group_rows(rows: list[dict[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-        grouped: dict[str, list[dict[str, Any]]] = {}
-        for row in rows:
-            target_type_key, identity_id = _projection_identity_key(row)
-            key = f"{target_type_key}:{identity_id}"
-            grouped.setdefault(key, []).append(row)
-        return grouped
 
 
 def _cohort_rank_status(
@@ -1582,6 +1571,50 @@ def _required_target_feature_current_row_mapping(row: Mapping[str, Any], column:
     if not isinstance(payload, Mapping) or not payload:
         raise RuntimeError(f"token_radar_target_feature_current_row_invalid:{column}")
     return dict(payload)
+
+
+def _required_target_feature_current_row_string_list(
+    row: Mapping[str, Any],
+    column: str,
+    *,
+    allow_empty: bool,
+) -> list[str]:
+    try:
+        value = row[column]
+    except KeyError as exc:
+        raise RuntimeError(f"token_radar_target_feature_current_row_required:{column}") from exc
+    if value is None:
+        raise RuntimeError(f"token_radar_target_feature_current_row_required:{column}")
+    payload = _json_ready(value)
+    if not isinstance(payload, list) or (not allow_empty and not payload):
+        raise RuntimeError(f"token_radar_target_feature_current_row_invalid:{column}")
+    if any(not isinstance(item, str) or not item.strip() for item in payload):
+        raise RuntimeError(f"token_radar_target_feature_current_row_invalid:{column}")
+    return [item.strip() for item in payload]
+
+
+def _required_target_feature_nested_text(
+    payload: Mapping[str, Any],
+    *,
+    parent: str,
+    field: str,
+) -> str:
+    value = payload.get(field)
+    if not isinstance(value, str) or not value.strip():
+        raise RuntimeError(f"token_radar_target_feature_current_row_invalid:{parent}")
+    return value.strip()
+
+
+def _required_target_feature_nested_list(
+    payload: Mapping[str, Any],
+    *,
+    parent: str,
+    field: str,
+) -> list[Any]:
+    value = payload.get(field)
+    if not isinstance(value, list):
+        raise RuntimeError(f"token_radar_target_feature_current_row_invalid:{parent}")
+    return list(value)
 
 
 def _required_target_feature_current_row_int(row: Mapping[str, Any], column: str) -> int:
@@ -2280,14 +2313,6 @@ def _project_group(
     cohort_first_seen_global_24h = any(row.get("first_seen_global_24h") is True for row in window_rows)
     cohort_public_followup_count = int(features.propagation.get("public_followup_author_count") or 0)
     return {
-        "row_id": _stable_id(
-            "token-radar-row",
-            window,
-            scope,
-            target_type_key,
-            identity_id,
-            str(now_ms),
-        ),
         "source_max_received_at_ms": latest_seen_ms,
         "lane": lane,
         "rank": 0,
@@ -2301,6 +2326,7 @@ def _project_group(
         **_capture_tier_fields_from_target(target),
         "intent_json": {
             "intent_id": latest["intent_id"],
+            "event_id": latest["event_id"],
             "display_symbol": _real_symbol(latest.get("display_symbol")),
             "display_name": latest.get("display_name"),
             "evidence": [],
@@ -2762,32 +2788,6 @@ def _market_prefix_for_features(market: dict[str, Any]) -> dict[str, Any]:
     }
 
 
-def _price_values(row: dict[str, Any], prefix: str) -> dict[str, Any]:
-    if prefix == "market":
-        return {
-            "price_usd": row.get("market_price_usd"),
-            "price_quote": row.get("market_price_quote"),
-            "quote_symbol": row.get("market_quote_symbol") or row.get("pricefeed_quote_symbol"),
-            "price_basis": row.get("market_price_basis"),
-        }
-    return {
-        "price_usd": row.get(f"{prefix}_price_usd"),
-        "price_quote": row.get(f"{prefix}_price_quote"),
-        "quote_symbol": row.get(f"{prefix}_price_quote_symbol"),
-        "price_basis": row.get(f"{prefix}_price_basis"),
-    }
-
-
-def _comparable_price(current: dict[str, Any], base: dict[str, Any]) -> tuple[Any, Any, str]:
-    if current.get("price_usd") is not None and base.get("price_usd") is not None:
-        return current["price_usd"], base["price_usd"], "usd"
-    current_quote = current.get("quote_symbol")
-    base_quote = base.get("quote_symbol")
-    if current_quote and base_quote and current_quote == base_quote:
-        return current.get("price_quote"), base.get("price_quote"), f"quote:{current_quote}"
-    return None, None, "basis_mismatch"
-
-
 def _pct_change(current: Any, base: Any) -> float | None:
     current_value = _float_or_none(current)
     base_value = _float_or_none(base)
@@ -2803,10 +2803,6 @@ def _float_or_none(value: Any) -> float | None:
         return float(value)
     except (TypeError, ValueError):
         return None
-
-
-def _field_status(value: Any) -> str:
-    return "ready" if value is not None else "missing"
 
 
 def _display_symbol(row: dict[str, Any]) -> str | None:
@@ -2962,13 +2958,24 @@ def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DE
     target_type_key = _required_projection_row_text(row, "target_type_key")
     identity_id = _required_projection_row_text(row, "identity_id")
     factor_snapshot = _required_target_feature_current_row_mapping(row, "factor_snapshot_json")
+    intent = _required_target_feature_current_row_mapping(row, "intent_json")
+    resolution = _required_target_feature_current_row_mapping(row, "resolution_json")
+    intent_id = _required_target_feature_nested_text(intent, parent="intent_json", field="intent_id")
+    event_id = _required_target_feature_nested_text(intent, parent="intent_json", field="event_id")
+    _required_target_feature_nested_text(resolution, parent="resolution_json", field="status")
+    for field in ("reason_codes", "candidate_ids", "lookup_keys"):
+        _required_target_feature_nested_list(resolution, parent="resolution_json", field=field)
     latest_event_received_at_ms = _required_target_feature_current_row_int(row, "latest_event_received_at_ms")
     last_scored_at_ms = _required_target_feature_current_row_int(row, "last_scored_at_ms")
-    source_event_ids = _json_list(row.get("source_event_ids_json"))
-    source_intent_ids = _json_list(row.get("source_intent_ids_json"))
-    source_resolution_ids = _json_list(row.get("source_resolution_ids_json"))
-    intent_id = source_intent_ids[0] if source_intent_ids else identity_id
-    event_id = source_event_ids[-1] if source_event_ids else intent_id
+    source_event_ids = _required_target_feature_current_row_string_list(row, "source_event_ids_json", allow_empty=False)
+    source_intent_ids = _required_target_feature_current_row_string_list(
+        row, "source_intent_ids_json", allow_empty=False
+    )
+    _required_target_feature_current_row_string_list(row, "source_resolution_ids_json", allow_empty=True)
+    if event_id not in source_event_ids:
+        raise RuntimeError("token_radar_target_feature_current_row_invalid:source_event_ids_json")
+    if intent_id not in source_intent_ids:
+        raise RuntimeError("token_radar_target_feature_current_row_invalid:source_intent_ids_json")
     target_type = row.get("target_type")
     target_id = row.get("target_id")
     subject = factor_snapshot.get("subject") if isinstance(factor_snapshot, dict) else {}
@@ -3002,25 +3009,10 @@ def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DE
         "target_id": target_id,
         "pricefeed_id": row.get("pricefeed_id"),
         **capture_fields,
-        "intent_json": {
-            "intent_id": intent_id,
-            "display_symbol": (subject or {}).get("symbol") if isinstance(subject, dict) else None,
-            "display_name": (subject or {}).get("name") if isinstance(subject, dict) else None,
-            "evidence": [],
-        },
+        "intent_json": intent,
         "factor_snapshot_json": factor_snapshot,
         "factor_version": factor_snapshot.get("schema_version") if isinstance(factor_snapshot, dict) else None,
-        "resolution_json": {
-            "status": "EXACT" if target_id else "NIL",
-            "target_type": target_type,
-            "target_id": target_id,
-            "pricefeed_id": row.get("pricefeed_id"),
-            "resolution_ids": source_resolution_ids,
-            "reason_codes": [],
-            "candidate_ids": [],
-            "lookup_keys": [],
-            "discovery": [],
-        },
+        "resolution_json": resolution,
         "decision": (factor_snapshot.get("composite") or {}).get("recommended_decision")
         if isinstance(factor_snapshot, dict)
         else None,
@@ -3035,13 +3027,6 @@ def _row_from_target_feature(row: dict[str, Any], *, venue: str = TOKEN_RADAR_DE
         "payload_hash": _rank_change_payload_hash(row),
         "created_at_ms": last_scored_at_ms,
     }
-
-
-def _json_list(value: Any) -> list[str]:
-    raw = _json_ready(value)
-    if not isinstance(raw, list):
-        return []
-    return [str(item) for item in raw if str(item)]
 
 
 def _patch_ranked_current_row(row: dict[str, Any], ranked: dict[str, Any]) -> dict[str, Any]:
@@ -3204,24 +3189,6 @@ def _decision_from_score_and_gates(score: int, gates: dict[str, Any]) -> str:
 
 def _stable_id(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
-
-
-def _count_high_conf(row: dict[str, Any]) -> int:
-    return int(row.get("_cohort_high_conf_count") or 0)
-
-
-def _count_kol_authors(row: dict[str, Any]) -> int:
-    return int(row.get("_cohort_kol_count") or 0)
-
-
-def _count_public_followup(row: dict[str, Any]) -> int:
-    return int(row.get("_cohort_public_followup_count") or 0)
-
-
-def _cohort_first_seen_global(row: dict[str, Any]) -> bool:
-    if row.get("_cohort_first_seen_global_24h") is True:
-        return True
-    return row.get("first_seen_global_24h") is True
 
 
 def _required_positive_int(value: Any, error_code: str) -> int:

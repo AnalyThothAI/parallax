@@ -6,8 +6,6 @@ from typing import Any
 
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_FACTOR_FAMILIES
 
-LEGACY_GATE_KEY = "_".join(("hard", "gates"))
-LEGACY_GATE_PRESENT_CODE = f"{LEGACY_GATE_KEY}_present"
 EXPECTED_FACTOR_FAMILIES = frozenset(TOKEN_RADAR_FACTOR_FAMILIES)
 
 
@@ -18,9 +16,7 @@ def factor_distribution_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
     data_health_counts: dict[str, Counter[str]] = defaultdict(Counter)
     violations: list[dict[str, Any]] = []
     unexpected_family_keys: set[str] = set()
-    legacy_gate_rows: list[int] = []
-
-    for index, row in enumerate(rows):
+    for row in rows:
         snapshot = _mapping(row.get("factor_snapshot_json"))
         composite = _mapping(snapshot.get("composite"))
         if (rank_score := _number(composite.get("rank_score"))) is not None:
@@ -43,9 +39,6 @@ def factor_distribution_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
             if str(key).strip():
                 data_health_counts[str(key)][str(value or "missing")] += 1
 
-        if LEGACY_GATE_KEY in snapshot:
-            legacy_gate_rows.append(index)
-
     unique_count = len(set(rank_scores))
     if len(rows) > 20 and unique_count <= 3:
         violations.append(
@@ -63,9 +56,6 @@ def factor_distribution_report(rows: list[dict[str, Any]]) -> dict[str, Any]:
 
     if unexpected_family_keys:
         violations.append({"code": "unexpected_factor_family_keys", "families": sorted(unexpected_family_keys)})
-    if legacy_gate_rows:
-        violations.append({"code": LEGACY_GATE_PRESENT_CODE, "rows": legacy_gate_rows})
-
     return {
         "row_count": len(rows),
         "rank_score_unique_count": unique_count,

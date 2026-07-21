@@ -6,7 +6,6 @@ import type {
   NewsAgentDataGap,
   NewsAgentEvidenceRef,
   NewsMarketScope,
-  NewsAgentRunSummary,
   NewsFactLane,
   NewsItemDetail,
   NewsRowsData,
@@ -254,7 +253,6 @@ function normalizeNewsDetail(row: NewsItemDetail): NewsItemDetail {
     agent_brief: payload.agent_brief
       ? normalizeAgentBrief(payload.agent_brief, undefined, payload.agent_brief_computed_at_ms)
       : undefined,
-    agent_run: normalizeAgentRun(payload.agent_run),
     provider_item: objectOrNull(payload.provider_item),
     fetch_run: objectOrNull(payload.fetch_run),
     observation_edges: recordArray(payload.observation_edges),
@@ -460,29 +458,6 @@ function normalizeAgentBriefView(raw: unknown) {
     strength: stringOrNull(payload.strength),
     thesis_zh: stringOrNull(payload.thesis_zh),
     evidence_refs: normalizeEvidenceRefs(payload.evidence_refs),
-  };
-}
-
-function normalizeAgentRun(raw: unknown): NewsAgentRunSummary | null {
-  const payload = objectOrNull(raw);
-  if (!payload) return null;
-  return {
-    backend: stringOrNull(payload.backend),
-    status: stringOrNull(payload.status),
-    outcome: stringOrNull(payload.outcome),
-    provider: stringOrNull(payload.provider),
-    model: stringOrNull(payload.model),
-    lane: stringOrNull(payload.lane),
-    workflow_name: stringOrNull(payload.workflow_name),
-    agent_name: stringOrNull(payload.agent_name),
-    started_at_ms: numberOrNull(payload.started_at_ms),
-    finished_at_ms: numberOrNull(payload.finished_at_ms),
-    latency_ms: numberOrNull(payload.latency_ms),
-    execution_started:
-      typeof payload.execution_started === "boolean" ? payload.execution_started : null,
-    error_class: stringOrNull(payload.error_class),
-    error: stringOrNull(payload.error),
-    error_message: stringOrNull(payload.error_message ?? payload.error),
   };
 }
 

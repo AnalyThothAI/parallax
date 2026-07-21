@@ -9,7 +9,6 @@ from parallax.domains.macro_intel.services.macro_module_catalog import (
     MACRO_MODULE_IDS,
     UnsupportedMacroModuleError,
     get_macro_module_config,
-    list_macro_module_configs,
 )
 
 EXPECTED_MODULE_IDS = (
@@ -50,13 +49,17 @@ DELETED_MODULE_IDS = (
 )
 
 
+def _module_configs():
+    return tuple(get_macro_module_config(module_id) for module_id in MACRO_MODULE_IDS)
+
+
 def test_macro_module_view_version_is_exported() -> None:
     assert MACRO_MODULE_VIEW_VERSION == "macro_module_view_v3"
 
 
 def test_catalog_exposes_exact_supported_module_ids() -> None:
     assert MACRO_MODULE_IDS == EXPECTED_MODULE_IDS
-    assert tuple(config.module_id for config in list_macro_module_configs()) == EXPECTED_MODULE_IDS
+    assert tuple(config.module_id for config in _module_configs()) == EXPECTED_MODULE_IDS
 
 
 def test_catalog_hard_deletes_proxy_only_modules() -> None:
@@ -66,14 +69,14 @@ def test_catalog_hard_deletes_proxy_only_modules() -> None:
         with pytest.raises(UnsupportedMacroModuleError):
             get_macro_module_config(module_id)
 
-    for config in list_macro_module_configs():
+    for config in _module_configs():
         assert config.module_id not in DELETED_MODULE_IDS
         assert config.route_path not in deleted_route_paths
         assert not (set(config.related_routes) & deleted_route_paths)
 
 
 def test_catalog_configs_have_primary_chart_specs() -> None:
-    assert [config.module_id for config in list_macro_module_configs() if not config.chart_specs] == []
+    assert [config.module_id for config in _module_configs() if not config.chart_specs] == []
 
 
 def test_catalog_configs_have_stable_contract_fields() -> None:
@@ -111,7 +114,7 @@ def test_catalog_configs_have_stable_contract_fields() -> None:
 
 
 def test_catalog_has_no_static_source_backlog_gap_codes() -> None:
-    for config in list_macro_module_configs():
+    for config in _module_configs():
         assert not hasattr(config, "gap_codes")
 
 
@@ -131,7 +134,7 @@ def test_catalog_specs_are_frozen_and_use_supported_concepts() -> None:
     with pytest.raises(FrozenInstanceError):
         equities.chart_specs[0].chart_id = "mutated"  # type: ignore[misc]
 
-    for config in list_macro_module_configs():
+    for config in _module_configs():
         for spec in (*config.chart_specs, *config.table_specs):
             assert set(spec.concept_keys) <= supported
         assert not hasattr(config, "section_board_specs")

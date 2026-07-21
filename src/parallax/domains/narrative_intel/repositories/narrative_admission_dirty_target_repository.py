@@ -43,7 +43,7 @@ class _NarrativeDirtyTargetRepository:
                     commit=False,
                 )
         table = self.table_name
-        self.conn.execute(
+        cursor = self.conn.execute(
             f"""
             WITH incoming AS (
               SELECT *
@@ -186,7 +186,7 @@ class _NarrativeDirtyTargetRepository:
                 "now_ms": int(now_ms),
             },
         )
-        return {"targets": len(records)}
+        return {"targets": _cursor_rowcount(cursor)}
 
     def claim_due(
         self,

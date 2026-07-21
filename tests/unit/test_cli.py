@@ -62,23 +62,6 @@ def test_ops_mirror_token_images_parser_rejects_source_limit() -> None:
         build_parser().parse_args(["ops", "mirror-token-images", "--source-limit", "5000"])
 
 
-def test_ops_rebuild_market_tick_current_parser_requires_explicit_mode() -> None:
-    parser = build_parser()
-
-    dry_run = parser.parse_args(["ops", "rebuild-market-tick-current", "--dry-run"])
-    execute = parser.parse_args(["ops", "rebuild-market-tick-current", "--execute"])
-
-    assert dry_run.ops_command == "rebuild-market-tick-current"
-    assert dry_run.dry_run is True
-    assert dry_run.execute is False
-    assert execute.ops_command == "rebuild-market-tick-current"
-    assert execute.execute is True
-    assert execute.dry_run is False
-
-    with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "rebuild-market-tick-current"])
-
-
 def test_ops_enqueue_token_radar_dirty_targets_parser_accepts_source_since_limit_and_mode() -> None:
     parser = build_parser()
 

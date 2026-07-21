@@ -687,7 +687,6 @@ def _missing_view(
             "asof_label": "截至 --",
             "computed_at_ms": None,
             "computed_at_label": "计算于 --",
-            "source_snapshot_id": None,
             "source_projection_version": None,
         },
         tiles=[],
@@ -770,7 +769,6 @@ def _snapshot_header(config: MacroModuleConfig, snapshot: Mapping[str, Any]) -> 
         "asof_label": f"截至 {asof_date}",
         "computed_at_ms": computed_at_ms,
         "computed_at_label": _computed_at_label(computed_at_ms),
-        "source_snapshot_id": snapshot.get("snapshot_id"),
         "source_projection_version": snapshot.get("projection_version"),
     }
 
@@ -6819,7 +6817,6 @@ def _provenance(
     rows = _observation_source_rows(observations)
     return {
         "projection_version": snapshot.get("projection_version"),
-        "source_snapshot_id": snapshot.get("snapshot_id"),
         "currentness": {
             "facts_max_observed_at": _date_string(facts_max_observed_at),
             "projection_lag_days": projection_lag_days,
@@ -7876,14 +7873,6 @@ def _feature_short_label(concept_key: str, feature: Mapping[str, Any]) -> str:
     return _required_feature_display_text(concept_key, feature, "short_label")
 
 
-def _feature_description(concept_key: str, feature: Mapping[str, Any]) -> str:
-    return _required_feature_display_text(concept_key, feature, "description")
-
-
-def _feature_unit_label(concept_key: str, feature: Mapping[str, Any]) -> str:
-    return _required_feature_display_text(concept_key, feature, "unit_label")
-
-
 def _required_feature_display_metadata(concept_key: str, feature: Mapping[str, Any]) -> dict[str, str]:
     return {
         "label": _required_feature_display_text(concept_key, feature, "label"),
@@ -8015,31 +8004,8 @@ def _confidence_label(confidence: float) -> str:
     return f"{bucket} {confidence:.0%}"
 
 
-def _crypto_read(regime: str) -> str:
-    if regime in {"funding_stress", "credit_stress", "tightening", "term_premium_pressure"}:
-        return "宏观链条偏紧，加密 beta 需要等待流动性或信用确认。"
-    if regime == "risk_on_liquidity":
-        return "流动性链条支持风险资产，BTC/ETH 可作为宏观 beta 确认。"
-    return "宏观读数中性，优先观察 BTC/ETH 是否自行突破。"
-
-
-def _token_impact(regime: str) -> str:
-    if regime in {"funding_stress", "credit_stress", "tightening", "term_premium_pressure"}:
-        return "优先降低高 beta 山寨暴露，等待 BTC/ETH 与信用压力背离修复。"
-    if regime == "risk_on_liquidity":
-        return "可提高流动性敏感 token 观察权重，但需用衍生品杠杆确认。"
-    return "维持选择性暴露，避免把单币种叙事误读成宏观确认。"
-
-
 def _related_routes(routes: Sequence[str]) -> list[dict[str, str]]:
     return [{"href": route, "label": _ROUTE_LABELS.get(route, route)} for route in routes]
-
-
-def _localized_reason(reason: str) -> str:
-    return {
-        "fred_key_missing": "FRED 凭证缺失",
-        "missing_api_key": "导入配置缺失",
-    }.get(reason, "数据源降级")
 
 
 def _computed_at_label(value: object) -> str:
@@ -8049,16 +8015,8 @@ def _computed_at_label(value: object) -> str:
     return "计算于 " + datetime.fromtimestamp(timestamp_ms / 1000, tz=UTC).strftime("%Y-%m-%d %H:%M UTC")
 
 
-def _observed_label(value: object) -> str:
-    return f"观测于 {value}" if value else "观测于 --"
-
-
 def _delta_label(value: float | None) -> str:
     return "20日变化不可用" if value is None else f"{value:+.2f}"
-
-
-def _display_number(value: float | None) -> str:
-    return "缺失" if value is None else f"{value:.2f}"
 
 
 def _display_required_number(value: float) -> str:

@@ -892,10 +892,6 @@ _MODULE_CONFIGS = {
 }
 
 
-def list_macro_module_configs() -> tuple[MacroModuleConfig, ...]:
-    return tuple(_MODULE_CONFIGS[module_id] for module_id in MACRO_MODULE_IDS)
-
-
 def get_macro_module_config(module_id: str) -> MacroModuleConfig:
     config = _MODULE_CONFIGS.get(module_id)
     if config is None:
@@ -910,5 +906,4 @@ __all__ = [
     "MacroTableSpec",
     "UnsupportedMacroModuleError",
     "get_macro_module_config",
-    "list_macro_module_configs",
 ]

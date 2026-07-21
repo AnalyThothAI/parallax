@@ -15,8 +15,6 @@ from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_manifest import (
     WorkerKind,
     all_worker_manifests,
-    worker_class_by_name,
-    worker_dirty_target_tables,
     worker_start_priority,
 )
 
@@ -34,7 +32,6 @@ OPS_DIAGNOSTICS = SRC / "app" / "runtime" / "ops_diagnostics.py"
 CLI_OPS = SRC / "app" / "surfaces" / "cli" / "commands" / "ops.py"
 WORKER_SCHEDULER = SRC / "app" / "runtime" / "worker_scheduler.py"
 OKX_PROVIDER_WIRING = SRC / "app" / "runtime" / "provider_wiring" / "okx.py"
-BINANCE_PROVIDER_WIRING = SRC / "app" / "runtime" / "provider_wiring" / "binance.py"
 ASSET_MARKET_PROVIDER_WIRING = SRC / "app" / "runtime" / "provider_wiring" / "asset_market.py"
 CEX_MARKET_INTEL_PROVIDER_WIRING = SRC / "app" / "runtime" / "provider_wiring" / "cex_market_intel.py"
 PROVIDER_WIRING_TYPES = SRC / "app" / "runtime" / "provider_wiring" / "types.py"
@@ -98,7 +95,7 @@ NEWS_REALTIME_POSTGRES_HOTPATH_MIGRATION = (
 ZERO_HARD_TIMEOUT_ALLOWLIST = {"collector"}
 
 
-MANIFEST_WORKER_CLASSES = worker_class_by_name()
+MANIFEST_WORKER_CLASSES = {manifest.name: manifest.worker_class for manifest in all_worker_manifests()}
 
 DB_SESSION_HELPERS = {"worker_session", "_repository_session"}
 EXTERNAL_IO_TOKENS = {
@@ -142,7 +139,6 @@ SINGLE_WRITER_READ_MODELS: dict[str, set[Path]] = {
     "market_tick_current": {
         SRC / "domains/asset_market/repositories/market_tick_current_repository.py",
         SRC / "domains/asset_market/runtime/market_tick_current_projection_worker.py",
-        SRC / "domains/asset_market/services/market_tick_current_rebuild.py",
         SRC / "platform/db/alembic/versions/20260523_0090_token_radar_postgres_hard_cut.py",
     },
     "token_image_assets": {
@@ -215,11 +211,13 @@ CONTROL_PLANE_TABLES: dict[str, set[Path]] = {
     "narrative_admission_dirty_targets": {
         SRC / "domains/narrative_intel/repositories/narrative_admission_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
+        SRC / "platform/db/alembic/versions/20260713_0183_backend_kappa_cqrs_hard_cut.py",
     },
     "token_profile_current_dirty_targets": {
         SRC / "domains/asset_market/repositories/token_profile_current_dirty_target_repository.py",
         SRC / "platform/db/alembic/versions/20260525_0098_runtime_worker_dirty_targets.py",
         SRC / "platform/db/alembic/versions/20260531_0136_okx_symbol_candidate_profile_icons.py",
+        SRC / "platform/db/alembic/versions/20260713_0183_backend_kappa_cqrs_hard_cut.py",
     },
     "token_image_source_dirty_targets": {
         SRC / "domains/asset_market/repositories/token_image_source_dirty_target_repository.py",
@@ -326,7 +324,7 @@ def test_worker_queue_depth_overrides_are_status_payload_compatible() -> None:
 @pytest.mark.architecture
 def test_worker_scheduler_status_payload_contract_is_not_optional_or_swallowed() -> None:
     source = WORKER_SCHEDULER.read_text(encoding="utf-8")
-    helper = source.split("def _worker_status_payload", 1)[1].split("\ndef _worker_concurrency", 1)[0]
+    helper = source.split("def _worker_status_payload", 1)[1].split("\ndef _worker_hard_timed_out", 1)[0]
     forbidden_tokens = (
         'getattr(worker, "status_payload", None)',
         "if not callable(status_payload)",
@@ -628,7 +626,7 @@ def test_status_provider_roots_use_formal_runtime_provider_bundle_contract() -> 
         1,
     )[0]
     readiness_payload_source = app_source.split("def _readiness_payload", 1)[1].split(
-        "\n\ndef _workers_status_payload",
+        "\n\ndef _stream_dex_market",
         1,
     )[0]
     diagnostics_source = OPS_DIAGNOSTICS.read_text(encoding="utf-8")
@@ -1260,7 +1258,7 @@ def test_news_item_brief_worker_uses_formal_settings_and_wake_contract_without_r
     assert 'positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)' in source
     assert 'positive_worker_setting_int(self.settings, "backpressure_cooldown_ms", worker_name=self.name)' in source
     assert "required_nonnegative_int(" in source
-    assert "required_positive_int(limit, error_code=\"news_item_brief_claim_limit_required\")" in source
+    assert 'required_positive_int(limit, error_code="news_item_brief_claim_limit_required")' in source
     assert "news_item_brief_queue_depth_required" in source
     assert "wake_emitter=ctx.wake_bus" not in item_brief_factory_source
     assert "batch_size: int = Field(default=5, ge=1)" in settings_class
@@ -1436,7 +1434,6 @@ def test_token_radar_projection_worker_uses_formal_settings_and_wake_contract_wi
     assert "wake_emitter=db.wake_emitter()" in ops_source
     assert "batch_size: int = Field(default=100, ge=1)" in settings_class
     assert "statement_timeout_seconds: float = Field(default=120.0, ge=0)" in settings_class
-    assert 'wakes_on: tuple[str, ...] = ("market_tick_current_updated", "resolution_updated")' in settings_class
     assert 'windows: tuple[str, ...] = ("5m", "1h", "4h", "24h")' in settings_class
     assert 'scopes: tuple[str, ...] = ("all", "matched")' in settings_class
     assert 'hot_windows: tuple[str, ...] = ("5m",)' in settings_class
@@ -1566,26 +1563,23 @@ def test_pulse_candidate_worker_and_job_service_use_formal_settings_without_runt
     assert "self.windows = tuple(str(window).strip().lower() for window in settings.windows)" in worker_source
     assert "self.scopes = tuple(str(scope).strip().lower() for scope in settings.scopes)" in worker_source
     assert 'self.batch_size = _positive_worker_setting_int(settings, "batch_size", worker_name=name)' in worker_source
-    assert 'self.max_agent_jobs_per_cycle = _positive_worker_setting_int(' in worker_source
+    assert "self.max_agent_jobs_per_cycle = _positive_worker_setting_int(" in worker_source
     assert (
         'self.max_attempts = _positive_worker_setting_int(settings, "max_attempts", worker_name=name)' in worker_source
     )
-    assert 'self.max_enqueues_per_cycle = _positive_worker_setting_int(' in worker_source
-    assert 'self.max_pending_jobs_global = _positive_worker_setting_int(' in worker_source
-    assert (
-        "self.max_pending_jobs_per_window_scope = _positive_worker_setting_int("
-        in worker_source
-    )
-    assert 'self.job_running_timeout_ms = _positive_worker_setting_int(' in worker_source
+    assert "self.max_enqueues_per_cycle = _positive_worker_setting_int(" in worker_source
+    assert "self.max_pending_jobs_global = _positive_worker_setting_int(" in worker_source
+    assert "self.max_pending_jobs_per_window_scope = _positive_worker_setting_int(" in worker_source
+    assert "self.job_running_timeout_ms = _positive_worker_setting_int(" in worker_source
     assert 'self.trigger_lease_ms = _positive_worker_setting_int(settings, "trigger_lease_ms", worker_name=name)' in (
         worker_source
     )
-    assert 'self.trigger_capacity_retry_ms = _positive_worker_setting_int(' in worker_source
-    assert 'self.trigger_error_retry_ms = _positive_worker_setting_int(' in worker_source
-    assert 'self.target_edge_budget_per_hour = _positive_worker_setting_int(' in worker_source
-    assert 'self.candidate_edge_budget_per_hour = _positive_worker_setting_int(' in worker_source
-    assert 'self.failure_circuit_per_hour = _positive_worker_setting_int(' in worker_source
-    assert 'self.timeline_debounce_seconds = _nonnegative_worker_setting_int(' in worker_source
+    assert "self.trigger_capacity_retry_ms = _positive_worker_setting_int(" in worker_source
+    assert "self.trigger_error_retry_ms = _positive_worker_setting_int(" in worker_source
+    assert "self.target_edge_budget_per_hour = _positive_worker_setting_int(" in worker_source
+    assert "self.candidate_edge_budget_per_hour = _positive_worker_setting_int(" in worker_source
+    assert "self.failure_circuit_per_hour = _positive_worker_setting_int(" in worker_source
+    assert "self.timeline_debounce_seconds = _nonnegative_worker_setting_int(" in worker_source
     assert "settings.failure_circuit_reasons" in worker_source
     assert "running_timeout_ms=self.job_running_timeout_ms" in worker_source
     assert "stale_after_ms=int(running_timeout_ms)" in worker_source
@@ -1624,7 +1618,6 @@ def test_pulse_candidate_worker_and_job_service_use_formal_settings_without_runt
     assert "now_ms: int," in evidence_source_repository_source
     assert "pulse_evidence_max_age_ms_required" in evidence_source_repository_source
     assert "settings=workers.pulse_candidate" in factory_block
-    assert "wake_waiter=ctx.db.wake_listener(worker_name, workers.pulse_candidate.wakes_on)" in factory_block
     assert "batch_size: int = Field(default=10, ge=1)" in settings_class
     assert "max_agent_jobs_per_cycle: int = Field(default=2, ge=1)" in settings_class
     assert "max_attempts: int = Field(default=3, ge=1)" in settings_class
@@ -1645,7 +1638,6 @@ def test_pulse_candidate_worker_and_job_service_use_formal_settings_without_runt
         in settings_class
     )
     assert "statement_timeout_seconds: float = Field(default=30.0, ge=0)" in settings_class
-    assert 'wakes_on: tuple[str, ...] = ("token_radar_updated",)' in settings_class
     assert 'scopes: tuple[str, ...] = ("all", "matched")' in settings_class
     assert "trigger_thresholds: PulseCandidateTriggerThresholds = Field" in settings_class
     assert "gate_thresholds: PulseCandidateGateThresholds = Field" in settings_class
@@ -2677,24 +2669,20 @@ def test_asset_market_wiring_cleanup_uses_formal_okx_bundle_fields_without_optio
 @pytest.mark.architecture
 def test_api_worker_dependencies_use_formal_status_payload_contracts() -> None:
     source = API_DEPENDENCIES.read_text(encoding="utf-8")
-    worker_running = source.split("def _worker_running", 1)[1].split("\ndef _worker_object", 1)[0]
     worker_object = source.split("def _worker_object", 1)[1].split("\ndef _now_ms", 1)[0]
 
     forbidden_tokens = (
         'getattr(runtime, "scheduler", None)',
-        'getattr(scheduler, "tasks", {})',
-        'getattr(scheduler, "status_payload", None)',
         'getattr(runtime, "workers", {})',
         'getattr(worker, "status_payload", None)',
         "except Exception:",
         "status_payload is None",
     )
-    combined = f"{worker_running}\n{worker_object}"
-    violations = [token for token in forbidden_tokens if token in combined]
+    violations = [token for token in forbidden_tokens if token in worker_object]
 
     assert violations == []
-    assert "scheduler = runtime.scheduler" in worker_running
-    assert "payload = scheduler.status_payload()" in source
+    assert "scheduler = runtime.scheduler" in worker_object
+    assert "payload = worker.status_payload()" in worker_object
     assert "payload = worker.status_payload()" in source
     assert "api_status_payload_must_be_dict" in source
     assert "api_worker_status_payload_must_be_dict" in source
@@ -2753,7 +2741,8 @@ def test_worker_manifest_owns_all_single_writer_tables() -> None:
         for manifest in all_worker_manifests()
         for table in (
             *manifest.writes_facts,
-            *getattr(manifest, "writes_input_observations", ()),
+            *manifest.writes_input_observations,
+            *manifest.writes_cache_state,
             *manifest.writes_read_models,
             *manifest.writes_control_plane,
             *manifest.side_effect_ledgers,
@@ -2881,7 +2870,7 @@ def test_worker_manifest_declares_dirty_target_consumers() -> None:
         "token_profile_current_dirty_targets",
         "token_radar_dirty_targets",
     }
-    manifest_dirty_targets = {table for dirty_tables in worker_dirty_target_tables().values() for table in dirty_tables}
+    manifest_dirty_targets = {table for manifest in all_worker_manifests() for table in manifest.dirty_target_tables}
 
     assert expected_dirty_targets <= manifest_dirty_targets
 
@@ -2918,7 +2907,8 @@ def test_token_image_mirror_is_only_token_image_assets_writer() -> None:
         if "token_image_assets"
         in (
             *manifest.writes_facts,
-            *getattr(manifest, "writes_input_observations", ()),
+            *manifest.writes_input_observations,
+            *manifest.writes_cache_state,
             *manifest.writes_read_models,
             *manifest.writes_control_plane,
             *manifest.side_effect_ledgers,
@@ -3056,7 +3046,6 @@ def test_db_pool_bundle_wake_listener_sizing_uses_manifest_worker_settings_contr
     assert "if not manifest.wakes_on:" in helper_source
     assert "worker_settings = getattr(workers, manifest.name)" in helper_source
     assert "worker_settings.enabled" in helper_source
-    assert "worker_settings.wakes_on" in helper_source
     assert "worker_settings.concurrency" in helper_source
     assert "_worker_wake_concurrency(" in helper_source
     assert "worker_wake_listener_concurrency_required" in helper_source
@@ -3220,13 +3209,13 @@ def test_cex_oi_radar_board_worker_uses_formal_settings_and_provider_contract_wi
     assert "cex_oi_radar_board_db_required" in init_source
     assert "cex_oi_radar_board_oi_market_required" in init_source
     assert "self.period = _required_worker_text(" in source
-    assert "error_code=\"cex_oi_radar_board_period_required\"" in source
-    assert 'self.batch_size = _positive_worker_setting_int(' in source
-    assert "error_code=\"cex_oi_radar_board_batch_size_required\"" in source
-    assert 'self.universe_limit = _positive_worker_setting_int(' in source
-    assert "error_code=\"cex_oi_radar_board_universe_limit_required\"" in source
-    assert 'self.coinglass_enrichment_limit = _nonnegative_worker_setting_int(' in source
-    assert 'self.coinglass_level_limit = _nonnegative_worker_setting_int(' in source
+    assert 'error_code="cex_oi_radar_board_period_required"' in source
+    assert "self.batch_size = _positive_worker_setting_int(" in source
+    assert 'error_code="cex_oi_radar_board_batch_size_required"' in source
+    assert "self.universe_limit = _positive_worker_setting_int(" in source
+    assert 'error_code="cex_oi_radar_board_universe_limit_required"' in source
+    assert "self.coinglass_enrichment_limit = _nonnegative_worker_setting_int(" in source
+    assert "self.coinglass_level_limit = _nonnegative_worker_setting_int(" in source
     assert "limit = min(self.universe_limit, batch_size)" in source
     assert "limit=self.coinglass_enrichment_limit" in source
     assert "level_limit=self.coinglass_level_limit" in source
@@ -3260,33 +3249,6 @@ def test_cex_market_intel_provider_wiring_uses_formal_worker_settings_fields_wit
     assert "worker_settings = settings.workers.cex_oi_radar_board" in coinglass_source
     assert "if not worker_settings.enabled:" in coinglass_source
     assert "worker_settings.coinglass_enrichment_limit" in coinglass_source
-
-
-@pytest.mark.architecture
-def test_binance_oi_provider_wiring_requires_formal_integration_dto_fields_without_attr_defaults() -> None:
-    source = BINANCE_PROVIDER_WIRING.read_text(encoding="utf-8")
-    oi_source = source.split("class BinanceUsdmFuturesOiProvider", 1)[1].split("\n\n__all__", 1)[0]
-    forbidden_tokens = (
-        'getattr(row, "open_interest_value", None)',
-        'getattr(row, "time_ms", None)',
-        'getattr(row, "quote_volume_24h", None)',
-        'getattr(row, "price_change_percent", None)',
-        'getattr(row, "last_price", None)',
-        'getattr(row, "mark_price", None)',
-        'getattr(row, "last_funding_rate", None)',
-        'getattr(row, "symbol", "")',
-    )
-    required_tokens = (
-        '_required_row_field(row, "open_interest_value")',
-        '_required_row_field(row, "time_ms")',
-        '_required_row_field(row, "quote_volume_24h")',
-        '_required_row_field(row, "last_funding_rate")',
-        "binance_oi_provider_contract_required:",
-    )
-    violations = [token for token in forbidden_tokens if token in oi_source]
-
-    assert violations == []
-    assert [token for token in required_tokens if token not in oi_source] == []
 
 
 @pytest.mark.architecture
@@ -3418,7 +3380,7 @@ def test_no_old_readyz_worker_sections(monkeypatch: pytest.MonkeyPatch) -> None:
             },
         },
     )
-    payload, status_code = app_module._readiness_payload(runtime, now_ms=now_ms)
+    payload, status_code = app_module._readiness_payload(runtime)
 
     assert top_level_schema_keys.isdisjoint(MANIFEST_WORKER_CLASSES)
     assert "workers" in top_level_schema_keys
@@ -3438,7 +3400,6 @@ def test_no_old_readyz_worker_sections(monkeypatch: pytest.MonkeyPatch) -> None:
 @pytest.mark.architecture
 def test_no_old_worker_runtime_settings() -> None:
     from parallax.platform.config.settings import (
-        CollectorConfig,
         LlmConfig,
         NotificationsConfig,
         OkxProviderConfig,
@@ -3463,7 +3424,7 @@ def test_no_old_worker_runtime_settings() -> None:
         "dex_price_warm_stale_seconds",
         "dex_price_refresh_limit",
     }
-    checked_models = (CollectorConfig, LlmConfig, NotificationsConfig, OkxProviderConfig, Settings)
+    checked_models = (LlmConfig, NotificationsConfig, OkxProviderConfig, Settings)
     violations = {
         f"{model.__name__}.{field_name}"
         for model in checked_models
@@ -3485,7 +3446,6 @@ def test_runtime_contracts_forbid_old_watchlist_queue_tokens() -> None:
     scanned_paths = [
         SRC / "app/runtime/job_queue.py",
         SRC / "app/runtime/ops_diagnostics.py",
-        ROOT / "tests/unit/test_job_queue.py",
         ROOT / "tests/unit/test_ops_diagnostics.py",
         ROOT / "tests/architecture/test_runtime_worker_constraint_hard_cut.py",
     ]
@@ -3523,13 +3483,8 @@ def test_runtime_job_queue_is_ops_descriptor_only_without_generic_executor() -> 
     assert class_names.isdisjoint(forbidden_classes)
     assert function_names.isdisjoint(forbidden_functions)
     assert [token for token in forbidden_tokens if token in job_queue_source] == []
-    assert "class JobQueueDescriptor" in job_queue_source
-    assert "JOB_QUEUE_DESCRIPTORS" in job_queue_source
-    assert "PULSE_AGENT_JOBS" in job_queue_source
-    assert "NOTIFICATION_DELIVERIES" in job_queue_source
-    assert (
-        "from parallax.app.runtime.job_queue import JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor"
-    ) in ops_diagnostics_source
+    assert "JOB_QUEUE_DESCRIPTORS.get(" in ops_diagnostics_source
+    assert "for descriptor in JOB_QUEUE_DESCRIPTORS.values()" in ops_diagnostics_source
 
 
 @pytest.mark.architecture
@@ -3543,9 +3498,9 @@ def test_narrative_hard_cut_contracts_are_documented() -> None:
         "source-set truth",
         "no runtime compatibility",
         "NarrativeAdmissionWorker",
-        "were hard-cut",
-        "no active worker refreshes",
-        "discussion_digest.currentness",
+        "semantic/digest tables are not read",
+        "narrative_admission",
+        "Target-post responses remain raw evidence pages",
         "ops rebuild-narrative-intel",
     ):
         assert phrase in combined
@@ -3560,9 +3515,9 @@ def test_global_architecture_does_not_describe_retired_narrative_llm_lanes_as_cu
         "Mention semantics, token discussion digest generation, evidence refs",
     )
     required_phrases = (
-        "current source-set admissions and legacy narrative currentness reads",
-        "Former per-mention semantics and discussion-digest LLM lanes have no current runtime writer.",
-        "Current `narrative_admissions` source-set ownership, legacy narrative currentness reads",
+        "Public surfaces expose only admission-derived `narrative_admission` state.",
+        "Per-mention semantics and discussion-digest lanes and storage are removed.",
+        "Current `narrative_admissions` ownership, API admission coverage",
     )
 
     assert [phrase for phrase in forbidden_active_phrases if phrase in architecture] == []
@@ -3572,8 +3527,8 @@ def test_global_architecture_does_not_describe_retired_narrative_llm_lanes_as_cu
 @pytest.mark.architecture
 def test_public_narrative_reads_do_not_expose_retired_semantic_backlog() -> None:
     repository = NARRATIVE_REPOSITORY.read_text(encoding="utf-8")
-    current_snapshot_method = repository.split("def current_narrative_snapshots_for_targets", 1)[1].split(
-        "def current_digests_for_targets",
+    current_admission_method = repository.split("def current_narrative_admissions_for_targets", 1)[1].split(
+        "def _current_admissions_for_targets",
         1,
     )[0]
     read_model = NARRATIVE_READ_MODEL.read_text(encoding="utf-8")
@@ -3593,7 +3548,7 @@ def test_public_narrative_reads_do_not_expose_retired_semantic_backlog() -> None
         "NarrativeSemanticBacklog",
     )
 
-    assert [token for token in forbidden_repository_tokens if token in current_snapshot_method] == []
+    assert [token for token in forbidden_repository_tokens if token in current_admission_method] == []
     assert [token for token in forbidden_repository_tokens if token in repository] == []
     assert [token for token in forbidden_read_model_tokens if token in read_model] == []
     assert [token for token in forbidden_schema_tokens if token in api_schemas] == []
@@ -3938,16 +3893,17 @@ def test_deleted_narrative_llm_workers_are_not_runtime_contracts() -> None:
 
 
 @pytest.mark.architecture
-def test_no_exact_fingerprint_only_public_narrative_hydration() -> None:
+def test_public_narrative_hydration_is_admission_only() -> None:
     text = NARRATIVE_REPOSITORY.read_text()
-    method = text.split("def current_narrative_snapshots_for_targets", 1)[1].split(
-        "def current_digests_for_targets",
+    method = text.split("def current_narrative_admissions_for_targets", 1)[1].split(
+        "def _current_admissions_for_targets",
         1,
     )[0]
 
-    assert "COALESCE(admissions.source_fingerprint, '') = COALESCE(digest.source_fingerprint, '')" not in method
-    assert "_current_ready_digests_for_targets" in method
-    assert "public_currentness" in method
+    assert "token_discussion_digests" not in method
+    assert "token_mention_semantics" not in method
+    assert "_current_admissions_for_targets" in method
+    assert "_admission_state" in method
 
 
 @pytest.mark.architecture

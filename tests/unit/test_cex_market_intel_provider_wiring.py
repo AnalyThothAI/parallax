@@ -73,6 +73,35 @@ def test_binance_oi_adapter_rejects_malformed_open_interest_rows_before_dto_mapp
         provider.list_open_interest_history(symbol="BTCUSDT", period="5m", limit=2)
 
 
+@pytest.mark.parametrize(
+    ("client_kind", "operation", "field"),
+    [
+        pytest.param("ticker", "ticker", "quote_volume_24h", id="ticker-string"),
+        pytest.param("funding", "funding", "last_funding_rate", id="funding-bool"),
+        pytest.param("history", "history", "time_ms", id="history-zero-time"),
+    ],
+)
+def test_binance_oi_adapter_rejects_invalid_numeric_values_before_dto_mapping(
+    client_kind: str,
+    operation: str,
+    field: str,
+) -> None:
+    client = {
+        "ticker": _InvalidNumericTickerClient,
+        "funding": _InvalidNumericFundingClient,
+        "history": _InvalidNumericOpenInterestClient,
+    }[client_kind]()
+    provider = binance_wiring.BinanceUsdmFuturesOiProvider(client)
+
+    with pytest.raises(ValueError, match=rf"binance_oi_provider_contract_required:{field}"):
+        if operation == "ticker":
+            provider.list_24h_tickers(symbol="BTCUSDT")
+        elif operation == "funding":
+            provider.list_funding_premium(symbol="BTCUSDT")
+        else:
+            provider.list_open_interest_history(symbol="BTCUSDT", period="5m", limit=2)
+
+
 def test_wire_providers_populates_cex_market_intel_oi_market_when_binance_enabled(monkeypatch) -> None:
     oi_provider = object()
 
@@ -303,6 +332,29 @@ class _MalformedOpenInterestClient(_RawBinanceClient):
     def open_interest_hist(self, symbol: str, period: str, limit: int):
         self.calls.append(("open_interest_hist", symbol, period, limit))
         return [SimpleNamespace(symbol=symbol, open_interest_value=1_000.0)]
+
+
+class _InvalidNumericTickerClient(_RawBinanceClient):
+    def ticker_24hr(self, symbol: str | None = None):
+        self.calls.append(("ticker_24hr", symbol))
+        return SimpleNamespace(
+            symbol="BTCUSDT",
+            quote_volume_24h="bad",
+            price_change_percent=1.25,
+            last_price=71_000.0,
+        )
+
+
+class _InvalidNumericFundingClient(_RawBinanceClient):
+    def premium_index(self, symbol: str | None = None):
+        self.calls.append(("premium_index", symbol))
+        return SimpleNamespace(symbol="BTCUSDT", mark_price=71_050.0, last_funding_rate=True)
+
+
+class _InvalidNumericOpenInterestClient(_RawBinanceClient):
+    def open_interest_hist(self, symbol: str, period: str, limit: int):
+        self.calls.append(("open_interest_hist", symbol, period, limit))
+        return [SimpleNamespace(symbol=symbol, open_interest_value=1_000.0, time_ms=0)]
 
 
 def _install_fake_coinglass(monkeypatch, constructed: list[str]) -> None:

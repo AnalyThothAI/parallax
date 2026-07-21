@@ -1,13 +1,11 @@
 from __future__ import annotations
 
 from dataclasses import dataclass, field
-from typing import Any, Literal, TypedDict
+from typing import Any, Literal
 
 from parallax.domains.news_intel.types.source_classification import ProviderType, SourceRole
 
 TrustTier = Literal["official", "high", "standard", "low"]
-FetchRunStatus = Literal["running", "success", "failed"]
-UpsertStatus = Literal["inserted", "updated", "duplicate"]
 
 
 @dataclass(frozen=True, slots=True)
@@ -39,16 +37,6 @@ class NormalizedNewsItem:
     language: str
     published_at_ms: int
     raw_payload: dict[str, Any]
-
-
-class UpsertResult(TypedDict):
-    status: UpsertStatus
-    provider_item_id: str
-
-
-class NewsItemUpsertResult(TypedDict):
-    status: UpsertStatus
-    news_item_id: str
 
 
 JsonObject = dict[str, Any]

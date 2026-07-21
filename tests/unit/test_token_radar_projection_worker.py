@@ -1140,7 +1140,6 @@ def _settings(**overrides):
         "statement_timeout_seconds": 120.0,
         "advisory_lock_key": 2026051501,
         "backoff": SimpleNamespace(base_ms=1, max_ms=5),
-        "wakes_on": ("market_tick_current_updated", "resolution_updated"),
         "windows": ("5m", "1h", "4h", "24h"),
         "scopes": ("all", "matched"),
         "venues": ("all",),

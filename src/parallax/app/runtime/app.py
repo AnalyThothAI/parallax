@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import time
 from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager
 from pathlib import Path
@@ -161,8 +160,7 @@ def _frontend_dist_dir(frontend_dist: str | Path | None = None) -> Path | None:
     return None
 
 
-def _readiness_payload(runtime: Runtime, *, now_ms: int | None = None) -> tuple[dict[str, Any], int]:
-    _ = now_ms if now_ms is not None else _now_ms()
+def _readiness_payload(runtime: Runtime) -> tuple[dict[str, Any], int]:
     collector_status = runtime.collector.status.to_dict()
     db_status = _db_status(runtime)
     worker_status = workers_status_payload(runtime)
@@ -191,10 +189,6 @@ def _readiness_payload(runtime: Runtime, *, now_ms: int | None = None) -> tuple[
         "worker_lanes": worker_status["worker_lanes"],
     }
     return payload, 503 if reasons else 200
-
-
-def _workers_status_payload(runtime: Runtime) -> dict[str, Any]:
-    return workers_status_payload(runtime)
 
 
 def _stream_dex_market(runtime: Runtime) -> Any | None:
@@ -321,7 +315,3 @@ def _provider_state_payload(provider: Any | None) -> dict[str, object | None]:
             "error": "provider_connection_state_payload_not_dict",
         }
     return value
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)

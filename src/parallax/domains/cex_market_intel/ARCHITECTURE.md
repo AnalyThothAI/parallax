@@ -10,16 +10,6 @@ decisions.
   market-wide Binance USDT perpetual OI/radar board as current-only rows.
 - `cex_detail_snapshots` powers single-token CEX detail pages and Signal Pulse
   market evidence for CEX targets.
-- `cex_derivative_series` is bounded derivative history storage for normalized
-  points that can be rebuilt from worker fetches. Provider history fetches can
-  overlap previous polls, so unchanged conflict rows must be skipped with
-  `IS DISTINCT FROM` guards and required `cursor.rowcount` evidence instead of
-  unconditional `DO UPDATE` write amplification. Missing, boolean, negative, or
-  non-integer cursor rowcount is malformed driver/wiring state, not a default
-  one-row write or no-op count.
-  Series identity requires non-empty provider, exchange, native market id,
-  metric, and period before hash construction or SQL; PostgreSQL `NOT NULL` is
-  not treated as sufficient for empty text.
 
 ## Writer Ownership
 
@@ -115,8 +105,10 @@ be present as a list, and each row must carry mapping-shaped
 `score_components_json`; the route must not synthesize empty rows or empty score
 components when repository output is malformed.
 `cex_detail_snapshots` write and payload-hash boundaries require formal
-`snapshot_id`, `target_type`, `target_id`, `exchange`, and `native_market_id`
-fields plus non-empty `base_symbol` and `quote_symbol`. `status`,
+`target_type`, `target_id`, `exchange`, and `native_market_id` fields plus
+non-empty `base_symbol` and `quote_symbol`. The stable current-row key is the
+natural market identity `(exchange, native_market_id)`; no synthetic snapshot
+identifier is stored. `status`,
 `baseline_status`, and `coinglass_status` are also formal writer-output enum
 fields before detail snapshot construction, payload hash, or upsert SQL. The
 repository and builder must not restore missing identity, market symbols,
@@ -135,6 +127,9 @@ before CEX detail write counts are returned. Detail payload hashes use only the 
 legacy DB column aliases such as `level_bands_json`,
 `degraded_reasons_json`, and `source_refs_json` are rejected on writer input and
 are allowed only inside the repository read-row to public-payload mapping. The
+read-row mapping requires those persisted columns to be present and
+list-shaped; null, missing, or scalar storage damage fails instead of becoming
+an empty public list. The
 detail builder also rejects `level_bands_json` so storage-column aliases cannot
 be laundered back into the board/enrichment DTO shape. When the builder receives
 `level_bands`, each band must carry formal `kind` and numeric `price` before
@@ -152,14 +147,6 @@ cannot rely on timestamp equality to recover a missing source. The repository
 also requires `level_bands`, `degraded_reasons`, and `source_refs` to be present
 and list-shaped before payload hashing or SQL; missing list fields are
 malformed writer output, not empty arrays.
-`cex_derivative_series` history identity requires non-empty provider, exchange,
-native market id, metric, and period before the `series_id` hash or upsert SQL.
-The repository normalizes those key fields once at the boundary so the
-PostgreSQL unique business key and primary hash id cannot diverge.
-Each derivative history point must also carry a mapping-shaped `raw_payload`
-before JSONB upsert; missing or non-mapping raw payload is malformed provider
-history output, not an empty JSON object fallback.
-
 If a snapshot has fresh Binance baseline data but no CoinGlass enrichment,
 frontend displays a partial CEX panel and Pulse caps the route at `token_watch`.
 Only fresh baseline plus derivative/level enrichment can unlock a complete CEX
@@ -168,8 +155,8 @@ market contract for trade-candidate analysis.
 Token Case and Search Inspect require the `cex_detail_snapshots.latest_snapshot`
 repository contract for `CexToken` dossiers. A missing snapshot row is product
 state and returns a structured missing detail block without synthetic
-`snapshot_id` or `exchange`; a missing repository method or session binding is
-a server contract failure. Detail snapshot read methods require non-empty
+`exchange`; a missing repository method or session binding is a server contract
+failure. Detail snapshot read methods require non-empty
 `target_type` / `target_id` or `exchange` / `native_market_id` query identity
 before SQL, so malformed read keys fail at the repository boundary rather than
 running empty-string PostgreSQL lookups. `/api/cex/detail` must form the same

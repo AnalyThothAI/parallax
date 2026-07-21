@@ -170,7 +170,7 @@ def test_worker_counts_successful_empty_window_as_processed() -> None:
     assert result.notes["imported_observation_count"] == 0
 
 
-def test_worker_caps_formal_batch_size_to_max_windows_per_cycle() -> None:
+def test_worker_uses_formal_batch_size_without_hidden_cycle_cap() -> None:
     from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
 
     results = [
@@ -180,11 +180,11 @@ def test_worker_caps_formal_batch_size_to_max_windows_per_cycle() -> None:
             status="ok",
             observations_count=1,
             imported_observation_count=1,
-            asof_date=date(2026, 5, 25 + index),
-            max_observed_at=date(2026, 5, 25 + index),
+            asof_date=date(2026, 6, index),
+            max_observed_at=date(2026, 6, index),
             diagnostics={},
         )
-        for index in range(1, 7)
+        for index in range(1, 8)
     ]
     service = FakeService(results=results)
     worker = MacroSyncWorker(
@@ -199,9 +199,9 @@ def test_worker_caps_formal_batch_size_to_max_windows_per_cycle() -> None:
 
     result = worker.run_once_sync(now_ms=1_779_000_000_000)
 
-    assert result.processed == 5
-    assert result.notes["claimed"] == 5
-    assert [call[0] for call in service.calls].count("run_claimed_window_once") == 5
+    assert result.processed == 7
+    assert result.notes["claimed"] == 7
+    assert [call[0] for call in service.calls].count("run_claimed_window_once") == 7
 
 
 @pytest.mark.parametrize("batch_size", [0, True, "3"])

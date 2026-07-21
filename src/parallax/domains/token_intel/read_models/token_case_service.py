@@ -107,7 +107,6 @@ class TokenCaseService:
             return cast(dict[str, Any], snapshot)
         native_market_id = str(target.get("native_market_id") or "").strip().upper()
         return {
-            "snapshot_id": None,
             "target_type": target_type,
             "target_id": target_id,
             "exchange": None,

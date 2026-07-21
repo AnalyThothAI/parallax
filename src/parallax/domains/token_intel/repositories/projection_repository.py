@@ -120,9 +120,9 @@ class ProjectionRepository:
                 """
                 INSERT INTO projection_runs(
                   run_id, projection_name, projection_version, mode, status, source_start_ms, source_end_ms,
-                  rows_read, rows_written, dirty_ranges_written, started_at_ms
+                  rows_read, rows_written, started_at_ms
                 )
-                VALUES (%s, %s, %s, %s, 'running', %s, %s, 0, 0, 0, %s)
+                VALUES (%s, %s, %s, %s, 'running', %s, %s, 0, 0, %s)
                 RETURNING *
                 """,
                 (
@@ -179,7 +179,6 @@ class ProjectionRepository:
         status: str,
         rows_read: int,
         rows_written: int,
-        dirty_ranges_written: int,
         error: str | None = None,
         commit: bool = True,
     ) -> None:
@@ -190,7 +189,6 @@ class ProjectionRepository:
                 SET status = %s,
                     rows_read = %s,
                     rows_written = %s,
-                    dirty_ranges_written = %s,
                     finished_at_ms = %s,
                     error = %s
                 WHERE run_id = %s
@@ -199,7 +197,6 @@ class ProjectionRepository:
                     status,
                     int(rows_read),
                     int(rows_written),
-                    int(dirty_ranges_written),
                     _now_ms(),
                     error,
                     run_id,
@@ -226,125 +223,6 @@ class ProjectionRepository:
             FROM projection_runs
             {where}
             ORDER BY started_at_ms DESC, run_id DESC
-            LIMIT %s
-            """,
-            (*params, parsed_limit),
-        ).fetchall()
-        return [dict(row) for row in rows]
-
-    def enqueue_dirty_range(
-        self,
-        *,
-        projection_name: str,
-        projection_version: str,
-        entity_type: str,
-        entity_key: str,
-        window: str | None,
-        scope: str | None,
-        start_ms: int,
-        end_ms: int,
-        reason: str,
-        commit: bool = True,
-    ) -> str:
-        def _write() -> str:
-            dirty_id = _id(
-                "projection_dirty_range",
-                projection_name,
-                projection_version,
-                entity_type,
-                entity_key,
-                window or "",
-                scope or "",
-                str(int(start_ms)),
-                str(int(end_ms)),
-                reason,
-            )
-            now_ms = _now_ms()
-            cursor = self.conn.execute(
-                """
-                INSERT INTO projection_dirty_ranges(
-                  dirty_id, projection_name, projection_version, entity_type, entity_key,
-                  "window", scope, start_ms, end_ms, reason, status, created_at_ms, updated_at_ms
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, 'pending', %s, %s)
-                ON CONFLICT(dirty_id) DO UPDATE SET
-                  status = CASE
-                    WHEN projection_dirty_ranges.status = 'running' THEN 'running'
-                    ELSE 'pending'
-                  END,
-                  updated_at_ms = excluded.updated_at_ms
-                """,
-                (
-                    dirty_id,
-                    projection_name,
-                    projection_version,
-                    entity_type,
-                    entity_key,
-                    window,
-                    scope,
-                    int(start_ms),
-                    int(end_ms),
-                    reason,
-                    now_ms,
-                    now_ms,
-                ),
-            )
-            _required_single_rowcount(cursor)
-            return dirty_id
-
-        return _run_repository_write(self.conn, commit, _write)
-
-    def claim_dirty_ranges(
-        self,
-        *,
-        projection_name: str,
-        projection_version: str,
-        limit: int,
-        commit: bool = True,
-    ) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(limit, "projection_repository_limit_required")
-
-        def _write() -> list[dict[str, Any]]:
-            cursor = self.conn.execute(
-                """
-                WITH picked AS (
-                  SELECT dirty_id
-                  FROM projection_dirty_ranges
-                  WHERE projection_name = %s
-                    AND projection_version = %s
-                    AND status = 'pending'
-                  ORDER BY created_at_ms ASC, dirty_id ASC
-                  LIMIT %s
-                  FOR UPDATE SKIP LOCKED
-                )
-                UPDATE projection_dirty_ranges ranges
-                SET status = 'running',
-                    updated_at_ms = %s
-                FROM picked
-                WHERE ranges.dirty_id = picked.dirty_id
-                RETURNING ranges.*
-                """,
-                (projection_name, projection_version, parsed_limit, _now_ms()),
-            )
-            rows = cursor.fetchall()
-            _returned_rowcount(cursor, rows)
-            return [dict(row) for row in rows]
-
-        return _run_repository_write(self.conn, commit, _write)
-
-    def list_dirty_ranges(self, *, limit: int, projection_name: str | None = None) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(limit, "projection_repository_limit_required")
-        params: list[Any] = []
-        where = ""
-        if projection_name:
-            where = "WHERE projection_name = %s"
-            params.append(projection_name)
-        rows = self.conn.execute(
-            f"""
-            SELECT *
-            FROM projection_dirty_ranges
-            {where}
-            ORDER BY created_at_ms DESC, dirty_id DESC
             LIMIT %s
             """,
             (*params, parsed_limit),
@@ -419,13 +297,6 @@ def _cursor_rowcount(cursor: Any) -> int:
     if rowcount < 0:
         raise TypeError("projection_repository_rowcount_invalid")
     return int(rowcount)
-
-
-def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount != len(rows):
-        raise TypeError("projection_repository_rowcount_invalid")
-    return rowcount
 
 
 def _required_single_rowcount(cursor: Any) -> int:

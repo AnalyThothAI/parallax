@@ -60,7 +60,7 @@ def test_source_fetch_provider_and_news_item_round_trip(tmp_path) -> None:
             source_item_key="guid-1",
             canonical_url="https://www.coindesk.com/news/sol-etf",
             payload_hash="payload-hash-1",
-            raw_payload_json={"id": "guid-1", "title": "SOL ETF filing"},
+            raw_payload={"id": "guid-1", "title": "SOL ETF filing"},
             fetched_at_ms=NOW_MS,
         )
         news = repo.upsert_canonical_news_item(
@@ -330,7 +330,7 @@ def test_provider_and_news_item_upserts_are_idempotent_and_update_content(tmp_pa
             source_item_key="same-guid",
             canonical_url="https://example.com/news/a",
             payload_hash="hash-old",
-            raw_payload_json={"title": "Old"},
+            raw_payload={"title": "Old"},
             fetched_at_ms=NOW_MS,
         )
         first_news = repo.upsert_canonical_news_item(
@@ -353,7 +353,7 @@ def test_provider_and_news_item_upserts_are_idempotent_and_update_content(tmp_pa
             source_item_key="same-guid",
             canonical_url="https://example.com/news/a",
             payload_hash="hash-new",
-            raw_payload_json={"title": "New"},
+            raw_payload={"title": "New"},
             fetched_at_ms=NOW_MS + 1_000,
         )
         second_news = repo.upsert_canonical_news_item(
@@ -429,7 +429,7 @@ def test_source_local_item_keys_do_not_merge_across_feed_sources(tmp_path) -> No
                 source_item_key="shared-guid",
                 canonical_url=f"https://{domain}/news/{slug}",
                 payload_hash=f"payload-{slug}",
-                raw_payload_json={"guid": "shared-guid", "title": f"{slug} title"},
+                raw_payload={"guid": "shared-guid", "title": f"{slug} title"},
                 fetched_at_ms=fetched_at_ms,
             )
             news_rows.append(
@@ -529,7 +529,7 @@ def test_explicit_rss_provider_article_key_is_not_global_identity(tmp_path) -> N
             source_item_key="source-local-guid",
             canonical_url="https://explicit.example.com/news/source-local-guid",
             payload_hash="payload-explicit",
-            raw_payload_json={
+            raw_payload={
                 "id": "payload-id",
                 "article_id": "payload-article-id",
                 "provider_article_id": "payload-provider-id",
@@ -620,7 +620,7 @@ def test_old_rss_provider_article_key_is_cleared_on_upsert(tmp_path) -> None:
             source_item_key="old-guid",
             canonical_url="https://old.example.com/news/old-guid",
             payload_hash="payload-new",
-            raw_payload_json={"guid": "old-guid", "title": "New RSS"},
+            raw_payload={"guid": "old-guid", "title": "New RSS"},
             fetched_at_ms=NOW_MS,
         )
         news = repo.upsert_canonical_news_item(
@@ -760,7 +760,7 @@ def test_opennews_article_id_collapses_across_sources_into_observation_edges(tmp
             source_item_key="news-2367422",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-news",
-            raw_payload_json={"id": 2367422, "title": "BTC headline", "aiRating": {"status": "done"}, "ts": NOW_MS},
+            raw_payload={"id": 2367422, "title": "BTC headline", "aiRating": {"status": "done"}, "ts": NOW_MS},
             fetched_at_ms=NOW_MS,
         )
         first_news = repo.upsert_canonical_news_item(
@@ -784,7 +784,7 @@ def test_opennews_article_id_collapses_across_sources_into_observation_edges(tmp
             source_item_key="listing-2367422",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-listing",
-            raw_payload_json={"id": 2367422, "title": "BTC headline", "aiRating": {"status": "done"}, "ts": NOW_MS},
+            raw_payload={"id": 2367422, "title": "BTC headline", "aiRating": {"status": "done"}, "ts": NOW_MS},
             fetched_at_ms=NOW_MS + 1_000,
         )
         second_news = repo.upsert_canonical_news_item(
@@ -906,7 +906,7 @@ def test_live_public_url_is_blocked_but_material_duplicate_collapses_opennews_ob
                 source_item_key=provider_article_id,
                 canonical_url=canonical_url,
                 payload_hash=f"payload-{provider_article_id}",
-                raw_payload_json={
+                raw_payload={
                     "id": provider_article_id,
                     "link": canonical_url,
                     "text": "Live Markets: Bitcoin crashes to $62,000 as billions of longs get liquidated",
@@ -990,7 +990,7 @@ def test_opennews_missing_link_material_duplicate_attaches_to_existing_public_ur
             source_item_key="2514740",
             canonical_url=canonical_url,
             payload_hash="payload-public",
-            raw_payload_json={"id": "2514740", "link": canonical_url},
+            raw_payload={"id": "2514740", "link": canonical_url},
             fetched_at_ms=NOW_MS,
             provider_article_id="2514740",
         )
@@ -1014,7 +1014,7 @@ def test_opennews_missing_link_material_duplicate_attaches_to_existing_public_ur
             source_item_key="2514742",
             canonical_url="opennews://item/2514742",
             payload_hash="payload-fallback",
-            raw_payload_json={"id": "2514742", "link": ""},
+            raw_payload={"id": "2514742", "link": ""},
             fetched_at_ms=NOW_MS + 1,
             provider_article_id="2514742",
         )
@@ -1084,7 +1084,7 @@ def test_opennews_public_url_later_remaps_dirty_targets_without_rewriting_agent_
             source_item_key="2514742",
             canonical_url="opennews://item/2514742",
             payload_hash="payload-fallback",
-            raw_payload_json={"id": "2514742", "link": ""},
+            raw_payload={"id": "2514742", "link": ""},
             fetched_at_ms=NOW_MS,
             provider_article_id="2514742",
         )
@@ -1165,7 +1165,7 @@ def test_opennews_public_url_later_remaps_dirty_targets_without_rewriting_agent_
             source_item_key="2514740",
             canonical_url=canonical_url,
             payload_hash="payload-public",
-            raw_payload_json={"id": "2514740", "link": canonical_url},
+            raw_payload={"id": "2514740", "link": canonical_url},
             fetched_at_ms=NOW_MS + 1,
             provider_article_id="2514740",
         )
@@ -1329,7 +1329,7 @@ def test_single_segment_public_url_collapses_opennews_observations_with_differen
                 source_item_key=provider_article_id,
                 canonical_url=canonical_url,
                 payload_hash=f"payload-{provider_article_id}",
-                raw_payload_json={
+                raw_payload={
                     "id": provider_article_id,
                     "link": canonical_url,
                     "text": "Bessent Urges Lawmakers to Pass Crypto Clarity Act This Summer",
@@ -1413,7 +1413,7 @@ def test_opennews_provider_global_ids_do_not_collapse_by_exact_content_hash(tmp_
                 source_item_key=f"source-key-{article_id}",
                 canonical_url=f"opennews://item/{article_id}",
                 payload_hash=f"payload-{article_id}",
-                raw_payload_json={"id": article_id, "title": "Shared body", "aiRating": {"status": "done"}},
+                raw_payload={"id": article_id, "title": "Shared body", "aiRating": {"status": "done"}},
                 fetched_at_ms=NOW_MS,
             )
             news = repo.upsert_canonical_news_item(
@@ -1480,7 +1480,7 @@ def test_opennews_provider_article_key_survives_source_item_key_drift(tmp_path) 
             source_item_key="transient-a",
             canonical_url="opennews://item/2367422",
             payload_hash="payload-a",
-            raw_payload_json={"id": 2367422, "title": "Ready", "aiRating": {"status": "done"}},
+            raw_payload={"id": 2367422, "title": "Ready", "aiRating": {"status": "done"}},
             fetched_at_ms=NOW_MS,
         )
         first_news = repo.upsert_canonical_news_item(
@@ -1504,7 +1504,7 @@ def test_opennews_provider_article_key_survives_source_item_key_drift(tmp_path) 
             source_item_key="transient-b",
             canonical_url="https://example.com/",
             payload_hash="payload-b",
-            raw_payload_json={"id": 2367422, "title": "Ready updated", "aiRating": {"status": "done"}},
+            raw_payload={"id": 2367422, "title": "Ready updated", "aiRating": {"status": "done"}},
             fetched_at_ms=NOW_MS + 1_000,
         )
         second_news = repo.upsert_canonical_news_item(
@@ -1593,7 +1593,7 @@ def test_duplicate_observation_edge_returns_updated_for_projection_refresh(tmp_p
             source_item_key="news-2367422",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-news",
-            raw_payload_json={"id": 2367422, "title": "BTC headline", "ts": NOW_MS},
+            raw_payload={"id": 2367422, "title": "BTC headline", "ts": NOW_MS},
             fetched_at_ms=NOW_MS,
         )
         repo.upsert_canonical_news_item(
@@ -1617,7 +1617,7 @@ def test_duplicate_observation_edge_returns_updated_for_projection_refresh(tmp_p
             source_item_key="onchain-2367422",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-onchain",
-            raw_payload_json={"id": 2367422, "title": "BTC headline", "ts": NOW_MS},
+            raw_payload={"id": 2367422, "title": "BTC headline", "ts": NOW_MS},
             fetched_at_ms=NOW_MS + 1_000,
         )
         duplicate_edge_news = repo.upsert_canonical_news_item(
@@ -1675,7 +1675,7 @@ def test_provider_item_same_payload_refetch_is_duplicate_without_timestamp_churn
             source_item_key="news-2367422",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-same",
-            raw_payload_json={"id": 2367422, "title": "SpaceX tender offer"},
+            raw_payload={"id": 2367422, "title": "SpaceX tender offer"},
             fetched_at_ms=NOW_MS,
             provider_observed_at_ms=NOW_MS,
         )
@@ -1687,7 +1687,7 @@ def test_provider_item_same_payload_refetch_is_duplicate_without_timestamp_churn
             source_item_key="news-2367422",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-same",
-            raw_payload_json={"id": 2367422, "title": "SpaceX tender offer"},
+            raw_payload={"id": 2367422, "title": "SpaceX tender offer"},
             fetched_at_ms=NOW_MS + 60_000,
             provider_observed_at_ms=NOW_MS + 60_000,
         )
@@ -1733,7 +1733,7 @@ def test_partial_duplicate_does_not_replace_ready_canonical_representative(tmp_p
             source_item_key="ready-2367422",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-ready",
-            raw_payload_json={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}, "ts": NOW_MS},
+            raw_payload={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}, "ts": NOW_MS},
             fetched_at_ms=NOW_MS,
         )
         ready_news = repo.upsert_canonical_news_item(
@@ -1764,7 +1764,7 @@ def test_partial_duplicate_does_not_replace_ready_canonical_representative(tmp_p
             source_item_key="partial-2367422",
             canonical_url="opennews://item/2367422",
             payload_hash="payload-partial",
-            raw_payload_json={"id": 2367422, "title": "Partial headline", "ts": NOW_MS + 1_000},
+            raw_payload={"id": 2367422, "title": "Partial headline", "ts": NOW_MS + 1_000},
             fetched_at_ms=NOW_MS + 1_000,
         )
         partial_news = repo.upsert_canonical_news_item(
@@ -1840,7 +1840,7 @@ def test_ready_representative_tie_breaker_is_order_independent(tmp_path) -> None
                     source_item_key=f"{label}-2367422",
                     canonical_url="https://example.com/news/2367422",
                     payload_hash=f"payload-{label}",
-                    raw_payload_json={"id": 2367422, "title": f"{label} headline", "aiRating": {"status": "done"}},
+                    raw_payload={"id": 2367422, "title": f"{label} headline", "aiRating": {"status": "done"}},
                     fetched_at_ms=NOW_MS + index * 1_000,
                 )
                 repo.upsert_canonical_news_item(
@@ -1905,7 +1905,7 @@ def test_provider_item_identity_and_ready_status_do_not_downgrade_on_later_parti
             source_item_key="same-provider-item",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-ready",
-            raw_payload_json={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
+            raw_payload={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
             fetched_at_ms=NOW_MS,
         )
         ready_news = repo.upsert_canonical_news_item(
@@ -1931,7 +1931,7 @@ def test_provider_item_identity_and_ready_status_do_not_downgrade_on_later_parti
             source_item_key="same-provider-item",
             canonical_url="opennews://item/2367422",
             payload_hash="payload-partial",
-            raw_payload_json={"title": "Partial headline"},
+            raw_payload={"title": "Partial headline"},
             fetched_at_ms=NOW_MS + 1_000,
         )
         partial_news = repo.upsert_canonical_news_item(
@@ -2002,7 +2002,7 @@ def test_provider_item_identity_promotion_remaps_edge_and_removes_zero_edge_item
             source_item_key="pending-2367422",
             canonical_url="opennews://item/pending-2367422",
             payload_hash="payload-pending",
-            raw_payload_json={"title": "Pending headline"},
+            raw_payload={"title": "Pending headline"},
             provider_article_id="",
             fetched_at_ms=NOW_MS,
         )
@@ -2027,7 +2027,7 @@ def test_provider_item_identity_promotion_remaps_edge_and_removes_zero_edge_item
             source_item_key="pending-2367422",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-ready",
-            raw_payload_json={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
+            raw_payload={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
             provider_article_id="2367422",
             fetched_at_ms=NOW_MS + 1_000,
         )
@@ -2126,7 +2126,7 @@ def test_opennews_partial_first_promotes_to_ready_content_hash_and_collapses_mir
             source_item_key="ws-2367422",
             canonical_url="opennews://item/2367422",
             payload_hash="payload-partial",
-            raw_payload_json={"title": "Partial headline"},
+            raw_payload={"title": "Partial headline"},
             provider_article_id="2367422",
             fetched_at_ms=NOW_MS,
         )
@@ -2152,7 +2152,7 @@ def test_opennews_partial_first_promotes_to_ready_content_hash_and_collapses_mir
             source_item_key="rest-2367422",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-ready",
-            raw_payload_json={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
+            raw_payload={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
             fetched_at_ms=NOW_MS + 1_000,
         )
         ready_news = repo.upsert_canonical_news_item(
@@ -2176,7 +2176,7 @@ def test_opennews_partial_first_promotes_to_ready_content_hash_and_collapses_mir
             source_item_key="mirror-2367422",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-mirror",
-            raw_payload_json={"guid": "mirror-2367422", "title": "Ready headline"},
+            raw_payload={"guid": "mirror-2367422", "title": "Ready headline"},
             fetched_at_ms=NOW_MS + 2_000,
         )
         mirror_news = repo.upsert_canonical_news_item(
@@ -2264,7 +2264,7 @@ def test_opennews_provider_id_wins_when_url_is_not_article_identity(tmp_path) ->
             source_item_key="ws-2367422",
             canonical_url="opennews://item/2367422",
             payload_hash="payload-partial",
-            raw_payload_json={"title": "Partial headline"},
+            raw_payload={"title": "Partial headline"},
             provider_article_id="2367422",
             fetched_at_ms=NOW_MS,
         )
@@ -2289,7 +2289,7 @@ def test_opennews_provider_id_wins_when_url_is_not_article_identity(tmp_path) ->
             source_item_key="rest-2367422",
             canonical_url="https://example.com/",
             payload_hash="payload-ready",
-            raw_payload_json={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
+            raw_payload={"id": 2367422, "title": "Ready headline", "aiRating": {"status": "done"}},
             fetched_at_ms=NOW_MS + 1_000,
         )
         ready_news = repo.upsert_canonical_news_item(
@@ -2362,7 +2362,7 @@ def test_identity_promotion_reselects_old_representative_when_edges_remain(tmp_p
             source_item_key="pending-a",
             canonical_url="opennews://item/pending-a",
             payload_hash="payload-a",
-            raw_payload_json={"title": "Pending A"},
+            raw_payload={"title": "Pending A"},
             provider_article_id="",
             fetched_at_ms=NOW_MS,
         )
@@ -2385,7 +2385,7 @@ def test_identity_promotion_reselects_old_representative_when_edges_remain(tmp_p
             source_item_key="pending-b",
             canonical_url="opennews://item/pending-b",
             payload_hash="payload-b",
-            raw_payload_json={"title": "Pending B"},
+            raw_payload={"title": "Pending B"},
             provider_article_id="",
             fetched_at_ms=NOW_MS + 1,
         )
@@ -2461,7 +2461,7 @@ def test_identity_promotion_reselects_old_representative_when_edges_remain(tmp_p
             source_item_key="pending-a",
             canonical_url="https://example.com/news/2367422",
             payload_hash="payload-a-ready",
-            raw_payload_json={"id": 2367422, "title": "Ready A", "aiRating": {"status": "done"}},
+            raw_payload={"id": 2367422, "title": "Ready A", "aiRating": {"status": "done"}},
             provider_article_id="2367422",
             fetched_at_ms=NOW_MS + 2_000,
         )
@@ -3222,7 +3222,7 @@ def test_list_news_item_ids_for_sources_uses_observation_edges_not_representativ
             source_item_key="shared-copy",
             canonical_url="https://example.com/news/shared",
             payload_hash="hash-shared-copy",
-            raw_payload_json={"title": "Shared"},
+            raw_payload={"title": "Shared"},
             fetched_at_ms=NOW_MS,
         )
         repo.upsert_canonical_news_item(
@@ -3270,7 +3270,7 @@ def test_page_projection_loader_uses_enabled_edge_source_metadata_for_disabled_r
             source_item_key="shared-enabled",
             canonical_url="https://example.com/news/shared",
             payload_hash="hash-shared-enabled",
-            raw_payload_json={"title": "Enabled Shared"},
+            raw_payload={"title": "Enabled Shared"},
             fetched_at_ms=NOW_MS + 1_000,
         )
         repo.upsert_canonical_news_item(
@@ -3414,7 +3414,7 @@ def test_list_news_page_rows_hides_stale_disabled_projected_source_before_reproj
             source_item_key="shared-stale-enabled",
             canonical_url="https://example.com/news/shared-stale",
             payload_hash="hash-shared-stale-enabled",
-            raw_payload_json={"title": "Shared stale"},
+            raw_payload={"title": "Shared stale"},
             fetched_at_ms=NOW_MS,
         )
         repo.upsert_canonical_news_item(
@@ -3503,7 +3503,7 @@ def test_replace_page_rows_summary_counts_enabled_edges_only(tmp_path) -> None:
             source_item_key="summary-disabled",
             canonical_url="https://example.com/news/summary",
             payload_hash="hash-summary-disabled",
-            raw_payload_json={"title": "Summary"},
+            raw_payload={"title": "Summary"},
             fetched_at_ms=NOW_MS,
         )
         duplicate_news = repo.upsert_canonical_news_item(
@@ -4245,7 +4245,7 @@ def test_news_high_signal_candidates_hide_stale_disabled_projected_source_before
             source_item_key="candidate-stale-enabled",
             canonical_url="https://example.com/news/candidate-stale",
             payload_hash="hash-candidate-stale-enabled",
-            raw_payload_json={"title": "Candidate stale"},
+            raw_payload={"title": "Candidate stale"},
             fetched_at_ms=NOW_MS,
         )
         repo.upsert_canonical_news_item(
@@ -5468,7 +5468,7 @@ def test_get_news_item_detail_exposes_canonical_observation_evidence(tmp_path) -
             source_item_key="shared-copy",
             canonical_url="opennews://item/shared-copy",
             payload_hash="hash-shared-copy",
-            raw_payload_json={"id": "shared-copy", "title": "Shared"},
+            raw_payload={"id": "shared-copy", "title": "Shared"},
             fetched_at_ms=NOW_MS,
         )
         repo.upsert_canonical_news_item(
@@ -6083,7 +6083,7 @@ def _insert_source_provider_and_item(
         source_item_key=source_item_key,
         canonical_url=f"https://{source_domain}/news/{source_item_key}",
         payload_hash=f"hash-{source_item_key}",
-        raw_payload_json={"title": title},
+        raw_payload={"title": title},
         fetched_at_ms=NOW_MS,
     )
     news = repo.upsert_canonical_news_item(
@@ -6564,7 +6564,7 @@ def _attach_observation_source(
         source_item_key=source_item_key,
         canonical_url=f"https://{source_domain}/news/{source_item_key}",
         payload_hash=f"hash-{source_item_key}",
-        raw_payload_json={"title": source_name},
+        raw_payload={"title": source_name},
         fetched_at_ms=NOW_MS,
     )
     repo.conn.execute(

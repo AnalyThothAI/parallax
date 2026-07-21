@@ -266,7 +266,6 @@ def _snapshot_status_summary(snapshot: Mapping[str, Any] | None) -> dict[str, An
     scorecard = _mapping(snapshot.get("scorecard_json"))
     source_coverage = _mapping(snapshot.get("source_coverage_json"))
     return {
-        "snapshot_id": snapshot.get("snapshot_id"),
         "projection_version": snapshot.get("projection_version"),
         "asof_date": _json_ready(snapshot.get("asof_date")),
         "status": snapshot.get("status"),

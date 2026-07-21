@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 from collections.abc import Sequence
 from typing import Any
 
@@ -140,67 +141,104 @@ def _float(value: Any) -> float | None:
 
 def _ticker_symbol(row: CexOiTicker24h) -> str:
     try:
-        return _symbol(row.symbol)
+        value = row.symbol
     except AttributeError as exc:
         raise ValueError("cex_oi_radar_provider_contract_required:symbol") from exc
+    if not isinstance(value, str):
+        raise ValueError("cex_oi_radar_provider_contract_required:symbol")
+    symbol = _symbol(value)
+    if not symbol:
+        raise ValueError("cex_oi_radar_provider_contract_required:symbol")
+    return symbol
 
 
 def _premium_symbol(row: CexFundingPremium) -> str:
     try:
-        return _symbol(row.symbol)
+        value = row.symbol
     except AttributeError as exc:
         raise ValueError("cex_oi_radar_provider_contract_required:symbol") from exc
+    if not isinstance(value, str):
+        raise ValueError("cex_oi_radar_provider_contract_required:symbol")
+    symbol = _symbol(value)
+    if not symbol:
+        raise ValueError("cex_oi_radar_provider_contract_required:symbol")
+    return symbol
 
 
 def _open_interest_value(point: CexOpenInterestPoint | None) -> float | None:
     if point is None:
         return None
     try:
-        return point.open_interest_value
+        value = point.open_interest_value
     except AttributeError as exc:
         raise ValueError("cex_oi_radar_provider_contract_required:open_interest_value") from exc
+    return _optional_provider_float(value, field="open_interest_value")
 
 
 def _open_interest_observed_at_ms(point: CexOpenInterestPoint | None) -> int | None:
     if point is None:
         return None
     try:
-        return point.observed_at_ms
+        value = point.observed_at_ms
     except AttributeError as exc:
         raise ValueError("cex_oi_radar_provider_contract_required:observed_at_ms") from exc
+    return _optional_provider_positive_int(value, field="observed_at_ms")
 
 
 def _funding_rate(premium: CexFundingPremium | None) -> float | None:
     if premium is None:
         return None
     try:
-        return premium.last_funding_rate
+        value = premium.last_funding_rate
     except AttributeError as exc:
         raise ValueError("cex_oi_radar_provider_contract_required:last_funding_rate") from exc
+    return _optional_provider_float(value, field="last_funding_rate")
 
 
 def _premium_mark_price(premium: CexFundingPremium | None) -> float | None:
     if premium is None:
         return None
     try:
-        return premium.mark_price
+        value = premium.mark_price
     except AttributeError as exc:
         raise ValueError("cex_oi_radar_provider_contract_required:mark_price") from exc
+    return _optional_provider_float(value, field="mark_price")
 
 
 def _quote_volume_24h(ticker: CexOiTicker24h | None) -> float | None:
     if ticker is None:
         return None
     try:
-        return ticker.quote_volume_24h
+        value = ticker.quote_volume_24h
     except AttributeError as exc:
         raise ValueError("cex_oi_radar_provider_contract_required:quote_volume_24h") from exc
+    return _optional_provider_float(value, field="quote_volume_24h")
 
 
 def _ticker_last_price(ticker: CexOiTicker24h | None) -> float | None:
     if ticker is None:
         return None
     try:
-        return ticker.last_price
+        value = ticker.last_price
     except AttributeError as exc:
         raise ValueError("cex_oi_radar_provider_contract_required:last_price") from exc
+    return _optional_provider_float(value, field="last_price")
+
+
+def _optional_provider_float(value: Any, *, field: str) -> float | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"cex_oi_radar_provider_contract_required:{field}")
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError(f"cex_oi_radar_provider_contract_required:{field}")
+    return parsed
+
+
+def _optional_provider_positive_int(value: Any, *, field: str) -> int | None:
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"cex_oi_radar_provider_contract_required:{field}")
+    return int(value)

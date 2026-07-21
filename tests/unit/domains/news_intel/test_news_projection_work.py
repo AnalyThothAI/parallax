@@ -10,13 +10,11 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     claim_page_projection_work,
     claim_source_quality_work,
     claim_story_brief_work,
-    enqueue_item_brief_work,
     enqueue_page_reprojection,
     enqueue_source_quality_refresh,
     enqueue_source_quality_window_work,
     enqueue_story_brief_work,
     item_brief_news_item_ids,
-    page_news_item_ids,
     queue_story_brief_depth,
     source_quality_claim_windows,
     story_brief_story_keys,
@@ -98,37 +96,6 @@ def test_enqueue_page_reprojection_hides_page_projection_name() -> None:
     ]
 
 
-def test_enqueue_item_brief_work_sets_priority_by_item_id() -> None:
-    repos = FakeRepos()
-
-    count = enqueue_item_brief_work(
-        repos,
-        news_item_ids=["news-1", "news-2"],
-        priority_by_news_item_id={"news-1": 7},
-        source_watermark_ms_by_news_item_id={"news-1": NOW_MS - 1_000, "news-2": NOW_MS - 2_000},
-        reason="news_item_processed",
-        now_ms=NOW_MS,
-        commit=False,
-    )
-
-    assert count == 2
-    assert repos.news_projection_dirty_targets.enqueued == [
-        {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS - 1_000,
-            "priority": 7,
-        },
-        {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-2",
-            "source_watermark_ms": NOW_MS - 2_000,
-        },
-    ]
-
-
 def test_enqueue_story_brief_work_is_story_scoped_and_sets_priority() -> None:
     repos = FakeRepos(servable_news_item_ids=[])
 
@@ -155,24 +122,6 @@ def test_enqueue_story_brief_work_is_story_scoped_and_sets_priority() -> None:
     ]
 
 
-@pytest.mark.parametrize("priority", [True, "7", 7.5, ""])
-def test_enqueue_item_brief_work_rejects_malformed_priority_without_int_repair(priority: object) -> None:
-    repos = FakeRepos()
-
-    with pytest.raises(ValueError, match="news_projection_dirty_target_priority_required"):
-        enqueue_item_brief_work(
-            repos,
-            news_item_ids=["news-1"],
-            priority_by_news_item_id={"news-1": priority},  # type: ignore[dict-item]
-            source_watermark_ms_by_news_item_id={"news-1": NOW_MS - 1_000},
-            reason="news_item_processed",
-            now_ms=NOW_MS,
-            commit=False,
-        )
-
-    assert repos.news_projection_dirty_targets.enqueued == []
-
-
 @pytest.mark.parametrize("priority", [True, "11", 11.5, ""])
 def test_enqueue_story_brief_work_rejects_malformed_priority_without_int_repair(priority: object) -> None:
     repos = FakeRepos()
@@ -191,7 +140,7 @@ def test_enqueue_story_brief_work_rejects_malformed_priority_without_int_repair(
     assert repos.news_projection_dirty_targets.enqueued == []
 
 
-def test_enqueue_news_item_work_filters_non_servable_duplicate_ids() -> None:
+def test_enqueue_page_reprojection_filters_non_servable_duplicate_ids() -> None:
     repos = FakeRepos(servable_news_item_ids=["news-survivor"])
 
     page_count = enqueue_page_reprojection(
@@ -202,21 +151,8 @@ def test_enqueue_news_item_work_filters_non_servable_duplicate_ids() -> None:
         source_watermark_ms_by_news_item_id={"news-survivor": NOW_MS - 1_000},
         commit=False,
     )
-    brief_count = enqueue_item_brief_work(
-        repos,
-        news_item_ids=["news-survivor", "news-deleted"],
-        reason="canonical_news_item_merge",
-        now_ms=NOW_MS,
-        source_watermark_ms_by_news_item_id={"news-survivor": NOW_MS - 1_000},
-        commit=False,
-    )
-
     assert page_count == 1
-    assert brief_count == 1
-    assert repos.news.servable_calls == [
-        ["news-survivor", "news-deleted"],
-        ["news-survivor", "news-deleted"],
-    ]
+    assert repos.news.servable_calls == [["news-survivor", "news-deleted"]]
     assert repos.news_projection_dirty_targets.enqueued == [
         {
             "projection_name": "page",
@@ -224,16 +160,10 @@ def test_enqueue_news_item_work_filters_non_servable_duplicate_ids() -> None:
             "target_id": "news-survivor",
             "source_watermark_ms": NOW_MS - 1_000,
         },
-        {
-            "projection_name": "brief_input",
-            "target_kind": "news_item",
-            "target_id": "news-survivor",
-            "source_watermark_ms": NOW_MS - 1_000,
-        },
     ]
 
 
-def test_enqueue_news_item_work_requires_repository_servable_filter() -> None:
+def test_enqueue_page_reprojection_requires_repository_servable_filter() -> None:
     repos = FakeReposWithoutServableFilter()
 
     try:
@@ -252,31 +182,21 @@ def test_enqueue_news_item_work_requires_repository_servable_filter() -> None:
     assert repos.news_projection_dirty_targets.enqueued == []
 
 
-def test_news_item_projection_work_requires_source_watermark_before_enqueue() -> None:
+def test_page_reprojection_requires_source_watermark_before_enqueue() -> None:
     repos = FakeRepos()
 
-    for operation in (
-        lambda: enqueue_page_reprojection(
+    try:
+        enqueue_page_reprojection(
             repos,
             news_item_ids=["news-1"],
             reason="news_item_processed",
             now_ms=NOW_MS,
             commit=False,
-        ),
-        lambda: enqueue_item_brief_work(
-            repos,
-            news_item_ids=["news-1"],
-            reason="news_item_processed",
-            now_ms=NOW_MS,
-            commit=False,
-        ),
-    ):
-        try:
-            operation()
-        except ValueError as exc:
-            assert "news_projection_dirty_target_source_watermark_required" in str(exc)
-        else:  # pragma: no cover - assertion branch documents the expected failure mode.
-            raise AssertionError("news item projection dirty work must require source_watermark_ms")
+        )
+    except ValueError as exc:
+        assert "news_projection_dirty_target_source_watermark_required" in str(exc)
+    else:  # pragma: no cover - assertion branch documents the expected failure mode.
+        raise AssertionError("page projection dirty work must require source_watermark_ms")
 
     assert repos.news_projection_dirty_targets.enqueued == []
 
@@ -408,16 +328,12 @@ def test_story_brief_queue_depth_uses_story_brief_projection_name() -> None:
     ]
 
 
-def test_page_ids_and_source_quality_refresh_expansion() -> None:
-    page_rows = [
-        {"projection_name": "page", "target_kind": "news_item", "target_id": "news-1", "window": ""},
-    ]
+def test_source_quality_refresh_expansion() -> None:
     source_rows = [
         {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "_refresh"},
         {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "24h"},
     ]
 
-    assert page_news_item_ids(page_rows) == ["news-1"]
     assert source_quality_claim_windows(source_rows, configured_windows=("24h", "7d")) == [
         ("source-1", "24h"),
         ("source-1", "7d"),
@@ -427,12 +343,6 @@ def test_page_ids_and_source_quality_refresh_expansion() -> None:
 @pytest.mark.parametrize(
     ("helper", "row", "match"),
     [
-        pytest.param(
-            page_news_item_ids,
-            {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "24h"},
-            "news_page_projection_claim_projection_name_required",
-            id="page_projection",
-        ),
         pytest.param(
             item_brief_news_item_ids,
             {"projection_name": "brief_input", "target_kind": "news_item", "target_id": "", "window": ""},

@@ -493,9 +493,6 @@ def test_signal_pulse_duplicate_lookup_uses_semantic_and_external_signatures():
 
     row = repo._semantic_signature_duplicate(
         rule_id="signal_pulse_candidate",
-        source_table="pulse_candidates",
-        source_id="pulse-candidate-1",
-        event_id="event-1",
         payload={"semantic_signature": "sha256:in-app", "external_push_signature": "sha256:external"},
     )
 
@@ -963,9 +960,7 @@ def test_notification_repository_delivery_terminal_state_rejects_invalid_cursor_
     rowcount,
 ):
     stale_rowcount = (
-        101
-        if error_code == "notification_delivery_stale_terminalize_rowcount_invalid" and rowcount == 2
-        else rowcount
+        101 if error_code == "notification_delivery_stale_terminalize_rowcount_invalid" and rowcount == 2 else rowcount
     )
     conn = NotificationRepositoryConn(
         rowcount=rowcount,

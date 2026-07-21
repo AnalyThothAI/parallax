@@ -8,8 +8,6 @@ from parallax.app.runtime.worker_manifest import worker_queue_health_tables
 from parallax.domains.asset_market.repositories.discovery_repository import DISCOVERY_PROVIDER
 from parallax.platform.db.queue_terminal import inspect_terminal_events, list_terminal_event_ids, resolve_terminal_event
 
-QueueRetryTransition = Callable[[object, dict[str, Any]], dict[str, Any]]
-
 QUEUE_RETRY_TRANSITIONS: Mapping[tuple[str, str], Callable[..., dict[str, Any]]]
 
 
@@ -378,6 +376,33 @@ def _retry_token_image_source_target(
     }
 
 
+def _retry_token_profile_current_dirty_target(
+    repos: object,
+    event: dict[str, Any],
+    *,
+    now_ms: int,
+    reason: str,
+) -> dict[str, Any]:
+    try:
+        enqueue_targets = cast(Any, repos).token_profile_current_dirty_targets.enqueue_targets
+    except AttributeError as exc:
+        raise ValueError("token_profile_current_dirty_target_repository_required") from exc
+    if not callable(enqueue_targets):
+        raise ValueError("token_profile_current_dirty_target_repository_required")
+    source_row = _source_row(event)
+    requeued = enqueue_targets(
+        [{**source_row, "due_at_ms": int(now_ms)}],
+        reason=f"terminal_retry:{reason}",
+        now_ms=int(now_ms),
+        due_at_ms=int(now_ms),
+        commit=False,
+    )
+    requeued_count = int((requeued or {}).get("targets") or 0)
+    if requeued_count <= 0:
+        raise ValueError("token_profile_current_dirty_target_retry_not_requeued")
+    return {"requeued": requeued_count, "due_at_ms": int(now_ms)}
+
+
 def _retry_token_radar_dirty_target(
     repos: object,
     event: dict[str, Any],
@@ -542,6 +567,7 @@ QUEUE_RETRY_TRANSITIONS = {
     ("pulse_candidate", "pulse_agent_jobs"): _retry_pulse_agent_job,
     ("pulse_candidate", "pulse_trigger_dirty_targets"): _retry_pulse_trigger_dirty_target,
     ("token_image_mirror", "token_image_source_dirty_targets"): _retry_token_image_source_target,
+    ("token_profile_current", "token_profile_current_dirty_targets"): _retry_token_profile_current_dirty_target,
     ("token_radar_projection", "token_radar_dirty_targets"): _retry_token_radar_dirty_target,
     ("token_radar_projection", "token_radar_source_dirty_events"): _retry_token_radar_source_dirty_event,
     ("macro_view_projection", "macro_projection_dirty_targets"): _retry_macro_projection_dirty_target,

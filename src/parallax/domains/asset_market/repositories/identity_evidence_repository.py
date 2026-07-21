@@ -17,121 +17,6 @@ class IdentityEvidenceRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def ensure_asset(
-        self,
-        *,
-        chain_id: str,
-        address: str,
-        observed_at_ms: int,
-        project_id: str | None = None,
-        token_standard: str | None = None,
-        status: str = "candidate",
-        commit: bool = True,
-    ) -> dict[str, Any]:
-        normalized_chain = _chain(chain_id)
-        normalized_address = _address(address)
-        standard = token_standard or ("erc20" if normalized_chain.startswith("eip155:") else "token")
-        asset_id = _asset_id(chain_id=normalized_chain, token_standard=standard, address=normalized_address)
-        if commit:
-            with _transaction(self.conn):
-                return self.ensure_asset(
-                    chain_id=normalized_chain,
-                    address=normalized_address,
-                    observed_at_ms=observed_at_ms,
-                    project_id=project_id,
-                    token_standard=standard,
-                    status=status,
-                    commit=False,
-                )
-        row = self.conn.execute(
-            """
-            WITH existing AS (
-              SELECT registry_assets.asset_id
-                FROM registry_assets
-               WHERE registry_assets.asset_id = %s
-                  OR (
-                    registry_assets.chain_id = %s
-                    AND lower(registry_assets.address) = lower(%s)
-                  )
-               ORDER BY
-                 CASE WHEN registry_assets.asset_id = %s THEN 0 ELSE 1 END,
-                 registry_assets.first_seen_at_ms ASC,
-                 registry_assets.asset_id ASC
-               LIMIT 1
-            ),
-            updated AS (
-              UPDATE registry_assets
-                 SET project_id = COALESCE(%s, registry_assets.project_id),
-                     chain_id = %s,
-                     token_standard = %s,
-                     address = %s,
-                     status = CASE
-                       WHEN registry_assets.status = 'demoted_search' THEN %s
-                       ELSE registry_assets.status
-                     END,
-                     updated_at_ms = %s
-               WHERE registry_assets.asset_id = (SELECT asset_id FROM existing)
-               RETURNING *
-            ),
-            inserted AS (
-              INSERT INTO registry_assets(
-                asset_id, project_id, chain_id, token_standard, address,
-                status, first_seen_at_ms, updated_at_ms
-              )
-              SELECT %s, %s, %s, %s, %s, %s, %s, %s
-               WHERE NOT EXISTS (SELECT 1 FROM updated)
-              ON CONFLICT(chain_id, lower(address)) DO UPDATE SET
-                project_id = COALESCE(excluded.project_id, registry_assets.project_id),
-                status = CASE
-                  WHEN registry_assets.status = 'demoted_search' THEN excluded.status
-                  ELSE registry_assets.status
-                END,
-                updated_at_ms = excluded.updated_at_ms
-              RETURNING *
-            )
-            SELECT *
-              FROM updated
-            UNION ALL
-            SELECT *
-              FROM inserted
-            LIMIT 1
-            """,
-            (
-                asset_id,
-                normalized_chain,
-                normalized_address,
-                asset_id,
-                project_id,
-                normalized_chain,
-                standard,
-                normalized_address,
-                status,
-                int(observed_at_ms),
-                asset_id,
-                project_id,
-                normalized_chain,
-                standard,
-                normalized_address,
-                status,
-                int(observed_at_ms),
-                int(observed_at_ms),
-            ),
-        ).fetchone()
-        return (
-            dict(row)
-            if row
-            else {
-                "asset_id": asset_id,
-                "project_id": project_id,
-                "chain_id": normalized_chain,
-                "token_standard": standard,
-                "address": normalized_address,
-                "status": status,
-                "first_seen_at_ms": int(observed_at_ms),
-                "updated_at_ms": int(observed_at_ms),
-            }
-        )
-
     def upsert_identity_evidence(
         self,
         *,
@@ -316,10 +201,6 @@ class IdentityEvidenceRepository:
     def _row_by_id(self, table: str, key: str, value: str) -> dict[str, Any] | None:
         row = self.conn.execute(f"SELECT * FROM {table} WHERE {key} = %s", (value,)).fetchone()
         return dict(row) if row else None
-
-
-def _asset_id(*, chain_id: str, token_standard: str, address: str) -> str:
-    return f"asset:{chain_id}:{token_standard}:{address}"
 
 
 def _evidence_id(

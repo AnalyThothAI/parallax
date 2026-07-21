@@ -6,7 +6,7 @@ from collections.abc import Callable
 from contextlib import AbstractContextManager
 from typing import Any, cast
 
-from parallax.domains.evidence.types.entity import EVM_QUERY_CHAINS, ExtractedEntity, normalize_ca
+from parallax.domains.evidence.types.entity import EVM_QUERY_CHAINS, ExtractedEntity
 from parallax.domains.evidence.types.twitter_event import TwitterEvent
 
 
@@ -89,23 +89,6 @@ class EntityRepository:
             item = dict(row)
             grouped.setdefault(str(item["event_id"]), []).append(item)
         return grouped
-
-    def find_by_ca(
-        self,
-        value: str,
-        *,
-        limit: int,
-        chain: str | None = None,
-        watched_only: bool = False,
-    ) -> list[dict[str, Any]]:
-        normalized_chain, normalized_ca = normalize_ca(value, chain=chain)
-        return self._find(
-            entity_type="ca",
-            normalized_value=normalized_ca,
-            chain=normalized_chain,
-            limit=limit,
-            watched_only=watched_only,
-        )
 
     def find_by_symbol(self, symbol: str, *, limit: int, watched_only: bool = False) -> list[dict[str, Any]]:
         return self._find(

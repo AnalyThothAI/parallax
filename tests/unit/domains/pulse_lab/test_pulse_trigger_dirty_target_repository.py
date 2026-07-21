@@ -15,7 +15,7 @@ _MISSING = object()
 
 
 def test_enqueue_targets_coalesces_by_full_pulse_key_and_uses_lower_priority() -> None:
-    conn = _ScriptedConnection([])
+    conn = _ScriptedConnection([], rowcount=1)
 
     count = PulseTriggerDirtyTargetRepository(conn).enqueue_targets(
         [

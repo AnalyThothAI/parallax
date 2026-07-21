@@ -11,7 +11,7 @@ from parallax.app.runtime import bootstrap as bootstrap_module
 from parallax.app.runtime.bootstrap import _ingest_service_for_repos, _PooledIngestStore
 from parallax.app.runtime.providers_wiring import AssetMarketProviders
 from parallax.domains.asset_market.providers import DexTokenQuote
-from parallax.domains.evidence.services.ingest_service import PreparedIngest
+from parallax.domains.evidence.services.ingest_service import IngestService, PreparedIngest
 from parallax.domains.ingestion.interfaces import IngestedEvent
 from tests.factories import make_event
 
@@ -40,7 +40,7 @@ def test_pooled_ingest_does_not_call_inline_provider_when_no_fresh_tick(monkeypa
 
     assert result.inserted is True
     assert provider.calls == []
-    assert db.session_names == ["collector", "collector"]
+    assert db.session_names == ["collector"]
 
 
 def test_pooled_ingest_duplicate_event_skips_inline_provider(monkeypatch) -> None:
@@ -63,6 +63,55 @@ def test_pooled_ingest_duplicate_event_skips_inline_provider(monkeypatch) -> Non
     assert result.inserted is False
     assert provider.calls == []
     assert db.session_names == ["collector"]
+
+
+def test_direct_ingest_keeps_registry_resolution_and_event_commit_in_one_unit_of_work(monkeypatch) -> None:
+    evidence = _FakeEvidenceUnitOfWork()
+    dependency = object()
+    ingest = IngestService(
+        evidence=evidence,
+        entities=dependency,
+        signals=dependency,
+        registry=dependency,
+        identity_evidence=dependency,
+        token_intent_lookup=dependency,
+        token_evidence=dependency,
+        token_intents=dependency,
+        intent_resolutions=dependency,
+        discovery=dependency,
+        market_ticks=dependency,
+        market_tick_current_dirty_targets=dependency,
+        enriched_events=dependency,
+        event_anchor_jobs=dependency,
+        token_radar_source_dirty_events=dependency,
+        event_anchor_active_window_ms=300_000,
+    )
+    event = make_event("event-direct-atomic")
+
+    monkeypatch.setattr(ingest, "event_already_exists", lambda prepared: _assert_depth(evidence, False))
+    monkeypatch.setattr(ingest, "prepare_registry_for_resolution", lambda prepared: _assert_depth(evidence))
+    monkeypatch.setattr(ingest, "resolve_prepared", lambda prepared, persist=False: _assert_depth(evidence, []))
+    monkeypatch.setattr(
+        ingest,
+        "commit_prepared_event",
+        lambda prepared, resolutions, captures: _assert_depth(
+            evidence,
+            IngestedEvent(
+                event=prepared.raw_event,
+                entities=[],
+                alerts=[],
+                token_intents=[],
+                token_resolutions=[],
+                inserted=True,
+            ),
+        ),
+    )
+
+    result = ingest.ingest_event(event, is_watched=True)
+
+    assert result.inserted is True
+    assert evidence.entries == 1
+    assert evidence.depth == 0
 
 
 @pytest.mark.parametrize(
@@ -139,6 +188,27 @@ class _FakeState:
     in_session: bool = False
 
 
+class _FakeEvidenceUnitOfWork:
+    def __init__(self) -> None:
+        self.conn = object()
+        self.depth = 0
+        self.entries = 0
+
+    @contextmanager
+    def unit_of_work(self) -> Iterator[None]:
+        self.entries += 1
+        self.depth += 1
+        try:
+            yield
+        finally:
+            self.depth -= 1
+
+
+def _assert_depth(evidence: _FakeEvidenceUnitOfWork, result: Any = None) -> Any:
+    assert evidence.depth == 1
+    return result
+
+
 class _AssertingDexQuoteProvider:
     def __init__(self, state: _FakeState) -> None:
         self._state = state
@@ -184,6 +254,15 @@ class _FakeRepos:
         self.event_anchor_jobs = self
         self.token_radar_dirty_targets = self
         self.token_radar_source_dirty_events = self
+        self.transaction_depth = 0
+
+    @contextmanager
+    def transaction(self) -> Iterator[None]:
+        self.transaction_depth += 1
+        try:
+            yield
+        finally:
+            self.transaction_depth -= 1
 
 
 class _FakeDB:
@@ -220,10 +299,11 @@ class _FakeIngestService:
         )
 
     def event_already_exists(self, prepared) -> bool:
+        assert self.repos.transaction_depth == 1
         return bool(self.repos.event_exists)
 
     def prepare_registry_for_resolution(self, prepared) -> None:
-        return None
+        assert self.repos.transaction_depth == 1
 
     def resolve_prepared(self, prepared, *, persist: bool = False):
         return [
@@ -259,6 +339,7 @@ class _FakeIngestService:
         )
 
     def commit_prepared_event(self, prepared, *, resolutions, captures):
+        assert self.repos.transaction_depth == 1
         return IngestedEvent(
             event=prepared.raw_event,
             entities=[],

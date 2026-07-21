@@ -39,10 +39,7 @@ class OkxDexDiscoveryProvider:
             candidates = self._client.search_tokens(query=query, chain_indexes=chain_indexes)
         except OkxPaymentRequiredError as exc:
             raise DexProviderTemporarilyUnavailable(str(exc)) from exc
-        return [
-            _dex_token_candidate(candidate)
-            for candidate in candidates
-        ]
+        return [_dex_token_candidate(candidate) for candidate in candidates]
 
     def close(self) -> None:
         self._client.close()

@@ -4,28 +4,6 @@ from collections.abc import Mapping
 from typing import Any
 
 
-def market_tick_current_rebuild_estimate(conn: Any) -> dict[str, Any]:
-    scanned_row = conn.execute("SELECT COUNT(*) AS scanned FROM market_ticks").fetchall()
-    scanned = int(scanned_row[0]["scanned"]) if scanned_row else 0
-    rows = conn.execute(
-        """
-        SELECT target_type, COUNT(*) AS estimated_rows
-        FROM (
-          SELECT DISTINCT target_type, target_id
-          FROM market_ticks
-        ) latest
-        GROUP BY target_type
-        ORDER BY target_type ASC
-        """
-    ).fetchall()
-    counts_by_target_type = {str(row["target_type"]): int(row["estimated_rows"]) for row in rows}
-    return {
-        "scanned": scanned,
-        "estimated_rows": sum(counts_by_target_type.values()),
-        "counts_by_target_type": counts_by_target_type,
-    }
-
-
 def token_radar_source_count(
     conn: Any,
     *,
@@ -72,11 +50,10 @@ def token_radar_max_market_tick_observed_at_ms(conn: Any) -> int | None:
     return int(value) if value is not None else None
 
 
-def token_profile_image_repair_targets(conn: Any, *, limit: int, now_ms: int) -> list[dict[str, Any]]:
-    del now_ms
+def token_profile_image_repair_targets(conn: Any, *, limit: int) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
-        SELECT target_type, target_id, updated_at_ms AS source_watermark_ms
+        SELECT target_type, target_id, observed_at_ms AS source_watermark_ms
         FROM token_profile_current
         WHERE status = 'ready'
           AND (
@@ -114,7 +91,6 @@ def _required_source_watermark_ms(row: Mapping[str, Any]) -> int:
 
 
 __all__ = [
-    "market_tick_current_rebuild_estimate",
     "token_profile_image_repair_targets",
     "token_radar_max_market_tick_observed_at_ms",
     "token_radar_max_resolution_ms",

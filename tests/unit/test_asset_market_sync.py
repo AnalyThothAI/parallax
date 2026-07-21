@@ -140,7 +140,6 @@ class _Registry:
         assert self.conn.transaction_depth == 1
         assert kwargs == {
             "base_symbol": "BTC",
-            "project_id": None,
             "source": "binance_cex",
             "observed_at_ms": 1_778_000_000_000,
             "commit": False,

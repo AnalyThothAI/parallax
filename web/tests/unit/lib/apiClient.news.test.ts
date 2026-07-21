@@ -36,10 +36,10 @@ describe("news API client normalization", () => {
                 },
                 token_impacts: [
                   {
+                    lane: "provider",
                     symbol: "BTC",
-                    provider_signal: "long",
-                    provider_score: 82,
-                    provider_grade: "A",
+                    signal: "long",
+                    score: 82,
                     market_type: "cex",
                   },
                 ],
@@ -110,7 +110,19 @@ describe("news API client normalization", () => {
     expect(rows.items[0].signal.display_signal).not.toHaveProperty("score");
     expect(rows.items[0].signal.display_signal).not.toHaveProperty("grade");
     expect(rows.items[0].token_lanes).toEqual([]);
-    expect(rows.items[0].token_impacts).toEqual([]);
+    expect(rows.items[0].token_impacts).toEqual([
+      {
+        lane: "provider",
+        market_type: "cex",
+        reason_codes: [],
+        resolution_status: null,
+        score: 82,
+        signal: "long",
+        symbol: "BTC",
+        target_id: null,
+        target_type: null,
+      },
+    ]);
     expect(rows.items[0].provider_rating).toEqual({
       provider: "opennews",
       status: "ready",
@@ -157,7 +169,6 @@ describe("news API client normalization", () => {
                   decision_class: "watch",
                   summary_zh: "后端摘要",
                   market_read_zh: "后端解读",
-                  agent_run_id: "run-retired",
                   artifact_version_hash: "artifact-hash",
                   input_hash: "input-hash",
                   output_hash: "output-hash",
@@ -222,7 +233,6 @@ describe("news API client normalization", () => {
     expect(brief).not.toHaveProperty("impact_zh");
     expect(brief).not.toHaveProperty("watch_items_zh");
     expect(brief).not.toHaveProperty("confidence");
-    expect(brief).not.toHaveProperty("agent_run_id");
     expect(brief).not.toHaveProperty("artifact_version_hash");
     expect(brief).not.toHaveProperty("input_hash");
     expect(brief).not.toHaveProperty("output_hash");
@@ -286,24 +296,6 @@ describe("news API client normalization", () => {
               status: "failed",
               data_gaps: [{ description_zh: "provider failed", severity: "high" }],
             },
-            agent_run: {
-              run_id: "run-failed",
-              status: "failed",
-              outcome: "provider_error",
-              execution_started: true,
-              error_class: "ProviderError",
-              error: "provider timeout",
-              usage_json: { input_tokens: 12, output_tokens: 3 },
-              request_json: { packet: { news_item_id: "news-failed" } },
-              response_json: { summary_zh: "失败前输出" },
-              validation_errors_json: [{ path: "summary_zh" }],
-              trace_metadata_json: { sdk_trace_id: "trace-1" },
-              research_plan: { legacy: true },
-              tool_results: [{ tool_name: "legacy" }],
-              research_execution: { legacy: true },
-              research_hashes: { legacy: true },
-              base_packet: { legacy: true },
-            },
           },
         }),
       ),
@@ -315,21 +307,6 @@ describe("news API client normalization", () => {
     expect(item.agent_brief?.data_gaps).toEqual([
       { description_zh: "provider failed", severity: "high" },
     ]);
-    expect(item.agent_run?.error_class).toBe("ProviderError");
-    expect(item.agent_run?.error).toBe("provider timeout");
-    expect(item.agent_run?.error_message).toBe("provider timeout");
-    const run = item.agent_run as Record<string, unknown>;
-    expect(run).not.toHaveProperty("run_id");
-    expect(run).not.toHaveProperty("usage_json");
-    expect(run).not.toHaveProperty("request_json");
-    expect(run).not.toHaveProperty("response_json");
-    expect(run).not.toHaveProperty("validation_errors_json");
-    expect(run).not.toHaveProperty("trace_metadata_json");
-    expect(run).not.toHaveProperty("research_plan");
-    expect(run).not.toHaveProperty("tool_results");
-    expect(run).not.toHaveProperty("research_execution");
-    expect(run).not.toHaveProperty("research_hashes");
-    expect(run).not.toHaveProperty("base_packet");
   });
 
   it("does not reconstruct detail lanes from retired token and fact aliases", async () => {

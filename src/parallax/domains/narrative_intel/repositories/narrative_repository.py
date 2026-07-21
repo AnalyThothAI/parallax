@@ -1,22 +1,16 @@
 from __future__ import annotations
 
-import hashlib
 import json
-import time
 from collections.abc import Sequence
 from contextlib import AbstractContextManager
 from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
-from parallax.domains.narrative_intel._constants import NARRATIVE_SCHEMA_VERSION
 from parallax.domains.narrative_intel.types.fingerprints import (
     source_fingerprint as build_source_fingerprint,
 )
-from parallax.domains.narrative_intel.types.narrative_currentness import (
-    public_currentness,
-    unsupported_digest_sentinel,
-)
+from parallax.domains.narrative_intel.types.narrative_currentness import unsupported_admission_sentinel
 from parallax.domains.narrative_intel.types.narrative_epoch_policy import DIGEST_WINDOWS
 from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 
@@ -34,9 +28,7 @@ class NarrativeRepository:
         commit: bool = True,
     ) -> dict[str, int]:
         selected_limit = (
-            _required_positive_int(limit, "narrative_admission_upsert_limit_required")
-            if limit is not None
-            else None
+            _required_positive_int(limit, "narrative_admission_upsert_limit_required") if limit is not None else None
         )
         selected = list(rows)[:selected_limit] if selected_limit is not None else list(rows)
         if not selected:
@@ -46,46 +38,33 @@ class NarrativeRepository:
                 return self.upsert_admissions(selected, now_ms=now_ms, commit=False)
         upserted = 0
         for row in selected:
-            target_type = _clean(row.get("target_type"))
-            target_id = _clean(row.get("target_id"))
-            if not target_type or not target_id:
-                continue
-            window = _required(row, "window")
-            scope = _required(row, "scope")
-            schema_version = str(row.get("schema_version") or NARRATIVE_SCHEMA_VERSION)
-            source_event_ids = _json_list(row.get("source_event_ids") or row.get("source_event_ids_json"))
-            source_max_received_at_ms = _int(row.get("source_max_received_at_ms") or row.get("source_window_end_ms"))
+            target_type = _required_admission_text(row, "target_type")
+            target_id = _required_admission_text(row, "target_id")
+            window = _required_admission_text(row, "window")
+            scope = _required_admission_text(row, "scope")
+            schema_version = _required_admission_text(row, "schema_version")
+            source_event_ids = _required_admission_string_list(row, "source_event_ids")
+            source_max_received_at_ms = _required_admission_positive_int(row, "source_max_received_at_ms")
             payload = {
-                "admission_id": deterministic_admission_id(
-                    target_type=target_type,
-                    target_id=target_id,
-                    window=window,
-                    scope=scope,
-                    schema_version=schema_version,
-                ),
                 "target_type": target_type,
                 "target_id": target_id,
                 "window": window,
                 "scope": scope,
                 "schema_version": schema_version,
-                "status": str(row.get("status") or "admitted"),
-                "reason": str(row.get("reason") or "radar_row"),
-                "priority": _int(row.get("priority")) or 0,
-                "last_radar_rank": _int(row.get("rank") or row.get("last_radar_rank")),
-                "last_rank_score": _float(row.get("rank_score") or row.get("last_rank_score")),
+                "status": _required_admission_text(row, "status"),
+                "reason": _required_admission_text(row, "reason"),
+                "priority": _required_admission_nonnegative_int(row, "priority"),
+                "last_radar_rank": _optional_admission_positive_int(row, "last_radar_rank"),
+                "last_rank_score": _optional_admission_number(row, "last_rank_score"),
                 "source_event_ids_json": _json(source_event_ids),
                 "source_fingerprint": build_source_fingerprint(source_event_ids, source_max_received_at_ms),
                 "source_max_received_at_ms": source_max_received_at_ms,
-                "projection_computed_at_ms": _int(row.get("projection_computed_at_ms") or row.get("computed_at_ms")),
-                "source_window_start_ms": _int(row.get("source_window_start_ms")),
-                "source_window_end_ms": _int(row.get("source_window_end_ms") or source_max_received_at_ms),
-                "source_event_count": (
-                    _int(row.get("source_event_count"))
-                    if row.get("source_event_count") is not None
-                    else len(source_event_ids)
-                ),
-                "independent_author_count": _int(row.get("independent_author_count")) or 0,
-                "admission_generation": row.get("admission_generation"),
+                "projection_computed_at_ms": _required_admission_positive_int(row, "projection_computed_at_ms"),
+                "source_window_start_ms": _required_admission_nonnegative_int(row, "source_window_start_ms"),
+                "source_window_end_ms": _required_admission_positive_int(row, "source_window_end_ms"),
+                "source_event_count": _required_admission_nonnegative_int(row, "source_event_count"),
+                "independent_author_count": _required_admission_nonnegative_int(row, "independent_author_count"),
+                "admission_generation": _required_admission_text(row, "admission_generation"),
                 "admitted_at_ms": now_ms,
                 "last_seen_at_ms": now_ms,
                 "updated_at_ms": now_ms,
@@ -94,22 +73,23 @@ class NarrativeRepository:
             cursor = self.conn.execute(
                 """
                 INSERT INTO narrative_admissions (
-                  admission_id, target_type, target_id, "window", scope, schema_version, status, reason,
+                  target_type, target_id, "window", scope, schema_version, status, reason,
                   priority, last_radar_rank, last_rank_score, source_event_ids_json, source_fingerprint,
                   source_max_received_at_ms, projection_computed_at_ms, source_window_start_ms,
                   source_window_end_ms, source_event_count, independent_author_count, admission_generation,
                   admitted_at_ms, last_seen_at_ms, updated_at_ms, payload_hash
                 )
                 VALUES (
-                  %(admission_id)s, %(target_type)s, %(target_id)s, %(window)s, %(scope)s, %(schema_version)s,
+                  %(target_type)s, %(target_id)s, %(window)s, %(scope)s, %(schema_version)s,
                   %(status)s, %(reason)s, %(priority)s, %(last_radar_rank)s, %(last_rank_score)s,
                   %(source_event_ids_json)s, %(source_fingerprint)s, %(source_max_received_at_ms)s,
                   %(projection_computed_at_ms)s, %(source_window_start_ms)s, %(source_window_end_ms)s,
                   %(source_event_count)s, %(independent_author_count)s, %(admission_generation)s,
                   %(admitted_at_ms)s, %(last_seen_at_ms)s, %(updated_at_ms)s, %(payload_hash)s
                 )
-                ON CONFLICT (target_type, target_id, "window", scope, schema_version)
+                ON CONFLICT (target_type, target_id, "window", scope)
                 DO UPDATE SET
+                  schema_version = EXCLUDED.schema_version,
                   status = EXCLUDED.status,
                   reason = EXCLUDED.reason,
                   priority = EXCLUDED.priority,
@@ -262,8 +242,6 @@ class NarrativeRepository:
         target_id: str,
         window: str,
         scope: str,
-        schema_version: str,
-        now_ms: int,
         commit: bool = True,
     ) -> dict[str, int]:
         if commit:
@@ -273,8 +251,6 @@ class NarrativeRepository:
                     target_id=target_id,
                     window=window,
                     scope=scope,
-                    schema_version=schema_version,
-                    now_ms=now_ms,
                     commit=False,
                 )
         admissions = self.conn.execute(
@@ -284,68 +260,12 @@ class NarrativeRepository:
               AND admissions.target_id = %s
               AND admissions."window" = %s
               AND admissions.scope = %s
-              AND admissions.schema_version = %s
             """,
-            (target_type, target_id, window, scope, schema_version),
+            (target_type, target_id, window, scope),
         )
         return {
             "staled_admissions": _cursor_rowcount(admissions),
-            "staled_digests": 0,
-            "staled_semantics": 0,
         }
-
-    def current_ready_digest_for_target(
-        self,
-        *,
-        target_type: str,
-        target_id: str,
-        window: str,
-        scope: str,
-        schema_version: str,
-    ) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            """
-            SELECT digest.*
-            FROM token_discussion_digests AS digest
-            WHERE digest.target_type = %s
-              AND digest.target_id = %s
-              AND digest."window" = %s
-              AND digest.scope = %s
-              AND digest.schema_version = %s
-              AND digest.status = 'ready'
-              AND digest.is_current = true
-            ORDER BY digest.computed_at_ms DESC, digest.digest_id DESC
-            LIMIT 1
-            """,
-            (target_type, target_id, window, scope, schema_version),
-        ).fetchone()
-        return _row(row) if row else None
-
-    def current_digest_for_target(
-        self,
-        *,
-        target_type: str,
-        target_id: str,
-        window: str,
-        scope: str,
-        schema_version: str,
-    ) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            """
-            SELECT *
-            FROM token_discussion_digests
-            WHERE target_type = %s
-              AND target_id = %s
-              AND "window" = %s
-              AND scope = %s
-              AND schema_version = %s
-              AND is_current = true
-            ORDER BY computed_at_ms DESC, digest_id DESC
-            LIMIT 1
-            """,
-            (target_type, target_id, window, scope, schema_version),
-        ).fetchone()
-        return _row(row) if row else None
 
     def current_admission_for_target(
         self,
@@ -377,14 +297,13 @@ class NarrativeRepository:
         ).fetchone()
         return _row(row) if row else None
 
-    def current_narrative_snapshots_for_targets(
+    def current_narrative_admissions_for_targets(
         self,
         targets: Sequence[dict[str, str]],
         *,
         window: str,
         scope: str,
         schema_version: str,
-        now_ms: int,
     ) -> dict[tuple[str, str], dict[str, Any]]:
         result: dict[tuple[str, str], dict[str, Any]] = {}
         query_targets: list[dict[str, str]] = []
@@ -393,7 +312,7 @@ class NarrativeRepository:
             target_id = str(target.get("target_id") or "")
             key = (target_type, target_id)
             if window not in DIGEST_WINDOWS:
-                result[key] = unsupported_digest_sentinel(
+                result[key] = unsupported_admission_sentinel(
                     target_type=target_type,
                     target_id=target_id,
                     window=window,
@@ -414,55 +333,19 @@ class NarrativeRepository:
             scope=scope,
             schema_version=schema_version,
         )
-        ready_digests = self._current_ready_digests_for_targets(
-            query_targets,
-            window=window,
-            scope=scope,
-            schema_version=schema_version,
-        )
         for target in query_targets:
             target_type = str(target.get("target_type") or "")
             target_id = str(target.get("target_id") or "")
             key = (target_type, target_id)
             admission = admissions.get(key)
-            current_ready = ready_digests.get(key)
-            current_admission = admission if _is_admitted(admission) else None
-            if current_ready is not None:
-                currentness = public_currentness(
-                    digest=current_ready,
-                    admission=current_admission,
-                    window=window,
-                    now_ms=now_ms,
-                    reason="not_in_current_frontier" if admission and not current_admission else None,
-                )
-                result[key] = {**current_ready, "_current_admission": current_admission, "currentness": currentness}
-                continue
-
-            reason = self._not_ready_reason_for_admission(admission)
-            missing = _missing_digest_row(
+            result[key] = _admission_state(
+                admission,
                 target_type=target_type,
                 target_id=target_id,
                 window=window,
                 scope=scope,
                 schema_version=schema_version,
-                reason=reason,
             )
-            if current_admission is not None:
-                missing.update(
-                    {
-                        "source_event_count": _int(current_admission.get("source_event_count")),
-                        "labeled_event_count": 0,
-                        "independent_author_count": int(current_admission.get("independent_author_count") or 0),
-                    }
-                )
-            missing["currentness"] = public_currentness(
-                digest=None,
-                admission=current_admission,
-                window=window,
-                now_ms=now_ms,
-                reason=reason,
-            )
-            result[key] = missing
         return result
 
     def _current_admissions_for_targets(
@@ -500,170 +383,34 @@ class NarrativeRepository:
         ).fetchall()
         return {(str(row["target_type"]), str(row["target_id"])): _row(row) for row in rows}
 
-    def _current_ready_digests_for_targets(
-        self,
-        targets: Sequence[dict[str, str]],
-        *,
-        window: str,
-        scope: str,
-        schema_version: str,
-    ) -> dict[tuple[str, str], dict[str, Any]]:
-        rows = self.conn.execute(
-            """
-            WITH input_targets AS (
-              SELECT DISTINCT target_type, target_id
-              FROM jsonb_to_recordset(%s::jsonb) AS target(target_type text, target_id text)
-            ),
-            latest_ready AS (
-              SELECT DISTINCT ON (digest.target_type, digest.target_id) digest.*
-              FROM token_discussion_digests AS digest
-              JOIN input_targets AS target
-                ON target.target_type = digest.target_type
-               AND target.target_id = digest.target_id
-              WHERE digest."window" = %s
-                AND digest.scope = %s
-                AND digest.schema_version = %s
-                AND digest.status = 'ready'
-                AND digest.is_current = true
-              ORDER BY digest.target_type, digest.target_id, digest.computed_at_ms DESC, digest.digest_id DESC
-            )
-            SELECT latest_ready.*
-            FROM latest_ready
-            """,
-            (_json([dict(target) for target in targets]), window, scope, schema_version),
-        ).fetchall()
-        return {(str(row["target_type"]), str(row["target_id"])): _row(row) for row in rows}
-
-    def current_digests_for_targets(
-        self,
-        targets: Sequence[dict[str, str]],
-        *,
-        window: str,
-        scope: str,
-        schema_version: str,
-    ) -> dict[tuple[str, str], dict[str, Any]]:
-        return self.current_narrative_snapshots_for_targets(
-            targets,
-            window=window,
-            scope=scope,
-            schema_version=schema_version,
-            now_ms=_now_ms(),
-        )
-
-    def _not_ready_reason_for_admission(self, admission: dict[str, Any] | None) -> str:
-        if admission is None:
-            return "no_ready_digest"
-        if not _is_admitted(admission):
-            return "not_in_current_frontier"
-        if (_int(admission.get("source_event_count")) or 0) == 0:
-            return "low_source_volume"
-        if (_int(admission.get("independent_author_count")) or 0) == 0:
-            return "low_independent_author_count"
-        return "no_ready_digest"
-
-    def semantics_for_posts(
-        self,
-        posts: Sequence[dict[str, Any]],
-        *,
-        schema_version: str,
-    ) -> dict[tuple[str, str, str], dict[str, Any]]:
-        event_ids = [str(post.get("event_id") or "") for post in posts if str(post.get("event_id") or "")]
-        target_types = [str(post.get("target_type") or "") for post in posts if str(post.get("event_id") or "")]
-        target_ids = [str(post.get("target_id") or "") for post in posts if str(post.get("event_id") or "")]
-        if not event_ids:
-            return {}
-        rows = self.conn.execute(
-            """
-            WITH input_posts AS (
-              SELECT event_id, target_type, target_id, ordinality
-              FROM unnest(%s::text[], %s::text[], %s::text[]) WITH ORDINALITY
-                AS input(event_id, target_type, target_id, ordinality)
-              WHERE event_id <> ''
-                AND target_type <> ''
-                AND target_id <> ''
-            ),
-            distinct_posts AS (
-              SELECT event_id, target_type, target_id, MIN(ordinality) AS ordinality
-              FROM input_posts
-              GROUP BY event_id, target_type, target_id
-            )
-            SELECT semantics.*
-            FROM distinct_posts
-            LEFT JOIN LATERAL (
-              SELECT
-                event_id,
-                target_type,
-                target_id,
-                schema_version,
-                language,
-                status,
-                trade_stance,
-                attention_valence,
-                narrative_cluster_key,
-                claim_type,
-                evidence_type,
-                semantic_confidence,
-                co_mentioned_targets_json,
-                evidence_refs_json
-              FROM token_mention_semantics
-              WHERE token_mention_semantics.event_id = distinct_posts.event_id
-                AND token_mention_semantics.target_type = distinct_posts.target_type
-                AND token_mention_semantics.target_id = distinct_posts.target_id
-                AND token_mention_semantics.schema_version = %s
-              ORDER BY computed_at_ms DESC NULLS LAST, queued_at_ms DESC NULLS LAST
-              LIMIT 1
-            ) semantics ON true
-            WHERE semantics.event_id IS NOT NULL
-            ORDER BY distinct_posts.ordinality
-            """,
-            (event_ids, target_types, target_ids, schema_version),
-        ).fetchall()
-        result: dict[tuple[str, str, str], dict[str, Any]] = {}
-        for row in rows:
-            decoded = _row(row)
-            result[(decoded["event_id"], decoded["target_type"], decoded["target_id"])] = decoded
-        return result
-
-
-def _missing_digest_row(
+def _admission_state(
+    admission: dict[str, Any] | None,
     *,
     target_type: str,
     target_id: str,
     window: str,
     scope: str,
     schema_version: str,
-    reason: str,
 ) -> dict[str, Any]:
+    admission_status = str((admission or {}).get("status") or "missing")
+    admitted = admission_status == "admitted"
+    reason = str((admission or {}).get("reason") or ("no_current_admission" if admission is None else admission_status))
+    display_status = "current" if admitted else ("not_ready" if admission is None else "out_of_frontier")
     return {
         "target_type": target_type,
         "target_id": target_id,
         "window": window,
         "scope": scope,
         "schema_version": schema_version,
-        "status": "pending",
-        "is_current": False,
-        "data_gaps_json": [{"reason": reason}],
-        "semantic_coverage": 0.0,
-        "source_event_count": 0,
-        "labeled_event_count": 0,
-        "independent_author_count": 0,
-        "evidence_refs_json": [],
+        "status": admission_status,
+        "reason": reason,
+        "is_current": admitted,
+        "source_event_count": int((admission or {}).get("source_event_count") or 0),
+        "independent_author_count": int((admission or {}).get("independent_author_count") or 0),
+        "computed_at_ms": (admission or {}).get("projection_computed_at_ms"),
+        "data_gaps_json": [] if admitted else [{"reason": reason}],
+        "currentness": {"display_status": display_status, "reason": reason},
     }
-
-
-def deterministic_admission_id(
-    *,
-    target_type: str,
-    target_id: str,
-    window: str,
-    scope: str,
-    schema_version: str,
-) -> str:
-    return _stable_id("narrative_admission", target_type, target_id, window, scope, schema_version)
-
-
-def _stable_id(*parts: str) -> str:
-    return hashlib.sha256("\x1f".join(str(part) for part in parts).encode("utf-8")).hexdigest()
 
 
 def admission_payload_hash(payload: dict[str, Any]) -> str:
@@ -673,7 +420,6 @@ def admission_payload_hash(payload: dict[str, Any]) -> str:
             for key, value in payload.items()
             if key
             not in {
-                "admission_id",
                 "projection_computed_at_ms",
                 "admission_generation",
                 "admitted_at_ms",
@@ -724,17 +470,6 @@ def _row(row: Any) -> dict[str, Any]:
     return decoded
 
 
-def _is_admitted(row: dict[str, Any] | None) -> bool:
-    return row is not None and str(row.get("status") or "") == "admitted"
-
-
-def _required(row: dict[str, Any], key: str) -> str:
-    value = _clean(row.get(key))
-    if not value:
-        raise ValueError(f"missing required narrative repository value: {key}")
-    return value
-
-
 def _clean(value: Any) -> str | None:
     text = str(value or "").strip()
     return text or None
@@ -748,22 +483,71 @@ def _required_positive_int(value: Any, error_code: str) -> int:
     return int(value)
 
 
+def _required_admission_text(row: dict[str, Any], field: str) -> str:
+    if field not in row or row[field] is None:
+        raise ValueError(f"narrative_admission_repository_required:{field}")
+    value = row[field]
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"narrative_admission_repository_invalid:{field}")
+    return value.strip()
+
+
+def _required_admission_string_list(row: dict[str, Any], field: str) -> list[str]:
+    if field not in row or row[field] is None:
+        raise ValueError(f"narrative_admission_repository_required:{field}")
+    value = row[field]
+    if not isinstance(value, list):
+        raise ValueError(f"narrative_admission_repository_invalid:{field}")
+    if any(not isinstance(item, str) or not item.strip() for item in value):
+        raise ValueError(f"narrative_admission_repository_invalid:{field}")
+    return [item.strip() for item in value]
+
+
+def _required_admission_positive_int(row: dict[str, Any], field: str) -> int:
+    if field not in row or row[field] is None:
+        raise ValueError(f"narrative_admission_repository_required:{field}")
+    value = row[field]
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"narrative_admission_repository_invalid:{field}")
+    return int(value)
+
+
+def _required_admission_nonnegative_int(row: dict[str, Any], field: str) -> int:
+    if field not in row or row[field] is None:
+        raise ValueError(f"narrative_admission_repository_required:{field}")
+    value = row[field]
+    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
+        raise ValueError(f"narrative_admission_repository_invalid:{field}")
+    return int(value)
+
+
+def _optional_admission_positive_int(row: dict[str, Any], field: str) -> int | None:
+    if field not in row:
+        raise ValueError(f"narrative_admission_repository_required:{field}")
+    value = row[field]
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"narrative_admission_repository_invalid:{field}")
+    return int(value)
+
+
+def _optional_admission_number(row: dict[str, Any], field: str) -> float | None:
+    if field not in row:
+        raise ValueError(f"narrative_admission_repository_required:{field}")
+    value = row[field]
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"narrative_admission_repository_invalid:{field}")
+    return float(value)
+
+
 def _int(value: Any) -> int | None:
     try:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-def _float(value: Any) -> float | None:
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _now_ms() -> int:
-    return int(time.time() * 1000)
 
 
 def _cursor_rowcount(cursor: Any) -> int:

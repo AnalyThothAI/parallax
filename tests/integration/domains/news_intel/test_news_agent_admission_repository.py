@@ -241,7 +241,7 @@ def _seed_processed_news_item(
         source_item_key=source_item_key,
         canonical_url=item_url,
         payload_hash=f"payload-hash-{suffix}",
-        raw_payload_json={"title": f"Market item {suffix}"},
+        raw_payload={"title": f"Market item {suffix}"},
         provider_article_id=provider_article_id,
         fetched_at_ms=NOW_MS,
     )

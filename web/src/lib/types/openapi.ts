@@ -1234,41 +1234,6 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** NewsAgentRunSummary */
-        NewsAgentRunSummary: {
-            /** Agent Name */
-            agent_name?: string | null;
-            /** Backend */
-            backend?: string | null;
-            /** Error */
-            error?: string | null;
-            /** Error Class */
-            error_class?: string | null;
-            /** Error Message */
-            error_message?: string | null;
-            /** Execution Started */
-            execution_started?: boolean | null;
-            /** Finished At Ms */
-            finished_at_ms?: number | null;
-            /** Lane */
-            lane?: string | null;
-            /** Latency Ms */
-            latency_ms?: number | null;
-            /** Model */
-            model?: string | null;
-            /** Outcome */
-            outcome?: string | null;
-            /** Provider */
-            provider?: string | null;
-            /** Started At Ms */
-            started_at_ms?: number | null;
-            /** Status */
-            status?: string | null;
-            /** Workflow Name */
-            workflow_name?: string | null;
-        } & {
-            [key: string]: unknown;
-        };
         /** NewsAlertEligibility */
         NewsAlertEligibility: {
             /** Agent Admission Reason */
@@ -1385,7 +1350,6 @@ export interface components {
             agent_brief_status?: string | null;
             /** Agent Representative News Item Id */
             agent_representative_news_item_id?: string | null;
-            agent_run?: components["schemas"]["NewsAgentRunSummary"] | null;
             /** Agent Status */
             agent_status?: string | null;
             /** Body Text */

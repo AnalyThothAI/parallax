@@ -2034,6 +2034,35 @@ def test_finish_fetch_run_returning_row_accepts_matching_required_row() -> None:
     assert "UPDATE news_sources" in conn.statements[1][0]
 
 
+def test_finish_fetch_run_requires_source_status_update_rowcount_before_returning_run() -> None:
+    conn = FinishFetchRunConnection(
+        row={"fetch_run_id": "run-1", "status": "success"},
+        rowcount=1,
+        source_omit_rowcount=True,
+    )
+
+    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+        _finish_fetch_run(NewsRepository(conn))
+
+    assert len(conn.statements) == 2
+    assert "UPDATE news_sources" in conn.statements[1][0]
+
+
+@pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
+def test_finish_fetch_run_rejects_invalid_source_status_update_rowcount(rowcount: object) -> None:
+    conn = FinishFetchRunConnection(
+        row={"fetch_run_id": "run-1", "status": "success"},
+        rowcount=1,
+        source_rowcount=rowcount,
+    )
+
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
+        _finish_fetch_run(NewsRepository(conn))
+
+    assert len(conn.statements) == 2
+    assert "UPDATE news_sources" in conn.statements[1][0]
+
+
 @pytest.mark.parametrize(
     ("field_name", "kwargs"),
     [
@@ -3425,10 +3454,14 @@ class FinishFetchRunConnection:
         row: dict[str, object] | None,
         rowcount: object = 1,
         omit_rowcount: bool = False,
+        source_rowcount: object = 1,
+        source_omit_rowcount: bool = False,
     ) -> None:
         self.row = row
         self.rowcount = rowcount
         self.omit_rowcount = omit_rowcount
+        self.source_rowcount = source_rowcount
+        self.source_omit_rowcount = source_omit_rowcount
         self.statements: list[tuple[str, object]] = []
 
     def execute(self, sql: str, params: object = None) -> FinishFetchRunCursor:
@@ -3438,6 +3471,12 @@ class FinishFetchRunConnection:
                 row=self.row,
                 rowcount=self.rowcount,
                 omit_rowcount=self.omit_rowcount,
+            )
+        if "UPDATE news_sources" in sql:
+            return FinishFetchRunCursor(
+                row=None,
+                rowcount=self.source_rowcount,
+                omit_rowcount=self.source_omit_rowcount,
             )
         return FinishFetchRunCursor(row=None, rowcount=0)
 

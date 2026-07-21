@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import math
 import re
 from typing import Any
 
@@ -109,8 +110,8 @@ class BinanceUsdmFuturesOiProvider:
         return [
             CexOpenInterestPoint(
                 symbol=_row_symbol(row),
-                open_interest_value=_required_row_field(row, "open_interest_value"),
-                observed_at_ms=_required_row_field(row, "time_ms"),
+                open_interest_value=_optional_row_float(row, "open_interest_value"),
+                observed_at_ms=_optional_row_positive_int(row, "time_ms"),
             )
             for row in self._client.open_interest_hist(symbol=symbol, period=period, limit=limit)
         ]
@@ -174,17 +175,17 @@ def _cex_ticker(ticker: BinanceUsdmTicker24hr) -> CexTicker:
 def _cex_oi_ticker(row: Any) -> CexOiTicker24h:
     return CexOiTicker24h(
         symbol=_row_symbol(row),
-        quote_volume_24h=_required_row_field(row, "quote_volume_24h"),
-        price_change_pct_24h=_required_row_field(row, "price_change_percent"),
-        last_price=_required_row_field(row, "last_price"),
+        quote_volume_24h=_optional_row_float(row, "quote_volume_24h"),
+        price_change_pct_24h=_optional_row_float(row, "price_change_percent"),
+        last_price=_optional_row_float(row, "last_price"),
     )
 
 
 def _cex_funding_premium(row: Any) -> CexFundingPremium:
     return CexFundingPremium(
         symbol=_row_symbol(row),
-        mark_price=_required_row_field(row, "mark_price"),
-        last_funding_rate=_required_row_field(row, "last_funding_rate"),
+        mark_price=_optional_row_float(row, "mark_price"),
+        last_funding_rate=_optional_row_float(row, "last_funding_rate"),
     )
 
 
@@ -200,6 +201,27 @@ def _required_row_field(row: Any, field: str) -> Any:
         return getattr(row, field)
     except AttributeError as exc:
         raise ValueError(f"binance_oi_provider_contract_required:{field}") from exc
+
+
+def _optional_row_float(row: Any, field: str) -> float | None:
+    value = _required_row_field(row, field)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int | float):
+        raise ValueError(f"binance_oi_provider_contract_required:{field}")
+    parsed = float(value)
+    if not math.isfinite(parsed):
+        raise ValueError(f"binance_oi_provider_contract_required:{field}")
+    return parsed
+
+
+def _optional_row_positive_int(row: Any, field: str) -> int | None:
+    value = _required_row_field(row, field)
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
+        raise ValueError(f"binance_oi_provider_contract_required:{field}")
+    return int(value)
 
 
 __all__ = [

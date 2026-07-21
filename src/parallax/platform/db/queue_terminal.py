@@ -13,7 +13,6 @@ from parallax.platform.db.json_safety import postgres_safe_json
 TERMINAL_ACTIONS = frozenset(("retry", "archive", "quarantine"))
 TERMINAL_STATUSES = frozenset(("terminal", "active"))
 
-RetryTransition = Callable[[dict[str, Any]], dict[str, Any]]
 RetryTransitionMap = Mapping[tuple[str, str], Callable[..., dict[str, Any]]]
 
 
@@ -95,7 +94,6 @@ def terminalize_source_row(
         "final_reason_bucket": _reason_bucket(
             final_reason_bucket,
             final_reason=final_reason,
-            final_status=final_status,
         ),
         "attempt_count": row_attempt_count,
         "payload_hash": normalized_payload_hash,
@@ -245,7 +243,7 @@ def list_terminal_event_ids(
     return [str(row["terminal_id"]) for row in rows]
 
 
-def terminal_reason_bucket(final_reason: str | None, final_status: str | None) -> str:
+def terminal_reason_bucket(final_reason: str | None) -> str:
     reason = str(final_reason or "").lower()
     if "522" in reason:
         return "llm_provider_522"
@@ -278,7 +276,6 @@ def resolve_terminal_event(
     reason: str,
     now_ms: int,
     retry_transitions: RetryTransitionMap | None = None,
-    commit: bool = True,
 ) -> dict[str, Any]:
     normalized_action = _action(action)
     normalized_reason = _required_text(reason, "reason")
@@ -527,11 +524,11 @@ def _required_text(value: Any, name: str) -> str:
     return text
 
 
-def _reason_bucket(value: str | None, *, final_reason: str | None, final_status: str | None) -> str:
+def _reason_bucket(value: str | None, *, final_reason: str | None) -> str:
     text = str(value or "").strip()
     if text:
         return text
-    return terminal_reason_bucket(final_reason, final_status)
+    return terminal_reason_bucket(final_reason)
 
 
 def _action(value: str) -> str:

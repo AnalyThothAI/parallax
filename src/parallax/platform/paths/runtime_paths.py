@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from pathlib import Path
 
-APP_NAME = "parallax"
 CONFIG_FILE_NAME = "config.yaml"
 WORKERS_CONFIG_FILE_NAME = "workers.yaml"
 

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from parallax.domains.pulse_lab.services.agent_routing import compute_completeness, route_decision_context
+from parallax.domains.pulse_lab.services.agent_routing import route_decision_context
 from parallax.domains.token_intel.interfaces import TOKEN_FACTOR_SNAPSHOT_VERSION
 
 
@@ -9,57 +9,40 @@ def test_unresolved_token_target_routes_research_only_without_llm() -> None:
 
     assert route_decision_context({"candidate_type": "token_target", "factor_snapshot": snapshot}) == "research_only"
 
-    completeness = compute_completeness(snapshot, route="research_only")
-    assert completeness.hard_blocked is True
-    assert completeness.blockers == ("research_only_no_resolved_target",)
 
-
-def test_missing_decision_latest_hard_blocks_token_target() -> None:
+def test_missing_decision_latest_routes_token_target_to_meme() -> None:
     snapshot = _snapshot(decision_latest={})
 
     route = route_decision_context({"candidate_type": "token_target", "factor_snapshot": snapshot})
-    completeness = compute_completeness(snapshot, route=route)
 
     assert route == "meme"
-    assert completeness.hard_blocked is True
-    assert "decision_latest_missing" in completeness.blockers
 
 
-def test_meme_dex_floor_unverified_hard_blocks() -> None:
+def test_incomplete_dex_readiness_routes_token_target_to_meme() -> None:
     snapshot = _snapshot(
         target_market_type="dex",
         readiness={"missing_fields": ["holders", "liquidity_usd"], "stale_fields": []},
     )
 
     route = route_decision_context({"candidate_type": "token_target", "factor_snapshot": snapshot})
-    completeness = compute_completeness(snapshot, route=route)
 
     assert route == "meme"
-    assert completeness.hard_blocked is True
-    assert completeness.missing_fields == ("holders", "liquidity_usd")
-    assert "dex_floor_unverified" in completeness.blockers
 
 
 def test_cex_complete_snapshot_routes_cex() -> None:
     snapshot = _snapshot(target_market_type="cex", decision_latest={"price_usd": 1.2, "venue_id": "binance"})
 
     route = route_decision_context({"candidate_type": "token_target", "factor_snapshot": snapshot})
-    completeness = compute_completeness(snapshot, route=route)
 
     assert route == "cex"
-    assert completeness.hard_blocked is False
-    assert completeness.score == 1.0
 
 
 def test_meme_complete_snapshot_routes_meme() -> None:
     snapshot = _snapshot(target_market_type="dex")
 
     route = route_decision_context({"candidate_type": "token_target", "factor_snapshot": snapshot})
-    completeness = compute_completeness(snapshot, route=route)
 
     assert route == "meme"
-    assert completeness.hard_blocked is False
-    assert completeness.score == 1.0
 
 
 def _snapshot(

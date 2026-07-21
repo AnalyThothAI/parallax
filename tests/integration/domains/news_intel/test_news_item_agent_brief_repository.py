@@ -10,7 +10,6 @@ from parallax.domains.news_intel._constants import (
     NEWS_ITEM_BRIEF_VALIDATOR_VERSION,
 )
 from parallax.domains.news_intel.repositories.news_repository import NewsRepository
-from parallax.domains.news_intel.runtime.news_projection_work import enqueue_item_brief_work
 from parallax.domains.news_intel.services.news_item_brief_input import (
     build_news_item_brief_input_packet,
 )
@@ -360,15 +359,19 @@ def test_material_duplicate_observation_reuses_current_brief_target(tmp_path) ->
         )
         affected_ids = [str(item_id) for item_id in public_news["affected_news_item_ids"]]
 
-        enqueue_item_brief_work(
-            repos,
-            news_item_ids=affected_ids,
+        servable_ids = repo.servable_news_item_ids(affected_ids)
+        repos.news_projection_dirty_targets.enqueue_targets(
+            [
+                {
+                    "projection_name": "brief_input",
+                    "target_kind": "news_item",
+                    "target_id": news_item_id,
+                    "source_watermark_ms": int(public_news["published_at_ms"]),
+                }
+                for news_item_id in servable_ids
+            ],
             reason="canonical_news_item_merge",
             now_ms=NOW_MS + 2,
-            source_watermark_ms_by_news_item_id={
-                str(fallback_news["news_item_id"]): int(fallback_news["published_at_ms"]),
-                str(public_news["news_item_id"]): int(public_news["published_at_ms"]),
-            },
             commit=True,
         )
         targets = conn.execute(
@@ -751,7 +754,7 @@ def _insert_source_provider_and_item(
         source_item_key=source_item_key,
         canonical_url=f"https://example.com/{source_item_key}",
         payload_hash=f"payload-hash-{suffix}",
-        raw_payload_json={"title": "SOL ETF filing"},
+        raw_payload={"title": "SOL ETF filing"},
         fetched_at_ms=now_ms,
     )
     news = repo.upsert_canonical_news_item(
@@ -799,7 +802,7 @@ def _upsert_opennews_observation(
         source_item_key=article_id,
         canonical_url=canonical_url,
         payload_hash=f"payload-{article_id}",
-        raw_payload_json={"id": article_id, "link": canonical_url, "text": title},
+        raw_payload={"id": article_id, "link": canonical_url, "text": title},
         fetched_at_ms=now_ms,
         provider_article_id=article_id,
     )

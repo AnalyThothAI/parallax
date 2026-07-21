@@ -86,7 +86,3 @@ def run_outcome_from_failure(reason: str | None) -> AgentRunOutcome:
         "provider_error": "provider_unavailable",
     }
     return mapping.get(normalized, "unexpected_exception")
-
-
-def is_public_display_status(display_status: str) -> bool:
-    return display_status in PUBLIC_DISPLAY_STATUSES

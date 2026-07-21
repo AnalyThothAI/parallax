@@ -343,7 +343,6 @@ class LiteLLMPulseDecisionClient:
             agent_name=_stage_agent_name(spec.stage, route),
             group_id=_stage_group_id(spec.input_payload),
             knowledge_refs=spec.knowledge_refs,
-            read_only_tool_refs=spec.read_only_tool_refs,
             trace_metadata={
                 **request_audit.trace_metadata,
                 "run_id": request_audit.run_id,

@@ -19,11 +19,11 @@ class AccountQualityRepository:
         follower_max: int | None,
         watched_status: str,
         commit: bool = True,
-    ) -> None:
-        def _write() -> None:
+    ) -> int:
+        def _write() -> int:
             normalized = _handle(handle)
             now_ms = _now_ms()
-            self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 INSERT INTO account_profiles(
                   handle, first_seen_ms, latest_seen_ms, follower_max, watched_status, created_at_ms, updated_at_ms
@@ -43,11 +43,31 @@ class AccountQualityRepository:
                     ELSE excluded.watched_status
                   END,
                   updated_at_ms = excluded.updated_at_ms
+                WHERE (
+                  account_profiles.first_seen_ms,
+                  account_profiles.latest_seen_ms,
+                  account_profiles.follower_max,
+                  account_profiles.watched_status
+                ) IS DISTINCT FROM (
+                  LEAST(account_profiles.first_seen_ms, excluded.first_seen_ms),
+                  GREATEST(account_profiles.latest_seen_ms, excluded.latest_seen_ms),
+                  CASE
+                    WHEN account_profiles.follower_max IS NULL THEN excluded.follower_max
+                    WHEN excluded.follower_max IS NULL THEN account_profiles.follower_max
+                    ELSE GREATEST(account_profiles.follower_max, excluded.follower_max)
+                  END,
+                  CASE
+                    WHEN account_profiles.watched_status = 'watched' OR excluded.watched_status = 'watched'
+                      THEN 'watched'
+                    ELSE excluded.watched_status
+                  END
+                )
                 """,
                 (normalized, int(first_seen_ms), int(latest_seen_ms), follower_max, watched_status, now_ms, now_ms),
             )
+            return _single_row_write_count(cursor)
 
-        _run_repository_write(self.conn, commit, _write)
+        return _run_repository_write(self.conn, commit, _write)
 
     def upsert_directory_entry(
         self,
@@ -58,12 +78,12 @@ class AccountQualityRepository:
         platform_followers: int | None,
         observed_at_ms: int,
         commit: bool = True,
-    ) -> None:
-        def _write() -> None:
+    ) -> int:
+        def _write() -> int:
             normalized = _handle(handle)
             now_ms = _now_ms()
             tags_list = list(user_tags)
-            self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 INSERT INTO account_profiles(
                   handle, first_seen_ms, latest_seen_ms, follower_max, watched_status,
@@ -77,6 +97,17 @@ class AccountQualityRepository:
                   gmgn_platform_followers = excluded.gmgn_platform_followers,
                   gmgn_directory_observed_at_ms = excluded.gmgn_directory_observed_at_ms,
                   updated_at_ms = excluded.updated_at_ms
+                WHERE (
+                  account_profiles.gmgn_user_id,
+                  account_profiles.gmgn_user_tags,
+                  account_profiles.gmgn_platform_followers,
+                  account_profiles.gmgn_directory_observed_at_ms
+                ) IS DISTINCT FROM (
+                  excluded.gmgn_user_id,
+                  excluded.gmgn_user_tags,
+                  excluded.gmgn_platform_followers,
+                  excluded.gmgn_directory_observed_at_ms
+                )
                 """,
                 (
                     normalized,
@@ -92,8 +123,9 @@ class AccountQualityRepository:
                     now_ms,
                 ),
             )
+            return _single_row_write_count(cursor)
 
-        _run_repository_write(self.conn, commit, _write)
+        return _run_repository_write(self.conn, commit, _write)
 
     def upsert_token_call_stat(
         self,
@@ -109,10 +141,10 @@ class AccountQualityRepository:
         price_change_24h_pct: float | None = None,
         max_drawdown_1h_pct: float | None = None,
         commit: bool = True,
-    ) -> None:
-        def _write() -> None:
+    ) -> int:
+        def _write() -> int:
             now_ms = _now_ms()
-            self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 INSERT INTO account_token_call_stats(
                   handle, token_id, first_mention_ms, mention_count, was_early_author,
@@ -130,6 +162,25 @@ class AccountQualityRepository:
                   max_drawdown_1h_pct = excluded.max_drawdown_1h_pct,
                   outcome_status = excluded.outcome_status,
                   updated_at_ms = excluded.updated_at_ms
+                WHERE (
+                  account_token_call_stats.first_mention_ms,
+                  account_token_call_stats.mention_count,
+                  account_token_call_stats.was_early_author,
+                  account_token_call_stats.price_change_5m_pct,
+                  account_token_call_stats.price_change_1h_pct,
+                  account_token_call_stats.price_change_24h_pct,
+                  account_token_call_stats.max_drawdown_1h_pct,
+                  account_token_call_stats.outcome_status
+                ) IS DISTINCT FROM (
+                  LEAST(account_token_call_stats.first_mention_ms, excluded.first_mention_ms),
+                  excluded.mention_count,
+                  account_token_call_stats.was_early_author OR excluded.was_early_author,
+                  excluded.price_change_5m_pct,
+                  excluded.price_change_1h_pct,
+                  excluded.price_change_24h_pct,
+                  excluded.max_drawdown_1h_pct,
+                  excluded.outcome_status
+                )
                 """,
                 (
                     _handle(handle),
@@ -145,8 +196,9 @@ class AccountQualityRepository:
                     now_ms,
                 ),
             )
+            return _single_row_write_count(cursor)
 
-        _run_repository_write(self.conn, commit, _write)
+        return _run_repository_write(self.conn, commit, _write)
 
     def insert_quality_snapshot(
         self,
@@ -159,31 +211,41 @@ class AccountQualityRepository:
         avg_realized_return: float | None,
         sample_size: int,
         commit: bool = True,
-    ) -> str:
+    ) -> int:
         normalized = _handle(handle)
         window_key = str(window).strip().lower()
-        snapshot_id = _quality_snapshot_id(handle=normalized, window=window_key)
 
-        def _write() -> str:
+        def _write() -> int:
             now_ms = _now_ms()
-            self.conn.execute(
+            cursor = self.conn.execute(
                 """
                 INSERT INTO account_quality_snapshots(
-                  snapshot_id, handle, "window", precision_score, early_call_score, spam_risk_score,
+                  handle, "window", precision_score, early_call_score, spam_risk_score,
                   avg_realized_return, sample_size, updated_at_ms
                 )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 ON CONFLICT(handle, "window") DO UPDATE SET
-                  snapshot_id = excluded.snapshot_id,
                   precision_score = excluded.precision_score,
                   early_call_score = excluded.early_call_score,
                   spam_risk_score = excluded.spam_risk_score,
                   avg_realized_return = excluded.avg_realized_return,
                   sample_size = excluded.sample_size,
                   updated_at_ms = excluded.updated_at_ms
+                WHERE (
+                  account_quality_snapshots.precision_score,
+                  account_quality_snapshots.early_call_score,
+                  account_quality_snapshots.spam_risk_score,
+                  account_quality_snapshots.avg_realized_return,
+                  account_quality_snapshots.sample_size
+                ) IS DISTINCT FROM (
+                  excluded.precision_score,
+                  excluded.early_call_score,
+                  excluded.spam_risk_score,
+                  excluded.avg_realized_return,
+                  excluded.sample_size
+                )
                 """,
                 (
-                    snapshot_id,
                     normalized,
                     window_key,
                     precision_score,
@@ -194,7 +256,7 @@ class AccountQualityRepository:
                     now_ms,
                 ),
             )
-            return snapshot_id
+            return _single_row_write_count(cursor)
 
         return _run_repository_write(self.conn, commit, _write)
 
@@ -329,7 +391,6 @@ class AccountQualityRepository:
             ),
             ranked_snapshots AS (
               SELECT
-                snapshots.snapshot_id,
                 snapshots.handle,
                 snapshots."window",
                 snapshots.precision_score,
@@ -347,7 +408,6 @@ class AccountQualityRepository:
               JOIN account_quality_snapshots snapshots ON snapshots.handle = input_handles.handle
             )
             SELECT
-              snapshot_id,
               handle,
               "window",
               precision_score,
@@ -540,10 +600,6 @@ def _profile_from_batch_row(row: dict[str, Any]) -> dict[str, Any] | None:
     }
 
 
-def _quality_snapshot_id(*, handle: str, window: str) -> str:
-    return f"account-quality:{handle}:{window}:current"
-
-
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -563,6 +619,16 @@ def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) ->
         with _transaction(conn):
             return write()
     return write()
+
+
+def _single_row_write_count(cursor: Any) -> int:
+    try:
+        rowcount: object = cursor.rowcount
+    except AttributeError as exc:
+        raise TypeError("account_quality_repository_rowcount_required") from exc
+    if isinstance(rowcount, bool) or not isinstance(rowcount, int) or rowcount not in {0, 1}:
+        raise TypeError("account_quality_repository_rowcount_invalid")
+    return rowcount
 
 
 def _required_nonnegative_int(value: Any, error_code: str) -> int:

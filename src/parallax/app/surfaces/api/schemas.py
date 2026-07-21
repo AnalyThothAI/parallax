@@ -99,33 +99,23 @@ class SearchInspectData(ApiSchema):
 
 
 class NarrativeCurrentnessData(ApiSchema):
-    display_status: Literal["current", "updating", "stale", "not_ready", "out_of_frontier", "unsupported_window"]
-    epoch_id: str | None = None
-    epoch_policy_version: str | None = None
-    ready_source_fingerprint: str | None = None
-    current_source_fingerprint: str | None = None
-    ready_source_event_count: int = 0
-    current_source_event_count: int = 0
-    delta_source_event_count: int = 0
-    delta_independent_author_count: int = 0
-    delta_since_ms: int | None = None
-    last_ready_computed_at_ms: int | None = None
-    next_refresh_due_at_ms: int | None = None
+    display_status: Literal["current", "not_ready", "out_of_frontier", "unsupported_window"]
     reason: str
 
 
-class TokenDiscussionDigestData(ApiSchema):
-    status: Literal["ready", "pending", "insufficient", "semantic_unavailable", "stale"]
+class NarrativeCoverageData(ApiSchema):
+    source_mentions: int = 0
+    independent_authors: int = 0
+
+
+class NarrativeAdmissionData(ApiSchema):
+    status: Literal["admitted", "suppressed", "missing"]
+    reason: str
+    is_current: bool = False
+    computed_at_ms: int | None = None
     currentness: NarrativeCurrentnessData
     data_gaps: list[Any] = Field(default_factory=list)
-    coverage: JsonObject = Field(default_factory=dict)
-
-
-class NarrativeDeltaData(ApiSchema):
-    display_status: str
-    delta_source_event_count: int = 0
-    delta_independent_author_count: int = 0
-    label: str | None = None
+    coverage: NarrativeCoverageData = Field(default_factory=NarrativeCoverageData)
 
 
 class TokenCaseData(ApiSchema):
@@ -133,16 +123,14 @@ class TokenCaseData(ApiSchema):
     profile: JsonObject | None = None
     timeline: JsonObject
     posts: JsonObject
-    discussion_digest: TokenDiscussionDigestData
-    narrative_delta: NarrativeDeltaData = Field(default_factory=lambda: NarrativeDeltaData(display_status="not_ready"))
-    narrative_clusters: list[JsonObject] = Field(default_factory=list)
+    narrative_admission: NarrativeAdmissionData
     pulse_overlay: JsonObject | None = None
     market_live: JsonObject
     cex_detail: JsonObject | None = None
 
 
 class TokenRadarRowData(ApiSchema):
-    discussion_digest: TokenDiscussionDigestData | None = None
+    narrative_admission: NarrativeAdmissionData | None = None
 
 
 class TokenRadarData(ApiSchema):
@@ -284,24 +272,6 @@ class NewsAgentBrief(ApiSchema):
     evidence_refs: list[Any] = Field(default_factory=list)
 
 
-class NewsAgentRunSummary(ApiSchema):
-    backend: str | None = None
-    status: str | None = None
-    outcome: str | None = None
-    provider: str | None = None
-    model: str | None = None
-    lane: str | None = None
-    workflow_name: str | None = None
-    agent_name: str | None = None
-    started_at_ms: int | None = None
-    finished_at_ms: int | None = None
-    latency_ms: int | None = None
-    execution_started: bool | None = None
-    error_class: str | None = None
-    error: str | None = None
-    error_message: str | None = None
-
-
 class NewsRow(ApiSchema):
     row_id: str | None = None
     news_item_id: str | None = None
@@ -360,7 +330,6 @@ class NewsObjectData(NewsRow):
     entities: list[Any] = Field(default_factory=list)
     token_mentions: list[Any] = Field(default_factory=list)
     fact_candidates: list[NewsFactLane] = Field(default_factory=list)
-    agent_run: NewsAgentRunSummary | None = None
     provider_item: JsonObject | None = None
     fetch_run: JsonObject | None = None
     observation_edges: list[JsonObject] = Field(default_factory=list)

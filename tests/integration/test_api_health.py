@@ -70,6 +70,7 @@ class FakeQueueHealthConn:
                     "running_count": 0,
                     "failed_count": 0,
                     "blocked_count": 0,
+                    "source_terminal_count": 0,
                     "oldest_due_at_ms": None,
                     "oldest_running_at_ms": None,
                     "max_attempt_count": 0,
@@ -287,7 +288,7 @@ def patch_runtime_dependencies(monkeypatch, *, asset_market=None, news_intel=Non
     monkeypatch.setattr(
         bootstrap_module,
         "wire_providers",
-        lambda settings, *, start_collector, agent_execution_gateway=None, db_pool=None: fake_wired_providers(
+        lambda settings, *, start_collector, agent_execution_gateway=None: fake_wired_providers(
             settings,
             start_collector=start_collector,
             agent_execution_gateway=agent_execution_gateway,
@@ -865,7 +866,7 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
     monkeypatch.setattr(app_module, "workers_status_payload", lambda _: worker_status)
 
-    payload, status_code = _readiness_payload(runtime, now_ms=12_001)
+    payload, status_code = _readiness_payload(runtime)
 
     assert status_code == 200
     assert payload["workers"]["pulse_candidate"]["running"] is True
@@ -915,7 +916,7 @@ def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
     monkeypatch.setattr(app_module, "_news_provider_contract_payload", lambda _: {"ok": True})
 
-    payload, _status_code = _readiness_payload(runtime, now_ms=12_001)
+    payload, _status_code = _readiness_payload(runtime)
 
     projection = payload["worker_lanes"]["projection"]
     assert projection["disabled_workers"] == 3
@@ -950,7 +951,7 @@ def test_readiness_reports_result_derived_failed_worker(monkeypatch):
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
     monkeypatch.setattr(app_module, "_news_provider_contract_payload", lambda _: {"ok": True})
 
-    payload, status_code = _readiness_payload(runtime, now_ms=12_001)
+    payload, status_code = _readiness_payload(runtime)
 
     assert status_code == 503
     assert payload["ok"] is False
@@ -983,7 +984,7 @@ def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
     monkeypatch.setattr(app_module, "workers_status_payload", lambda _: {"workers": {}, "worker_lanes": {}})
 
-    payload, status_code = _readiness_payload(runtime, now_ms=12_001)
+    payload, status_code = _readiness_payload(runtime)
 
     assert status_code == 200
     assert payload["ok"] is True

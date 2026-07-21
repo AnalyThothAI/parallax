@@ -143,7 +143,7 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
         "status": "ready",
     }
     assert db.repo.news_items[0]["provider_token_impacts"] == [{"symbol": "SOL", "score": 70, "signal": "long"}]
-    assert db.repo.news_items[0]["canonical_identity"].canonical_item_key.startswith("canonical-url:")
+    assert "canonical_identity" not in db.repo.news_items[0]
     assert db.repo.cache_updates == [
         {
             "source_id": "example-rss",

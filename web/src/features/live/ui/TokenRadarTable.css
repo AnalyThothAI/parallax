@@ -450,10 +450,10 @@
     }
 
     .token-radar-cell.case,
-    .token-radar-cell.why,
+    .token-radar-cell.admission,
     .token-radar-cell.market,
     .radar-case-cell,
-    .narrative-fact,
+    .admission-fact,
     .market-fact {
       grid-column: 1 / -1;
     }

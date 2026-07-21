@@ -18,7 +18,7 @@ Cboe, CFTC, crypto providers, or macrodata directly.
 | `macro_projection_dirty_targets` | Projection control | `MacroSyncWorker` enqueues after changed facts; `MacroViewProjectionWorker` claims before reading facts. |
 | `macro_observation_series_rows` | Read model | `MacroViewProjectionWorker` only. It is a compact current-only projection from `macro_observations` and owns request-path latest/history rows. |
 | `macro_observation_series_publication_state` | Read-model state | `MacroViewProjectionWorker` only. It records the current source signature and latest refresh status. |
-| `macro_view_snapshots` | Read model | `MacroViewProjectionWorker` only. One stable row per projection version, keyed as `macro-view:{projection_version}:current`. |
+| `macro_view_snapshots` | Read model | `MacroViewProjectionWorker` only. One stable current row keyed directly by natural `projection_version`; no synthetic snapshot identifier. |
 | `macro_daily_briefs` | Read model | `MacroDailyBriefProjectionWorker` only. One stable row per brief key, currently `assets_today`, derived from the current macro view snapshot. |
 
 ## Flow

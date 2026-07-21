@@ -7,20 +7,6 @@ from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
-class MacroSyncWindow:
-    sync_window_id: str
-    source_name: str
-    bundle_name: str
-    window_start: date
-    window_end: date
-    trigger_reason: str
-    status: str
-    attempt_count: int
-    max_attempts: int
-    payload_hash: str
-
-
-@dataclass(frozen=True, slots=True)
 class MacroSyncRunSummary:
     sync_run_id: str
     import_run_id: str | None
@@ -53,4 +39,4 @@ class MacrodataBundleImport:
     max_observed_at: date | str | None
 
 
-__all__ = ["MacroSyncRunSummary", "MacroSyncWindow", "MacrodataBundleImport"]
+__all__ = ["MacroSyncRunSummary", "MacrodataBundleImport"]

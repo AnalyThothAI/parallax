@@ -501,7 +501,8 @@ class TokenRadarRepository:
               projection_version, "window", scope, lane, target_type_key, identity_id,
               target_type, target_id, pricefeed_id, latest_event_received_at_ms,
               latest_market_observed_at_ms, attention_score, market_score, credibility_score,
-              rank_score, factor_snapshot_json, source_event_ids_json, source_intent_ids_json,
+              rank_score, factor_snapshot_json, intent_json, resolution_json,
+              source_event_ids_json, source_intent_ids_json,
               source_resolution_ids_json, payload_hash, last_scored_at_ms, created_at_ms, updated_at_ms,
               social_heat_raw_score, social_heat_weight, social_propagation_raw_score,
               social_propagation_weight, semantic_catalyst_raw_score, semantic_catalyst_weight,
@@ -515,7 +516,8 @@ class TokenRadarRepository:
               %(projection_version)s, %(window)s, %(scope)s, %(lane)s, %(target_type_key)s, %(identity_id)s,
               %(target_type)s, %(target_id)s, %(pricefeed_id)s, %(latest_event_received_at_ms)s,
               %(latest_market_observed_at_ms)s, %(attention_score)s, %(market_score)s, %(credibility_score)s,
-              %(rank_score)s, %(factor_snapshot_json)s, %(source_event_ids_json)s, %(source_intent_ids_json)s,
+              %(rank_score)s, %(factor_snapshot_json)s, %(intent_json)s, %(resolution_json)s,
+              %(source_event_ids_json)s, %(source_intent_ids_json)s,
               %(source_resolution_ids_json)s, %(payload_hash)s, %(last_scored_at_ms)s, %(created_at_ms)s,
               %(updated_at_ms)s, %(social_heat_raw_score)s, %(social_heat_weight)s,
               %(social_propagation_raw_score)s, %(social_propagation_weight)s,
@@ -539,6 +541,8 @@ class TokenRadarRepository:
               credibility_score = excluded.credibility_score,
               rank_score = excluded.rank_score,
               factor_snapshot_json = excluded.factor_snapshot_json,
+              intent_json = excluded.intent_json,
+              resolution_json = excluded.resolution_json,
               source_event_ids_json = excluded.source_event_ids_json,
               source_intent_ids_json = excluded.source_intent_ids_json,
               source_resolution_ids_json = excluded.source_resolution_ids_json,
@@ -689,6 +693,8 @@ class TokenRadarRepository:
               recommended_decision,
               gates_max_decision,
               factor_snapshot_json,
+              intent_json,
+              resolution_json,
               source_event_ids_json,
               source_intent_ids_json,
               source_resolution_ids_json,
@@ -987,9 +993,22 @@ def _target_feature_payload(
 ) -> dict[str, Any]:
     target_type_key, identity_id = _identity_key(row)
     factor_snapshot = _required_target_feature_payload_mapping(row, "factor_snapshot_json")
+    intent = _required_target_feature_payload_mapping(row, "intent_json")
+    resolution = _required_target_feature_payload_mapping(row, "resolution_json")
+    intent_id = _required_target_feature_payload_text(row, "intent_id")
+    event_id = _required_target_feature_payload_text(row, "event_id")
+    if _required_target_feature_payload_text(intent, "intent_id") != intent_id:
+        raise ValueError("token_radar_target_feature_payload_invalid:intent_json")
+    if _required_target_feature_payload_text(intent, "event_id") != event_id:
+        raise ValueError("token_radar_target_feature_payload_invalid:intent_json")
+    _required_target_feature_payload_text(resolution, "status")
+    for field in ("reason_codes", "candidate_ids", "lookup_keys"):
+        _required_target_feature_payload_list(resolution, field)
     lane = _required_target_feature_payload_lane(row)
     latest_event_received_at_ms = _required_target_feature_payload_int(row, "source_max_received_at_ms")
-    source_event_ids = _required_target_feature_payload_list(row, "source_event_ids_json")
+    source_event_ids = _required_target_feature_payload_string_list(row, "source_event_ids_json", allow_empty=False)
+    if event_id not in source_event_ids:
+        raise ValueError("token_radar_target_feature_payload_invalid:source_event_ids_json")
     created_at_ms = _required_target_feature_payload_int(row, "created_at_ms")
     composite = _required_target_feature_payload_mapping(factor_snapshot, "composite")
     gates = _required_target_feature_payload_mapping(factor_snapshot, "gates")
@@ -1022,8 +1041,10 @@ def _target_feature_payload(
         "credibility_score": max(_family_score(social_propagation), _family_score(semantic_catalyst)),
         "rank_score": rank_score,
         "factor_snapshot_json": factor_snapshot,
+        "intent_json": intent,
+        "resolution_json": resolution,
         "source_event_ids_json": source_event_ids,
-        "source_intent_ids_json": [str(row.get("intent_id") or "")] if row.get("intent_id") else [],
+        "source_intent_ids_json": [intent_id],
         "source_resolution_ids_json": _resolution_ids(row),
         "last_scored_at_ms": int(computed_at_ms),
         "created_at_ms": created_at_ms,
@@ -1065,6 +1086,8 @@ def _target_feature_payload(
     payload["payload_hash"] = _target_feature_hash(payload)
     for key in (
         "factor_snapshot_json",
+        "intent_json",
+        "resolution_json",
         "source_event_ids_json",
         "source_intent_ids_json",
         "source_resolution_ids_json",
@@ -1139,6 +1162,18 @@ def _required_target_feature_payload_list(row: Mapping[str, Any], column: str) -
     return list(value)
 
 
+def _required_target_feature_payload_string_list(
+    row: Mapping[str, Any],
+    column: str,
+    *,
+    allow_empty: bool,
+) -> list[str]:
+    values = _required_target_feature_payload_list(row, column)
+    if (not allow_empty and not values) or any(not isinstance(value, str) or not value.strip() for value in values):
+        raise ValueError(f"token_radar_target_feature_payload_invalid:{column}")
+    return [value.strip() for value in values]
+
+
 def _required_target_feature_payload_number(row: Mapping[str, Any], column: str) -> float:
     try:
         value = row[column]
@@ -1153,20 +1188,67 @@ def _required_target_feature_payload_number(row: Mapping[str, Any], column: str)
 
 def _json_payload(row: dict[str, Any]) -> dict[str, Any]:
     _validate_factor_contract(row)
+    _required_current_text(row, "intent_id")
+    _required_current_text(row, "event_id")
     out = {column: row.get(column) for column in RADAR_ROW_COLUMNS}
-    for key in (
-        "intent_json",
-        "resolution_json",
-        "factor_snapshot_json",
-        "data_health_json",
-        "source_event_ids_json",
-        "degraded_reasons_json",
-    ):
-        payload: Any = out.get(key) if out.get(key) is not None else ([] if key.endswith("_ids_json") else {})
-        if key == "degraded_reasons_json":
-            payload = out.get(key) if out.get(key) is not None else []
-        out[key] = Jsonb(_json_ready(payload))
+    intent = _required_current_mapping(row, "intent_json")
+    resolution = _required_current_mapping(row, "resolution_json")
+    _required_current_resolution_text(resolution, "status")
+    for field in ("reason_codes", "candidate_ids", "lookup_keys"):
+        _required_current_resolution_list(resolution, field)
+    data_health = _required_current_mapping(row, "data_health_json")
+    source_event_ids = _required_current_source_ids(row)
+    degraded_reasons = _required_current_list(row, "degraded_reasons_json")
+    out["intent_json"] = Jsonb(_json_ready(intent))
+    out["resolution_json"] = Jsonb(_json_ready(resolution))
+    out["factor_snapshot_json"] = Jsonb(_json_ready(row["factor_snapshot_json"]))
+    out["data_health_json"] = Jsonb(_json_ready(data_health))
+    out["source_event_ids_json"] = Jsonb(_json_ready(source_event_ids))
+    out["degraded_reasons_json"] = Jsonb(_json_ready(degraded_reasons))
     return out
+
+
+def _required_current_mapping(row: Mapping[str, Any], field: str) -> dict[str, Any]:
+    if field not in row or row[field] is None:
+        raise ValueError(f"token_radar_current_row_required:{field}")
+    value = row[field]
+    if not isinstance(value, Mapping) or not value:
+        raise ValueError(f"token_radar_current_row_invalid:{field}")
+    return dict(value)
+
+
+def _required_current_list(row: Mapping[str, Any], field: str) -> list[Any]:
+    if field not in row or row[field] is None:
+        raise ValueError(f"token_radar_current_row_required:{field}")
+    value = row[field]
+    if not isinstance(value, list):
+        raise ValueError(f"token_radar_current_row_invalid:{field}")
+    return list(value)
+
+
+def _required_current_source_ids(row: Mapping[str, Any]) -> list[str]:
+    values = _required_current_list(row, "source_event_ids_json")
+    if not values or any(not isinstance(value, str) or not value.strip() for value in values):
+        raise ValueError("token_radar_current_row_invalid:source_event_ids_json")
+    return [value.strip() for value in values]
+
+
+def _required_current_resolution_text(resolution: Mapping[str, Any], field: str) -> str:
+    if field not in resolution or resolution[field] is None:
+        raise ValueError(f"token_radar_current_resolution_required:{field}")
+    value = resolution[field]
+    if not isinstance(value, str) or not value.strip():
+        raise ValueError(f"token_radar_current_resolution_invalid:{field}")
+    return value.strip()
+
+
+def _required_current_resolution_list(resolution: Mapping[str, Any], field: str) -> list[Any]:
+    if field not in resolution or resolution[field] is None:
+        raise ValueError(f"token_radar_current_resolution_required:{field}")
+    value = resolution[field]
+    if not isinstance(value, list):
+        raise ValueError(f"token_radar_current_resolution_invalid:{field}")
+    return list(value)
 
 
 def _current_key(row: dict[str, Any]) -> tuple[str, str, str]:
@@ -1314,23 +1396,6 @@ def _cursor_rowcount(cursor: Any) -> int:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _rank_score(factor_snapshot: Any) -> float | None:
-    if not isinstance(factor_snapshot, dict):
-        return None
-    composite = factor_snapshot.get("composite")
-    if not isinstance(composite, dict):
-        return None
-    value = composite.get("rank_score")
-    return _float_or_none(value)
-
-
-def _composite_score(composite: dict[str, Any]) -> float | None:
-    value = composite.get("rank_score")
-    if value is None:
-        value = composite.get("raw_alpha_score")
-    return _float_or_none(value)
 
 
 def _family_raw_score(family: Any) -> float | None:

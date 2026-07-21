@@ -69,7 +69,6 @@ class WorkerBase(ABC):
         telemetry: Any,
         llm: Any | None = None,
         wake_waiter: Any | None = None,
-        job_queue: Any | None = None,
         logger: Any | None = None,
     ) -> None:
         self.name = str(name)
@@ -78,7 +77,6 @@ class WorkerBase(ABC):
         self.telemetry = telemetry
         self.llm = llm
         self.wake_waiter = wake_waiter
-        self.job_queue = job_queue
         self.logger = logger or default_logger.bind(worker=self.name)
 
         self.last_started_at_ms: int | None = None
@@ -466,16 +464,6 @@ class WorkerBase(ABC):
         return _loop_wait_seconds(delay_ms / 1000)
 
     def _queue_depth(self) -> int | None:
-        depth = getattr(self.job_queue, "depth", None)
-        if depth is None:
-            return None
-        if isinstance(depth, int):
-            return max(0, depth)
-        if callable(depth):
-            try:
-                return max(0, int(depth()))
-            except Exception:
-                return None
         return None
 
     def _pool_wait_ms_p99(self) -> float | None:

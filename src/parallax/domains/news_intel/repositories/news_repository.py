@@ -667,7 +667,7 @@ class NewsRepository:
         row = cursor.fetchone()
         returned_row = _required_returning_row(cursor, row)
         if finished_status == "success":
-            self.conn.execute(
+            source_cursor = self.conn.execute(
                 """
                 UPDATE news_sources
                    SET last_success_at_ms = %s,
@@ -680,7 +680,7 @@ class NewsRepository:
                 (finished, finished, finished, source_id),
             )
         else:
-            self.conn.execute(
+            source_cursor = self.conn.execute(
                 """
                 UPDATE news_sources
                    SET consecutive_failures = consecutive_failures + 1,
@@ -691,6 +691,7 @@ class NewsRepository:
                 """,
                 (_compact_error(error), finished, finished, source_id),
             )
+        _required_rowcount(source_cursor, expected=1)
         return returned_row
 
     @_news_repository_write
@@ -782,8 +783,7 @@ class NewsRepository:
         source_item_key: str,
         canonical_url: str,
         payload_hash: str,
-        raw_payload: Mapping[str, Any] | None = None,
-        raw_payload_json: Mapping[str, Any] | None = None,
+        raw_payload: Mapping[str, Any],
         provider_article_id: str | None = None,
         provider_article_key: str | None = None,
         provider_payload_status: str | None = None,
@@ -792,7 +792,7 @@ class NewsRepository:
         fetched_at_ms: int,
         commit: bool = True,
     ) -> dict[str, Any]:
-        payload = dict(raw_payload if raw_payload is not None else raw_payload_json or {})
+        payload = dict(raw_payload)
         source = self.conn.execute(
             """
             SELECT provider_type
@@ -808,7 +808,6 @@ class NewsRepository:
             explicit=provider_article_id,
             explicit_key=provider_article_key,
             provider_type=provider_type,
-            source_item_key=source_item_key,
             payload=payload,
         )
         incoming_article_key = provider_global_article_key(
@@ -977,7 +976,6 @@ class NewsRepository:
         self,
         *,
         provider_item_id: str,
-        canonical_identity: CanonicalIdentity | None = None,
         canonical_url: str,
         title: str,
         summary: str = "",
@@ -1009,7 +1007,7 @@ class NewsRepository:
             raise ValueError(f"news provider item does not exist: {provider_item_id}")
         observation_source_id = str(observation["source_id"])
         observation_source_domain = str(observation["source_domain"])
-        computed_identity = canonical_identity_for_observation(
+        identity = canonical_identity_for_observation(
             provider_type=str(observation["provider_type"]),
             source_id=observation_source_id,
             provider_article_id=str(observation["provider_article_id"] or ""),
@@ -1021,12 +1019,6 @@ class NewsRepository:
             body_text=body_text,
             published_at_ms=item_published_at_ms,
         )
-        identity = canonical_identity if canonical_identity is not None else computed_identity
-        if (
-            computed_identity.dedup_key_kind == "canonical_url"
-            and identity.canonical_item_key != computed_identity.canonical_item_key
-        ):
-            identity = computed_identity
         provider_article_key = provider_global_article_key(
             provider_type=str(observation["provider_type"] or ""),
             provider_article_id=str(observation["provider_article_id"] or ""),
@@ -2374,9 +2366,6 @@ class NewsRepository:
         _returned_rowcount(cursor, rows)
         cleared_ids = [str(row["news_item_id"]) for row in rows]
         return cleared_ids
-
-    def list_page_source_items(self, *, limit: int, cursor: str | None = None) -> list[dict[str, Any]]:
-        return self.list_news_page_rows(limit=limit, cursor=cursor)
 
     def list_news_page_rows(
         self,
@@ -5679,6 +5668,7 @@ def _required_page_list(payload: Mapping[str, Any], field_name: str) -> list[Any
         raise ValueError(f"news_page_row_payload_invalid:{field_name}")
     return list(value)
 
+
 def _required_page_positive_int(payload: Mapping[str, Any], field_name: str) -> int:
     if field_name not in payload:
         raise ValueError(f"news_page_row_payload_required:{field_name}")
@@ -6612,7 +6602,6 @@ def _provider_article_id(
     explicit: str | None,
     explicit_key: str | None,
     provider_type: str,
-    source_item_key: str,
     payload: Mapping[str, Any],
 ) -> str:
     normalized_provider_type = str(provider_type or "").strip().lower()
@@ -7060,13 +7049,6 @@ def _required_payload_list(payload: Mapping[str, object], field: str, *, label: 
     return list(value)
 
 
-def _group_rows_by_news_item_id(rows: Sequence[Mapping[str, Any]]) -> dict[str, list[dict[str, Any]]]:
-    grouped: dict[str, list[dict[str, Any]]] = defaultdict(list)
-    for row in rows:
-        grouped[str(row.get("news_item_id") or "")].append(dict(row))
-    return grouped
-
-
 def _required_payload_text(payload: Mapping[str, object], field: str, *, label: str) -> str:
     value = str(payload.get(field) or "").strip()
     if not value:
@@ -7368,32 +7350,6 @@ def _required_public_agent_brief_text(payload: Mapping[str, Any], field_name: st
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"news_public_agent_brief_{field_name}_required")
     return value.strip()
-
-
-def _public_agent_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
-    allowed = (
-        "backend",
-        "status",
-        "outcome",
-        "execution_started",
-        "model",
-        "provider",
-        "lane",
-        "workflow_name",
-        "agent_name",
-        "error_class",
-        "error",
-        "error_message",
-        "latency_ms",
-        "started_at_ms",
-        "finished_at_ms",
-    )
-    payload = {key: row.get(key) for key in allowed if key in row}
-    if "error" in payload:
-        payload["error"] = _compact_error(payload.get("error"))
-    if "error_message" in payload:
-        payload["error_message"] = _compact_error(payload.get("error_message"))
-    return payload
 
 
 def _public_url(value: Any) -> str:

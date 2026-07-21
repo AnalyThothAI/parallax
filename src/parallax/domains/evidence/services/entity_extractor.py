@@ -34,12 +34,6 @@ class TextSurface:
     text: str
 
 
-def extract_entities(text: str | None) -> list[ExtractedEntity]:
-    if not text:
-        return []
-    return extract_entities_from_surfaces([TextSurface("primary", text)])
-
-
 def extract_entities_from_surfaces(surfaces: Sequence[TextSurface]) -> list[ExtractedEntity]:
     entities: list[ExtractedEntity] = []
     seen: set[tuple[str, str, str | None, str, int, int]] = set()

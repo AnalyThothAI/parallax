@@ -11,18 +11,12 @@ from parallax.app.surfaces.api.schemas import TokenCaseData, TokenRadarData
 NOW_MS = 1_778_562_000_000
 
 
-def test_token_case_route_hydrates_discussion_digest_and_removes_agent_brief(monkeypatch) -> None:
+def test_token_case_route_hydrates_admission_coverage(monkeypatch) -> None:
     calls: list[dict[str, Any]] = []
-    runtime = _runtime()
-    monkeypatch.setattr(routes_search, "_authenticated_runtime", lambda _request: runtime)
+    monkeypatch.setattr(routes_search, "_authenticated_runtime", lambda _request: _runtime())
     monkeypatch.setattr(routes_search, "_now_ms", lambda: NOW_MS)
     monkeypatch.setattr(routes_search, "TokenCaseService", _token_case_service_factory)
-    monkeypatch.setattr(
-        routes_search,
-        "NarrativeReadModel",
-        lambda **kwargs: _NarrativeReadModel(calls=calls, **kwargs),
-        raising=False,
-    )
+    monkeypatch.setattr(routes_search, "NarrativeReadModel", lambda **kwargs: _NarrativeReadModel(calls, **kwargs))
 
     response = routes_search.token_case(
         _request(),
@@ -33,29 +27,21 @@ def test_token_case_route_hydrates_discussion_digest_and_removes_agent_brief(mon
         posts_limit=5,
     )
 
-    body = _body(response)
-    assert body["ok"] is True
-    data = body["data"]
+    data = _body(response)["data"]
     assert "agent_brief" not in data
-    assert data["discussion_digest"]["status"] == "ready"
-    assert data["discussion_digest"]["currentness"]["display_status"] == "updating"
-    assert data["narrative_delta"]["delta_source_event_count"] == 3
-    assert data["narrative_clusters"] == [{"cluster_key": "main"}]
-    assert data["pulse_overlay"]["status"] == "absent"
-    assert calls == [{"method": "case", "window": "24h", "scope": "all", "now_ms": NOW_MS}]
+    assert data["narrative_admission"] == _admission()
+    assert "narrative_delta" not in data
+    assert "narrative_clusters" not in data
+    assert calls == [{"method": "case", "window": "24h", "scope": "all"}]
 
 
-def test_target_posts_route_hydrates_per_post_semantics(monkeypatch) -> None:
-    calls: list[dict[str, Any]] = []
-    runtime = _runtime()
-    monkeypatch.setattr(routes_search, "_authenticated_runtime", lambda _request: runtime)
-    monkeypatch.setattr(routes_search, "_now_ms", lambda: NOW_MS)
+def test_target_posts_route_returns_posts_without_semantic_hydration(monkeypatch) -> None:
+    monkeypatch.setattr(routes_search, "_authenticated_runtime", lambda _request: _runtime())
     monkeypatch.setattr(routes_search, "TokenTargetPostsService", _target_posts_service_factory)
     monkeypatch.setattr(
         routes_search,
         "NarrativeReadModel",
-        lambda **kwargs: _NarrativeReadModel(calls=calls, **kwargs),
-        raising=False,
+        lambda **_kwargs: (_ for _ in ()).throw(AssertionError("target posts must not hydrate narratives")),
     )
 
     response = routes_search.target_posts(
@@ -67,69 +53,50 @@ def test_target_posts_route_hydrates_per_post_semantics(monkeypatch) -> None:
         limit=2,
     )
 
-    body = _body(response)
-    assert body["ok"] is True
-    item = body["data"]["items"][0]
-    assert item["semantic"]["status"] == "labeled"
-    assert item["semantic"]["trade_stance"] == "bullish"
-    assert calls == [{"method": "posts", "window": "5m", "scope": "all", "now_ms": NOW_MS}]
+    item = _body(response)["data"]["items"][0]
+    assert item["event_id"] == "event-1"
+    assert "semantic" not in item
 
 
-def test_search_inspect_hydrates_token_result_but_preserves_topic_brief(monkeypatch) -> None:
+def test_search_inspect_hydrates_only_token_result(monkeypatch) -> None:
     calls: list[dict[str, Any]] = []
-    runtime = _runtime()
-    monkeypatch.setattr(routes_search, "_authenticated_runtime", lambda _request: runtime)
+    monkeypatch.setattr(routes_search, "_authenticated_runtime", lambda _request: _runtime())
     monkeypatch.setattr(routes_search, "_now_ms", lambda: NOW_MS)
     monkeypatch.setattr(routes_search, "SearchInspectService", _search_inspect_service_factory)
-    monkeypatch.setattr(
-        routes_search,
-        "NarrativeReadModel",
-        lambda **kwargs: _NarrativeReadModel(calls=calls, **kwargs),
-        raising=False,
-    )
+    monkeypatch.setattr(routes_search, "NarrativeReadModel", lambda **kwargs: _NarrativeReadModel(calls, **kwargs))
 
-    token_response = routes_search.search_inspect(_request(), q="$HANSA", window="24h", scope="all")
-    topic_response = routes_search.search_inspect(_request(), q="narrative topic", window="24h", scope="all")
+    token_data = _body(routes_search.search_inspect(_request(), q="$HANSA", window="24h", scope="all"))["data"]
+    topic_data = _body(
+        routes_search.search_inspect(_request(), q="narrative topic", window="24h", scope="all")
+    )["data"]
 
-    token_data = _body(token_response)["data"]
-    topic_data = _body(topic_response)["data"]
-    assert "agent_brief" not in token_data["token_result"]
-    assert token_data["token_result"]["discussion_digest"]["status"] == "ready"
+    assert token_data["token_result"]["narrative_admission"] == _admission()
     assert topic_data["topic_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
-    assert calls == [{"method": "case", "window": "24h", "scope": "all", "now_ms": NOW_MS}]
+    assert calls == [{"method": "case", "window": "24h", "scope": "all"}]
 
 
-def test_token_radar_route_hydrates_targets_and_attention(monkeypatch) -> None:
+def test_token_radar_route_hydrates_admission_coverage(monkeypatch) -> None:
     calls: list[dict[str, Any]] = []
-    runtime = _runtime()
-    monkeypatch.setattr(routes_radar, "_authenticated_runtime", lambda _request: runtime)
+    monkeypatch.setattr(routes_radar, "_authenticated_runtime", lambda _request: _runtime())
     monkeypatch.setattr(routes_radar, "_now_ms", lambda: NOW_MS)
     monkeypatch.setattr(routes_radar, "AssetFlowService", _asset_flow_service_factory)
-    monkeypatch.setattr(
-        routes_radar,
-        "NarrativeReadModel",
-        lambda **kwargs: _NarrativeReadModel(calls=calls, **kwargs),
-        raising=False,
-    )
+    monkeypatch.setattr(routes_radar, "NarrativeReadModel", lambda **kwargs: _NarrativeReadModel(calls, **kwargs))
 
-    response = routes_radar.token_radar(_request(), window="1h", scope="all", limit=5)
+    data = _body(routes_radar.token_radar(_request(), window="1h", scope="all", limit=5))["data"]
 
-    data = _body(response)["data"]
-    assert data["targets"][0]["discussion_digest"]["status"] == "ready"
-    assert data["targets"][0]["discussion_digest"]["currentness"]["display_status"] == "updating"
-    assert data["attention"][0]["discussion_digest"]["status"] == "ready"
-    assert calls == [{"method": "radar", "window": "1h", "scope": "all", "now_ms": NOW_MS}]
+    assert data["targets"][0]["narrative_admission"] == _admission()
+    assert data["attention"][0]["narrative_admission"] == _admission()
+    assert calls == [{"method": "radar", "window": "1h", "scope": "all"}]
 
 
-def test_public_narrative_contract_requires_currentness_and_delta() -> None:
+def test_public_narrative_schema_is_admission_only() -> None:
     case = TokenCaseData.model_validate(
         {
             "target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"},
             "timeline": {},
             "posts": {},
             "market_live": {},
-            "discussion_digest": _digest(),
-            "narrative_delta": _narrative_delta(),
+            "narrative_admission": _admission(),
         }
     )
     radar = TokenRadarData.model_validate(
@@ -137,55 +104,32 @@ def test_public_narrative_contract_requires_currentness_and_delta() -> None:
             "window": "5m",
             "scope": "all",
             "venue": "all",
-            "targets": [
-                {
-                    "target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"},
-                    "discussion_digest": {
-                        **_unsupported_digest(),
-                    },
-                }
-            ],
+            "targets": [{"narrative_admission": _unsupported_admission()}],
             "attention": [],
         }
     )
 
-    assert case.discussion_digest.currentness.display_status == "updating"
-    assert case.narrative_delta.delta_source_event_count == 3
-    assert radar.targets[0].discussion_digest is not None
-    assert radar.targets[0].discussion_digest.currentness.display_status == "unsupported_window"
+    assert case.narrative_admission.currentness.display_status == "current"
+    assert case.narrative_admission.coverage.source_mentions == 10
+    assert radar.targets[0].narrative_admission is not None
+    assert radar.targets[0].narrative_admission.currentness.display_status == "unsupported_window"
 
 
 class _NarrativeReadModel:
-    def __init__(self, *, calls: list[dict[str, Any]], **_kwargs: Any) -> None:
+    def __init__(self, calls: list[dict[str, Any]], **_kwargs: Any) -> None:
         self.calls = calls
 
-    def hydrate_token_case(self, data: dict[str, Any], *, window: str, scope: str, now_ms: int) -> dict[str, Any]:
+    def hydrate_token_case(self, data: dict[str, Any], *, window: str, scope: str) -> dict[str, Any]:
         assert "agent_brief" not in data
-        self.calls.append({"method": "case", "window": window, "scope": scope, "now_ms": now_ms})
+        self.calls.append({"method": "case", "window": window, "scope": scope})
+        return {**data, "narrative_admission": _admission(), "pulse_overlay": {"status": "absent"}}
+
+    def hydrate_token_radar(self, data: dict[str, Any], *, window: str, scope: str) -> dict[str, Any]:
+        self.calls.append({"method": "radar", "window": window, "scope": scope})
         return {
             **data,
-            "discussion_digest": _digest(),
-            "narrative_delta": _narrative_delta(),
-            "narrative_clusters": [{"cluster_key": "main"}],
-            "pulse_overlay": {"status": "absent"},
-        }
-
-    def hydrate_target_posts(self, data: dict[str, Any], *, window: str, scope: str, now_ms: int) -> dict[str, Any]:
-        self.calls.append({"method": "posts", "window": window, "scope": scope, "now_ms": now_ms})
-        return {**data, "items": [{**item, "semantic": _semantic()} for item in data["items"]]}
-
-    def hydrate_token_radar(self, data: dict[str, Any], *, window: str, scope: str, now_ms: int) -> dict[str, Any]:
-        self.calls.append({"method": "radar", "window": window, "scope": scope, "now_ms": now_ms})
-        for item in [*data["targets"], *data["attention"]]:
-            assert isinstance(item.get("target"), dict)
-            assert "target_type" not in item
-            assert "target_id" not in item
-            assert "_synthetic_target_type" not in item
-            assert "_synthetic_target_id" not in item
-        return {
-            **data,
-            "targets": [{**item, "discussion_digest": _digest()} for item in data["targets"]],
-            "attention": [{**item, "discussion_digest": _digest()} for item in data["attention"]],
+            "targets": [{**item, "narrative_admission": _admission()} for item in data["targets"]],
+            "attention": [{**item, "narrative_admission": _admission()} for item in data["attention"]],
         }
 
 
@@ -202,14 +146,14 @@ def _search_inspect_service_factory(**_kwargs: Any) -> Any:
         if q.startswith("$"):
             return {
                 "query": {"result_kind": "token_result"},
-                "resolver": {"selected_target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"}},
+                "resolver": {},
                 "token_result": _token_case_payload(),
                 "topic_result": None,
                 "ambiguous_result": None,
             }
         return {
             "query": {"result_kind": "topic_result"},
-            "resolver": {"selected_target": None},
+            "resolver": {},
             "token_result": None,
             "topic_result": {"agent_brief": {"schema_version": "search_agent_brief_v1"}},
             "ambiguous_result": None,
@@ -219,19 +163,13 @@ def _search_inspect_service_factory(**_kwargs: Any) -> Any:
 
 
 def _asset_flow_service_factory(**_kwargs: Any) -> Any:
-    return SimpleNamespace(
-        asset_flow=lambda **_call: {
-            "targets": [{"target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"}}],
-            "attention": [{"target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"}}],
-            "projection": {},
-        }
-    )
+    row = {"target": {"target_type": "Asset", "target_id": "asset:solana:token:hansa"}}
+    return SimpleNamespace(asset_flow=lambda **_call: {"targets": [row], "attention": [row], "projection": {}})
 
 
 def _runtime() -> SimpleNamespace:
-    conn = object()
     repos = SimpleNamespace(
-        conn=conn,
+        conn=object(),
         token_profiles=object(),
         token_radar=object(),
         token_targets=object(),
@@ -239,13 +177,7 @@ def _runtime() -> SimpleNamespace:
         pulse_read=object(),
         cex_detail_snapshots=object(),
     )
-    return SimpleNamespace(
-        conn=conn,
-        settings=SimpleNamespace(),
-        repositories=lambda: nullcontext(repos),
-        providers=SimpleNamespace(asset_market=SimpleNamespace(cex_market=None, dex_candle_market=None)),
-        workers={},
-    )
+    return SimpleNamespace(repositories=lambda: nullcontext(repos), workers={})
 
 
 def _request() -> SimpleNamespace:
@@ -259,6 +191,7 @@ def _token_case_payload() -> dict[str, Any]:
         "timeline": {"query": {"scope": "all"}},
         "posts": _posts_payload(),
         "market_live": {"status": "missing"},
+        "agent_brief": {"legacy": True},
     }
 
 
@@ -269,57 +202,30 @@ def _posts_payload() -> dict[str, Any]:
     }
 
 
-def _digest() -> dict[str, Any]:
+def _admission() -> dict[str, Any]:
     return {
-        "status": "ready",
-        "currentness": {
-            "display_status": "updating",
-            "epoch_id": "epoch-1",
-            "epoch_policy_version": "token-narrative-epoch-v1",
-            "ready_source_fingerprint": "ready-fp",
-            "current_source_fingerprint": "current-fp",
-            "ready_source_event_count": 10,
-            "current_source_event_count": 13,
-            "delta_source_event_count": 3,
-            "delta_independent_author_count": 1,
-            "last_ready_computed_at_ms": NOW_MS - 120_000,
-            "next_refresh_due_at_ms": NOW_MS + 60_000,
-            "reason": "digest_updating",
-        },
-        "coverage": {"semantic_coverage": 0.8, "source_mentions": 10},
+        "status": "admitted",
+        "is_current": True,
+        "reason": "admitted",
+        "computed_at_ms": NOW_MS,
+        "currentness": {"display_status": "current", "reason": "admitted"},
+        "coverage": {"source_mentions": 10, "independent_authors": 4},
         "data_gaps": [],
-        "semantic_coverage": 0.8,
-        "evidence_refs": [{"ref_id": "event:event-1"}],
     }
 
 
-def _unsupported_digest() -> dict[str, Any]:
+def _unsupported_admission() -> dict[str, Any]:
     return {
-        "status": "pending",
+        "status": "missing",
+        "is_current": False,
+        "reason": "narrative_not_supported_for_window",
         "currentness": {
             "display_status": "unsupported_window",
-            "ready_source_event_count": 0,
-            "current_source_event_count": 0,
-            "delta_source_event_count": 0,
-            "delta_independent_author_count": 0,
-            "reason": "unsupported_window",
+            "reason": "narrative_not_supported_for_window",
         },
-        "data_gaps": [{"reason": "unsupported_window"}],
-        "coverage": {},
+        "coverage": {"source_mentions": 0, "independent_authors": 0},
+        "data_gaps": [{"reason": "narrative_not_supported_for_window"}],
     }
-
-
-def _narrative_delta() -> dict[str, Any]:
-    return {
-        "display_status": "updating",
-        "delta_source_event_count": 3,
-        "delta_independent_author_count": 1,
-        "label": "叙事更新中 · +3 posts",
-    }
-
-
-def _semantic() -> dict[str, Any]:
-    return {"status": "labeled", "trade_stance": "bullish", "attention_valence": "celebratory"}
 
 
 def _body(response: Any) -> dict[str, Any]:

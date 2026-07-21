@@ -209,28 +209,14 @@ def test_asset_profile_refresh_worker_reports_provider_block_without_writing_tok
     ]
 
 
-def test_asset_profile_refresh_worker_backfills_missing_token_radar_targets_before_claiming(monkeypatch):
+def test_asset_profile_refresh_worker_empty_queue_does_not_run_read_model_discovery(monkeypatch):
     now_ms = 1_700_000_000_000
-    row = claim_row("gmgn_dex_profile", target_id="asset-backfill")
-    profile = DexTokenProfile(
-        chain_id="solana",
-        address="abc",
-        symbol="ABC",
-        name="ABC",
-        logo_url=None,
-        banner_url=None,
-        website=None,
-        twitter_username=None,
-        telegram=None,
-        gmgn_url=None,
-        geckoterminal_url=None,
-        description=None,
-        raw={},
+    monkeypatch.setattr(
+        module,
+        "fetch_asset_profile",
+        lambda **_: pytest.fail("provider IO must not run without a claimed target"),
     )
-
-    monkeypatch.setattr(module, "fetch_asset_profile", lambda **_: profile)
-    monkeypatch.setattr(module, "write_ready_asset_profile", lambda **_: None)
-    db = FakeDB(backfill_rows_by_provider={"gmgn_dex_profile": [row]})
+    db = FakeDB()
     worker = module.AssetProfileRefreshWorker(
         name="asset_profile_refresh",
         settings=worker_settings(batch_size=7),
@@ -241,17 +227,12 @@ def test_asset_profile_refresh_worker_backfills_missing_token_radar_targets_befo
 
     result = asyncio.run(worker.run_once(now_ms=now_ms))
 
-    assert result.processed == 1
-    assert result.notes["result"]["source_rows_scanned"] == 1
-    assert result.notes["result"]["sources"]["gmgn_dex_profile"]["targets_enqueued"] == 1
-    assert db.refresh_targets.backfill_calls == [
-        {
-            "provider": "gmgn_dex_profile",
-            "now_ms": now_ms,
-            "limit": 7,
-            "commit": True,
-        }
-    ]
+    assert result.processed == 0
+    assert result.skipped == 1
+    assert result.notes["result"]["source_rows_scanned"] == 0
+    assert result.notes["result"]["sources"]["gmgn_dex_profile"]["reason"] == (
+        "no_due_asset_profile_refresh_targets"
+    )
     assert db.refresh_targets.claim_calls == [
         {
             "provider": "gmgn_dex_profile",
@@ -313,8 +294,6 @@ def test_asset_profile_refresh_worker_rejects_malformed_claim_settings_before_cl
     with pytest.raises(ValueError, match=error_code):
         asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
 
-    if "batch_size" in overrides:
-        assert db.refresh_targets.backfill_calls == []
     assert db.refresh_targets.claim_calls == []
 
 
@@ -495,11 +474,10 @@ class FakeDB:
     def __init__(
         self,
         claims_by_provider: dict[str, list[dict]] | None = None,
-        backfill_rows_by_provider: dict[str, list[dict]] | None = None,
     ) -> None:
         self.session_names: list[str] = []
         self.session_kwargs: list[dict] = []
-        self.refresh_targets = FakeRefreshTargets(claims_by_provider or {}, backfill_rows_by_provider or {})
+        self.refresh_targets = FakeRefreshTargets(claims_by_provider or {})
         self.profile_dirty = FakeProfileDirtyTargets()
 
     def worker_session(self, name: str, **kwargs):
@@ -529,23 +507,10 @@ class FakeRepos:
 
 
 class FakeRefreshTargets:
-    def __init__(
-        self,
-        claims_by_provider: dict[str, list[dict]],
-        backfill_rows_by_provider: dict[str, list[dict]],
-    ) -> None:
+    def __init__(self, claims_by_provider: dict[str, list[dict]]) -> None:
         self.claims_by_provider = claims_by_provider
-        self.backfill_rows_by_provider = backfill_rows_by_provider
-        self.backfill_calls: list[dict] = []
         self.claim_calls: list[dict] = []
         self.rescheduled: list[dict] = []
-
-    def enqueue_missing_token_radar_current_targets(self, **kwargs):
-        self.backfill_calls.append(dict(kwargs))
-        rows = list(self.backfill_rows_by_provider.get(kwargs["provider"], []))
-        if rows:
-            self.claims_by_provider.setdefault(kwargs["provider"], []).extend(rows)
-        return {"targets": len(rows), "source_rows_scanned": len(rows)}
 
     def claim_due(self, **kwargs):
         self.claim_calls.append(dict(kwargs))

@@ -30,7 +30,6 @@ def test_build_cex_detail_snapshot_keeps_non_hourly_oi_delta_out_of_1h_slot() ->
         exchange="binance",
     )
 
-    assert snapshot["snapshot_id"] == "cex-detail:binance:BTCUSDT"
     assert snapshot["target_type"] == "CexToken"
     assert snapshot["target_id"] == "cex_token:BTC"
     assert snapshot["baseline_status"] == "ready"
@@ -197,7 +196,7 @@ def test_build_cex_detail_snapshot_maps_hourly_period_to_hourly_delta() -> None:
     assert "oi_change_period_1h_not_1h" not in snapshot["degraded_reasons"]
 
 
-def test_build_cex_detail_snapshot_requires_native_market_id_before_snapshot_identity() -> None:
+def test_build_cex_detail_snapshot_requires_native_market_id_for_current_identity() -> None:
     with pytest.raises(ValueError, match="cex_detail_snapshot_identity_required:native_market_id"):
         build_cex_detail_snapshot(
             row={
@@ -248,7 +247,7 @@ def test_build_cex_detail_snapshot_can_derive_cex_target_from_stable_base_symbol
     assert snapshot["target_id"] == "cex_token:BTC"
 
 
-def test_build_cex_detail_snapshot_requires_exchange_before_snapshot_identity() -> None:
+def test_build_cex_detail_snapshot_requires_exchange_for_current_identity() -> None:
     with pytest.raises(ValueError, match="cex_detail_snapshot_identity_required:exchange"):
         build_cex_detail_snapshot(
             row={
@@ -298,7 +297,7 @@ def test_build_cex_detail_snapshot_requires_base_symbol_without_empty_current_ro
         )
 
 
-def test_build_cex_detail_snapshot_uses_formal_exchange_for_identity_and_sources() -> None:
+def test_build_cex_detail_snapshot_uses_formal_exchange_for_current_identity_and_sources() -> None:
     snapshot = build_cex_detail_snapshot(
         row={
             "target_id": "okx:BTC-USDT-SWAP",
@@ -315,7 +314,6 @@ def test_build_cex_detail_snapshot_uses_formal_exchange_for_identity_and_sources
         exchange="okx",
     )
 
-    assert snapshot["snapshot_id"] == "cex-detail:okx:BTC-USDT-SWAP"
     assert snapshot["exchange"] == "okx"
     assert "market:cex:okx:BTC-USDT-SWAP" in [ref["ref_id"] for ref in snapshot["source_refs"]]
 

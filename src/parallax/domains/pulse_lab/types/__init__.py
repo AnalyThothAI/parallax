@@ -30,7 +30,6 @@ from parallax.domains.pulse_lab.types.pulse_state import (
     DisplayStatus,
     EvidenceStatus,
     display_status_from_decision,
-    is_public_display_status,
     run_outcome_from_failure,
 )
 
@@ -62,6 +61,5 @@ __all__ = [
     "TradePlaybook",
     "contains_trading_execution_instruction",
     "display_status_from_decision",
-    "is_public_display_status",
     "run_outcome_from_failure",
 ]

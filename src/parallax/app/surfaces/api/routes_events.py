@@ -81,25 +81,6 @@ def events_by_ids(
     return _json({"ok": True, "data": {"events": events_payload, "not_found": not_found}})
 
 
-def _payload_for_event(
-    repos: Any,
-    event: dict[str, Any],
-    *,
-    token_resolutions: list[dict[str, Any]] | None = None,
-) -> dict[str, Any]:
-    event_id = str(event["event_id"])
-    return {
-        "type": "event",
-        "event": event,
-        "entities": repos.entities.entities_for_event(event_id),
-        "alerts": repos.signals.alerts_for_event(event_id),
-        "token_intents": repos.token_intents.intents_for_event(event_id),
-        "token_resolutions": (
-            token_resolutions if token_resolutions is not None else repos.event_tokens.for_event(event_id)
-        ),
-    }
-
-
 def _payloads_for_events(repos: Any, events: list[dict[str, Any]]) -> list[dict[str, Any]]:
     event_ids = tuple(str(event["event_id"]) for event in events)
     entities_by_event = repos.entities.entities_for_events(event_ids)
@@ -122,10 +103,7 @@ def _payloads_for_events(repos: Any, events: list[dict[str, Any]]) -> list[dict[
 def _watched_handle_set(repos: Any, handles: list[str]) -> set[str]:
     if not handles:
         return set()
-    try:
-        return AccountQualityService.from_conn(repos.conn).watched_handles(handles)
-    except Exception:
-        return set()
+    return AccountQualityService.from_conn(repos.conn).watched_handles(handles)
 
 
 def _source_event_detail(event: dict[str, Any], watched: set[str]) -> dict[str, Any]:

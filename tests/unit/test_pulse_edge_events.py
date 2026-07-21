@@ -4,7 +4,6 @@ from parallax.domains.pulse_lab.services.pulse_candidate_gate import PulseGateRe
 from parallax.domains.pulse_lab.services.pulse_edge_events import (
     build_pulse_edge_state,
     diff_pulse_edge_events,
-    pulse_edge_signature,
 )
 
 
@@ -30,7 +29,6 @@ def test_first_observation_emits_status_edge_and_stable_state() -> None:
     assert state["recommended_decision"] == "high_alert"
     assert state["watched_confirmation"] is True
     assert diff_pulse_edge_events({}, state) == ["pulse_status_changed"]
-    assert pulse_edge_signature(state).startswith("sha256:")
 
 
 def test_diff_reports_only_material_state_edges() -> None:
@@ -77,7 +75,6 @@ def test_diff_reports_only_material_state_edges() -> None:
         "trigger_evidence_changed",
         "timeline_evidence_changed",
     ]
-    assert pulse_edge_signature(previous) != pulse_edge_signature(current)
 
 
 def test_diff_reports_material_evidence_signature_changes() -> None:
@@ -190,7 +187,6 @@ def test_diff_reports_pulse_version_bump_without_other_state_changes() -> None:
     )
 
     assert diff_pulse_edge_events(previous, current) == ["pulse_version_bumped"]
-    assert pulse_edge_signature(previous) != pulse_edge_signature(current)
 
 
 def _gate(*, status: str, score_band: str, hard_risks: list[str] | None = None) -> PulseGateResult:

@@ -7,8 +7,6 @@ from pydantic import ValidationError
 
 from parallax.domains.news_intel.types.source_classification import PROVIDER_TYPES, SOURCE_ROLES
 from parallax.platform.config.settings import (
-    NEWS_PROVIDER_TYPES,
-    NEWS_SOURCE_ROLES,
     NewsSourceSettings,
     Settings,
     SettingsNewsProviderType,
@@ -306,10 +304,8 @@ def test_news_source_settings_rejects_unknown_provider_type_and_source_role() ->
 
 
 def test_news_source_settings_taxonomy_matches_domain_taxonomy() -> None:
-    assert NEWS_PROVIDER_TYPES == PROVIDER_TYPES
-    assert NEWS_SOURCE_ROLES == SOURCE_ROLES
-    assert get_args(SettingsNewsProviderType) == NEWS_PROVIDER_TYPES
-    assert get_args(SettingsNewsSourceRole) == NEWS_SOURCE_ROLES
+    assert get_args(SettingsNewsProviderType) == PROVIDER_TYPES
+    assert get_args(SettingsNewsSourceRole) == SOURCE_ROLES
 
 
 def test_default_config_yaml_contains_explicit_news_intel_block() -> None:
@@ -393,31 +389,6 @@ def test_load_settings_rejects_unknown_top_level_keys(tmp_path, monkeypatch):
     )
 
     with pytest.raises(ValidationError):
-        load_settings()
-
-
-def test_load_settings_ignores_disabled_retired_worker_keys(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(tmp_path, {"ws_token": "secret", "handles": ["toly"]})
-    workers_payload = yaml.safe_load(default_workers_yaml())
-    workers_payload["mention_semantics"] = {"enabled": False}
-    workers_payload["token_discussion_digest"] = {"enabled": False}
-    write_workers_config(tmp_path, workers_payload)
-
-    settings = load_settings()
-
-    assert not hasattr(settings.workers, "mention_semantics")
-    assert not hasattr(settings.workers, "token_discussion_digest")
-
-
-def test_load_settings_rejects_active_retired_worker_keys(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(tmp_path, {"ws_token": "secret", "handles": ["toly"]})
-    workers_payload = yaml.safe_load(default_workers_yaml())
-    workers_payload["mention_semantics"] = {"enabled": True}
-    write_workers_config(tmp_path, workers_payload)
-
-    with pytest.raises(ValueError, match="retired worker setting"):
         load_settings()
 
 

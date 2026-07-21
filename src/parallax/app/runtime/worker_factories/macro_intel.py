@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker
-from parallax.app.runtime.worker_manifest import manifest_names_for_factory
+from parallax.app.runtime.worker_manifest import manifest_names_for_factory, require_worker_manifest
 from parallax.domains.macro_intel.runtime.macro_daily_brief_projection_worker import (
     MacroDailyBriefProjectionWorker,
 )
@@ -39,7 +39,7 @@ def construct_macro_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             db=ctx.db,
             telemetry=ctx.telemetry,
             wake_emitter=ctx.wake_bus,
-            wake_waiter=ctx.db.wake_listener(worker_name, workers.macro_view_projection.wakes_on),
+            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
     if workers.macro_daily_brief_projection.enabled:
         worker_name = "macro_daily_brief_projection"
@@ -48,7 +48,7 @@ def construct_macro_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             settings=workers.macro_daily_brief_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_waiter=ctx.db.wake_listener(worker_name, workers.macro_daily_brief_projection.wakes_on),
+            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
     return constructed
 

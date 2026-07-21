@@ -42,7 +42,6 @@ TOKEN_FACTOR_SNAPSHOT_FAMILY_KEYS = frozenset(
 )
 TOKEN_FACTOR_SNAPSHOT_GATES_REQUIRED_KEYS = frozenset({"max_decision"})
 TOKEN_FACTOR_SNAPSHOT_COMPOSITE_REQUIRED_KEYS = frozenset({"rank_score", "recommended_decision"})
-LEGACY_GATE_KEY = "_".join(("hard", "gates"))
 
 
 def require_token_factor_snapshot(value: Any, *, field_name: str = "factor_snapshot") -> dict[str, Any]:
@@ -50,9 +49,6 @@ def require_token_factor_snapshot(value: Any, *, field_name: str = "factor_snaps
         raise ValueError(f"{field_name} must be a non-empty factor snapshot")
     if value.get("schema_version") != TOKEN_FACTOR_SNAPSHOT_VERSION:
         raise ValueError(f"{field_name}.schema_version must be {TOKEN_FACTOR_SNAPSHOT_VERSION}")
-    if LEGACY_GATE_KEY in value:
-        raise ValueError(f"{field_name}.{LEGACY_GATE_KEY} is not allowed")
-
     keys = set(value)
     missing = sorted(TOKEN_FACTOR_SNAPSHOT_TOP_LEVEL_KEYS - keys)
     if missing:

@@ -14,7 +14,6 @@ def _registry_required_upsert_operations() -> list[Callable[[RegistryRepository]
     return [
         lambda repo: repo.upsert_cex_token(
             base_symbol="btc",
-            project_id=None,
             source="binance_cex",
             observed_at_ms=NOW_MS,
             commit=False,
@@ -57,7 +56,6 @@ def _registry_required_upsert_operations() -> list[Callable[[RegistryRepository]
         pytest.param(
             lambda repo: repo.upsert_cex_token(
                 base_symbol="btc",
-                project_id=None,
                 source="binance_cex",
                 observed_at_ms=NOW_MS,
             ),
@@ -125,7 +123,6 @@ def test_registry_repository_mutations_require_connection_transaction_before_sql
         pytest.param(
             lambda repo: repo.upsert_cex_token(
                 base_symbol="btc",
-                project_id=None,
                 source="binance_cex",
                 observed_at_ms=NOW_MS,
             ),
@@ -288,7 +285,6 @@ class FakeRegistryConnection:
                 [
                     {
                         "cex_token_id": "cex_token:BTC",
-                        "project_id": None,
                         "base_symbol": "BTC",
                         "status": "canonical",
                     }
@@ -299,7 +295,6 @@ class FakeRegistryConnection:
                 [
                     {
                         "cex_token_id": "cex_token:BTC",
-                        "project_id": None,
                         "base_symbol": "BTC",
                         "status": "canonical",
                     }
@@ -310,7 +305,6 @@ class FakeRegistryConnection:
                 [
                     {
                         "asset_id": "asset:eip155:1:erc20:0x999b49c0d1612e619a4a4f6280733184da025108",
-                        "project_id": None,
                         "chain_id": "eip155:1",
                         "token_standard": "erc20",
                         "address": "0x999b49c0d1612e619a4a4f6280733184da025108",

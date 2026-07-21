@@ -128,8 +128,8 @@ are wrong too.
    `settings.workers.notification_delivery`; `notification_rule` receives that
    policy through runtime factory wiring when it creates external delivery
    control rows.
-   Existing notification fact aggregation is a serving-fact mutation, not a
-   readback convenience path: `UPDATE notifications` must report `rowcount=1`
+   Existing notification-row aggregation is a serving-projection mutation, not
+   a readback convenience path: `UPDATE notifications` must report `rowcount=1`
    before `NotificationInsertOutcome.aggregated` or external-delivery requeue
    state can advance.
 2. **Append-only market tick facts.** Market data from any provider is
@@ -143,9 +143,13 @@ are wrong too.
    counts or wake decisions are reported.
 3. **Event projections are committed with events.** `enriched_events` rows
    are event projection rows committed in the same ingest transaction as
-   `events`. Inline ingest capture writes Tier 3 `market_ticks` and the
-   corresponding enriched event rows; when an event anchor is missing, ingest
-   enqueues a short-lived `event_anchor_backfill_jobs` control-plane row whose
+   `events`. Registry preparation, deterministic intent resolution, persisted
+   identity/evidence facts, bounded persisted-tick lookup, and event projection
+   writes share that one collector transaction; an event failure cannot leave
+   autocommitted registry identity behind. Inline ingest capture writes Tier 3
+   `market_ticks` and the corresponding enriched event rows; when an event
+   anchor is missing, ingest enqueues a short-lived
+   `event_anchor_backfill_jobs` control-plane row whose
    active lifetime comes from `settings.workers.event_anchor_backfill.active_window_ms`.
    Ingest capture inputs are formal DTOs only: `CaptureResult` or
    `EnrichedEventCapture`. Loose objects with `tick` / `capture` attributes are
@@ -246,24 +250,6 @@ are wrong too.
    `no_signal`, `not_ranked`, false cohort membership, empty/incomplete rank
    maps, rank `0`, alpha rank `None`, or source watermark `0`. Family rank
    values must be `None` or bounded `0..1` ranks.
-   Diagnostic score evaluation consumes the same formal v3 factor snapshot
-   contract; missing `composite.rank_score` fails before bucket or IC summaries
-   and is not counted as a `0-19` bucket sample. Family rank IC and coverage
-   read formal `families.*.score`, not optional `composite.family_scores`
-   aliases. Score evaluation also requires
-   settlement subject identity from `factor_snapshot_json.subject`
-   (`target_type` plus `target_id`) and does not repair missing subject identity
-   from current-row top-level `target_type` / `target_id`; this evaluator-only
-   rule does not make unresolved attention snapshots invalid globally. CEX
-   settlement targets require subject-owned `provider` and `native_market_id`;
-   `market.decision_latest` and `instrument` aliases are not settlement identity
-   fallbacks. Settlement subject `target_type` is the formal product identity
-   type (`Asset` or `CexToken`); direct market-tick target types
-   `chain_token` and `cex_symbol` are not settlement subjects and fail before
-   market lookup. Asset settlement targets require subject-owned `chain` and
-   `address`; `chain_id` and `asset_address` aliases are not settlement
-   identity fallbacks. Settlement time comes from `factor_snapshot_json.provenance.computed_at_ms`,
-   not from current-row top-level `computed_at_ms` or an epoch-zero fallback.
    Rank-set pre-publication selection also treats rank-input
    `latest_event_received_at_ms` and `lane` as formal fields: missing latest
    event time is not a zero timestamp used to drop the row as expired, and
@@ -378,10 +364,11 @@ are wrong too.
    before edge rows, optional state rows, or budget booleans are reported.
    Missing, invalid, or mismatched rowcount is malformed repository/driver
    state, not returned-row success.
-   Pulse playbook snapshot/outcome `RETURNING` writes must use the same execution
-   evidence: snapshot no-change writes are valid only as rowcount=0 with no row,
-   changed snapshot and outcome writes require rowcount=1 with a row, and the
-   repository must not recover success through a fallback `SELECT`.
+   Pulse playbook snapshot `RETURNING` writes must use the same execution
+   evidence: no-change writes are valid only as rowcount=0 with no row, changed
+   writes require rowcount=1 with a row, and the repository must not recover
+   success through a fallback `SELECT`. The retired outcome table and writer are
+   removed; run outcomes remain in the Pulse run audit ledger.
    Pulse stale exhausted running-job terminalization width is the formal
    `settings.workers.pulse_candidate.stale_running_terminalization_batch_size`
    worker policy passed into `PulseJobsRepository`; the repository must not own
@@ -396,11 +383,11 @@ are wrong too.
    otherwise invalid rowcount is malformed repository/driver state, not a
    default zero-row narrative dirty-target mutation.
    Former narrative LLM read models such as `token_mention_semantics` and
-   `token_discussion_digests` have no current runtime writer. Public surfaces
-   may read historical rows as legacy context, but current runtime work does
-   not refresh them. Public Narrative hydration requires formal
+   `token_discussion_digests` are removed from runtime storage and reads.
+   Public surfaces expose only admission-derived `narrative_admission` state.
+   Public Narrative hydration requires formal
    `target_type` / `target_id` row identity and does not restore old Token Radar
-   `type` / `id` aliases before legacy digest lookup. New
+   `type` / `id` aliases before admission lookup. New
    read models must declare their single writer in the owning module's
    ARCHITECTURE.md. `token_profile_current` is written only by
    `TokenProfileCurrentWorker`; it may expose token logos only from ready
@@ -414,6 +401,9 @@ are wrong too.
    input to that writer: producers must pass positive source watermarks, and
    the dirty repository plus ops image repair must not synthesize them from
    `computed_at_ms`, `updated_at_ms`, tuple identity, or runtime `now_ms`.
+   Ops image repair requeues an existing current row with that row's persisted
+   `observed_at_ms` source frontier; `updated_at_ms` is projection lifecycle
+   time and is never a source watermark.
    `asset_profile_refresh_targets` enqueue is likewise a formal source-refresh
    control-plane input: producers must pass positive source watermarks, and the
    refresh target repository must not synthesize them from source-cache
@@ -556,9 +546,11 @@ are wrong too.
    `news_source_quality_projection` worker settings. `cex_oi_radar_rows`,
    `cex_oi_radar_publication_state`, and `cex_detail_snapshots` are written
    only by `CexOiRadarBoardWorker`; detail snapshot serving identity requires
-   formal `snapshot_id` / `target_type` / `target_id` / `exchange` /
-   `native_market_id` plus non-empty `base_symbol` / `quote_symbol` before
-   builder output, payload hashing, or upsert. Detail snapshot status fields
+   formal `target_type` / `target_id` / `exchange` / `native_market_id` plus
+   non-empty `base_symbol` / `quote_symbol` before builder output, payload
+   hashing, or upsert. The current-row key is the natural market identity
+   `(exchange, native_market_id)`; no synthetic snapshot identifier participates
+   in serving identity. Detail snapshot status fields
    `status`, `baseline_status`, and `coinglass_status` are also formal
    writer-output enums before payload hashing or upsert. The detail builder
    also requires the worker-selected non-empty `period` before mapping OI delta
@@ -590,8 +582,8 @@ are wrong too.
    The Binance worker passes
    `exchange="binance"` into detail snapshot construction explicitly. Token
    Case/Search Inspect missing-detail blocks may expose degraded product
-   state, but only persisted `cex_detail_snapshots` rows own `snapshot_id` and
-   `exchange`; read paths must not synthesize those projection identity fields.
+   state, but only persisted `cex_detail_snapshots` rows carry `exchange`; read
+   paths must not synthesize that market identity field.
    CEX detail repository read methods require non-empty target or market query
    identity before SQL, instead of treating empty strings as a cache miss. The
    public `/api/cex/detail` route also validates target and market query modes
@@ -632,16 +624,7 @@ are wrong too.
    stage emits formal `coinglass_status` on every row it returns, including
    `unavailable` for disabled or out-of-budget enrichment, and the detail
    builder validates that status instead of defaulting it;
-   CEX derivative-series history upserts also skip unchanged overlapping
-   provider-history conflict rows with `IS DISTINCT FROM` and required
-   `cursor.rowcount` evidence instead of unconditional `DO UPDATE`; missing or
-   invalid rowcount is malformed driver/wiring state, not a default one-row
-   write. Their series identity requires
-   non-empty provider, exchange, native market id, metric, and period before
-   hash construction or SQL, because PostgreSQL `NOT NULL` does not reject
-   empty text business keys; each history point also requires a mapping-shaped
-   `raw_payload` before JSONB SQL so missing provider evidence cannot collapse
-   into an empty object. Detail snapshot upsert write accounting also requires
+   Detail snapshot upsert write accounting also requires
    real `cursor.rowcount` evidence; missing or invalid rowcount is malformed
    driver/wiring state, not a default no-op write.
    `macro_sync_windows` is Macro's sync control plane, not product truth.
@@ -650,7 +633,9 @@ are wrong too.
    window state; returned-row presence alone cannot start provider work or
    classify sync-window state.
    `macro_observation_series_rows` and `macro_view_snapshots` are written only
-   by `MacroViewProjectionWorker`. That worker reads statement timeout,
+   by `MacroViewProjectionWorker`. `macro_view_snapshots` has one current row
+   per natural `projection_version` key and no synthetic snapshot identifier.
+   That worker reads statement timeout,
    claim batch, lease, retry, retry budget, lookback, and per-series bounds
    from the formal `macro_view_projection` worker settings; the worker must
    not keep runtime fallback constants for those execution budgets.
@@ -983,12 +968,12 @@ direction is still enforced by the package rules below.
 | `domains/evidence/` | Canonical Twitter event model, event identity, text projection, entity extraction, evidence and entity persistence, ingest orchestration. |
 | `domains/asset_market/` | Asset registry, chain/address identity, asset identity evidence/current identity selection, exact-token profile source cache and current profile projection, append-only `market_ticks`, rebuildable `token_capture_tier`, cache/publish-only live price gateway, discovery, and CEX route sync. |
 | `domains/token_intel/` | Token evidence, token intents, deterministic resolution, target-first search read model and token-target views with explicit caller-owned query boundaries, Token Radar feature aggregation, current-row publication state, `token_factor_snapshot_v3_social_attention` construction, factor-snapshot projection, evaluation diagnostics, signal alerts. |
-| `domains/narrative_intel/` | Current `narrative_admissions` source-set read model, legacy narrative currentness composition, and narrative context consumed by API composition and Pulse evidence packets. Former per-mention semantics and discussion-digest LLM lanes have no current runtime writer. |
+| `domains/narrative_intel/` | Deterministic `narrative_admissions` source-set read model and admission coverage consumed by API composition. Per-mention semantics and discussion-digest lanes and storage are removed. |
 | `domains/notifications/` | Notification rules, repository, delivery, workers, candidate types. |
 | `domains/pulse_lab/` | Signal Pulse read model, factor-snapshot candidate gate / worker, unified decision runtime policy, stage replay ledger, and pulse persistence. |
 | `domains/watchlist_intel/` | Watchlist handle-level topic summaries, signal/all handle timeline read model, summary job queue, and handle summary worker. |
 | `domains/news_intel/` | Configured news source ingestion, news item facts, token mention observations, fact candidates, item-scoped agent brief read model, and the News page read model. |
-| `domains/cex_market_intel/` | Centralized exchange derivative series and Binance OI radar board projection. |
+| `domains/cex_market_intel/` | Binance OI radar board and CEX detail snapshot projections. |
 | `domains/macro_intel/` | `macro_sync` fact ingest from packaged macrodata-cli bundles, macro sync/import audit, deterministic macro feature/regime/scenario scoring, and the Macro read model. |
 | `domains/account_quality/` | Account-quality profile/stat/snapshot read models, account-quality read service, account-alert read service, and explicit ops-only maintenance. Account-alert read windows and limits are caller-owned query boundaries, not read-service defaults. |
 
@@ -1000,7 +985,7 @@ own maps next to the code they describe, and this file links to them.
 | Module | File | Covers |
 |--------|------|--------|
 | Token Radar and token identity | [`src/parallax/domains/token_intel/ARCHITECTURE.md`](../src/parallax/domains/token_intel/ARCHITECTURE.md) | GMGN frame to token evidence, intents, deterministic resolution, discovery / reprocess, market ticks, radar projection, and hard identity boundaries. |
-| Narrative intelligence | [`src/parallax/domains/narrative_intel/ARCHITECTURE.md`](../src/parallax/domains/narrative_intel/ARCHITECTURE.md) | Current `narrative_admissions` source-set ownership, legacy narrative currentness reads, Pulse/API narrative context, and retired LLM lane hard-cut contracts. |
+| Narrative intelligence | [`src/parallax/domains/narrative_intel/ARCHITECTURE.md`](../src/parallax/domains/narrative_intel/ARCHITECTURE.md) | Current `narrative_admissions` ownership, API admission coverage, and removed semantic/digest hard-cut contracts. |
 | Asset market and market tick capture | [`src/parallax/domains/asset_market/ARCHITECTURE.md`](../src/parallax/domains/asset_market/ARCHITECTURE.md) | Asset identity evidence ledger, `MarketTick` schema, capture-tier / stream / poll workers, cache-only live fan-out, profile / discovery workers, provider capability model. |
 | CEX market intelligence | [`src/parallax/domains/cex_market_intel/ARCHITECTURE.md`](../src/parallax/domains/cex_market_intel/ARCHITECTURE.md) | Binance USDT perpetual universe consumption, OI radar board read model, CEX detail snapshots, and snapshot-only Token Case / Agent read paths. |
 | Signal Pulse pipeline | [`src/parallax/domains/pulse_lab/ARCHITECTURE.md`](../src/parallax/domains/pulse_lab/ARCHITECTURE.md) | Candidate gate, agent route policy, stage runtime, decision persistence, audit ledger, abstain contract. |
@@ -1008,6 +993,7 @@ own maps next to the code they describe, and this file links to them.
 | News intelligence | [`src/parallax/domains/news_intel/ARCHITECTURE.md`](../src/parallax/domains/news_intel/ARCHITECTURE.md) | Configured source ingestion, raw news item facts, token mention observations, fact candidates, item briefs, and the News page read model. |
 | Macro intelligence | [`src/parallax/domains/macro_intel/ARCHITECTURE.md`](../src/parallax/domains/macro_intel/ARCHITECTURE.md) | `macro_sync` fact ingest, macro observation facts, deterministic `macro_regime_v4` feature/regime/scenario scoring, module v3 views, and Macro projection ownership. |
 | Account quality | [`src/parallax/domains/account_quality/ARCHITECTURE.md`](../src/parallax/domains/account_quality/ARCHITECTURE.md) | Account profile/stat/snapshot read-model ownership, ops-only backfill, and public account-quality read services. |
+| Notifications | [`src/parallax/domains/notifications/ARCHITECTURE.md`](../src/parallax/domains/notifications/ARCHITECTURE.md) | Notification projection identity, read-state ownership, and durable external-delivery state-machine boundaries. |
 
 When a subsystem needs more than a short row here, add
 `src/parallax/domains/<domain>/ARCHITECTURE.md` and link it from this
@@ -1097,16 +1083,12 @@ nested `target` object through rather than synthesizing top-level target identit
 fields for narrative hydration. The active runtime writes only `narrative_admissions`;
 admission thresholds come from formal `settings.workers.narrative_admission`
 fields, not service-local defaults or carry-forward TTL compatibility. Former
-mention-semantic and discussion-digest LLM workers are removed. Public
-reads may compose historical ready digest rows with the current
-`narrative_admissions` source frontier and expose the delta through
-`discussion_digest.currentness`. Fingerprint mismatch alone is not a reason to
-blank legacy narrative context, but the digest lookup still requires formal
-Token Radar row identity (`target_type` / `target_id`) and treats legacy
-`type` / `id` aliases as missing narrative context. Pulse may include a ready discussion digest in
-its sealed evidence packet as context, but stale/updating digest prose is not
-primary evidence; Pulse hidden/internal candidate state never triggers
-narrative workers and never writes legacy narrative semantic/digest tables.
+mention-semantic and discussion-digest LLM workers and tables are removed.
+Public reads expose `narrative_admission`, derived only from the current
+`narrative_admissions` row. The lookup requires formal Token Radar row identity
+(`target_type` / `target_id`) and treats legacy `type` / `id` aliases as missing
+admission context. Pulse evidence packets are independent of Narrative
+admissions and removed semantic/digest projections.
 Pulse evidence completeness checks consume the formal sealed
 `PulseEvidencePacket`; arbitrary dict/object reflection at this boundary is a
 contract failure, not an insufficient-evidence decision.
@@ -1355,15 +1337,11 @@ claim batch width, rank publication width, lease timing, retry timing, retry
 budget, and lease identity; `TokenRadarProjection` receives `limit`,
 `rank_limit`, `lease_ms`, `retry_ms`, `max_attempts`, and `lease_owner`
 explicitly and does not define service-local `100` or synthetic-owner defaults.
-Projection repository
-diagnostic reads over `projection_runs` and `projection_dirty_ranges` likewise
-require explicit caller limits; the repository does not own `20`/`50` row
-defaults for control-plane status inspection. Ordinary projection offset,
-run-ledger, dirty-range enqueue, and finish writes require exactly one
-PostgreSQL `cursor.rowcount`, and projection-run start uses RETURNING evidence
-rather than fallback readback. Dirty-range claim rows from
-`UPDATE projection_dirty_ranges ... RETURNING` must also validate cursor
-rowcount against returned rows before work is treated as leased.
+Projection repository diagnostics over `projection_runs` require an explicit
+caller limit. Offset/run-ledger writes require exactly one PostgreSQL
+`cursor.rowcount`, and projection-run start uses `RETURNING` evidence rather
+than fallback readback. Projection work is owned by the domain-specific durable
+source-event and target queues; there is no parallel generic dirty-range queue.
 
 Watchlist overview follows the SQL-width version of the same rule. The API
 read config owns the public overview window plus source and cluster budgets;

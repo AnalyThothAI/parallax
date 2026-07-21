@@ -167,7 +167,6 @@ def _public_macro(snapshot: dict[str, Any] | None, *, currentness: dict[str, Any
         }
     return {
         "snapshot": {
-            "snapshot_id": snapshot["snapshot_id"],
             "projection_version": snapshot["projection_version"],
             "asof_date": snapshot["asof_date"],
             "status": snapshot["status"],

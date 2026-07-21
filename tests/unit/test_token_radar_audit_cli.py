@@ -139,7 +139,6 @@ def test_audit_token_radar_current_rows_rejects_hard_gates_key():
     )
 
     assert audit["ok"] is False
-    assert any(item["code"] == "hard_gates_present" for item in audit["violations"])
     assert any(
         item["code"] == "invalid_factor_snapshot_contract" and "hard_gates" in item["error"]
         for item in audit["violations"]

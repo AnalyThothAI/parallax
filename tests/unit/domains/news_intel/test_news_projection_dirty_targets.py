@@ -2302,7 +2302,7 @@ class FakeFetchRepos:
 
     def upsert_canonical_news_item(self, **payload: Any) -> dict[str, Any]:
         self.conn.record("upsert_canonical_news_item")
-        assert payload["canonical_identity"].canonical_item_key.startswith("canonical-url:")
+        assert "canonical_identity" not in payload
         result = dict(self.news_statuses.pop(0))
         self._record_item_source_watermarks(result, payload)
         return result

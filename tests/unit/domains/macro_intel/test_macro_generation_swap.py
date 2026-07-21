@@ -18,7 +18,6 @@ from tests.support.query_contract import assert_query_contract
 def test_build_macro_view_snapshot_uses_stable_current_identity() -> None:
     snapshot = build_macro_view_snapshot([_observation()], computed_at_ms=1_779_000_000_000)
 
-    assert snapshot["snapshot_id"] == "macro-view:macro_regime_v4:current"
     assert snapshot["projection_version"] == "macro_regime_v4"
     assert snapshot["computed_at_ms"] == 1_779_000_000_000
 
@@ -34,7 +33,7 @@ def test_insert_snapshot_returns_false_when_only_computed_at_ms_changes() -> Non
 
     queries = "\n".join(query for query, _params in conn.executions)
     assert "payload_hash" in queries
-    assert "ON CONFLICT(snapshot_id) DO UPDATE" in queries
+    assert "ON CONFLICT(projection_version) DO UPDATE" in queries
     assert "payload_hash IS DISTINCT FROM excluded.payload_hash" in queries
     assert "RETURNING true AS changed" in queries
     assert conn.payload_hashes[0] == conn.payload_hashes[1]
