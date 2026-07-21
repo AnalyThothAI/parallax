@@ -49,7 +49,6 @@ class MarketTickPersistenceService:
                 changed_targets,
                 reason=reason,
                 now_ms=int(now_ms),
-                commit=False,
             )
         if fail_after_ticks_for_test:
             raise RuntimeError("fail_after_ticks_for_test")

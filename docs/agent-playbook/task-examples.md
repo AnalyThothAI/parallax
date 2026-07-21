@@ -24,7 +24,7 @@ Required reading:
 Verification:
 
 - `uv run parallax config`
-- `uv run parallax ops worker-status --help`
+- `uv run parallax ops queue-inspect --help`
 - Smallest domain-specific `uv run parallax ops ... --help` command before a live operation.
 
 Done when:
@@ -54,7 +54,7 @@ Required reading:
 
 Verification:
 
-- `uv run parallax ops worker-status --help`
+- `uv run parallax ops queue-inspect --help`
 - `uv run pytest tests/architecture/test_worker_inventory_contract.py`
 - `uv run pytest tests/architecture/test_worker_runtime_contracts.py`
 - Targeted unit/integration test for the worker state transition.

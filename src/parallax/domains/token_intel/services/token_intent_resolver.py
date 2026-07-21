@@ -40,7 +40,7 @@ class TokenIntentResolver:
             decision_time_ms=now_ms,
         )
         if persist:
-            self.resolutions.insert_resolution(decision, commit=False)
+            self.resolutions.insert_resolution(decision)
         return decision
 
 

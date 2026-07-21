@@ -18,7 +18,7 @@ describe("useHandleTimelineQuery", () => {
       return jsonResponse({
         ok: true,
         data: {
-          query: { handle: "toly", scope: "signal", limit: 30 },
+          query: { handle: "toly", limit: 30 },
           items: [
             { event_id: cursor ? "event-2" : "event-1", received_at_ms: cursor ? 900 : 1_000 },
           ],
@@ -29,7 +29,7 @@ describe("useHandleTimelineQuery", () => {
     });
 
     const { result } = renderHook(
-      () => useHandleTimelineQuery({ handle: "toly", limit: 30, scope: "signal", token: "secret" }),
+      () => useHandleTimelineQuery({ handle: "toly", limit: 30, token: "secret" }),
       { wrapper: wrapper() },
     );
 
@@ -38,8 +38,8 @@ describe("useHandleTimelineQuery", () => {
     await result.current.fetchNextPage();
 
     expect(requests).toEqual([
-      "/api/watchlist/handle/toly/timeline?limit=30&scope=signal",
-      "/api/watchlist/handle/toly/timeline?cursor=cursor-1&limit=30&scope=signal",
+      "/api/watchlist/handle/toly/timeline?limit=30",
+      "/api/watchlist/handle/toly/timeline?cursor=cursor-1&limit=30",
     ]);
   });
 });

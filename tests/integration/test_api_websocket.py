@@ -4,7 +4,7 @@ from contextlib import contextmanager
 
 from fastapi.testclient import TestClient
 
-from parallax.app.runtime.app import create_app
+from parallax.app.surfaces.api.app import create_app
 from parallax.app.surfaces.api.ws import ClientSubscription, PublicWebSocketHub
 from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from parallax.platform.config.settings import Settings
@@ -136,22 +136,24 @@ def test_websocket_routes_live_notifications_when_subscribed(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
-        notification = client.app.state.service.notifications.insert_notification(
-            dedup_key="activity:event-1",
-            rule_id="watched_account_activity",
-            severity="info",
-            title="activity",
-            body="new post",
-            entity_type="account",
-            entity_key="account:toly",
-            author_handle="toly",
-            event_id="event-1",
-            source_table="events",
-            source_id="event-1",
-            occurrence_at_ms=1_700_000_000_000,
-            payload={"event_id": "event-1"},
-            channels=["in_app"],
-        )
+        runtime = client.app.state.service
+        with runtime.repositories() as repos, repos.transaction():
+            notification = repos.notifications.insert_notification(
+                dedup_key="activity:event-1",
+                rule_id="watched_account_activity",
+                severity="info",
+                title="activity",
+                body="new post",
+                entity_type="account",
+                entity_key="account:toly",
+                author_handle="toly",
+                event_id="event-1",
+                source_table="events",
+                source_id="event-1",
+                occurrence_at_ms=1_700_000_000_000,
+                payload={"event_id": "event-1"},
+                channels=["in_app"],
+            )
         assert notification is not None
 
         with client.websocket_connect("/ws") as ws:

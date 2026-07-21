@@ -88,7 +88,6 @@ def _write_ready_profile(
         raw_payload=profile.raw,
         observed_at_ms=int(now_ms),
         next_refresh_at_ms=int(next_refresh_at_ms),
-        commit=False,
     )
 
 
@@ -102,7 +101,6 @@ def _write_missing_profile(
         observed_at_ms=int(now_ms),
         next_refresh_at_ms=int(next_refresh_at_ms),
         last_error=None,
-        commit=False,
     )
 
 
@@ -122,5 +120,4 @@ def _write_error_profile(
         observed_at_ms=int(now_ms),
         next_refresh_at_ms=int(next_refresh_at_ms),
         last_error=str(exc)[:500],
-        commit=False,
     )

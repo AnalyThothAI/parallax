@@ -2,8 +2,7 @@ from __future__ import annotations
 
 import hashlib
 import json
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from typing import Any
 
 from psycopg.types.json import Jsonb
 
@@ -11,6 +10,7 @@ from parallax.domains.asset_market.identity_evidence_policy import (
     CONFIDENCE_UNKNOWN,
     select_current_identity,
 )
+from parallax.platform.db.write_contract import returning_mutation_count
 
 
 class IdentityEvidenceRepository:
@@ -36,7 +36,6 @@ class IdentityEvidenceRepository:
         source_resolution_id: str | None = None,
         raw_payload: dict[str, Any] | None = None,
         evidence_id: str | None = None,
-        commit: bool = True,
     ) -> dict[str, Any]:
         payload = raw_payload or {}
         row_id = evidence_id or _evidence_id(
@@ -51,27 +50,6 @@ class IdentityEvidenceRepository:
             source_resolution_id=source_resolution_id,
             raw_payload=payload,
         )
-        if commit:
-            with _transaction(self.conn):
-                return self.upsert_identity_evidence(
-                    asset_id=asset_id,
-                    evidence_kind=evidence_kind,
-                    provider=provider,
-                    lookup_mode=lookup_mode,
-                    chain_id=chain_id,
-                    address=address,
-                    observed_at_ms=observed_at_ms,
-                    symbol=symbol,
-                    name=name,
-                    decimals=decimals,
-                    confidence=confidence,
-                    source_event_id=source_event_id,
-                    source_intent_id=source_intent_id,
-                    source_resolution_id=source_resolution_id,
-                    raw_payload=payload,
-                    evidence_id=row_id,
-                    commit=False,
-                )
         self.conn.execute(
             """
             INSERT INTO asset_identity_evidence(
@@ -139,10 +117,7 @@ class IdentityEvidenceRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
-    def recompute_current_identity(self, asset_id: str, *, now_ms: int, commit: bool = True) -> dict[str, Any]:
-        if commit:
-            with _transaction(self.conn):
-                return self.recompute_current_identity(asset_id, now_ms=now_ms, commit=False)
+    def recompute_current_identity(self, asset_id: str, *, now_ms: int) -> dict[str, Any]:
         current = select_current_identity(
             asset_id=asset_id,
             evidence_rows=self.list_identity_evidence(asset_id),
@@ -236,34 +211,8 @@ def _evidence_id(
     return f"asset-identity-evidence:{digest}"
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("identity_evidence_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("identity_evidence_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("identity_evidence_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("identity_evidence_repository_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("identity_evidence_repository_rowcount_invalid")
-    return rowcount
-
-
 def _single_returning_changed(cursor: Any, row: Any | None) -> bool:
-    count = _cursor_rowcount(cursor)
-    if count not in (0, 1):
-        raise TypeError("identity_evidence_repository_rowcount_invalid")
-    if count != (1 if row is not None else 0):
-        raise TypeError("identity_evidence_repository_rowcount_invalid")
+    returning_mutation_count(cursor, row, error_code="identity_evidence_repository_rowcount_invalid")
     return row is not None and bool(row.get("changed", True))
 
 

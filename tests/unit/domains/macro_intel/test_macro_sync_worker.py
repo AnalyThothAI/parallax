@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from datetime import date
-from types import SimpleNamespace
-
-import pytest
 
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 from parallax.platform.config.settings import MacroSyncWorkerSettings
@@ -42,7 +39,6 @@ def test_worker_success_and_failure_results_reflect_sync_summary() -> None:
 
     success = MacroSyncRunSummary(
         sync_run_id="sync-run-ok",
-        import_run_id="import-run-1",
         status="ok",
         observations_count=1,
         imported_observation_count=1,
@@ -71,7 +67,6 @@ def test_worker_success_and_failure_results_reflect_sync_summary() -> None:
 
     failure = MacroSyncRunSummary(
         sync_run_id="sync-run-fail",
-        import_run_id=None,
         status="retryable_error",
         observations_count=0,
         imported_observation_count=0,
@@ -102,7 +97,6 @@ def test_worker_drains_due_windows_up_to_batch_size() -> None:
     results = [
         MacroSyncRunSummary(
             sync_run_id=f"sync-run-{index}",
-            import_run_id=f"import-run-{index}",
             status="ok",
             observations_count=1,
             imported_observation_count=1,
@@ -144,7 +138,6 @@ def test_worker_counts_successful_empty_window_as_processed() -> None:
 
     success = MacroSyncRunSummary(
         sync_run_id="sync-run-empty",
-        import_run_id="import-run-empty",
         status="ok",
         observations_count=0,
         imported_observation_count=0,
@@ -176,7 +169,6 @@ def test_worker_uses_formal_batch_size_without_hidden_cycle_cap() -> None:
     results = [
         MacroSyncRunSummary(
             sync_run_id=f"sync-run-{index}",
-            import_run_id=f"import-run-{index}",
             status="ok",
             observations_count=1,
             imported_observation_count=1,
@@ -202,27 +194,6 @@ def test_worker_uses_formal_batch_size_without_hidden_cycle_cap() -> None:
     assert result.processed == 7
     assert result.notes["claimed"] == 7
     assert [call[0] for call in service.calls].count("run_claimed_window_once") == 7
-
-
-@pytest.mark.parametrize("batch_size", [0, True, "3"])
-def test_worker_rejects_malformed_batch_size_before_claim_loop(batch_size: object) -> None:
-    from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
-
-    service = FakeService(result=None, enqueue_summary={"due_count": 1, "open_count": 1})
-    worker = MacroSyncWorker(
-        name="macro_sync",
-        settings=SimpleNamespace(enabled=True, batch_size=batch_size),
-        db=object(),
-        telemetry=object(),
-        settings_root=_settings_root(),
-        wake_emitter=object(),
-        service_factory=lambda: service,
-    )
-
-    with pytest.raises(ValueError, match="macro_sync_batch_size_required"):
-        worker.run_once_sync(now_ms=1_779_000_000_000)
-
-    assert service.calls == [("enqueue_due_windows", {"now_ms": 1_779_000_000_000})]
 
 
 def _macro_sync_settings(**overrides: object) -> MacroSyncWorkerSettings:

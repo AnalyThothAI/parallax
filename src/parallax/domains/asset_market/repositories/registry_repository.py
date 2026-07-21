@@ -1,10 +1,12 @@
 from __future__ import annotations
 
 import hashlib
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from typing import Any
 
 from psycopg.types.json import Jsonb
+
+from parallax.platform.db.write_contract import expect_mutation_count, returning_mutation_count
+from parallax.platform.validation import require_nonnegative_int
 
 
 class RegistryRepository:
@@ -17,18 +19,9 @@ class RegistryRepository:
         base_symbol: str,
         source: str,
         observed_at_ms: int,
-        commit: bool = True,
     ) -> dict[str, Any]:
         symbol = _symbol(base_symbol)
         cex_token_id = f"cex_token:{symbol}"
-        if commit:
-            with _transaction(self.conn):
-                return self.upsert_cex_token(
-                    base_symbol=symbol,
-                    source=source,
-                    observed_at_ms=observed_at_ms,
-                    commit=False,
-                )
         cursor = self.conn.execute(
             """
             INSERT INTO cex_tokens(
@@ -56,22 +49,11 @@ class RegistryRepository:
         observed_at_ms: int,
         token_standard: str | None = None,
         status: str = "candidate",
-        commit: bool = True,
     ) -> dict[str, Any]:
         normalized_chain = _chain(chain_id)
         normalized_address = _address(address)
         standard = token_standard or ("erc20" if normalized_chain.startswith("eip155:") else "token")
         asset_id = f"asset:{normalized_chain}:{standard}:{normalized_address}"
-        if commit:
-            with _transaction(self.conn):
-                return self.upsert_chain_asset(
-                    chain_id=normalized_chain,
-                    address=normalized_address,
-                    observed_at_ms=observed_at_ms,
-                    token_standard=standard,
-                    status=status,
-                    commit=False,
-                )
         cursor = self.conn.execute(
             """
             WITH existing AS (
@@ -159,7 +141,6 @@ class RegistryRepository:
         base_symbol: str | None = None,
         quote_symbol: str | None = None,
         multiplier: Any = None,
-        commit: bool = True,
     ) -> dict[str, Any]:
         normalized_feed_type = feed_type.strip().lower()
         normalized_provider = provider.strip().lower()
@@ -173,24 +154,6 @@ class RegistryRepository:
             chain_id=normalized_chain,
             address=normalized_address,
         )
-        if commit:
-            with _transaction(self.conn):
-                return self.upsert_pricefeed(
-                    feed_type=normalized_feed_type,
-                    provider=normalized_provider,
-                    subject_type=subject_type,
-                    subject_id=subject_id,
-                    observed_at_ms=observed_at_ms,
-                    native_market_id=normalized_market,
-                    chain_id=normalized_chain,
-                    address=normalized_address,
-                    base_asset_id=base_asset_id,
-                    base_cex_token_id=base_cex_token_id,
-                    base_symbol=_symbol(base_symbol) if base_symbol else None,
-                    quote_symbol=quote_symbol.upper() if quote_symbol else None,
-                    multiplier=multiplier,
-                    commit=False,
-                )
         cursor = self.conn.execute(
             """
             INSERT INTO price_feeds(
@@ -245,23 +208,9 @@ class RegistryRepository:
         source_updated_at_ms: int,
         raw_payload: dict[str, Any] | None,
         observed_at_ms: int,
-        commit: bool = True,
     ) -> dict[str, Any]:
         normalized_symbol = _symbol(symbol)
         market_instrument_id = f"market_instrument:us_equity:{normalized_symbol}"
-        if commit:
-            with _transaction(self.conn):
-                return self.upsert_us_equity_symbol(
-                    symbol=normalized_symbol,
-                    exchange=exchange,
-                    security_name=security_name,
-                    instrument_type=instrument_type,
-                    source=source,
-                    source_updated_at_ms=source_updated_at_ms,
-                    raw_payload=raw_payload,
-                    observed_at_ms=observed_at_ms,
-                    commit=False,
-                )
         cursor = self.conn.execute(
             """
             INSERT INTO us_equity_symbols(
@@ -377,17 +326,8 @@ class RegistryRepository:
         source: str,
         active_symbols: set[str],
         observed_at_ms: int,
-        commit: bool = True,
     ) -> int:
         normalized_symbols = sorted({_symbol(symbol) for symbol in active_symbols if _symbol(symbol)})
-        if commit:
-            with _transaction(self.conn):
-                return self.deactivate_missing_us_equity_symbols(
-                    source=source,
-                    active_symbols=set(normalized_symbols),
-                    observed_at_ms=observed_at_ms,
-                    commit=False,
-                )
         if normalized_symbols:
             cursor = self.conn.execute(
                 """
@@ -412,7 +352,7 @@ class RegistryRepository:
                 (int(observed_at_ms), source),
             )
         rows = cursor.fetchall()
-        return _returned_rowcount(cursor, rows)
+        return expect_mutation_count(cursor, expected=len(rows), error_code="registry_repository_rowcount_invalid")
 
     def find_cex_token(self, base_symbol: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -483,7 +423,7 @@ class RegistryRepository:
         since_ms: int,
         limit: int,
     ) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(limit, "registry_ranked_live_market_targets_limit_required")
+        parsed_limit = require_nonnegative_int(limit, error_code="registry_ranked_live_market_targets_limit_required")
         rows = self.conn.execute(
             """
             WITH latest_sets AS MATERIALIZED (
@@ -755,50 +695,11 @@ class RegistryRepository:
         return dict(row) if row else None
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("registry_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("registry_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("registry_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("registry_repository_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("registry_repository_rowcount_invalid")
-    return rowcount
-
-
-def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
-    count = _cursor_rowcount(cursor)
-    if count != len(rows):
-        raise TypeError("registry_repository_rowcount_invalid")
-    return count
-
-
 def _required_returning_row(cursor: Any, row: Any) -> dict[str, Any]:
-    count = _cursor_rowcount(cursor)
-    if count != 1:
-        raise TypeError("registry_repository_rowcount_invalid")
+    returning_mutation_count(cursor, row, error_code="registry_repository_rowcount_invalid")
     if row is None:
         raise TypeError("registry_repository_rowcount_invalid")
     return dict(row)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _pricefeed_id(

@@ -36,7 +36,7 @@ def test_upsert_tier_returning_changed_requires_cursor_rowcount() -> None:
     conn = _CurrentRowcountConnection(row={"changed": True}, omit_rowcount=True)
     repo = TokenCaptureTierRepository(conn)
 
-    with pytest.raises(TypeError, match="token_capture_tier_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="token_capture_tier_repository_rowcount_invalid"):
         repo.upsert_tier(
             target_type="chain_token",
             target_id="solana:abc",
@@ -197,7 +197,7 @@ def test_token_capture_tier_demote_counts_require_cursor_rowcount() -> None:
     conn = _RowcountConnection(rowcount=None)
     repo = TokenCaptureTierRepository(conn)
 
-    with pytest.raises(TypeError, match="token_capture_tier_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="token_capture_tier_repository_rowcount_invalid"):
         repo.demote_hot_rows_outside_rank_set(active_keys=[], updated_at_ms=1_777_800_000_000)
 
 

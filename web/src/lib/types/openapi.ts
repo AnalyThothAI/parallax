@@ -21,23 +21,6 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/account-quality": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Account Quality */
-        get: operations["account_quality_api_account_quality_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
     "/api/bootstrap": {
         parameters: {
             query?: never;
@@ -47,40 +30,6 @@ export interface paths {
         };
         /** Bootstrap */
         get: operations["bootstrap_api_bootstrap_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cex/detail": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Cex Detail */
-        get: operations["cex_detail_api_cex_detail_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/cex/radar-board": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Cex Radar Board */
-        get: operations["cex_radar_board_api_cex_radar_board_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -667,34 +616,9 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
-        /** AccountQualityData */
-        AccountQualityData: {
-            /** Accounts */
-            accounts?: {
-                [key: string]: unknown;
-            }[];
-            /** Query */
-            query?: {
-                [key: string]: unknown;
-            } | null;
-        } & {
-            [key: string]: unknown;
-        };
         /** ApiEnvelope[AccountAlertsData] */
         ApiEnvelope_AccountAlertsData_: {
             data?: components["schemas"]["AccountAlertsData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        } & {
-            [key: string]: unknown;
-        };
-        /** ApiEnvelope[AccountQualityData] */
-        ApiEnvelope_AccountQualityData_: {
-            data?: components["schemas"]["AccountQualityData"] | null;
             /** Error */
             error?: string | null;
             /** Field */
@@ -1740,6 +1664,27 @@ export interface components {
         } & {
             [key: string]: unknown;
         };
+        /** ReadinessData */
+        ReadinessData: {
+            /** Composition */
+            composition: {
+                [key: string]: unknown;
+            };
+            /** Db */
+            db: {
+                [key: string]: unknown;
+            };
+            /** Handles */
+            handles?: string[];
+            /** Ok */
+            ok: boolean;
+            /** Reasons */
+            reasons?: string[];
+            /** Store */
+            store: string;
+        } & {
+            [key: string]: unknown;
+        };
         /** RecentData */
         RecentData: {
             /** Events */
@@ -1970,10 +1915,6 @@ export interface components {
         };
         /** TokenCaseData */
         TokenCaseData: {
-            /** Cex Detail */
-            cex_detail?: {
-                [key: string]: unknown;
-            } | null;
             /** Market Live */
             market_live: {
                 [key: string]: unknown;
@@ -2063,20 +2004,10 @@ export interface components {
             /** Last Source Event At Ms */
             last_source_event_at_ms?: number | null;
             /**
-             * Recent Signal Event Count
-             * @default 0
-             */
-            recent_signal_event_count: number;
-            /**
              * Recent Source Event Count
              * @default 0
              */
             recent_source_event_count: number;
-            /**
-             * Total Signal Event Count
-             * @default 0
-             */
-            total_signal_event_count: number;
         } & {
             [key: string]: unknown;
         };
@@ -2156,11 +2087,6 @@ export interface components {
              */
             resolved_token_count: number;
             /**
-             * Signal Event Count
-             * @default 0
-             */
-            signal_event_count: number;
-            /**
              * Source Event Count
              * @default 0
              */
@@ -2172,11 +2098,6 @@ export interface components {
         WatchlistOverviewQuery: {
             /** Handle */
             handle: string;
-            /**
-             * Scope
-             * @enum {string}
-             */
-            scope: "signal" | "all";
             /** Window */
             window: string;
         } & {
@@ -2220,22 +2141,11 @@ export interface components {
             lane: string;
             /** Oldest Active Run Once Age Ms */
             oldest_active_run_once_age_ms?: number | null;
-            /** Queue Depth */
-            queue_depth?: number | null;
-            /** Queue Health */
-            queue_health?: {
-                [key: string]: unknown;
-            };
             /**
              * Running Workers
              * @default 0
              */
             running_workers: number;
-            /**
-             * Soft Timed Out Workers
-             * @default 0
-             */
-            soft_timed_out_workers: number;
             /**
              * Stopped Workers
              * @default 0
@@ -2260,8 +2170,6 @@ export interface components {
             active_run_once_count: number;
             /** Active Run Once Hard Timed Out At Ms */
             active_run_once_hard_timed_out_at_ms?: number | null;
-            /** Active Run Once Soft Timed Out At Ms */
-            active_run_once_soft_timed_out_at_ms?: number | null;
             /** Active Run Once Started At Ms */
             active_run_once_started_at_ms?: number | null;
             /** Details */
@@ -2289,12 +2197,6 @@ export interface components {
             last_started_at_ms?: number | null;
             /** Pool Wait Ms P99 */
             pool_wait_ms_p99?: number | null;
-            /** Queue Depth */
-            queue_depth?: number | null;
-            /** Queue Health */
-            queue_health?: {
-                [key: string]: unknown;
-            };
             /** Running */
             running: boolean;
             /** Unavailable Reason */
@@ -2345,37 +2247,6 @@ export interface operations {
             };
         };
     };
-    account_quality_api_account_quality_get: {
-        parameters: {
-            query?: {
-                handles?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_AccountQualityData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
     bootstrap_api_bootstrap_get: {
         parameters: {
             query?: never;
@@ -2392,71 +2263,6 @@ export interface operations {
                 };
                 content: {
                     "application/json": components["schemas"]["ApiEnvelope_BootstrapData_"];
-                };
-            };
-        };
-    };
-    cex_detail_api_cex_detail_get: {
-        parameters: {
-            query?: {
-                target_type?: string | null;
-                target_id?: string | null;
-                exchange?: string;
-                symbol?: string | null;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    cex_radar_board_api_cex_radar_board_get: {
-        parameters: {
-            query?: {
-                limit?: number;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": unknown;
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
@@ -3268,9 +3074,7 @@ export interface operations {
     };
     watchlist_handle_overview_api_watchlist_handle__handle__overview_get: {
         parameters: {
-            query?: {
-                scope?: string;
-            };
+            query?: never;
             header?: never;
             path: {
                 handle: string;
@@ -3302,7 +3106,6 @@ export interface operations {
     watchlist_handle_timeline_api_watchlist_handle__handle__timeline_get: {
         parameters: {
             query?: {
-                scope?: string;
                 limit?: number;
                 cursor?: string;
             };
@@ -3409,7 +3212,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["StatusData"];
+                    "application/json": components["schemas"]["ReadinessData"];
                 };
             };
         };

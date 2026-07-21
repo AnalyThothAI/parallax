@@ -8,9 +8,10 @@ from pathlib import Path
 from typing import Any
 
 from parallax.app.runtime.job_queue import JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor
+from parallax.app.runtime.ops_cli_queries import token_radar_publication_status
 from parallax.app.runtime.worker_status import effective_worker_status, workers_status_payload
 from parallax.domains.asset_market.providers import ProviderHealth
-from parallax.domains.token_intel.repositories.projection_repository import ProjectionRepository
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 from parallax.platform.db.postgres_client import postgres_health_check
 from parallax.platform.db.postgres_migrations import latest_migration_version
 from parallax.platform.paths.runtime_paths import workers_config_path
@@ -42,7 +43,6 @@ TERMINAL_SUCCESS_STATUSES = {"done", "delivered"}
 QUEUE_ALLOWED_STATUSES = {"pending", "running", "failed", "dead", "done", "delivered"}
 AGENT_EXECUTION_RECENT_SIGNAL_MS = 5 * 60 * 1000
 AGENT_EXECUTION_POLICY_KEYS = {
-    "allowed_child_lanes",
     "global_max_concurrency",
     "max_concurrency",
     "priority",
@@ -58,13 +58,11 @@ AGENT_EXECUTION_COUNTER_KEYS = {
     "last_capacity_denied_at_ms",
     "last_circuit_open_at_ms",
     "last_denied_at_ms",
-    "last_parent_reservation_denied_at_ms",
     "last_provider_latency_timeout_at_ms",
     "last_rate_limit_at_ms",
     "last_rpm_wait_at_ms",
     "last_timeout_at_ms",
     "oldest_in_flight_age_ms",
-    "parent_reservation_denied_total",
     "provider_latency_timeout_total",
     "provider_running",
     "rate_limit_denied_total",
@@ -374,8 +372,6 @@ def _worker_group(name: str) -> str:
         return "ingestion"
     if name.startswith(("token_", "resolution", "asset_", "market_", "anchor_")):
         return "asset_market"
-    if name.startswith("narrative"):
-        return "narrative"
     if name.startswith("news"):
         return "news"
     if name.startswith(("watchlist", "handle")):
@@ -540,10 +536,17 @@ def _domains_payload(runtime: Any) -> dict[str, Any]:
 
 def _token_radar_domain(runtime: Any) -> dict[str, Any]:
     with runtime.repositories() as repos:
-        summary = ProjectionRepository(repos.conn).status_summary()
-    known = summary.get("known_projections") or []
-    status = "ok" if known else "idle"
-    return {"status": status, "projection": summary}
+        publication = token_radar_publication_status(
+            repos.conn,
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+        )
+    status = {
+        "ready": "ok",
+        "missing": "idle",
+        "degraded": "degraded",
+        "failed": "blocked",
+    }[str(publication["status"])]
+    return {"status": status, "publication": publication}
 
 
 def _asset_market_domain(runtime: Any) -> dict[str, Any]:
@@ -560,7 +563,7 @@ def _asset_market_domain(runtime: Any) -> dict[str, Any]:
 
 def _news_domain(runtime: Any) -> dict[str, Any]:
     with runtime.repositories() as repos:
-        sources = repos.news.list_source_status()
+        sources = repos.news_sources.list_source_status()
     failing = [source for source in sources if str(source.get("status") or "").lower() not in {"ok", "ready", "active"}]
     status = "degraded" if failing else ("ok" if sources else "idle")
     return {"status": status, "sources": sources, "source_count": len(sources)}
@@ -673,7 +676,6 @@ def _agent_lane_status(
         return "degraded"
     recent_fields = (
         "last_capacity_denied_at_ms",
-        "last_parent_reservation_denied_at_ms",
         "last_denied_at_ms",
         "last_provider_latency_timeout_at_ms",
         "last_rate_limit_at_ms",
@@ -784,7 +786,7 @@ def _suggested_checks(*, queues: list[dict[str, Any]], domains: dict[str, Any]) 
                 "id": "inspect_worker_status",
                 "label": "inspect worker queues",
                 "reason": "blocked queue detected",
-                "cli_equivalent": "uv run parallax ops worker-status",
+                "cli_equivalent": "GET /api/ops/diagnostics",
                 "safe_to_run": True,
                 "requires_confirmation": False,
             }

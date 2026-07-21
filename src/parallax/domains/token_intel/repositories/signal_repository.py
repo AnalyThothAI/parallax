@@ -2,10 +2,12 @@ from __future__ import annotations
 
 import hashlib
 import time
-from collections.abc import Callable
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
+
+from parallax.platform.db.postgres_client import require_transaction
+from parallax.platform.db.write_contract import mutation_count
+from parallax.platform.validation import require_nonnegative_int
 
 
 @dataclass(frozen=True, slots=True)
@@ -37,50 +39,49 @@ class SignalRepository:
         is_first_seen_global: bool,
         is_first_seen_by_author: bool,
         received_at_ms: int,
-        commit: bool = True,
     ) -> SignalAlert | None:
-        def _write() -> SignalAlert | None:
-            now_ms = _now_ms()
-            alert_id = _id("account_token", event_id, entity_key)
-            cursor = self.conn.execute(
-                """
-                INSERT INTO account_token_alerts(
-                  alert_id, event_id, author_handle, entity_key, entity_type, normalized_value, chain,
-                  token_resolution_status, is_first_seen_global, is_first_seen_by_author, received_at_ms, created_at_ms
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT(alert_id) DO NOTHING
-                """,
-                (
-                    alert_id,
-                    event_id,
-                    author_handle,
-                    entity_key,
-                    entity_type,
-                    normalized_value,
-                    chain,
-                    token_resolution_status,
-                    is_first_seen_global,
-                    is_first_seen_by_author,
-                    received_at_ms,
-                    now_ms,
-                ),
+        require_transaction(self.conn, operation="insert_account_token_alert")
+        now_ms = _now_ms()
+        alert_id = _id("account_token", event_id, entity_key)
+        cursor = self.conn.execute(
+            """
+            INSERT INTO account_token_alerts(
+              alert_id, event_id, author_handle, entity_key, entity_type, normalized_value, chain,
+              token_resolution_status, is_first_seen_global, is_first_seen_by_author, received_at_ms, created_at_ms
             )
-            inserted = _single_row_write_count(cursor)
-            if inserted == 0:
-                return None
-            return SignalAlert(
-                alert_type="account_token",
-                event_id=event_id,
-                author_handle=author_handle,
-                entity_key=entity_key,
-                normalized_value=normalized_value,
-                received_at_ms=received_at_ms,
-                is_first_seen_global=is_first_seen_global,
-                is_first_seen_by_author=is_first_seen_by_author,
-            )
-
-        return _run_repository_write(self.conn, commit, _write)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(alert_id) DO NOTHING
+            """,
+            (
+                alert_id,
+                event_id,
+                author_handle,
+                entity_key,
+                entity_type,
+                normalized_value,
+                chain,
+                token_resolution_status,
+                is_first_seen_global,
+                is_first_seen_by_author,
+                received_at_ms,
+                now_ms,
+            ),
+        )
+        inserted = mutation_count(cursor, error_code="signal_repository_rowcount_invalid")
+        if inserted not in (0, 1):
+            raise TypeError("signal_repository_rowcount_invalid")
+        if inserted == 0:
+            return None
+        return SignalAlert(
+            alert_type="account_token",
+            event_id=event_id,
+            author_handle=author_handle,
+            entity_key=entity_key,
+            normalized_value=normalized_value,
+            received_at_ms=received_at_ms,
+            is_first_seen_global=is_first_seen_global,
+            is_first_seen_by_author=is_first_seen_by_author,
+        )
 
     def account_alerts(
         self,
@@ -91,7 +92,10 @@ class SignalRepository:
         handles: set[str] | None = None,
         alert_type: str | None = None,
     ) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(limit, "signal_repository_alert_limit_required")
+        parsed_limit = require_nonnegative_int(
+            limit,
+            error_code="signal_repository_alert_limit_required",
+        )
         now = now_ms if now_ms is not None else _now_ms()
         since = now - window_ms
         rows: list[dict[str, Any]] = []
@@ -129,7 +133,10 @@ class SignalRepository:
         return grouped
 
     def _account_token_alerts(self, *, since_ms: int, limit: int, handles: set[str] | None) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(limit, "signal_repository_alert_limit_required")
+        parsed_limit = require_nonnegative_int(
+            limit,
+            error_code="signal_repository_alert_limit_required",
+        )
         clauses = ["received_at_ms >= %s"]
         params: list[Any] = [since_ms]
         if handles:
@@ -160,40 +167,3 @@ def _now_ms() -> int:
 
 def _event_ids(event_ids: tuple[str, ...]) -> list[str]:
     return [event_id for event_id in dict.fromkeys(str(item).strip() for item in event_ids) if event_id]
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("signal_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("signal_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()
-
-
-def _single_row_write_count(cursor: Any) -> int:
-    try:
-        rowcount = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("signal_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("signal_repository_rowcount_invalid")
-    if rowcount not in (0, 1):
-        raise TypeError("signal_repository_rowcount_invalid")
-    return int(rowcount)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)

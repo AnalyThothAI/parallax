@@ -32,8 +32,8 @@ def main() -> int:
     ws_token = os.environ.get("PARALLAX_E2E_WS_TOKEN", "e2e-token")
 
     # Import after env validation to keep error pretty.
-    from parallax.app.runtime.app import create_app
     from parallax.app.runtime.worker_manifest import all_worker_manifests
+    from parallax.app.surfaces.api.app import create_app
     from parallax.platform.config.settings import Settings
 
     settings = Settings(

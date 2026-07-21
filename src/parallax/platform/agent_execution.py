@@ -324,9 +324,6 @@ class AgentCapacityReservation:
     lane: str
     acquired: bool
     reason: AgentExecutionErrorClass | None = None
-    owns_global: bool = True
-    child_lanes: tuple[str, ...] = ()
-    scope: str = "execution"
     rate_units: int = 1
     _release: ReleaseCallback | None = None
     _owner_token: object | None = None

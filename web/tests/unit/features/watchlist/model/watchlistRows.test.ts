@@ -7,9 +7,9 @@ describe("watchlist helpers", () => {
     const rows = buildWatchlistRows({
       accountUnreadCounts: { cz_binance: 1, traderpow: 3 },
       rows: [
-        handleRow("toly", { lastSourceEventAtMs: 1_700_000_200_000, recentSignals: 4 }),
+        handleRow("toly", { lastSourceEventAtMs: 1_700_000_200_000 }),
         handleRow("traderpow", { lastSourceEventAtMs: null }),
-        handleRow("theunipcs", { lastSourceEventAtMs: 1_700_000_300_000, recentSignals: 8 }),
+        handleRow("theunipcs", { lastSourceEventAtMs: 1_700_000_300_000 }),
         handleRow("cz_binance", { lastSourceEventAtMs: 1_700_000_100_000, recentSources: 20 }),
       ],
     });
@@ -25,21 +25,15 @@ describe("watchlist helpers", () => {
       rows: [
         handleRow("quiet", {
           lastSourceEventAtMs: 1_700_000_500_000,
-          recentSignals: 0,
           recentSources: 1,
-          totalSignals: 4,
         }),
         handleRow("signals", {
           lastSourceEventAtMs: 1_700_000_100_000,
-          recentSignals: 6,
           recentSources: 8,
-          totalSignals: 80,
         }),
         handleRow("sources", {
           lastSourceEventAtMs: 1_700_000_400_000,
-          recentSignals: 0,
           recentSources: 12,
-          totalSignals: 12,
         }),
       ],
     });
@@ -49,7 +43,6 @@ describe("watchlist helpers", () => {
       activityScore: 12,
       lastSeenAtMs: 1_700_000_400_000,
       recentSourceCount: 12,
-      totalSignalCount: 12,
     });
   });
 });
@@ -58,16 +51,12 @@ function handleRow(
   handle: string,
   options: {
     lastSourceEventAtMs: number | null;
-    recentSignals?: number;
     recentSources?: number;
-    totalSignals?: number;
   },
 ): WatchlistHandleRowOverview {
   return {
     handle,
     last_source_event_at_ms: options.lastSourceEventAtMs,
     recent_source_event_count: options.recentSources ?? (options.lastSourceEventAtMs ? 1 : 0),
-    recent_signal_event_count: options.recentSignals ?? 0,
-    total_signal_event_count: options.totalSignals ?? 0,
   };
 }

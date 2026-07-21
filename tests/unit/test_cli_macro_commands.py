@@ -10,6 +10,7 @@ from types import SimpleNamespace, TracebackType
 
 import pytest
 
+from parallax.app.operations.macro import MacroSyncExecution
 from parallax.app.surfaces.cli.parser import build_parser
 from parallax.cli import main
 from parallax.domains.macro_intel._constants import (
@@ -684,113 +685,48 @@ def test_macro_import_bundle_from_file_dispatches_to_importer(tmp_path, monkeypa
 
     bundle_path = tmp_path / "macro-core.json"
     bundle_path.write_text(json.dumps(ENVELOPE), encoding="utf-8")
-    repo = FakeMacroIntelRepository()
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
-    wake_notifications: list[dict[str, object]] = []
+    settings = FakeSettings()
+    captured: dict[str, object] = {}
+    monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: settings)
 
-    class RecordingWakeBus:
-        def __init__(self, conn_factory) -> None:
-            self.conn_factory = conn_factory
+    def fake_import(current_settings, envelope, *, now_ms):
+        captured.update(settings=current_settings, envelope=envelope, now_ms=now_ms)
+        return {"bundle_name": "macro-core", "imported_observation_count": 1}
 
-        def notify_macro_observations_imported(self, *, count, max_observed_at, asof_date) -> None:
-            wake_notifications.append(
-                {
-                    "count": count,
-                    "max_observed_at": max_observed_at,
-                    "asof_date": asof_date,
-                }
-            )
-
-    monkeypatch.setattr(macro_module, "WakeBus", RecordingWakeBus, raising=False)
+    monkeypatch.setattr(macro_module, "import_macro_bundle", fake_import)
+    monkeypatch.setattr(macro_module, "_now_ms", lambda: NOW_MS)
     stdout = io.StringIO()
 
     code = main(["macro", "import-bundle", "--file", str(bundle_path)], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
-    assert payload["ok"] is True
-    assert payload["data"]["bundle_name"] == "macro-core"
-    assert payload["data"]["observations_count"] == 1
-    assert payload["data"]["run_id"] == repo.import_runs[0]["run_id"]
-    assert repo.observations[0]["concept_key"] == "liquidity:sofr"
-    assert repo.observations[0]["series_key"] == "nyfed:SOFR"
-    assert repo.observations[0]["source_priority"] == 100
-    assert repo.conn.commits == 0
-    assert repo.transaction_events == ["commit"]
-    assert repo.enqueued_dirty_targets == [
-        {
-            "changed_observations": [
-                {
-                    "observation_id": payload["data"]["imported_observation_ids"][0],
-                    "status": "inserted",
-                    "concept_key": "liquidity:sofr",
-                    "observed_at": date(2026, 5, 19),
-                    "fact_payload_hash": payload["data"]["changed_observations"][0]["fact_payload_hash"],
-                }
-            ],
-            "projection_name": "macro_view",
-            "projection_version": "macro_regime_v4",
-            "now_ms": NOW_MS,
-            "due_at_ms": NOW_MS,
-            "reason": "macro_observations_changed",
-            "commit": False,
-        }
-    ]
-    assert wake_notifications == [
-        {
-            "count": 1,
-            "max_observed_at": "2026-05-19",
-            "asof_date": "2026-05-21",
-        }
-    ]
-
-
-def test_macro_import_bundle_wake_failure_preserves_import_success(tmp_path, monkeypatch) -> None:
-    from parallax.app.surfaces.cli.commands import macro as macro_module
-
-    bundle_path = tmp_path / "bundle.json"
-    bundle_path.write_text(json.dumps(ENVELOPE), encoding="utf-8")
-    repo = FakeMacroIntelRepository()
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
-
-    class FailingWakeBus:
-        def __init__(self, conn_factory) -> None:
-            self.conn_factory = conn_factory
-
-        def notify_macro_observations_imported(self, **kwargs: object) -> None:
-            raise RuntimeError("wake failed")
-
-    monkeypatch.setattr(macro_module, "WakeBus", FailingWakeBus, raising=False)
-    stdout = io.StringIO()
-
-    code = main(["macro", "import-bundle", "--file", str(bundle_path)], stdout=stdout)
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert payload["ok"] is True
-    assert payload["data"]["imported_observation_count"] == 1
-    assert repo.transaction_events == ["commit"]
+    assert payload == {"ok": True, "data": {"bundle_name": "macro-core", "imported_observation_count": 1}}
+    assert captured == {"settings": settings, "envelope": ENVELOPE, "now_ms": NOW_MS}
 
 
 def test_macro_sync_delegates_to_sync_service_without_projection_payload(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
-    repo = FakeMacroIntelRepository()
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
-
-    service = FakeMacroSyncService(
-        result=MacroSyncRunSummary(
-            sync_run_id="sync-run-1",
-            import_run_id="import-run-1",
-            status="ok",
-            observations_count=1,
-            imported_observation_count=1,
-            asof_date=date(2026, 5, 21),
-            max_observed_at=date(2026, 5, 21),
-            diagnostics={"fred_api_key_env": "APP_FRED_KEY", "fred_api_key_configured": True},
-        )
+    settings = FakeSettings()
+    monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: settings)
+    calls: list[dict[str, object]] = []
+    summary = MacroSyncRunSummary(
+        sync_run_id="sync-run-1",
+        status="ok",
+        observations_count=1,
+        imported_observation_count=1,
+        asof_date=date(2026, 5, 21),
+        max_observed_at=date(2026, 5, 21),
+        diagnostics={"fred_api_key_env": "APP_FRED_KEY", "fred_api_key_configured": True},
     )
-    monkeypatch.setattr(macro_module, "MacroSyncService", lambda **kwargs: service)
+
+    def fake_sync(current_settings, **kwargs):
+        calls.append({"settings": current_settings, **kwargs})
+        return MacroSyncExecution(summary=summary, diagnostics=dict(summary.diagnostics))
+
+    monkeypatch.setattr(macro_module, "sync_macro_window", fake_sync)
+    monkeypatch.setattr(macro_module, "_now_ms", lambda: NOW_MS)
     stdout = io.StringIO()
 
     code = main(
@@ -813,37 +749,36 @@ def test_macro_sync_delegates_to_sync_service_without_projection_payload(monkeyp
         "max_observed_at": "2026-05-21",
         "asof_date": "2026-05-21",
     }
-    assert service.calls == [
+    assert calls == [
         {
+            "settings": settings,
             "bundle_name": "macro-core",
             "window_start": date(2026, 1, 1),
             "window_end": date(2026, 5, 21),
-            "trigger_reason": "operator_sync",
-            "lease_owner": "macro_cli_sync",
+            "now_ms": NOW_MS,
         }
     ]
-    assert repo.observations == []
-    assert repo.snapshots == []
 
 
 def test_macro_sync_failure_returns_nonzero_and_does_not_project(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
-    repo = FakeMacroIntelRepository()
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
-    service = FakeMacroSyncService(
-        result=MacroSyncRunSummary(
-            sync_run_id="sync-run-fail",
-            import_run_id=None,
-            status="config_error",
-            observations_count=0,
-            imported_observation_count=0,
-            asof_date=None,
-            max_observed_at=None,
-            diagnostics={"fred_api_key_env": "FINANCE_FRED_API_KEY", "fred_api_key_configured": False},
-        )
+    settings = FakeSettings()
+    monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: settings)
+    summary = MacroSyncRunSummary(
+        sync_run_id="sync-run-fail",
+        status="config_error",
+        observations_count=0,
+        imported_observation_count=0,
+        asof_date=None,
+        max_observed_at=None,
+        diagnostics={"fred_api_key_env": "FINANCE_FRED_API_KEY", "fred_api_key_configured": False},
     )
-    monkeypatch.setattr(macro_module, "MacroSyncService", lambda **kwargs: service)
+    monkeypatch.setattr(
+        macro_module,
+        "sync_macro_window",
+        lambda *_args, **_kwargs: MacroSyncExecution(summary=summary, diagnostics=dict(summary.diagnostics)),
+    )
     stdout = io.StringIO()
 
     code = main(
@@ -857,7 +792,6 @@ def test_macro_sync_failure_returns_nonzero_and_does_not_project(monkeypatch) ->
     assert payload["error"] == "macro_sync_failed"
     assert payload["data"]["sync"]["status"] == "config_error"
     assert "projection" not in payload["data"]
-    assert repo.snapshots == []
 
 
 @pytest.mark.parametrize(
@@ -878,8 +812,12 @@ def test_macro_sync_validates_dates_before_service_call(
 ) -> None:
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
-    repo = FakeMacroIntelRepository()
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+    monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: FakeSettings())
+    monkeypatch.setattr(
+        macro_module,
+        "sync_macro_window",
+        lambda *_args, **_kwargs: pytest.fail("invalid CLI dates must not reach the operation"),
+    )
     stdout = io.StringIO()
 
     code = main(["macro", "sync", "--bundle", "macro-core", "--start", start, "--end", end], stdout=stdout)
@@ -894,8 +832,18 @@ def test_macro_sync_validates_dates_before_service_call(
 def test_macro_import_bundle_from_stdin_dispatches_to_importer(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
-    repo = FakeMacroIntelRepository()
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+    settings = FakeSettings()
+    monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: settings)
+    monkeypatch.setattr(
+        macro_module,
+        "import_macro_bundle",
+        lambda current_settings, envelope, *, now_ms: {
+            "coverage": envelope["data"]["snapshot"]["coverage"],
+            "settings_match": current_settings is settings,
+            "now_ms": now_ms,
+        },
+    )
+    monkeypatch.setattr(macro_module, "_now_ms", lambda: NOW_MS)
     monkeypatch.setattr(macro_module.sys, "stdin", io.StringIO(json.dumps(ENVELOPE)))
     stdout = io.StringIO()
 
@@ -904,23 +852,20 @@ def test_macro_import_bundle_from_stdin_dispatches_to_importer(monkeypatch) -> N
     payload = json.loads(stdout.getvalue())
     assert code == 0
     assert payload["ok"] is True
-    assert payload["data"]["coverage"] == {"requested": 20, "available": 1}
-    assert repo.observations[0]["raw_payload"]["series_key"] == "nyfed:SOFR"
-    assert repo.transaction_events == ["commit"]
+    assert payload["data"] == {
+        "coverage": {"requested": 20, "available": 1},
+        "settings_match": True,
+        "now_ms": NOW_MS,
+    }
 
 
-def test_macro_import_bundle_requires_exactly_one_input(monkeypatch) -> None:
-    from parallax.app.surfaces.cli.commands import macro as macro_module
-
-    repo = FakeMacroIntelRepository()
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+def test_macro_import_bundle_requires_exactly_one_input() -> None:
     stdout = io.StringIO()
 
     code = main(["macro", "import-bundle"], stdout=stdout)
 
     assert code == 2
     assert json.loads(stdout.getvalue()) == {"ok": False, "error": "macro_import_bundle_requires_file_or_stdin"}
-    assert repo.observations == []
 
 
 def test_macro_import_bundle_reports_repository_failure_without_secret(tmp_path, monkeypatch) -> None:
@@ -928,8 +873,12 @@ def test_macro_import_bundle_reports_repository_failure_without_secret(tmp_path,
 
     bundle_path = tmp_path / "macro-core.json"
     bundle_path.write_text(json.dumps(ENVELOPE), encoding="utf-8")
-    repo = FakeMacroIntelRepository(fail_record_run=True)
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+    monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: FakeSettings())
+    monkeypatch.setattr(
+        macro_module,
+        "import_macro_bundle",
+        lambda *_args, **_kwargs: (_ for _ in ()).throw(RuntimeError("repository failed with secret")),
+    )
     stdout = io.StringIO()
 
     code = main(["macro", "import-bundle", "--file", str(bundle_path)], stdout=stdout)
@@ -942,7 +891,6 @@ def test_macro_import_bundle_reports_repository_failure_without_secret(tmp_path,
         "error": "macro_import_bundle_failed",
         "detail": "RuntimeError",
     }
-    assert repo.observations == []
 
 
 def test_macro_project_once_command_is_removed(monkeypatch) -> None:
@@ -1124,6 +1072,7 @@ def test_macro_status_repository_exception_returns_structured_error_without_secr
 
 
 def test_macro_status_requires_importable_event_bundle_series(monkeypatch) -> None:
+    from parallax.app.operations import macro as operation_module
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
@@ -1158,7 +1107,7 @@ def test_macro_status_requires_importable_event_bundle_series(monkeypatch) -> No
             "missing_required_bundle_series_by_bundle": {},
         }
 
-    monkeypatch.setattr(macro_module, "macrodata_runtime_state", fake_macrodata_runtime_state)
+    monkeypatch.setattr(operation_module, "macrodata_runtime_state", fake_macrodata_runtime_state)
     stdout = io.StringIO()
 
     code = main(["macro", "status"], stdout=stdout)
@@ -1261,14 +1210,16 @@ def _patch_macro_dependencies(
     *,
     settings: object | None = None,
 ) -> None:
+    from parallax.app.operations import macro as operation_module
+
     @contextmanager
     def fake_repositories(_settings: object):
         yield FakeRepositorySession(repo)
 
     monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: settings or FakeSettings())
-    monkeypatch.setattr(macro_module, "repositories", fake_repositories)
+    monkeypatch.setattr(operation_module, "repositories", fake_repositories)
     monkeypatch.setattr(
-        macro_module,
+        operation_module,
         "macrodata_runtime_state",
         lambda *, required_series, required_bundles, required_bundle_series: {
             "package_version": "0.1.test",
@@ -1292,35 +1243,8 @@ def _patch_macro_dependencies(
             "missing_required_bundle_series_by_bundle": {},
         },
     )
+    monkeypatch.setattr(operation_module, "_now_ms", lambda: NOW_MS)
     monkeypatch.setattr(macro_module, "_now_ms", lambda: NOW_MS)
-
-
-class FakeMacroSyncService:
-    def __init__(self, *, result: MacroSyncRunSummary) -> None:
-        self.result = result
-        self.calls: list[dict[str, object]] = []
-
-    def run_explicit_window_once(
-        self,
-        *,
-        bundle_name: str,
-        window_start: date,
-        window_end: date,
-        trigger_reason: str = "operator_sync",
-        lease_owner: str = "macro_cli_sync",
-        now_ms: int | None = None,
-    ) -> MacroSyncRunSummary:
-        self.calls.append(
-            {
-                "bundle_name": bundle_name,
-                "window_start": window_start,
-                "window_end": window_end,
-                "trigger_reason": trigger_reason,
-                "lease_owner": lease_owner,
-            }
-        )
-        assert now_ms == NOW_MS
-        return self.result
 
 
 class FakeSettings:
@@ -1353,7 +1277,7 @@ class FakeMacroIntelRepository:
         self.source_observations = observations or []
         self.source_concept_history = concept_history
         self.observations: list[dict[str, object]] = []
-        self.import_runs: list[dict[str, object]] = []
+        self.sync_runs: list[dict[str, object]] = []
         self.snapshots: list[dict[str, object]] = []
         self.latest_observation_limits: list[int] = []
         self.observations_for_concepts_calls: list[dict[str, object]] = []
@@ -1393,10 +1317,10 @@ class FakeMacroIntelRepository:
             "fact_payload_hash": fact_payload_hash,
         }
 
-    def record_import_run(self, import_run: dict[str, object]) -> None:
+    def record_macro_sync_run(self, sync_run: dict[str, object]) -> None:
         if self.fail_record_run:
             raise RuntimeError("postgres://user:secret@db record failed")
-        self.import_runs.append(import_run)
+        self.sync_runs.append(sync_run)
 
     def enqueue_macro_projection_dirty_targets_for_changes(self, **kwargs: object) -> int:
         self.enqueued_dirty_targets.append(dict(kwargs))
@@ -1496,7 +1420,7 @@ class FakeRepositorySession:
         self.conn = macro_intel.conn
         self.in_transaction = False
 
-    def unit_of_work(self):
+    def transaction(self):
         return FakeTransaction(self)
 
     def require_transaction(self, *, operation: str) -> None:
@@ -1511,14 +1435,14 @@ class FakeTransaction:
         self.macro_intel = repos.macro_intel
         self.observations: list[dict[str, object]] = []
         self.observation_index: dict[str, int] = {}
-        self.import_runs: list[dict[str, object]] = []
+        self.sync_runs: list[dict[str, object]] = []
         self.enqueued_dirty_targets: list[dict[str, object]] = []
 
     def __enter__(self):
         self.repos.in_transaction = True
         self.observations = list(self.macro_intel.observations)
         self.observation_index = dict(self.macro_intel._observation_index)
-        self.import_runs = list(self.macro_intel.import_runs)
+        self.sync_runs = list(self.macro_intel.sync_runs)
         self.enqueued_dirty_targets = list(self.macro_intel.enqueued_dirty_targets)
         return self
 
@@ -1531,7 +1455,7 @@ class FakeTransaction:
         if exc_type is not None:
             self.macro_intel.observations = self.observations
             self.macro_intel._observation_index = self.observation_index
-            self.macro_intel.import_runs = self.import_runs
+            self.macro_intel.sync_runs = self.sync_runs
             self.macro_intel.enqueued_dirty_targets = self.enqueued_dirty_targets
             self.macro_intel.transaction_events.append("rollback")
         else:

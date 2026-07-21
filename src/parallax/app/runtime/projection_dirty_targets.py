@@ -1,21 +1,20 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from contextlib import AbstractContextManager, nullcontext
-from typing import Any, cast
+from contextlib import nullcontext
+from typing import Any
 
 from parallax.domains.news_intel._constants import NEWS_STORY_IDENTITY_VERSION
 from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_page_reprojection,
-    enqueue_source_quality_refresh,
     enqueue_story_brief_work,
 )
-from parallax.domains.news_intel.services.news_item_agent_policy import (
-    news_item_agent_brief_priority,
+from parallax.domains.news_intel.services.news_story_agent_policy import (
+    news_story_brief_priority,
 )
 
 DOMAIN_CHOICES = ("all", "news")
-PROJECTION_CHOICES = ("all", "page", "source_quality", "story_brief")
+PROJECTION_CHOICES = ("all", "page", "story_brief")
 
 _NEWS_ITEM_PROJECTIONS = ("page", "story_brief")
 
@@ -47,7 +46,7 @@ def enqueue_projection_dirty_targets(
         "news": {},
     }
 
-    context = _transaction(repos.conn) if execute else nullcontext()
+    context = repos.transaction() if execute else nullcontext()
     with context:
         if include_news:
             result["news"] = _enqueue_news_targets(
@@ -69,26 +68,12 @@ def _enqueue_news_targets(
     since_ms: int | None,
 ) -> dict[str, int]:
     news_item_projections = _selected_projections(projection, _NEWS_ITEM_PROJECTIONS)
-    include_source_quality = projection in {"all", "source_quality"}
     news_item_rows = (
         _fetch_news_item_rows(
             repos.conn,
             since_ms=since_ms,
         )
         if news_item_projections
-        else []
-    )
-    source_ids = (
-        _fetch_ids(
-            repos.conn,
-            """
-            SELECT source_id
-              FROM news_sources
-             ORDER BY source_id ASC
-            """,
-            "source_id",
-        )
-        if include_source_quality
         else []
     )
     page_rows = [row for row in news_item_rows if "page" in news_item_projections]
@@ -104,7 +89,6 @@ def _enqueue_news_targets(
             source_watermark_ms_by_news_item_id=watermarks,
             reason="ops_projection_dirty_repair",
             now_ms=now_ms,
-            commit=False,
         )
         if execute and page_rows
         else 0
@@ -117,29 +101,14 @@ def _enqueue_news_targets(
             source_watermark_ms_by_story_key=story_targets["source_watermark_ms_by_story_key"],
             reason="ops_projection_dirty_repair",
             now_ms=now_ms,
-            commit=False,
         )
         if execute and story_targets["story_keys"]
-        else 0
-    )
-    enqueued_source_quality = (
-        enqueue_source_quality_refresh(
-            repos,
-            source_ids=source_ids,
-            reason="ops_projection_dirty_repair",
-            now_ms=now_ms,
-            commit=False,
-        )
-        if execute and source_ids
         else 0
     )
     return {
         "news_item_ids": len(news_item_rows),
         "news_item_targets": len(page_rows) + len(story_targets["story_keys"]),
         "news_item_targets_enqueued": int(enqueued_pages) + int(enqueued_story_briefs),
-        "source_ids": len(source_ids),
-        "source_quality_targets": len(source_ids),
-        "source_quality_targets_enqueued": int(enqueued_source_quality),
     }
 
 
@@ -152,11 +121,11 @@ def _selected_projections(requested: str, available: tuple[str, ...]) -> tuple[s
 
 
 def _row_brief_eligible(row: Mapping[str, Any]) -> bool:
-    return _news_item_brief_priority(row) < 100
+    return _story_brief_priority(row) < 100
 
 
-def _news_item_brief_priority(row: Mapping[str, Any]) -> int:
-    return news_item_agent_brief_priority(item=row)
+def _story_brief_priority(row: Mapping[str, Any]) -> int:
+    return news_story_brief_priority(item=row)
 
 
 def _story_brief_targets(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
@@ -167,7 +136,7 @@ def _story_brief_targets(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
         story_key = _news_item_story_key(row)
         if story_key not in source_watermark_ms_by_story_key:
             story_keys.append(story_key)
-        priority = _news_item_brief_priority(row)
+        priority = _story_brief_priority(row)
         existing_priority = priority_by_story_key.get(story_key)
         priority_by_story_key[story_key] = priority if existing_priority is None else min(existing_priority, priority)
         source_watermark_ms_by_story_key[story_key] = max(
@@ -206,11 +175,6 @@ def _news_item_source_watermark_ms(row: Mapping[str, Any]) -> int:
     return int(value)
 
 
-def _fetch_ids(conn: Any, sql: str, column: str) -> list[str]:
-    rows = conn.execute(sql).fetchall()
-    return [str(row[column]) for row in rows if row[column] is not None]
-
-
 def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, Any]]:
     params: dict[str, Any] = {"story_identity_version": NEWS_STORY_IDENTITY_VERSION}
     where_clauses = [
@@ -245,16 +209,6 @@ def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, 
         params,
     ).fetchall()
     return [dict(row) for row in rows if row["news_item_id"] is not None]
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("projection_dirty_targets_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("projection_dirty_targets_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
 
 
 __all__ = ["DOMAIN_CHOICES", "PROJECTION_CHOICES", "enqueue_projection_dirty_targets"]

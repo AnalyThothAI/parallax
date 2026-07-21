@@ -30,9 +30,6 @@ class WakeBus:
     def notify_resolution_updated(self, *, lookup_keys: Sequence[str]) -> None:
         self._notify("resolution_updated", {"lookup_keys": [str(item) for item in lookup_keys]})
 
-    def notify_token_radar_updated(self, *, window: str, scope: str) -> None:
-        self._notify("token_radar_updated", {"window": str(window), "scope": str(scope)})
-
     def notify_news_item_written(self, *, source_id: str, count: int) -> None:
         self._notify("news_item_written", {"source_id": str(source_id), "count": int(count)})
 
@@ -58,16 +55,6 @@ class WakeBus:
                 "count": int(count),
                 "max_observed_at": max_observed_at,
                 "asof_date": asof_date,
-            },
-        )
-
-    def notify_macro_view_snapshot_updated(self, *, projection_version: str, status: str, regime: str) -> None:
-        self._notify(
-            "macro_view_snapshot_updated",
-            {
-                "projection_version": str(projection_version),
-                "status": str(status),
-                "regime": str(regime),
             },
         )
 

@@ -1,10 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from parallax.domains.token_intel.types.token_fact_inputs import TokenIntentEvidenceLink, TokenIntentInput
+from parallax.platform.db.postgres_client import require_transaction
+from parallax.platform.db.write_contract import expect_mutation_count, mutation_count
+from parallax.platform.validation import require_nonnegative_int
 
 TokenIntentWriteInput = TokenIntentInput | Mapping[str, Any]
 
@@ -13,17 +15,15 @@ class TokenIntentRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def insert_many(self, intents: Sequence[TokenIntentWriteInput], *, commit: bool = True) -> list[dict[str, Any]]:
-        def _write() -> list[dict[str, Any]]:
-            return [self.insert(intent, commit=False) for intent in intents]
+    def insert_many(self, intents: Sequence[TokenIntentWriteInput]) -> list[dict[str, Any]]:
+        require_transaction(self.conn, operation="insert_token_intent_batch")
+        return [self.insert(intent) for intent in intents]
 
-        return _run_repository_write(self.conn, commit, _write)
-
-    def insert(self, intent: TokenIntentWriteInput, *, commit: bool = True) -> dict[str, Any]:
-        def _write() -> dict[str, Any]:
-            payload = _payload(intent)
-            cursor = self.conn.execute(
-                """
+    def insert(self, intent: TokenIntentWriteInput) -> dict[str, Any]:
+        require_transaction(self.conn, operation="insert_token_intent")
+        payload = _payload(intent)
+        cursor = self.conn.execute(
+            """
                 INSERT INTO token_intents(
                   intent_id, event_id, intent_key, construction_policy, primary_evidence_id,
                   display_symbol, display_name, chain_hint, address_hint, intent_status,
@@ -44,23 +44,23 @@ class TokenIntentRepository:
                   updated_at_ms = excluded.updated_at_ms
                 RETURNING *
                 """,
-                payload,
-            )
-            row = cursor.fetchone()
-            intent_row = _required_returning_row(cursor, row)
-            for link in _evidence_links(intent):
-                cursor = self.conn.execute(
-                    """
+            payload,
+        )
+        row = cursor.fetchone()
+        intent_row = _required_returning_row(cursor, row)
+        for link in _evidence_links(intent):
+            cursor = self.conn.execute(
+                """
                     INSERT INTO token_intent_evidence(intent_id, evidence_id, role)
                     VALUES (%s, %s, %s)
                     ON CONFLICT DO NOTHING
                     """,
-                    (payload["intent_id"], link.evidence_id, link.role),
-                )
-                _optional_single_rowcount(cursor)
-            return intent_row
-
-        return _run_repository_write(self.conn, commit, _write)
+                (payload["intent_id"], link.evidence_id, link.role),
+            )
+            rowcount = mutation_count(cursor, error_code="token_intent_repository_rowcount_invalid")
+            if rowcount not in (0, 1):
+                raise TypeError("token_intent_repository_rowcount_invalid")
+        return intent_row
 
     def get(self, intent_id: str) -> dict[str, Any] | None:
         row = self.conn.execute("SELECT * FROM token_intents WHERE intent_id = %s", (intent_id,)).fetchone()
@@ -110,11 +110,15 @@ class TokenIntentRepository:
         return [dict(row) for row in rows]
 
     def delete_by_event_id(self, event_id: str) -> None:
+        require_transaction(self.conn, operation="delete_token_intents_by_event")
         cursor = self.conn.execute("DELETE FROM token_intents WHERE event_id = %s", (event_id,))
-        _cursor_rowcount(cursor)
+        mutation_count(cursor, error_code="token_intent_repository_rowcount_invalid")
 
     def recent_unresolved(self, *, since_ms: int, limit: int) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(limit, "token_intent_recent_unresolved_limit_required")
+        parsed_limit = require_nonnegative_int(
+            limit,
+            error_code="token_intent_recent_unresolved_limit_required",
+        )
         if parsed_limit == 0:
             return []
         rows = self.conn.execute(
@@ -175,57 +179,8 @@ def _event_ids(event_ids: tuple[str, ...]) -> list[str]:
     return [event_id for event_id in dict.fromkeys(str(item).strip() for item in event_ids) if event_id]
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("token_intent_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("token_intent_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("token_intent_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int) or rowcount < 0:
-        raise TypeError("token_intent_repository_rowcount_invalid")
-    return rowcount
-
-
-def _required_single_rowcount(cursor: Any) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount != 1:
-        raise TypeError("token_intent_repository_rowcount_invalid")
-    return rowcount
-
-
-def _optional_single_rowcount(cursor: Any) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount not in (0, 1):
-        raise TypeError("token_intent_repository_rowcount_invalid")
-    return rowcount
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
 def _required_returning_row(cursor: Any, row: Any | None) -> dict[str, Any]:
-    _required_single_rowcount(cursor)
+    expect_mutation_count(cursor, expected=1, error_code="token_intent_repository_rowcount_invalid")
     if row is None:
         raise TypeError("token_intent_repository_rowcount_invalid")
     return dict(row)
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()

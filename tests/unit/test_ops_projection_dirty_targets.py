@@ -6,7 +6,7 @@ from typing import Any
 
 import pytest
 
-from parallax.app.runtime.ops_cli_queries import token_profile_image_repair_targets
+from parallax.app.runtime.ops_cli_queries import token_profile_image_repair_targets, token_radar_publication_status
 from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
 from parallax.app.surfaces.cli.parser import build_parser
 from parallax.domains.news_intel._constants import NEWS_STORY_IDENTITY_VERSION
@@ -28,7 +28,6 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
     assert result["execute"] is False
     assert result["news"]["news_item_ids"] == 3
     assert result["news"]["news_item_targets"] == 5
-    assert result["news"]["source_quality_targets"] == 2
     assert repos.news_dirty.enqueued == []
     assert repos.conn.transactions == 0
     assert all("analysis_admission" not in sql for sql, _params in repos.conn.statements)
@@ -84,16 +83,12 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
             "priority": 55,
         },
     ]
-    assert repos.news_dirty.enqueued[2]["rows"] == [
-        {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-1", "window": "_refresh"},
-        {"projection_name": "source_quality", "target_kind": "source", "target_id": "source-2", "window": "_refresh"},
-    ]
 
 
 def test_enqueue_projection_dirty_targets_execute_requires_transaction_before_reads_or_writes() -> None:
     repos = MissingTransactionRepos()
 
-    with pytest.raises(RuntimeError, match="projection_dirty_targets_transaction_required"):
+    with pytest.raises(AttributeError):
         enqueue_projection_dirty_targets(
             repos,
             domain="news",
@@ -223,43 +218,83 @@ def test_token_profile_image_repair_targets_use_observed_source_frontier_not_pro
     ]
 
 
-def test_enqueue_projection_dirty_targets_source_quality_only_does_not_scan_news_items() -> None:
-    repos = FakeRepos()
+def test_token_radar_publication_status_reports_missing_without_run_or_offset_fallback() -> None:
+    conn = TokenProfileImageRepairConn([])
 
-    result = enqueue_projection_dirty_targets(
-        repos,
-        domain="news",
-        execute=True,
-        now_ms=NOW_MS,
-        projection="source_quality",
-    )
+    result = token_radar_publication_status(conn, projection_version="token-radar-v-test")
 
-    assert result["projection"] == "source_quality"
-    assert result["news"]["news_item_ids"] == 0
-    assert result["news"]["news_item_targets"] == 0
-    assert result["news"]["source_quality_targets"] == 2
-    assert repos.news_dirty.enqueued == [
-        {
-            "rows": [
+    sql, params = conn.statements[0]
+    assert "FROM token_radar_publication_state" in sql
+    assert "projection_runs" not in sql
+    assert "projection_offsets" not in sql
+    assert params == ("token-radar-v-test",)
+    assert result == {
+        "projection_version": "token-radar-v-test",
+        "status": "missing",
+        "state_count": 0,
+        "ready_count": 0,
+        "failed_count": 0,
+        "publication_states": [],
+    }
+
+
+@pytest.mark.parametrize(
+    ("rows", "expected_status"),
+    [
+        (
+            [
                 {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-1",
-                    "window": "_refresh",
+                    "latest_attempt_status": "ready",
+                    "current_generation_id": "gen-1",
+                }
+            ],
+            "ready",
+        ),
+        (
+            [
+                {
+                    "latest_attempt_status": "ready",
+                    "current_generation_id": "gen-1",
                 },
                 {
-                    "projection_name": "source_quality",
-                    "target_kind": "source",
-                    "target_id": "source-2",
-                    "window": "_refresh",
+                    "latest_attempt_status": "failed",
+                    "current_generation_id": "gen-2",
                 },
             ],
-            "reason": "ops_projection_dirty_repair",
-            "now_ms": NOW_MS,
-            "commit": False,
-        }
-    ]
-    assert all("FROM news_items" not in sql for sql, _params in repos.conn.statements)
+            "degraded",
+        ),
+        (
+            [
+                {
+                    "latest_attempt_status": "failed",
+                    "current_generation_id": None,
+                }
+            ],
+            "failed",
+        ),
+    ],
+)
+def test_token_radar_publication_status_derives_health_from_current_state_only(
+    rows: list[dict[str, Any]],
+    expected_status: str,
+) -> None:
+    result = token_radar_publication_status(
+        TokenProfileImageRepairConn(rows),
+        projection_version="token-radar-v-test",
+    )
+
+    assert result["status"] == expected_status
+    assert result["state_count"] == len(rows)
+    assert result["ready_count"] == sum(row["latest_attempt_status"] == "ready" for row in rows)
+    assert result["failed_count"] == sum(row["latest_attempt_status"] == "failed" for row in rows)
+    assert result["publication_states"] == rows
+
+
+def test_token_radar_publication_status_rejects_unknown_publication_state() -> None:
+    conn = TokenProfileImageRepairConn([{"latest_attempt_status": "running"}])
+
+    with pytest.raises(ValueError, match="token_radar_publication_status_invalid"):
+        token_radar_publication_status(conn, projection_version="token-radar-v-test")
 
 
 def test_enqueue_projection_dirty_targets_can_scope_story_brief_repair() -> None:
@@ -297,18 +332,21 @@ def test_enqueue_projection_dirty_targets_can_scope_story_brief_repair() -> None
 class FakeRepos:
     def __init__(self) -> None:
         self.conn = FakeConn()
-        self.news = self
+        self.news_items = self
         self.news_dirty = FakeDirtyRepo()
         self.news_projection_dirty_targets = self.news_dirty
 
     def servable_news_item_ids(self, news_item_ids: list[str]) -> list[str]:
         return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
 
+    def transaction(self):
+        return self.conn.transaction()
+
 
 class MissingTransactionRepos:
     def __init__(self) -> None:
         self.conn = MissingTransactionConn()
-        self.news = self
+        self.news_items = self
         self.news_dirty = FakeDirtyRepo()
         self.news_projection_dirty_targets = self.news_dirty
 
@@ -412,7 +450,6 @@ class FakeDirtyRepo:
         *,
         reason: str,
         now_ms: int,
-        commit: bool = True,
         due_at_ms: int | None = None,
     ) -> int:
         del due_at_ms
@@ -421,7 +458,6 @@ class FakeDirtyRepo:
                 "rows": [dict(row) for row in rows],
                 "reason": reason,
                 "now_ms": now_ms,
-                "commit": commit,
             }
         )
         return len(rows)

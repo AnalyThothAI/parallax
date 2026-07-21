@@ -17,7 +17,6 @@ from parallax.domains.token_intel.scoring.social_signal_features import (
 from parallax.domains.token_intel.services.atomic_mention import mention_confidence_from_status, tweet_quality
 
 BASELINE_SLOT_COUNT = 6
-_SATURATED_AGE_MS = 180 * 24 * 60 * 60_000
 
 
 @dataclass(frozen=True, slots=True)
@@ -341,13 +340,8 @@ def _confidence(row: dict[str, Any]) -> float:
 
 def _atomic_quality(row: dict[str, Any]) -> float:
     return tweet_quality(
-        gmgn_platform_followers=_int_or_none(row.get("gmgn_platform_followers")),
-        ws_author_followers=_int_or_none(row.get("ws_author_followers")) or _int_or_none(row.get("author_followers")),
-        user_tags=row.get("gmgn_user_tags") or (),
-        first_seen_age_ms=_age_ms(
-            row.get("account_profile_first_seen_ms"),
-            row.get("received_at_ms"),
-        ),
+        author_followers=_int_or_none(row.get("author_followers")),
+        author_tags=row.get("author_tags_json") or (),
     )
 
 
@@ -358,17 +352,6 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-def _age_ms(first_seen_ms: Any, received_at_ms: Any) -> int:
-    received = _int_or_none(received_at_ms)
-    if received is None:
-        return 0
-    first = _int_or_none(first_seen_ms)
-    if first is None:
-        # No profile data → treat as mature; tag/follower floors still apply
-        return _SATURATED_AGE_MS
-    return max(0, received - first)
 
 
 def _llm_utility(row: dict[str, Any]) -> float | None:

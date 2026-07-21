@@ -1,13 +1,13 @@
 from __future__ import annotations
 
 from collections.abc import Mapping
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from typing import Any
 
 from psycopg.types.json import Jsonb
 
 from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 from parallax.platform.db.json_safety import postgres_safe_json, postgres_safe_text
+from parallax.platform.db.write_contract import returning_mutation_count
 
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
 
@@ -16,10 +16,7 @@ class TokenProfileCurrentRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def upsert_current(self, row: dict[str, Any], *, commit: bool = True) -> bool:
-        if commit:
-            with _transaction(self.conn):
-                return self.upsert_current(row, commit=False)
+    def upsert_current(self, row: dict[str, Any]) -> bool:
         computed_at_ms = int(row["computed_at_ms"])
         payload = {
             "target_type": _required_text(row.get("target_type")),
@@ -197,32 +194,6 @@ def _int_or_none(value: Any) -> int | None:
     return int(value) if value is not None else None
 
 
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("token_profile_current_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("token_profile_current_repository_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("token_profile_current_repository_rowcount_invalid")
-    return rowcount
-
-
 def _single_returning_changed(cursor: Any, row: Any | None) -> bool:
-    count = _cursor_rowcount(cursor)
-    if count not in (0, 1):
-        raise TypeError("token_profile_current_repository_rowcount_invalid")
-    if count != (1 if row is not None else 0):
-        raise TypeError("token_profile_current_repository_rowcount_invalid")
+    returning_mutation_count(cursor, row, error_code="token_profile_current_repository_rowcount_invalid")
     return row is not None and bool(row.get("changed", True))
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("token_profile_current_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("token_profile_current_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())

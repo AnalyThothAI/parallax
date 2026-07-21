@@ -9,7 +9,7 @@ describe("useHandleOverviewQuery", () => {
     vi.restoreAllMocks();
   });
 
-  it("fetches the selected handle overview with the timeline scope", async () => {
+  it("fetches the selected handle overview without a compatibility scope", async () => {
     const requests: string[] = [];
     vi.spyOn(globalThis, "fetch").mockImplementation(async (input) => {
       const url = new URL(String(input));
@@ -17,7 +17,7 @@ describe("useHandleOverviewQuery", () => {
       return jsonResponse({
         ok: true,
         data: {
-          query: { handle: "marionawfal", scope: "signal", window: "7d" },
+          query: { handle: "marionawfal", window: "7d" },
           metrics: {},
           resolved_token_clusters: [],
           candidate_mention_clusters: [],
@@ -28,12 +28,12 @@ describe("useHandleOverviewQuery", () => {
     });
 
     renderHook(
-      () => useHandleOverviewQuery({ handle: "marionawfal", scope: "signal", token: "secret" }),
+      () => useHandleOverviewQuery({ handle: "marionawfal", token: "secret" }),
       { wrapper: wrapper() },
     );
 
     await waitFor(() =>
-      expect(requests).toEqual(["/api/watchlist/handle/marionawfal/overview?scope=signal"]),
+      expect(requests).toEqual(["/api/watchlist/handle/marionawfal/overview?"]),
     );
   });
 });

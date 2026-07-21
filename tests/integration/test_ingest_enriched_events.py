@@ -5,7 +5,7 @@ from contextlib import contextmanager
 from decimal import Decimal
 
 from parallax.app.runtime.bootstrap import _PooledIngestStore
-from parallax.app.runtime.providers_wiring import AssetMarketProviders
+from parallax.app.runtime.provider_wiring.types import AssetMarketProviders
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.asset_market.providers import DexTokenQuote
 from parallax.domains.asset_market.repositories.market_tick_repository import MarketTickRepository

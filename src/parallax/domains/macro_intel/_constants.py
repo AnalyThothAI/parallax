@@ -2,6 +2,24 @@ from __future__ import annotations
 
 MACRO_VIEW_PROJECTION_VERSION = "macro_regime_v4"
 MACRO_MODULE_VIEW_VERSION = "macro_module_view_v3"
+MACRO_MODULE_IDS = (
+    "overview",
+    "assets",
+    "assets/equities",
+    "assets/bonds",
+    "assets/commodities",
+    "assets/fx",
+    "assets/crypto",
+    "rates/fed-funds",
+    "rates/yield-curve",
+    "rates/real-rates",
+    "liquidity/rrp-tga",
+    "economy/gdp",
+    "economy/employment",
+    "economy/inflation",
+    "volatility/vix",
+    "credit/stress",
+)
 MACRO_VIEW_HISTORY_LOOKBACK_DAYS = 1095
 MACRO_VIEW_HISTORY_LIMIT_PER_SERIES = 800
 MACRO_MIN_CHART_POINTS = 2
@@ -1366,6 +1384,7 @@ __all__ = [
     "MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT",
     "MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT",
     "MACRO_MIN_CHART_POINTS",
+    "MACRO_MODULE_IDS",
     "MACRO_MODULE_VIEW_VERSION",
     "MACRO_OPTIONAL_HISTORY_CONCEPTS",
     "MACRO_PROVIDER_SERIES_SOURCE_PRIORITY",

@@ -5,9 +5,10 @@ import time
 from pathlib import Path
 from typing import Any, cast
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.services.token_image_mirror import TokenImageMirrorService
+from parallax.platform.config.settings import TokenImageMirrorWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class TokenImageMirrorWorker(WorkerBase):
@@ -15,7 +16,7 @@ class TokenImageMirrorWorker(WorkerBase):
         self,
         *,
         name: str,
-        settings: Any,
+        settings: TokenImageMirrorWorkerSettings,
         db: Any,
         telemetry: Any,
         app_home: str | Path,
@@ -46,19 +47,13 @@ class TokenImageMirrorWorker(WorkerBase):
             self.name,
             statement_timeout_seconds=float(self.settings.statement_timeout_seconds),
         ) as repos:
-            claimed = repos.token_image_source_dirty_targets.claim_due(
-                now_ms=now_ms,
-                limit=_required_positive_int(
-                    self.settings.batch_size,
-                    error_code="token_image_mirror_batch_size_required",
-                ),
-                lease_owner=self.name,
-                lease_ms=_required_positive_int(
-                    self.settings.lease_ms,
-                    error_code="token_image_mirror_lease_ms_required",
-                ),
-                commit=True,
-            )
+            with repos.transaction():
+                claimed = repos.token_image_source_dirty_targets.claim_due(
+                    now_ms=now_ms,
+                    limit=self.settings.batch_size,
+                    lease_owner=self.name,
+                    lease_ms=self.settings.lease_ms,
+                )
             result["claimed"] = len(claimed)
             result["selected"] = len(claimed)
             result["targets_loaded"] = len(claimed)
@@ -82,20 +77,16 @@ class TokenImageMirrorWorker(WorkerBase):
                     result["pending_upserted"] = repos.token_image_assets.upsert_pending_sources(
                         _source_rows_from_claims(pending_claims),
                         now_ms=now_ms,
-                        commit=False,
                     )
                     result["rows_written"] += int(result["pending_upserted"])
                 if terminal_claims:
-                    repos.token_image_source_dirty_targets.mark_done(terminal_claims, now_ms=now_ms, commit=False)
+                    repos.token_image_source_dirty_targets.mark_done(terminal_claims, now_ms=now_ms)
                     _enqueue_profile_current_for_claims(repos=repos, claims=terminal_claims, now_ms=now_ms)
 
         mirror_service = TokenImageMirrorService(
             repository=_TokenImageAssetSessionRepository(self.db, self.name, self.settings),
             app_home=self.app_home,
-            retry_ms=_required_positive_int(
-                self.settings.retry_ms,
-                error_code="token_image_mirror_retry_ms_required",
-            ),
+            retry_ms=self.settings.retry_ms,
         )
         for source_url, source_claims in _claims_by_source_url(pending_claims).items():
             source_row = _source_row_from_claim(source_claims[0])
@@ -124,7 +115,7 @@ class TokenImageMirrorWorker(WorkerBase):
             ) as repos,
             repos.transaction(),
         ):
-            repos.token_image_source_dirty_targets.mark_done(claims, now_ms=now_ms, commit=False)
+            repos.token_image_source_dirty_targets.mark_done(claims, now_ms=now_ms)
             _enqueue_profile_current_for_claims(repos=repos, claims=claims, now_ms=now_ms)
 
     def _mark_source_claims_error(self, claims: list[dict[str, Any]], *, error: str, now_ms: int) -> None:
@@ -138,22 +129,15 @@ class TokenImageMirrorWorker(WorkerBase):
             repos.token_image_source_dirty_targets.mark_error(
                 claims,
                 error=error,
-                retry_ms=_required_positive_int(
-                    self.settings.retry_ms,
-                    error_code="token_image_mirror_retry_ms_required",
-                ),
-                max_attempts=_required_positive_int(
-                    self.settings.max_attempts,
-                    error_code="token_image_mirror_max_attempts_required",
-                ),
+                retry_ms=self.settings.retry_ms,
+                max_attempts=self.settings.max_attempts,
                 worker_name=self.name,
                 now_ms=now_ms,
-                commit=False,
             )
 
 
 class _TokenImageAssetSessionRepository:
-    def __init__(self, db: Any, worker_name: str, settings: Any) -> None:
+    def __init__(self, db: Any, worker_name: str, settings: TokenImageMirrorWorkerSettings) -> None:
         self.db = db
         self.worker_name = worker_name
         self.settings = settings
@@ -185,7 +169,6 @@ class _TokenImageAssetSessionRepository:
                     byte_size=byte_size,
                     storage_path=storage_path,
                     now_ms=now_ms,
-                    commit=False,
                 ),
             )
 
@@ -208,7 +191,6 @@ class _TokenImageAssetSessionRepository:
                 error=error,
                 now_ms=now_ms,
                 retry_ms=retry_ms,
-                commit=False,
             )
 
     def mark_unsupported(
@@ -228,7 +210,6 @@ class _TokenImageAssetSessionRepository:
                 source_url=source_url,
                 error=error,
                 now_ms=now_ms,
-                commit=False,
             )
 
 
@@ -295,7 +276,6 @@ def _enqueue_profile_current_for_claims(*, repos: Any, claims: list[dict[str, An
             targets,
             reason="token_image_source_completed",
             now_ms=now_ms,
-            commit=False,
         )
 
 
@@ -314,12 +294,6 @@ def _required_claim_source_watermark_ms(claim: dict[str, Any]) -> int:
 def _error_text(exc: BaseException) -> str:
     text = str(exc).strip()
     return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _empty_result(*, now_ms: int) -> dict[str, Any]:

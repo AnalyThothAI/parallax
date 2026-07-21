@@ -6,8 +6,9 @@ from collections.abc import Mapping
 from dataclasses import dataclass
 from typing import Any, cast
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
+from parallax.platform.config.settings import MarketTickCurrentProjectionWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 ADVISORY_LOCK_KEY = 2026052401
 
@@ -19,7 +20,7 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
         self,
         *,
         name: str,
-        settings: Any,
+        settings: MarketTickCurrentProjectionWorkerSettings,
         db: Any,
         telemetry: Any,
         wake_emitter: Any | None = None,
@@ -72,24 +73,20 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
         return result
 
     def _claim_due(self, *, now_ms: int) -> list[dict[str, Any]]:
-        with self.db.worker_session(
-            self.name,
-            statement_timeout_seconds=self.settings.statement_timeout_seconds,
-        ) as repos:
+        with (
+            self.db.worker_session(
+                self.name,
+                statement_timeout_seconds=self.settings.statement_timeout_seconds,
+            ) as repos,
+            repos.transaction(),
+        ):
             return cast(
                 list[dict[str, Any]],
                 repos.market_tick_current_dirty_targets.claim_due(
-                    limit=_required_positive_int(
-                        self.settings.batch_size,
-                        error_code="market_tick_current_batch_size_required",
-                    ),
+                    limit=self.settings.batch_size,
                     now_ms=int(now_ms),
-                    lease_ms=_required_positive_int(
-                        self.settings.lease_ms,
-                        error_code="market_tick_current_lease_ms_required",
-                    ),
+                    lease_ms=self.settings.lease_ms,
                     lease_owner=self.name,
-                    commit=True,
                 ),
             )
 
@@ -97,16 +94,19 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
         target_type = str(claim.get("target_type") or "")
         target_id = str(claim.get("target_id") or "")
         token_radar_dirty_enqueued = 0
-        with self.db.worker_transaction(
-            self.name,
-            statement_timeout_seconds=self.settings.statement_timeout_seconds,
-        ) as repos:
+        with (
+            self.db.worker_session(
+                self.name,
+                statement_timeout_seconds=self.settings.statement_timeout_seconds,
+            ) as repos,
+            repos.transaction(),
+        ):
             tick_row = repos.market_tick_current.latest_tick_for_target(
                 target_type=target_type,
                 target_id=target_id,
             )
             if tick_row is None:
-                repos.market_tick_current_dirty_targets.mark_done([claim], now_ms=now_ms, commit=False)
+                repos.market_tick_current_dirty_targets.mark_done([claim], now_ms=now_ms)
                 return _ClaimResult(changed=False, missing=True, token_radar_dirty_enqueued=0)
             changed = repos.market_tick_current.upsert_current_from_tick(tick_row, now_ms=now_ms)
             if changed:
@@ -115,11 +115,10 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
                         [(target_type, target_id)],
                         reason="market_tick_current_changed",
                         now_ms=now_ms,
-                        commit=False,
                     )
                     or 0
                 )
-            repos.market_tick_current_dirty_targets.mark_done([claim], now_ms=now_ms, commit=False)
+            repos.market_tick_current_dirty_targets.mark_done([claim], now_ms=now_ms)
         return _ClaimResult(
             changed=bool(changed),
             missing=False,
@@ -127,24 +126,20 @@ class MarketTickCurrentProjectionWorker(WorkerBase):
         )
 
     def _mark_error(self, claim: Mapping[str, Any], *, error: str, now_ms: int) -> None:
-        with self.db.worker_transaction(
-            self.name,
-            statement_timeout_seconds=self.settings.statement_timeout_seconds,
-        ) as repos:
+        with (
+            self.db.worker_session(
+                self.name,
+                statement_timeout_seconds=self.settings.statement_timeout_seconds,
+            ) as repos,
+            repos.transaction(),
+        ):
             repos.market_tick_current_dirty_targets.mark_error(
                 [claim],
                 error=error,
-                retry_ms=_required_positive_int(
-                    self.settings.retry_ms,
-                    error_code="market_tick_current_retry_ms_required",
-                ),
-                max_attempts=_required_positive_int(
-                    self.settings.max_attempts,
-                    error_code="market_tick_current_max_attempts_required",
-                ),
+                retry_ms=self.settings.retry_ms,
+                max_attempts=self.settings.max_attempts,
                 worker_name=self.name,
                 now_ms=now_ms,
-                commit=False,
             )
 
     def _emit_token_radar_wake(self, *, token_radar_dirty_enqueued: int) -> None:
@@ -165,12 +160,6 @@ class _ClaimResult:
 def _error_text(exc: BaseException) -> str:
     text = str(exc).strip()
     return f"{type(exc).__name__}: {text}" if text else type(exc).__name__
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 __all__ = ["MarketTickCurrentProjectionWorker"]

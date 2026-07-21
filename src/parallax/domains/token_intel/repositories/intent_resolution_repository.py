@@ -1,13 +1,14 @@
 from __future__ import annotations
 
 import hashlib
-from collections.abc import Callable, Mapping
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from collections.abc import Mapping
+from typing import Any
 
 from psycopg.types.json import Jsonb
 
 from parallax.domains.token_intel.types.token_fact_inputs import DeterministicResolution
+from parallax.platform.db.postgres_client import require_transaction
+from parallax.platform.db.write_contract import expect_mutation_count
 
 IntentResolutionWriteInput = DeterministicResolution | Mapping[str, Any]
 
@@ -16,32 +17,32 @@ class IntentResolutionRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def insert_resolution(self, decision: IntentResolutionWriteInput, *, commit: bool = True) -> dict[str, Any]:
-        def _write() -> dict[str, Any]:
-            payload = _payload(decision)
-            resolution_id = token_intent_resolution_id(payload)
-            decision_time_ms = int(payload["decision_time_ms"])
-            self.conn.execute(
-                "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
-                (payload["intent_id"],),
-            )
-            current = self._active_resolution_for_intent_locked(str(payload["intent_id"]))
-            if current is not None and int(current.get("decision_time_ms") or 0) > decision_time_ms:
-                return current
-            if current is not None and str(current.get("resolution_id") or "") != resolution_id:
-                cursor = self.conn.execute(
-                    """
+    def insert_resolution(self, decision: IntentResolutionWriteInput) -> dict[str, Any]:
+        require_transaction(self.conn, operation="insert_intent_resolution")
+        payload = _payload(decision)
+        resolution_id = token_intent_resolution_id(payload)
+        decision_time_ms = int(payload["decision_time_ms"])
+        self.conn.execute(
+            "SELECT pg_advisory_xact_lock(hashtextextended(%s, 0))",
+            (payload["intent_id"],),
+        )
+        current = self._active_resolution_for_intent_locked(str(payload["intent_id"]))
+        if current is not None and int(current.get("decision_time_ms") or 0) > decision_time_ms:
+            return current
+        if current is not None and str(current.get("resolution_id") or "") != resolution_id:
+            cursor = self.conn.execute(
+                """
                     UPDATE token_intent_resolutions
                     SET record_status = 'superseded',
                         is_current = false,
                         superseded_at_ms = %s
                     WHERE intent_id = %s AND is_current = true
                     """,
-                    (decision_time_ms, payload["intent_id"]),
-                )
-                _required_single_rowcount(cursor)
-            cursor = self.conn.execute(
-                """
+                (decision_time_ms, payload["intent_id"]),
+            )
+            expect_mutation_count(cursor, expected=1, error_code="intent_resolution_repository_rowcount_invalid")
+        cursor = self.conn.execute(
+            """
                 INSERT INTO token_intent_resolutions(
                   resolution_id, intent_id, event_id, resolution_status, resolver_policy_version,
                   target_type, target_id, pricefeed_id, reason_codes_json, candidate_ids_json,
@@ -62,26 +63,24 @@ class IntentResolutionRepository:
                   superseded_at_ms = NULL
                 RETURNING *
                 """,
-                (
-                    resolution_id,
-                    payload["intent_id"],
-                    payload["event_id"],
-                    payload["resolution_status"],
-                    payload["resolver_policy_version"],
-                    payload.get("target_type"),
-                    payload.get("target_id"),
-                    payload.get("pricefeed_id"),
-                    Jsonb(payload.get("reason_codes") or []),
-                    Jsonb(payload.get("candidate_ids") or []),
-                    Jsonb(payload.get("lookup_keys") or []),
-                    decision_time_ms,
-                    int(payload["created_at_ms"]),
-                ),
-            )
-            row = cursor.fetchone()
-            return _required_returning_row(cursor, row)
-
-        return _run_repository_write(self.conn, commit, _write)
+            (
+                resolution_id,
+                payload["intent_id"],
+                payload["event_id"],
+                payload["resolution_status"],
+                payload["resolver_policy_version"],
+                payload.get("target_type"),
+                payload.get("target_id"),
+                payload.get("pricefeed_id"),
+                Jsonb(payload.get("reason_codes") or []),
+                Jsonb(payload.get("candidate_ids") or []),
+                Jsonb(payload.get("lookup_keys") or []),
+                decision_time_ms,
+                int(payload["created_at_ms"]),
+            ),
+        )
+        row = cursor.fetchone()
+        return _required_returning_row(cursor, row)
 
     def get(self, resolution_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -206,42 +205,8 @@ def _stable_id(*parts: str) -> str:
     return hashlib.sha256("|".join(parts).encode("utf-8")).hexdigest()
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("intent_resolution_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("intent_resolution_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("intent_resolution_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int) or rowcount < 0:
-        raise TypeError("intent_resolution_repository_rowcount_invalid")
-    return rowcount
-
-
-def _required_single_rowcount(cursor: Any) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount != 1:
-        raise TypeError("intent_resolution_repository_rowcount_invalid")
-    return rowcount
-
-
 def _required_returning_row(cursor: Any, row: Any | None) -> dict[str, Any]:
-    _required_single_rowcount(cursor)
+    expect_mutation_count(cursor, expected=1, error_code="intent_resolution_repository_rowcount_invalid")
     if row is None:
         raise TypeError("intent_resolution_repository_rowcount_invalid")
     return dict(row)
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()

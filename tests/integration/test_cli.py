@@ -6,7 +6,6 @@ import unittest
 from contextlib import contextmanager
 from dataclasses import replace
 from pathlib import Path
-from types import SimpleNamespace
 from unittest.mock import patch
 
 import pytest
@@ -19,25 +18,14 @@ from parallax.domains.evidence.interfaces import Author, Content, Source, Twitte
 from parallax.domains.evidence.services.ingest_service import IngestService
 from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
-from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+from parallax.domains.token_intel.services.token_radar_projector import TokenRadarProjector
+from parallax.domains.token_intel.services.token_radar_publisher import TokenRadarPublisher
 from parallax.platform.config.settings import default_workers_yaml
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
-
-
-class FakeWorkerSettings(SimpleNamespace):
-    def model_copy(self, *, update: dict[str, object] | None = None):
-        data = vars(self).copy()
-        data.update(update or {})
-        return type(self)(**data)
-
-
-class FakeAssetMarketProviders(SimpleNamespace):
-    async def aclose(self):
-        return None
 
 
 def make_event(
@@ -95,7 +83,8 @@ def seed_postgres(db_path: Path) -> None:
             market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
             enriched_events=repos.enriched_events,
             event_anchor_jobs=repos.event_anchor_jobs,
-            token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
+            token_radar_dirty_targets=repos.token_radar_dirty_targets,
+            transaction=repos.transaction,
             event_anchor_active_window_ms=300_000,
         )
         snapshot = parse_gmgn_token_payload(
@@ -120,26 +109,26 @@ def seed_postgres(db_path: Path) -> None:
             ),
             token_snapshot=snapshot,
         )
-        ingest.ingest_event(token_event, is_watched=True)
-        now_ms = token_event.received_at_ms + 1
-        repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
-            since_ms=max(0, token_event.received_at_ms - 5 * 60 * 1000),
-            now_ms=now_ms,
-            limit=20,
-            reason="test_seed",
-            commit=True,
-        )
-        TokenRadarProjection(repos=repos).rebuild_dirty_targets(
-            lease_ms=120_000,
-            retry_ms=30_000,
-            max_attempts=3,
-            windows=("5m",),
-            scopes=("all",),
-            now_ms=now_ms,
-            limit=20,
-            rank_limit=20,
-            lease_owner="test_cli_seed",
-        )
+        with repos.transaction():
+            ingest.ingest_event(token_event, is_watched=True)
+            now_ms = token_event.received_at_ms + 1
+            repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
+                since_ms=max(0, token_event.received_at_ms - 5 * 60 * 1000),
+                now_ms=now_ms,
+                limit=20,
+                reason="test_seed",
+            )
+            TokenRadarPublisher(repos=repos, projector=TokenRadarProjector(repos=repos)).rebuild_dirty_targets(
+                lease_ms=120_000,
+                retry_ms=30_000,
+                max_attempts=3,
+                windows=("5m",),
+                scopes=("all",),
+                now_ms=now_ms,
+                limit=20,
+                rank_limit=20,
+                lease_owner="test_cli_seed",
+            )
     finally:
         conn.close()
 
@@ -174,7 +163,6 @@ class CliTests(unittest.TestCase):
             ["db", "query-audit", "--analyze"],
             ["asset-flow", "--window", "1h", "--limit", "5", "--scope", "all"],
             ["ops", "projection-status"],
-            ["ops", "worker-status"],
             ["ops", "validate-projections", "--sample", "5"],
             ["ops", "sync-binance-usdt-perp-universe", "--dry-run"],
             ["ops", "sync-binance-usdt-perp-universe", "--execute"],
@@ -212,46 +200,51 @@ class CliTests(unittest.TestCase):
         self.assertTrue(parsed[2].analyze)
         self.assertEqual(parsed[3].command, "asset-flow")
         self.assertEqual(parsed[4].ops_command, "projection-status")
-        self.assertEqual(parsed[5].ops_command, "worker-status")
-        self.assertEqual(parsed[6].ops_command, "validate-projections")
-        self.assertEqual(parsed[6].sample, 5)
+        self.assertEqual(parsed[5].ops_command, "validate-projections")
+        self.assertEqual(parsed[5].sample, 5)
+        self.assertEqual(parsed[6].ops_command, "sync-binance-usdt-perp-universe")
+        self.assertTrue(parsed[6].dry_run)
         self.assertEqual(parsed[7].ops_command, "sync-binance-usdt-perp-universe")
-        self.assertTrue(parsed[7].dry_run)
-        self.assertEqual(parsed[8].ops_command, "sync-binance-usdt-perp-universe")
-        self.assertTrue(parsed[8].execute)
-        self.assertEqual(parsed[9].ops_command, "sync-binance-cex-profiles")
-        self.assertEqual(parsed[10].ops_command, "run-resolution-refresh")
+        self.assertTrue(parsed[7].execute)
+        self.assertEqual(parsed[8].ops_command, "sync-binance-cex-profiles")
+        self.assertEqual(parsed[9].ops_command, "run-resolution-refresh")
+        self.assertEqual(parsed[9].limit, 5)
+        self.assertEqual(parsed[10].ops_command, "refresh-asset-profiles")
         self.assertEqual(parsed[10].limit, 5)
-        self.assertEqual(parsed[11].ops_command, "refresh-asset-profiles")
+        self.assertEqual(parsed[11].ops_command, "mirror-token-images")
         self.assertEqual(parsed[11].limit, 5)
-        self.assertEqual(parsed[12].ops_command, "mirror-token-images")
+        self.assertEqual(parsed[12].ops_command, "repair-token-profile-images")
         self.assertEqual(parsed[12].limit, 5)
-        self.assertEqual(parsed[13].ops_command, "repair-token-profile-images")
-        self.assertEqual(parsed[13].limit, 5)
-        self.assertEqual(parsed[14].ops_command, "reprocess-token-intents")
-        self.assertEqual(parsed[14].window, "24h")
-        self.assertEqual(parsed[14].lookup_key, ["symbol:SLOP"])
-        self.assertEqual(parsed[15].ops_command, "rebuild-token-intents")
-        self.assertEqual(parsed[15].window, "5m")
-        self.assertEqual(parsed[16].ops_command, "audit-token-intent")
-        self.assertEqual(parsed[17].ops_command, "rebuild-token-radar")
-        self.assertEqual(parsed[18].ops_command, "audit-token-radar")
-        self.assertEqual(parsed[19].ops_command, "factor-diagnostics")
-        self.assertEqual(parsed[19].limit, 200)
-        self.assertEqual(parsed[20].ops_command, "sync-us-equity-symbols")
-        self.assertEqual(parsed[21].ops_command, "rebuild-token-profiles")
-        self.assertEqual(parsed[21].limit, 5)
+        self.assertEqual(parsed[13].ops_command, "reprocess-token-intents")
+        self.assertEqual(parsed[13].window, "24h")
+        self.assertEqual(parsed[13].lookup_key, ["symbol:SLOP"])
+        self.assertEqual(parsed[14].ops_command, "rebuild-token-intents")
+        self.assertEqual(parsed[14].window, "5m")
+        self.assertEqual(parsed[15].ops_command, "audit-token-intent")
+        self.assertEqual(parsed[16].ops_command, "rebuild-token-radar")
+        self.assertEqual(parsed[17].ops_command, "audit-token-radar")
+        self.assertEqual(parsed[18].ops_command, "factor-diagnostics")
+        self.assertEqual(parsed[18].limit, 200)
+        self.assertEqual(parsed[19].ops_command, "sync-us-equity-symbols")
+        self.assertEqual(parsed[20].ops_command, "rebuild-token-profiles")
+        self.assertEqual(parsed[20].limit, 5)
+        self.assertEqual(parsed[21].ops_command, "enqueue-token-radar-dirty-targets")
+        self.assertEqual(parsed[21].source, "events")
+        self.assertEqual(parsed[21].since_ms, 0)
+        self.assertEqual(parsed[21].limit, 5000)
+        self.assertTrue(parsed[21].dry_run)
         self.assertEqual(parsed[22].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[22].source, "events")
-        self.assertEqual(parsed[22].since_ms, 0)
-        self.assertEqual(parsed[22].limit, 5000)
-        self.assertTrue(parsed[22].dry_run)
-        self.assertEqual(parsed[23].ops_command, "enqueue-token-radar-dirty-targets")
-        self.assertEqual(parsed[23].source, "market-current")
+        self.assertEqual(parsed[22].source, "market-current")
+        self.assertTrue(parsed[22].execute)
+        self.assertEqual(parsed[23].ops_command, "enqueue-token-capture-tier-rank-set")
+        self.assertEqual(parsed[23].window, "24h")
         self.assertTrue(parsed[23].execute)
-        self.assertEqual(parsed[24].ops_command, "enqueue-token-capture-tier-rank-set")
-        self.assertEqual(parsed[24].window, "24h")
-        self.assertTrue(parsed[24].execute)
+
+    def test_cli_ops_worker_status_is_not_registered(self):
+        parser = build_parser()
+
+        with self.assertRaises(SystemExit):
+            parser.parse_args(["ops", "worker-status"])
 
     def test_cli_ops_rebuild_narrative_intel_is_not_registered(self):
         parser = build_parser()
@@ -465,10 +458,14 @@ class CliTests(unittest.TestCase):
         lines = [json.loads(line) for line in stdout.getvalue().splitlines()]
         self.assertEqual([db_audit_code, query_audit_code, projection_status_code, validate_code], [0, 0, 0, 0])
         self.assertEqual(lines[0]["data"]["engine"], "postgresql")
-        self.assertTrue(lines[0]["data"]["projection_schema"]["projection_offsets"])
+        self.assertTrue(lines[0]["data"]["projection_schema"]["token_radar_publication_state"])
+        self.assertNotIn("projection_offsets", lines[0]["data"]["projection_schema"])
+        self.assertNotIn("projection_runs", lines[0]["data"]["projection_schema"])
         self.assertFalse(lines[1]["data"]["analyze"])
         self.assertIn("token_radar_latest", {item["name"] for item in lines[1]["data"]["queries"]})
-        self.assertEqual(lines[2]["data"]["known_projections"][0]["projection_name"], "token-radar")
+        self.assertEqual(lines[2]["data"]["status"], "missing")
+        self.assertEqual(lines[2]["data"]["state_count"], 0)
+        self.assertEqual(lines[2]["data"]["publication_states"], [])
         self.assertEqual(lines[3]["data"]["sample"], 5)
         self.assertEqual(lines[3]["data"]["mismatch_count"], 0)
 
@@ -518,167 +515,6 @@ def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, mo
     assert payload["data"]["events"][0]["event_id"] == "event-1"
 
 
-def test_rebuild_token_radar_one_shot_acquires_projection_advisory_lock(monkeypatch):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    events: list[tuple] = []
-    configured_lock_key = 909090
-
-    class FakeLock:
-        def release(self):
-            events.append(("release",))
-
-    class FakeDB:
-        api_pool = None
-        worker_pool = None
-        wake_pool = None
-
-        def wake_emitter(self):
-            return object()
-
-        def wake_listener(self, worker_name, wakes_on):
-            events.append(("wake_listener", worker_name, tuple(wakes_on)))
-            return object()
-
-        def acquire_advisory_lock_connection(self, worker_name, key):
-            events.append(("acquire", worker_name, key))
-            return FakeLock()
-
-        async def aclose(self):
-            return None
-
-    class FakeWorker:
-        SINGLE_WRITER_KEY = 2026051501
-
-        def __init__(self, **kwargs):
-            self.settings = kwargs["settings"]
-            events.append(("worker_init", kwargs["name"]))
-
-        def _advisory_lock_key(self):
-            settings_key = getattr(self.settings, "advisory_lock_key", None)
-            if settings_key is not None:
-                return int(settings_key)
-            return self.SINGLE_WRITER_KEY
-
-        def rebuild_once(self, **kwargs):
-            events.append(("rebuild", kwargs))
-            return {"rows_written": 1}
-
-        async def aclose(self):
-            events.append(("worker_close",))
-
-    db = FakeDB()
-    settings = SimpleNamespace(
-        workers=SimpleNamespace(
-            token_radar_projection=FakeWorkerSettings(
-                advisory_lock_key=configured_lock_key,
-                batch_size=100,
-            ),
-            narrative_admission=SimpleNamespace(enabled=True),
-        )
-    )
-    monkeypatch.setattr(ops_module.DBPoolBundle, "create", staticmethod(lambda settings, telemetry: db))
-    monkeypatch.setattr(ops_module, "TokenRadarProjectionWorker", FakeWorker)
-
-    result = ops_module._run_token_radar_projection_worker_once(
-        settings,
-        windows=("1h",),
-        scopes=("all",),
-        limit=5,
-        now_ms=1_700_000_000_000,
-    )
-
-    assert result == {"rows_written": 1}
-    assert ("acquire", "token_radar_projection", configured_lock_key) in events
-    assert ("acquire", "token_radar_projection", FakeWorker.SINGLE_WRITER_KEY) not in events
-    assert events.index(("acquire", "token_radar_projection", configured_lock_key)) < events.index(
-        (
-            "rebuild",
-            {
-                "now_ms": 1_700_000_000_000,
-                "windows": ("1h",),
-                "scopes": ("all",),
-                "limit": 5,
-            },
-        )
-    )
-    assert events.index(("release",)) < events.index(("worker_close",))
-
-
-def test_rebuild_token_radar_one_shot_skips_when_live_worker_holds_lock(monkeypatch):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    events: list[tuple] = []
-    configured_lock_key = 909090
-
-    class FakeDB:
-        api_pool = None
-        worker_pool = None
-        wake_pool = None
-
-        def wake_emitter(self):
-            return object()
-
-        def wake_listener(self, worker_name, wakes_on):
-            events.append(("wake_listener", worker_name, tuple(wakes_on)))
-            return object()
-
-        def acquire_advisory_lock_connection(self, worker_name, key):
-            events.append(("acquire", worker_name, key))
-            raise RuntimeError("advisory_lock_unavailable")
-
-        async def aclose(self):
-            return None
-
-    class FakeWorker:
-        SINGLE_WRITER_KEY = 2026051501
-
-        def __init__(self, **kwargs):
-            self.settings = kwargs["settings"]
-            events.append(("worker_init", kwargs["name"]))
-
-        def _advisory_lock_key(self):
-            return configured_lock_key
-
-        def rebuild_once(self, **kwargs):
-            events.append(("rebuild", kwargs))
-            return {"rows_written": 1}
-
-        async def aclose(self):
-            events.append(("worker_close",))
-
-    db = FakeDB()
-    settings = SimpleNamespace(
-        workers=SimpleNamespace(
-            token_radar_projection=FakeWorkerSettings(
-                advisory_lock_key=configured_lock_key,
-                batch_size=100,
-            ),
-            narrative_admission=SimpleNamespace(enabled=True),
-        )
-    )
-    monkeypatch.setattr(ops_module.DBPoolBundle, "create", staticmethod(lambda settings, telemetry: db))
-    monkeypatch.setattr(ops_module, "TokenRadarProjectionWorker", FakeWorker)
-
-    result = ops_module._run_token_radar_projection_worker_once(
-        settings,
-        windows=("1h",),
-        scopes=("all",),
-        limit=5,
-        now_ms=1_700_000_000_000,
-    )
-
-    assert result["status"] == "skipped"
-    assert result["notes"] == {
-        "reason": "advisory_lock_unavailable",
-        "worker_name": "token_radar_projection",
-        "lock_key": configured_lock_key,
-    }
-    assert ("acquire", "token_radar_projection", configured_lock_key) in events
-    assert not any(event[0] == "rebuild" for event in events)
-    assert events[-1] == ("worker_close",)
-
-
 def test_init_creates_runtime_config(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     stdout = io.StringIO()
@@ -689,122 +525,6 @@ def test_init_creates_runtime_config(tmp_path, monkeypatch):
     assert exit_code == 0
     assert payload["data"]["created"] is True
     assert (tmp_path / ".parallax" / "config.yaml").is_file()
-
-
-def test_run_sync_gmgn_directory_walks_all_pages_and_upserts():
-    from parallax.app.surfaces.cli.commands.ops import _run_sync_gmgn_directory
-    from parallax.integrations.gmgn.directory_client import GmgnDirectoryEntry
-
-    class FakeClient:
-        def __init__(self, entries):
-            self._entries = entries
-            self.calls: list[int] = []
-
-        def iter_entries(self, *, max_pages):
-            self.calls.append(max_pages)
-            return iter(self._entries)
-
-    class FakeRepo:
-        def __init__(self):
-            self.upserts: list[dict] = []
-            self.commits = 0
-
-            class _Conn:
-                outer = self
-
-                def commit(self_inner):
-                    self_inner.outer.commits += 1
-
-                @contextmanager
-                def transaction(self_inner):
-                    yield
-                    self_inner.outer.commits += 1
-
-            self.conn = _Conn()
-
-        def upsert_directory_entry(self, **kwargs):
-            self.upserts.append(kwargs)
-
-    entries = [
-        GmgnDirectoryEntry(handle="cz", gmgn_user_id="X", user_tags=("kol",), platform_followers=100),
-        GmgnDirectoryEntry(handle="elonmusk", gmgn_user_id="Y", user_tags=("founder",), platform_followers=200),
-    ]
-    client = FakeClient(entries)
-    repo = FakeRepo()
-
-    summary = _run_sync_gmgn_directory(
-        client=client,
-        repository=repo,
-        now_ms=1_700_000_000_000,
-        max_pages=42,
-    )
-
-    assert client.calls == [42]
-    assert repo.commits == 1
-    assert [u["handle"] for u in repo.upserts] == ["cz", "elonmusk"]
-    assert all(u["observed_at_ms"] == 1_700_000_000_000 for u in repo.upserts)
-    assert all(u["commit"] is False for u in repo.upserts)
-    assert summary == {
-        "upserted": 2,
-        "first_handles": ["cz", "elonmusk"],
-        "last_handles": ["cz", "elonmusk"],
-        "observed_at_ms": 1_700_000_000_000,
-    }
-
-
-def test_cli_ops_sync_gmgn_directory_dispatches_to_runner(monkeypatch, tmp_path):
-    import io
-    import json
-
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    captured = {}
-
-    def fake_runner(*, client, repository, now_ms, max_pages):
-        captured["client"] = client
-        captured["repository_type"] = type(repository).__name__
-        captured["now_ms"] = now_ms
-        captured["max_pages"] = max_pages
-        return {"upserted": 7, "first_handles": [], "last_handles": [], "observed_at_ms": now_ms}
-
-    class FakeClient:
-        def __init__(self, **kwargs):
-            self.kwargs = kwargs
-
-        def close(self):
-            pass
-
-    monkeypatch.setattr(ops_module, "_run_sync_gmgn_directory", fake_runner)
-    monkeypatch.setattr(ops_module, "GmgnDirectoryClient", FakeClient)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
-    conn = connect_postgres_test(read_only=False)
-    try:
-        migrate(conn)
-    finally:
-        conn.close()
-    monkeypatch.setenv("HOME", str(tmp_path))
-
-    stdout = io.StringIO()
-    code = main(
-        ["ops", "sync-gmgn-directory", "--max-pages", "3"],
-        stdout=stdout,
-    )
-
-    assert code == 0
-    payload = json.loads(stdout.getvalue())
-    assert payload == {
-        "ok": True,
-        "data": {
-            "upserted": 7,
-            "first_handles": [],
-            "last_handles": [],
-            "observed_at_ms": 1_700_000_000_000,
-        },
-    }
-    assert captured["max_pages"] == 3
-    assert captured["repository_type"] == "AccountQualityRepository"
-    assert isinstance(captured["client"], FakeClient)
 
 
 def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkeypatch, tmp_path):
@@ -873,601 +593,6 @@ def test_cli_ops_cleanup_news_intel_hard_cut_is_not_registered() -> None:
         parser.parse_args(["ops", "cleanup-news-intel-hard-cut"])
     with pytest.raises(SystemExit):
         parser.parse_args(["ops", "cleanup-news-intel-hard-cut", "--execute"])
-
-
-def test_cli_ops_refresh_asset_profiles_emits_skipped_without_profile_provider(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    @contextmanager
-    def fake_repositories(_settings):
-        raise AssertionError("refresh-asset-profiles must not hold an outer repository session")
-
-    class FakeDB:
-        api_pool = SimpleNamespace(close=lambda: None)
-        worker_pool = SimpleNamespace(close=lambda: None)
-        wake_pool = SimpleNamespace(close=lambda: None)
-
-        async def aclose(self):
-            return None
-
-    def fake_wire_asset_market_providers(settings):
-        return FakeAssetMarketProviders(dex_profile_sources=())
-
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fake_wire_asset_market_providers)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
-    stdout = io.StringIO()
-
-    code = main(
-        ["ops", "refresh-asset-profiles", "--limit", "3"],
-        stdout=stdout,
-    )
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert payload == {
-        "ok": True,
-        "data": {
-            "providers": [],
-            "selected": 0,
-            "claimed": 0,
-            "queue_depth": 0,
-            "source_rows_scanned": 0,
-            "targets_loaded": 0,
-            "targets_enqueued": 0,
-            "rows_written": 0,
-            "ready": 0,
-            "missing": 0,
-            "error": 0,
-            "provider_blocked": 0,
-            "skipped": 1,
-            "sources": {},
-            "started_at_ms": 1_700_000_000_000,
-            "finished_at_ms": 1_700_000_000_000,
-            "discovery": {},
-        },
-    }
-
-
-def test_cli_ops_run_resolution_refresh_uses_worker_without_outer_repository_session(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    captured = {}
-
-    @contextmanager
-    def fake_repositories(_settings):
-        raise AssertionError("run-resolution-refresh must not hold an outer repository session")
-
-    class FakeDB:
-        def __init__(self) -> None:
-            self.repos = SimpleNamespace(discovery=FakeDiscovery())
-            self.api_pool = SimpleNamespace(close=lambda: None)
-            self.worker_pool = SimpleNamespace(close=lambda: None)
-            self.wake_pool = SimpleNamespace(close=lambda: None)
-
-        def worker_session(self, name):
-            captured.setdefault("session_names", []).append(name)
-            return FakeSession(self.repos)
-
-        def wake_emitter(self):
-            return object()
-
-        async def aclose(self):
-            return None
-
-    class FakeSession:
-        def __init__(self, repos):
-            self.repos = repos
-
-        def __enter__(self):
-            return self.repos
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    class FakeDiscovery:
-        def claim_due_lookup_keys(self, **kwargs):
-            captured["claim_due_lookup_kwargs"] = kwargs
-            return []
-
-        def counts(self):
-            return {"found": 0}
-
-    def fake_wire_asset_market_providers(settings):
-        return FakeAssetMarketProviders(
-            dex_discovery_market=object(),
-            dex_quote_market=None,
-            discovery_chain_ids=("solana",),
-        )
-
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fake_wire_asset_market_providers)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
-    stdout = io.StringIO()
-
-    code = main(["ops", "run-resolution-refresh", "--limit", "3"], stdout=stdout)
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert captured["session_names"] == ["resolution_refresh", "resolution_refresh"]
-    assert captured["claim_due_lookup_kwargs"]["limit"] == 3
-    assert payload["data"]["lookups_selected"] == 0
-
-
-def test_cli_ops_rebuild_token_profiles_is_db_only_and_closes_db(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    captured: dict[str, object] = {}
-    closed: list[str] = []
-
-    @contextmanager
-    def fake_repositories(_settings):
-        raise AssertionError("rebuild-token-profiles must not hold an outer repository session")
-
-    class FakePool:
-        def __init__(self, name: str) -> None:
-            self.name = name
-
-        def close(self) -> None:
-            closed.append(self.name)
-
-    class FakeDB:
-        api_pool = FakePool("api")
-        worker_pool = FakePool("worker")
-        tool_pool = FakePool("tool")
-        wake_pool = FakePool("wake")
-
-        async def aclose(self):
-            self.api_pool.close()
-            self.worker_pool.close()
-            self.tool_pool.close()
-            self.wake_pool.close()
-
-    class FakeWorker:
-        def __init__(self, *, name, settings, db, telemetry):
-            captured["worker"] = (name, settings.batch_size, db, telemetry)
-
-        async def run_once(self, *, now_ms):
-            captured["now_ms"] = now_ms
-            return SimpleNamespace(
-                notes={
-                    "result": {
-                        "selected": 0,
-                        "ready": 0,
-                        "missing": 0,
-                        "unsupported": 0,
-                        "error": 0,
-                        "with_logo": 0,
-                        "source_provider": {},
-                        "started_at_ms": now_ms,
-                        "finished_at_ms": now_ms,
-                    }
-                }
-            )
-
-        async def aclose(self):
-            captured["closed_worker"] = True
-
-    def fail_wire_asset_market_providers(*_args, **_kwargs):
-        raise AssertionError("rebuild-token-profiles must not wire asset providers")
-
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fail_wire_asset_market_providers)
-    monkeypatch.setattr(ops_module, "TokenProfileCurrentWorker", FakeWorker)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
-    stdout = io.StringIO()
-
-    code = main(["ops", "rebuild-token-profiles", "--limit", "3"], stdout=stdout)
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert captured["worker"][0] == "token_profile_current"
-    assert captured["worker"][1] == 3
-    assert captured["closed_worker"] is True
-    assert closed == ["api", "worker", "tool", "wake"]
-    assert payload["data"]["unsupported"] == 0
-
-
-def test_cli_ops_mirror_token_images_is_db_only_and_closes_db(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    captured: dict[str, object] = {}
-    closed: list[str] = []
-
-    @contextmanager
-    def fake_repositories(_settings):
-        raise AssertionError("mirror-token-images must not hold an outer repository session")
-
-    class FakePool:
-        def __init__(self, name: str) -> None:
-            self.name = name
-
-        def close(self) -> None:
-            closed.append(self.name)
-
-    class FakeDB:
-        api_pool = FakePool("api")
-        worker_pool = FakePool("worker")
-        tool_pool = FakePool("tool")
-        wake_pool = FakePool("wake")
-
-        async def aclose(self):
-            self.api_pool.close()
-            self.worker_pool.close()
-            self.tool_pool.close()
-            self.wake_pool.close()
-
-    class FakeWorker:
-        def __init__(self, *, name, settings, db, telemetry, app_home):
-            captured["worker"] = (name, settings.batch_size, db, telemetry, app_home)
-
-        async def run_once(self, *, now_ms):
-            captured["now_ms"] = now_ms
-            return SimpleNamespace(
-                notes={
-                    "result": {
-                        "selected": 9,
-                        "pending_upserted": 8,
-                        "ready_existing": 1,
-                        "claimed": 3,
-                        "mirrored": 2,
-                        "error": 1,
-                        "unsupported": 0,
-                        "started_at_ms": now_ms,
-                        "finished_at_ms": now_ms,
-                    }
-                }
-            )
-
-        async def aclose(self):
-            captured["closed_worker"] = True
-
-    def fail_wire_asset_market_providers(*_args, **_kwargs):
-        raise AssertionError("mirror-token-images must not wire asset providers")
-
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fail_wire_asset_market_providers)
-    monkeypatch.setattr(ops_module, "TokenImageMirrorWorker", FakeWorker)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
-    stdout = io.StringIO()
-
-    code = main(["ops", "mirror-token-images", "--limit", "3"], stdout=stdout)
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert captured["worker"][0] == "token_image_mirror"
-    assert captured["worker"][1] == 3
-    assert captured["closed_worker"] is True
-    assert closed == ["api", "worker", "tool", "wake"]
-    assert payload["data"]["mirrored"] == 2
-
-
-def test_cli_ops_repair_token_profile_images_enqueues_profiles_then_runs_worker(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    captured: dict[str, object] = {"events": []}
-    closed: list[str] = []
-
-    @contextmanager
-    def fake_repositories(_settings):
-        raise AssertionError("repair-token-profile-images must not hold an outer repository session")
-
-    class FakeCursor:
-        def fetchall(self):
-            return [
-                {
-                    "target_type": "Asset",
-                    "target_id": "asset:gmgn",
-                    "source_watermark_ms": 1_699_999_999_000,
-                },
-                {
-                    "target_type": "CexToken",
-                    "target_id": "cex_token:BTC",
-                    "source_watermark_ms": 1_700_000_000_000,
-                },
-            ]
-
-    class FakeConn:
-        def execute(self, sql, params):
-            captured["sql"] = sql
-            captured["params"] = params
-            captured["events"].append("select")
-            return FakeCursor()
-
-    class FakeTransaction:
-        def __enter__(self):
-            captured["events"].append("transaction_start")
-
-        def __exit__(self, exc_type, exc, tb):
-            captured["events"].append("transaction_commit")
-            return False
-
-    class FakeProfileDirtyTargets:
-        def enqueue_targets(self, targets, *, reason, now_ms, commit):
-            captured["events"].append("enqueue_profiles")
-            captured["enqueued"] = {
-                "targets": list(targets),
-                "reason": reason,
-                "now_ms": now_ms,
-                "commit": commit,
-            }
-            return {"targets": len(captured["enqueued"]["targets"])}
-
-    class FailingImageSourceDirtyTargets:
-        def enqueue_targets(self, *_args, **_kwargs):
-            raise AssertionError("repair-token-profile-images must not enqueue image source dirty targets")
-
-    class FakeRepos:
-        conn = FakeConn()
-        token_profile_current_dirty_targets = FakeProfileDirtyTargets()
-        token_image_source_dirty_targets = FailingImageSourceDirtyTargets()
-
-        def transaction(self):
-            return FakeTransaction()
-
-    class FakePool:
-        def __init__(self, name: str) -> None:
-            self.name = name
-
-        def close(self) -> None:
-            closed.append(self.name)
-
-    class FakeDB:
-        api_pool = FakePool("api")
-        worker_pool = FakePool("worker")
-        tool_pool = FakePool("tool")
-        wake_pool = FakePool("wake")
-
-        @contextmanager
-        def worker_session(self, name):
-            captured["worker_session_name"] = name
-            yield FakeRepos()
-
-        async def aclose(self):
-            self.api_pool.close()
-            self.worker_pool.close()
-            self.tool_pool.close()
-            self.wake_pool.close()
-
-    class FakeWorker:
-        def __init__(self, *, name, settings, db, telemetry):
-            captured["events"].append("worker_init")
-            captured["worker"] = (name, settings.batch_size, db, telemetry)
-
-        async def run_once(self, *, now_ms):
-            captured["events"].append("worker_run")
-            captured["worker_now_ms"] = now_ms
-            return SimpleNamespace(notes={"result": {"selected": 2, "ready": 2, "with_logo": 1}})
-
-        async def aclose(self):
-            captured["events"].append("worker_close")
-
-    def fail_wire_asset_market_providers(*_args, **_kwargs):
-        raise AssertionError("repair-token-profile-images must not wire asset providers")
-
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fail_wire_asset_market_providers)
-    monkeypatch.setattr(ops_module, "TokenProfileCurrentWorker", FakeWorker)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_000_000)
-    stdout = io.StringIO()
-
-    code = main(["ops", "repair-token-profile-images", "--limit", "3"], stdout=stdout)
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert captured["worker_session_name"] == "token_profile_image_repair"
-    assert "FROM token_profile_current" in captured["sql"]
-    assert "status = 'ready'" in captured["sql"]
-    assert "quality_flags_json ? 'logo_mirror_pending'" in captured["sql"]
-    assert "quality_flags_json ? 'source_not_admitted'" in captured["sql"]
-    assert "quality_flags_json ? 'logo_mirror_unsupported'" in captured["sql"]
-    assert "quality_flags_json ? 'logo_mirror_failed'" in captured["sql"]
-    assert captured["params"] == (3,)
-    assert captured["enqueued"] == {
-        "targets": [
-            {
-                "target_type": "Asset",
-                "target_id": "asset:gmgn",
-                "source_watermark_ms": 1_699_999_999_000,
-                "priority": 25,
-            },
-            {
-                "target_type": "CexToken",
-                "target_id": "cex_token:BTC",
-                "source_watermark_ms": 1_700_000_000_000,
-                "priority": 25,
-            },
-        ],
-        "reason": "token_profile_image_repair",
-        "now_ms": 1_700_000_000_000,
-        "commit": False,
-    }
-    assert captured["worker"][0] == "token_profile_current"
-    assert captured["worker"][1] == 3
-    assert captured["events"] == [
-        "transaction_start",
-        "select",
-        "enqueue_profiles",
-        "transaction_commit",
-        "worker_init",
-        "worker_run",
-        "worker_close",
-    ]
-    assert closed == ["api", "worker", "tool", "wake"]
-    assert payload["data"] == {
-        "selected_targets": 2,
-        "profile_targets_enqueued": 2,
-        "profile_rebuild": {"selected": 2, "ready": 2, "with_logo": 1},
-    }
-
-
-def test_cli_ops_repair_token_profile_images_closes_db_when_worker_close_fails(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    closed: list[str] = []
-
-    class FakeCursor:
-        def fetchall(self):
-            return []
-
-    class FakeConn:
-        def execute(self, *_args, **_kwargs):
-            return FakeCursor()
-
-    class FakeTransaction:
-        def __enter__(self):
-            return None
-
-        def __exit__(self, exc_type, exc, tb):
-            return False
-
-    class FakeProfileDirtyTargets:
-        def enqueue_targets(self, targets, *, reason, now_ms, commit):
-            return {"targets": len(list(targets))}
-
-    class FakeRepos:
-        conn = FakeConn()
-        token_profile_current_dirty_targets = FakeProfileDirtyTargets()
-
-        def transaction(self):
-            return FakeTransaction()
-
-    class FakePool:
-        def __init__(self, name: str) -> None:
-            self.name = name
-
-        def close(self) -> None:
-            closed.append(self.name)
-
-    class FakeDB:
-        api_pool = FakePool("api")
-        worker_pool = FakePool("worker")
-        tool_pool = FakePool("tool")
-        wake_pool = FakePool("wake")
-
-        @contextmanager
-        def worker_session(self, _name):
-            yield FakeRepos()
-
-        async def aclose(self):
-            self.api_pool.close()
-            self.worker_pool.close()
-            self.tool_pool.close()
-            self.wake_pool.close()
-
-    class FakeWorker:
-        def __init__(self, *, name, settings, db, telemetry):
-            pass
-
-        async def run_once(self, *, now_ms):
-            return SimpleNamespace(notes={"result": {}})
-
-        async def aclose(self):
-            raise RuntimeError("worker close failed")
-
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db", llm=True)
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(ops_module, "TokenProfileCurrentWorker", FakeWorker)
-
-    with pytest.raises(RuntimeError, match="worker close failed"):
-        ops_module._run_token_profile_image_repair_once(
-            ops_module.load_settings(require_ws_token=False),
-            limit=3,
-            now_ms=1_700_000_000_000,
-        )
-
-    assert closed == ["api", "worker", "tool", "wake"]
-
-
-def test_cli_ops_refresh_asset_profiles_closes_db_when_provider_wiring_fails(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    closed: list[str] = []
-
-    class FakePool:
-        def __init__(self, name: str) -> None:
-            self.name = name
-
-        def close(self) -> None:
-            closed.append(self.name)
-
-    class FakeDB:
-        def __init__(self) -> None:
-            self.api_pool = FakePool("api")
-            self.worker_pool = FakePool("worker")
-            self.wake_pool = FakePool("wake")
-
-        async def aclose(self):
-            self.api_pool.close()
-            self.worker_pool.close()
-            self.wake_pool.close()
-
-    def fake_wire_asset_market_providers(settings):
-        raise RuntimeError("provider wiring failed")
-
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
-    monkeypatch.setenv("HOME", str(tmp_path))
-    monkeypatch.setattr(ops_module.DBPoolBundle, "create", lambda settings, *, telemetry: FakeDB())
-    monkeypatch.setattr(ops_module, "wire_asset_market_providers", fake_wire_asset_market_providers)
-
-    try:
-        main(["ops", "refresh-asset-profiles"], stdout=io.StringIO())
-    except RuntimeError as exc:
-        assert str(exc) == "provider wiring failed"
-    else:
-        raise AssertionError("provider wiring failure should propagate")
-
-    assert closed == ["api", "worker", "wake"]
-
-
-def test_cli_ops_sync_gmgn_directory_emits_error_on_directory_failure(monkeypatch, tmp_path):
-    import io
-    import json
-
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-    from parallax.integrations.gmgn.directory_client import GmgnDirectoryError
-
-    def boom(*, client, repository, now_ms, max_pages):
-        raise GmgnDirectoryError("Cloudflare 403")
-
-    class FakeClient:
-        def __init__(self, **kwargs):
-            self.closed = False
-
-        def close(self):
-            self.closed = True
-
-    monkeypatch.setattr(ops_module, "_run_sync_gmgn_directory", boom)
-    monkeypatch.setattr(ops_module, "GmgnDirectoryClient", FakeClient)
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
-    conn = connect_postgres_test(read_only=False)
-    try:
-        migrate(conn)
-    finally:
-        conn.close()
-    monkeypatch.setenv("HOME", str(tmp_path))
-
-    stdout = io.StringIO()
-    code = main(["ops", "sync-gmgn-directory"], stdout=stdout)
-
-    assert code == 1
-    assert json.loads(stdout.getvalue()) == {"ok": False, "error": "Cloudflare 403"}
 
 
 if __name__ == "__main__":

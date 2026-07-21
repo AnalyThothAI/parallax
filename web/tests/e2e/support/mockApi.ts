@@ -54,7 +54,6 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     if (path === "/api/events/by-ids") return fulfill(route, socialEventsByIds(url));
     if (path === "/api/target-social-timeline") return fulfill(route, timelineData());
     if (path === "/api/target-posts") return fulfill(route, targetPostsData(url));
-    if (path === "/api/account-quality") return fulfill(route, accountQualityData());
     if (path === "/api/notification-summary") return fulfill(route, notificationSummary());
     if (path === "/api/notifications") return fulfill(route, notificationsData());
     if (path === "/api/news") return fulfill(route, newsRowsData());
@@ -66,9 +65,6 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     if (path === "/api/watchlist/handles/overview") return fulfill(route, watchlistOverviewData());
     if (path.match(/^\/api\/watchlist\/handles?\/[^/]+\/overview$/)) {
       return fulfill(route, watchlistHandleOverviewData(handleFromPath(path)));
-    }
-    if (path.match(/^\/api\/watchlist\/handles?\/[^/]+\/summary$/)) {
-      return fulfill(route, watchlistHandleSummaryData(handleFromPath(path)));
     }
     if (path.match(/^\/api\/watchlist\/handles?\/[^/]+\/timeline$/)) {
       return fulfill(route, watchlistHandleTimelineData(handleFromPath(path)));
@@ -915,10 +911,6 @@ function post(eventId: string, handle: string, text: string, watched: boolean, s
   };
 }
 
-function accountQualityData() {
-  return { query: { handles: ["traderpow"] }, accounts: [] };
-}
-
 function notificationsData() {
   return {
     items: [
@@ -1017,19 +1009,11 @@ function watchlistOverviewData() {
         handle: "toly",
         last_source_event_at_ms: NOW,
         recent_source_event_count: 3,
-        recent_signal_event_count: 2,
-        total_signal_event_count: 5,
-        summary_status: "ready",
-        summary_is_stale: false,
       },
       {
         handle: "marionawfal",
         last_source_event_at_ms: NOW - 60_000,
         recent_source_event_count: 42,
-        recent_signal_event_count: 12,
-        total_signal_event_count: 42,
-        summary_status: "ready",
-        summary_is_stale: false,
       },
     ],
   };
@@ -1037,10 +1021,9 @@ function watchlistOverviewData() {
 
 function watchlistHandleOverviewData(handle: string) {
   return {
-    query: { handle, scope: "signal", window: "7d" },
+    query: { handle, window: "3d" },
     metrics: {
       source_event_count: 42,
-      signal_event_count: 12,
       resolved_token_count: 1,
       candidate_mention_count: 3,
       narrative_count: 1,
@@ -1063,7 +1046,7 @@ function watchlistHandleOverviewData(handle: string) {
         count: 3,
         query: "$ALOY",
         kind: "candidate_mention",
-        source: "social_event_candidates",
+        source: "event_cashtags",
       },
     ],
     narrative_clusters: [
@@ -1073,35 +1056,9 @@ function watchlistHandleOverviewData(handle: string) {
   };
 }
 
-function watchlistHandleSummaryData(handle: string) {
-  return {
-    handle,
-    status: "ready",
-    generated_at_ms: NOW,
-    staleness_ms: 0,
-    is_stale: false,
-    pending_recompute: false,
-    signal_count: 12,
-    input_event_count: 42,
-    signal_count_at_generation: 12,
-    model: "e2e-model",
-    summary_zh: `${handle} has fresh deterministic watchlist context.`,
-    topics: [
-      {
-        title: "UPEG",
-        description: "UPEG is repeatedly mentioned by watched and public accounts.",
-        event_count: 4,
-        top_event_ids: ["event-upeg-1"],
-        symbols: ["UPEG"],
-        confidence: 0.86,
-      },
-    ],
-  };
-}
-
 function watchlistHandleTimelineData(handle: string) {
   return {
-    query: { handle, scope: "signal", limit: 80 },
+    query: { handle, limit: 80 },
     items: postsData().items.map((item) => ({
       event_id: item.event_id,
       received_at_ms: item.received_at_ms,
@@ -1112,12 +1069,6 @@ function watchlistHandleTimelineData(handle: string) {
       cashtags: ["UPEG"],
       hashtags: [],
       mentions: [],
-      social_event: {
-        is_signal_event: true,
-        summary_zh: item.text,
-        confidence: 0.82,
-        token_candidates: [{ symbol: "UPEG", target_id: TARGET_ID }],
-      },
     })),
     has_more: false,
     next_cursor: null,

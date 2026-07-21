@@ -74,14 +74,13 @@ def test_reprocess_enqueues_dirty_targets_for_incremental_token_radar(monkeypatc
     assert result["reprocessed_intents"] == 2
     assert result["resolved_intents"] == 1
     assert result["dirty_targets"] == 1
-    assert repos.token_radar_source_dirty_events.enqueues == [
+    assert repos.token_radar_dirty_targets.enqueues == [
         {
             "rows": [
-                {"target_type_key": "Asset", "identity_id": "asset-1", "source_event_id": "event-1"},
+                {"target_type_key": "Asset", "identity_id": "asset-1"},
             ],
             "reason": "resolution_refresh",
             "now_ms": 1_778_162_003_774,
-            "commit": False,
         }
     ]
     assert repos.discovery.enqueues == [
@@ -89,7 +88,6 @@ def test_reprocess_enqueues_dirty_targets_for_incremental_token_radar(monkeypatc
             "lookup_keys": ["symbol:TWO"],
             "reason": "resolution_refresh_unresolved",
             "now_ms": 1_778_162_003_774,
-            "commit": False,
         }
     ]
     assert repos.transaction_entries == 1
@@ -148,9 +146,9 @@ def test_reprocess_batches_evidence_for_recent_intents(monkeypatch):
     ]
 
 
-def test_reprocess_requires_token_radar_source_dirty_repository(monkeypatch):
+def test_reprocess_requires_token_radar_dirty_target_repository(monkeypatch):
     lookup = FakeLookup(rows=[{"intent_id": "intent-1", "event_id": "event-1", "primary_evidence_id": "evidence-1"}])
-    repos = FakeReposWithoutSourceDirty(lookup=lookup)
+    repos = FakeReposWithoutDirtyTargets(lookup=lookup)
 
     class FakeResolver:
         def __init__(self, **kwargs):
@@ -170,7 +168,7 @@ def test_reprocess_requires_token_radar_source_dirty_repository(monkeypatch):
         FakeResolver,
     )
 
-    with pytest.raises(AttributeError, match="token_radar_source_dirty_events"):
+    with pytest.raises(AttributeError, match="token_radar_dirty_targets"):
         reprocess_recent_token_intents(
             repos=repos,
             lookup_keys=["symbol:ONE"],
@@ -217,7 +215,7 @@ def test_reprocess_requires_formal_resolution_decision_before_dirty_enqueue(monk
             limit=500,
         )
 
-    assert repos.token_radar_source_dirty_events.enqueues == []
+    assert repos.token_radar_dirty_targets.enqueues == []
     assert repos.transaction_entries == 1
     assert repos.transaction_exits == ["RuntimeError"]
 
@@ -309,7 +307,7 @@ class FakeRepos:
         self.token_evidence = FakeTokenEvidence()
         self.registry = object()
         self.intent_resolutions = object()
-        self.token_radar_source_dirty_events = FakeDirtyTargets()
+        self.token_radar_dirty_targets = FakeDirtyTargets()
         self.discovery = FakeDiscovery()
         self.conn = FakeConn()
         self.required_operations = []
@@ -326,10 +324,10 @@ class FakeRepos:
         self.required_operations.append(operation)
 
 
-class FakeReposWithoutSourceDirty(FakeRepos):
+class FakeReposWithoutDirtyTargets(FakeRepos):
     def __init__(self, *, lookup):
         super().__init__(lookup=lookup)
-        del self.token_radar_source_dirty_events
+        del self.token_radar_dirty_targets
 
 
 class FakeReposWithoutTransaction:
@@ -339,7 +337,7 @@ class FakeReposWithoutTransaction:
         self.token_evidence = FakeTokenEvidence()
         self.registry = object()
         self.intent_resolutions = object()
-        self.token_radar_source_dirty_events = FakeDirtyTargets()
+        self.token_radar_dirty_targets = FakeDirtyTargets()
         self.discovery = FakeDiscovery()
         self.conn = FakeConn()
 
@@ -378,13 +376,12 @@ class FakeDirtyTargets:
     def __init__(self):
         self.enqueues = []
 
-    def enqueue_events(self, rows, *, reason, now_ms, commit):
+    def enqueue_targets(self, rows, *, reason, now_ms):
         self.enqueues.append(
             {
                 "rows": list(rows),
                 "reason": reason,
                 "now_ms": now_ms,
-                "commit": commit,
             }
         )
 
@@ -393,13 +390,12 @@ class FakeDiscovery:
     def __init__(self):
         self.enqueues = []
 
-    def enqueue_lookup_keys(self, lookup_keys, *, reason, now_ms, commit):
+    def enqueue_lookup_keys(self, lookup_keys, *, reason, now_ms):
         self.enqueues.append(
             {
                 "lookup_keys": list(lookup_keys),
                 "reason": reason,
                 "now_ms": now_ms,
-                "commit": commit,
             }
         )
 

@@ -8,7 +8,7 @@ from typing import Any
 
 import pytest
 
-from parallax.app.runtime.providers_wiring import AssetMarketProviders
+from parallax.app.runtime.provider_wiring.types import AssetMarketProviders
 from parallax.domains.asset_market.providers import DexTokenQuote
 from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import (
     EventAnchorBackfillWorker,
@@ -63,14 +63,6 @@ def test_event_anchor_wake_emitter_contract_is_required_when_emitter_is_injected
         _emit_wake(object(), target_type="chain_token", target_id="solana:abc")
 
 
-def test_event_anchor_worker_requires_formal_settings_contract() -> None:
-    with pytest.raises(RuntimeError, match="event_anchor_backfill_settings_required"):
-        EventAnchorBackfillWorker(
-            pool_bundle=_FakeDB(pending_rows=[]),
-            capture_service=_StubCaptureService(),
-        )
-
-
 def test_event_anchor_worker_requires_formal_db_bundle_contract() -> None:
     with pytest.raises(RuntimeError, match="event_anchor_backfill_db_required"):
         EventAnchorBackfillWorker(
@@ -84,78 +76,6 @@ def test_event_anchor_worker_requires_provider_bundle_without_injected_capture_s
         EventAnchorBackfillWorker(
             settings=_settings(),
             pool_bundle=_FakeDB(pending_rows=[]),
-        )
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "error_code"),
-    [
-        pytest.param("batch_size", 0, "event_anchor_backfill_batch_size_required", id="batch-zero"),
-        pytest.param("batch_size", True, "event_anchor_backfill_batch_size_required", id="batch-bool"),
-        pytest.param("batch_size", "1", "event_anchor_backfill_batch_size_required", id="batch-string"),
-        pytest.param("concurrency", 0, "event_anchor_backfill_concurrency_required", id="concurrency-zero"),
-        pytest.param("concurrency", True, "event_anchor_backfill_concurrency_required", id="concurrency-bool"),
-        pytest.param("concurrency", "1", "event_anchor_backfill_concurrency_required", id="concurrency-string"),
-        pytest.param("max_attempts", 0, "event_anchor_backfill_max_attempts_required", id="attempts-zero"),
-        pytest.param("max_attempts", True, "event_anchor_backfill_max_attempts_required", id="attempts-bool"),
-        pytest.param("max_attempts", "1", "event_anchor_backfill_max_attempts_required", id="attempts-string"),
-        pytest.param("min_age_ms", -1, "event_anchor_backfill_min_age_ms_required", id="min-age-negative"),
-        pytest.param("min_age_ms", True, "event_anchor_backfill_min_age_ms_required", id="min-age-bool"),
-        pytest.param("min_age_ms", "0", "event_anchor_backfill_min_age_ms_required", id="min-age-string"),
-        pytest.param("lease_ms", 0, "event_anchor_backfill_lease_ms_required", id="lease-zero"),
-        pytest.param("lease_ms", True, "event_anchor_backfill_lease_ms_required", id="lease-bool"),
-        pytest.param("lease_ms", "1", "event_anchor_backfill_lease_ms_required", id="lease-string"),
-        pytest.param(
-            "active_window_ms",
-            0,
-            "event_anchor_backfill_active_window_ms_required",
-            id="active-window-zero",
-        ),
-        pytest.param(
-            "active_window_ms",
-            True,
-            "event_anchor_backfill_active_window_ms_required",
-            id="active-window-bool",
-        ),
-        pytest.param(
-            "active_window_ms",
-            "1",
-            "event_anchor_backfill_active_window_ms_required",
-            id="active-window-string",
-        ),
-        pytest.param(
-            "max_anchor_lag_ms",
-            0,
-            "event_anchor_backfill_max_anchor_lag_ms_required",
-            id="max-lag-zero",
-        ),
-        pytest.param(
-            "max_anchor_lag_ms",
-            True,
-            "event_anchor_backfill_max_anchor_lag_ms_required",
-            id="max-lag-bool",
-        ),
-        pytest.param(
-            "max_anchor_lag_ms",
-            "1",
-            "event_anchor_backfill_max_anchor_lag_ms_required",
-            id="max-lag-string",
-        ),
-    ],
-)
-def test_event_anchor_worker_rejects_malformed_runtime_settings(
-    field: str,
-    value: Any,
-    error_code: str,
-) -> None:
-    settings = _settings()
-    setattr(settings, field, value)
-
-    with pytest.raises(ValueError, match=error_code):
-        EventAnchorBackfillWorker(
-            pool_bundle=_FakeDB(pending_rows=[]),
-            capture_service=_StubCaptureService(),
-            settings=settings,
         )
 
 
@@ -184,10 +104,10 @@ def test_run_once_expires_stale_jobs_before_provider_calls() -> None:
     assert wake.emitted == []
 
 
-def test_run_once_requires_worker_session_unit_of_work_before_expiring_stale_jobs() -> None:
+def test_run_once_requires_worker_session_transaction_before_expiring_stale_jobs() -> None:
     row = _pending_row(event_id="evt-expired", target_type="chain_token", target_id="solana:OLD")
     row["active_until_ms"] = NOW_MS - 1
-    db = _FakeDB(pending_rows=[], expired_rows=[row], expose_unit_of_work=False)
+    db = _FakeDB(pending_rows=[], expired_rows=[row], expose_transaction=False)
     worker = EventAnchorBackfillWorker(
         pool_bundle=db,
         capture_service=_StubCaptureService(),
@@ -196,7 +116,7 @@ def test_run_once_requires_worker_session_unit_of_work_before_expiring_stale_job
         settings=_settings(),
     )
 
-    with pytest.raises(AttributeError, match="unit_of_work"):
+    with pytest.raises(AttributeError, match="transaction"):
         asyncio.run(worker.run_once())
 
     assert db.expire_stale_calls == []
@@ -449,7 +369,6 @@ def test_run_once_dispatches_to_capture_service_under_semaphore_then_persists_an
             "rows": [("chain_token", "solana:AAA")],
             "reason": "event_anchor_backfill_attached",
             "now_ms": NOW_MS,
-            "commit": False,
         }
     ]
 
@@ -681,7 +600,6 @@ def test_run_once_wakes_only_targets_that_were_attached() -> None:
             "rows": [("chain_token", "solana:SECOND")],
             "reason": "event_anchor_backfill_attached",
             "now_ms": NOW_MS,
-            "commit": False,
         }
     ]
 
@@ -806,7 +724,7 @@ class _FakeDB:
         nearest_hold_target_id: str | None = None,
         nearest_hold_started: threading.Event | None = None,
         nearest_hold_release: threading.Event | None = None,
-        expose_unit_of_work: bool = True,
+        expose_transaction: bool = True,
     ) -> None:
         self._pending_rows = pending_rows
         self._expired_rows = list(expired_rows or [])
@@ -835,12 +753,9 @@ class _FakeDB:
         self.nearest_hold_target_id = nearest_hold_target_id
         self.nearest_hold_started = nearest_hold_started
         self.nearest_hold_release = nearest_hold_release
-        self.expose_unit_of_work = expose_unit_of_work
+        self.expose_transaction = expose_transaction
 
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
-        return _FakeWorkerSession(self)
-
-    def worker_transaction(self, name: str, statement_timeout_seconds: float | None = None):
         return _FakeWorkerSession(self)
 
 
@@ -863,9 +778,9 @@ class _FakeWorkerSession:
             "reschedule_job_guards": len(self._db.reschedule_job_guards),
             "done_job_guards": len(self._db.done_job_guards),
         }
-        if self._db.expose_unit_of_work:
+        if self._db.expose_transaction:
             return _FakeRepos(self._db)
-        return _FakeReposWithoutUnitOfWork(self._db)
+        return _FakeReposWithoutTransaction(self._db)
 
     def __exit__(self, exc_type, exc, tb) -> None:
         self._db.open_sessions -= 1
@@ -881,29 +796,21 @@ class _FakeRepos:
         self.event_anchor_jobs = _FakeEventAnchorJobRepo(db)
         self.market_ticks = _FakeMarketTickRepo(db)
         self.market_tick_current_dirty_targets = _FakeDirtyTargets(db)
-        self.conn = SimpleNamespace(commit=lambda: None)
 
     def transaction(self):
-        return _FakeWorkerSession(self._db)
-
-    def unit_of_work(self):
         return _FakeWorkerSession(self._db)
 
     def require_transaction(self, *, operation: str) -> None:
         return None
 
 
-class _FakeReposWithoutUnitOfWork:
+class _FakeReposWithoutTransaction:
     def __init__(self, db: _FakeDB) -> None:
         self._db = db
         self.enriched_events = _FakeEnrichedEventRepo(db)
         self.event_anchor_jobs = _FakeEventAnchorJobRepo(db)
         self.market_ticks = _FakeMarketTickRepo(db)
         self.market_tick_current_dirty_targets = _FakeDirtyTargets(db)
-        self.conn = SimpleNamespace(commit=lambda: None)
-
-    def transaction(self):
-        return _FakeWorkerSession(self._db)
 
     def require_transaction(self, *, operation: str) -> None:
         return None
@@ -1083,14 +990,13 @@ class _FakeDirtyTargets:
     def __init__(self, db: _FakeDB) -> None:
         self._db = db
 
-    def enqueue_targets(self, rows: Any, *, reason: str, now_ms: int, commit: bool) -> int:
+    def enqueue_targets(self, rows: Any, *, reason: str, now_ms: int) -> int:
         materialized = list(rows)
         self._db.dirty_target_enqueues.append(
             {
                 "rows": materialized,
                 "reason": reason,
                 "now_ms": now_ms,
-                "commit": commit,
             }
         )
         return len(materialized)

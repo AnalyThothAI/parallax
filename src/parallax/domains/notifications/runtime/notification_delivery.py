@@ -4,19 +4,15 @@ import asyncio
 import time
 from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 from urllib.parse import urlparse
 
 import httpx
 from loguru import logger
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
-from parallax.domains.notifications.runtime.notification_runtime_settings import positive_worker_setting_int
-from parallax.platform.config.settings import NotificationChannelConfig
-
-if TYPE_CHECKING:
-    from parallax.app.runtime.repository_session import RepositorySession
+from parallax.platform.config.settings import NotificationChannelConfig, NotificationDeliveryWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class AppriseNotificationAdapter:
@@ -68,7 +64,7 @@ class NotificationDeliveryWorker(WorkerBase):
         self,
         *,
         name: str,
-        settings: Any,
+        settings: NotificationDeliveryWorkerSettings,
         db: Any,
         telemetry: Any,
         channels: dict[str, NotificationChannelConfig],
@@ -76,15 +72,13 @@ class NotificationDeliveryWorker(WorkerBase):
         pushdeer_adapter: Any | None = None,
         wake_waiter: Any | None = None,
     ):
-        if settings is None:
-            raise RuntimeError("notification_delivery_settings_required")
         if db is None:
             raise RuntimeError("notification_delivery_db_required")
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry, wake_waiter=wake_waiter)
         self.channels = channels
         self.adapter = adapter or AppriseNotificationAdapter()
         self.pushdeer_adapter = pushdeer_adapter or PushDeerNotificationAdapter()
-        self.batch_limit = positive_worker_setting_int(settings, "batch_size", worker_name=name)
+        self.batch_limit = settings.batch_size
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         processed = 0
@@ -146,7 +140,7 @@ class NotificationDeliveryWorker(WorkerBase):
 
     def _claim_delivery_sync(self, *, now_ms: int) -> DeliveryClaim | DeliveryOutcome:
         with self._repository_session() as repos, repos.transaction():
-            delivery = repos.notifications.claim_next_delivery(now_ms=now_ms, commit=False)
+            delivery = repos.notifications.claim_next_delivery(now_ms=now_ms)
             if delivery is None:
                 return DeliveryOutcome(processed=False, reason="no_delivery")
             notification = repos.notifications.notification_by_id(
@@ -154,19 +148,18 @@ class NotificationDeliveryWorker(WorkerBase):
                 subscriber_key=None,
             )
             if notification is None:
-                repos.notifications.fail_delivery(delivery, error="notification_not_found", now_ms=now_ms, commit=False)
+                repos.notifications.fail_delivery(delivery, error="notification_not_found", now_ms=now_ms)
                 return _failure_outcome(delivery, reason="notification_not_found")
             channel_id = str(delivery["channel_id"])
             channel = self.channels.get(channel_id)
             if channel is None or not channel.enabled:
-                repos.notifications.fail_delivery(delivery, error="channel_not_configured", now_ms=now_ms, commit=False)
+                repos.notifications.fail_delivery(delivery, error="channel_not_configured", now_ms=now_ms)
                 return _failure_outcome(delivery, reason="channel_not_configured")
             if channel.provider != str(delivery["provider"]):
                 repos.notifications.fail_delivery(
                     delivery,
                     error="channel_provider_mismatch",
                     now_ms=now_ms,
-                    commit=False,
                 )
                 return _failure_outcome(delivery, reason="channel_provider_mismatch")
             if channel.provider == "log":
@@ -175,26 +168,26 @@ class NotificationDeliveryWorker(WorkerBase):
                     f"channel={channel_id} notification_id={notification['notification_id']} "
                     f"title={notification['title']}"
                 )
-                repos.notifications.complete_delivery(delivery, delivered_at_ms=now_ms, commit=False)
+                repos.notifications.complete_delivery(delivery, delivered_at_ms=now_ms)
                 return DeliveryOutcome(processed=True, reason="log")
             if not channel.url:
-                repos.notifications.fail_delivery(delivery, error="channel_url_missing", now_ms=now_ms, commit=False)
+                repos.notifications.fail_delivery(delivery, error="channel_url_missing", now_ms=now_ms)
                 return _failure_outcome(delivery, reason="channel_url_missing")
             return DeliveryClaim(delivery=delivery, notification=notification, channel=channel)
 
     def _complete_delivery_sync(self, delivery: dict[str, Any], *, now_ms: int) -> DeliveryOutcome:
         with self._repository_session() as repos, repos.transaction():
-            repos.notifications.complete_delivery(delivery, delivered_at_ms=now_ms, commit=False)
+            repos.notifications.complete_delivery(delivery, delivered_at_ms=now_ms)
         return DeliveryOutcome(processed=True, reason="delivered")
 
     def _fail_delivery_sync(self, delivery: dict[str, Any], *, error: str, now_ms: int) -> DeliveryOutcome:
         with self._repository_session() as repos, repos.transaction():
-            repos.notifications.fail_delivery(delivery, error=error, now_ms=now_ms, commit=False)
+            repos.notifications.fail_delivery(delivery, error=error, now_ms=now_ms)
         return _failure_outcome(delivery, reason=error)
 
-    def _repository_session(self) -> AbstractContextManager[RepositorySession]:
+    def _repository_session(self) -> AbstractContextManager[Any]:
         return cast(
-            "AbstractContextManager[RepositorySession]",
+            "AbstractContextManager[Any]",
             self.db.worker_session(
                 self.name,
                 statement_timeout_seconds=self.settings.statement_timeout_seconds,

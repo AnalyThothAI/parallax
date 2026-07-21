@@ -5,9 +5,6 @@ from typing import Any
 
 import pytest
 
-from parallax.domains.account_quality.repositories.account_quality_repository import (
-    AccountQualityRepository,
-)
 from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from parallax.domains.token_intel.queries.event_token_projection_query import (
     EventTokenProjectionQuery,
@@ -158,15 +155,6 @@ def test_token_target_repository_event_id_timeline_rejects_malformed_limit_befor
         )
 
     assert conn.sql_calls == []
-
-
-def test_account_quality_cex_market_target_read_is_binance_usdt_swap_only() -> None:
-    conn = RecordingConn()
-
-    AccountQualityRepository(conn).account_token_rows(resolver_policy_version="resolver-v1", limit=25)
-
-    _assert_binance_usdt_swap_only(conn.sql_calls[-1])
-    _assert_no_legacy_cex_preference_ordering(conn.sql_calls[-1])
 
 
 class RecordingConn:

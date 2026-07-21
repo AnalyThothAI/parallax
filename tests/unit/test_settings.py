@@ -69,7 +69,7 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.postgres_pool_max_size == 16
     assert settings.log_file == tmp_path / ".parallax" / "logs" / "parallax.log"
     assert settings.llm_configured is False
-    assert settings.llm_timeout_seconds == 120
+    assert settings.llm.timeout_seconds == 120
     assert settings.agent_runtime_default_model == "deepseek-v4-flash"
     assert not hasattr(settings.workers, "enrichment")
     assert settings.workers.notification_delivery.running_timeout_ms == 300_000
@@ -229,21 +229,8 @@ def test_news_intel_accepts_opennews_credentials_without_using_environment_shado
     assert settings.news_intel.sources[0].fetch_policy["coins"] == ["BTC"]
 
 
-@pytest.mark.parametrize(
-    ("key", "value"),
-    [
-        ("fetch_mode", "hybrid"),
-        ("wss_url", "wss://example.com/news_wss"),
-        ("stream_timeout_seconds", 10),
-        ("streamTimeoutSeconds", 10),
-        ("max_messages", 20),
-        ("maxMessages", 20),
-        ("connect_timeout_seconds", 2),
-        ("connectTimeoutSeconds", 2),
-    ],
-)
-def test_news_intel_rejects_removed_opennews_websocket_policy_keys(key: str, value: object) -> None:
-    with pytest.raises(ValidationError, match=f"opennews-realtime uses removed OpenNews websocket policy keys: {key}"):
+def test_news_intel_rejects_unknown_opennews_fetch_policy_key() -> None:
+    with pytest.raises(ValidationError, match="opennews-realtime has unknown OpenNews fetch policy keys: unknown"):
         Settings(
             ws_token="secret",
             news_intel={
@@ -256,17 +243,16 @@ def test_news_intel_rejects_removed_opennews_websocket_policy_keys(key: str, val
                         "source_name": "OpenNews Realtime",
                         "source_role": "aggregator",
                         "trust_tier": "standard",
-                        "fetch_policy": {key: value},
+                        "fetch_policy": {"unknown": True},
                     }
                 ]
             },
         )
 
 
-@pytest.mark.parametrize("key", ["wss_url", "connect_timeout_seconds"])
-def test_news_intel_opennews_settings_reject_removed_websocket_keys(key: str) -> None:
+def test_news_intel_opennews_settings_reject_unknown_key() -> None:
     with pytest.raises(ValidationError):
-        Settings(ws_token="secret", news_intel={"opennews": {key: "removed"}})
+        Settings(ws_token="secret", news_intel={"opennews": {"unknown": True}})
 
 
 def test_news_source_settings_rejects_unknown_provider_type_and_source_role() -> None:
@@ -426,14 +412,14 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
     assert settings.llm_configured is True
     assert settings.agent_runtime_default_model == "gpt-test"
     assert settings.llm_base_url == "https://example.test/v1"
-    assert settings.llm_timeout_seconds == 7
+    assert settings.llm.timeout_seconds == 7
     assert settings.llm_trace_enabled is True
     assert settings.llm_trace_api_key == "sk-trace"
     assert settings.llm_trace_export_configured is False
     assert settings.llm_trace_include_sensitive_data is False
 
 
-def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypatch):
+def test_agent_runtime_lane_config_can_override_default_model(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
@@ -448,15 +434,13 @@ def test_agent_runtime_lane_model_can_override_default_model(tmp_path, monkeypat
     )
     workers = yaml.safe_load(default_workers_yaml())
     workers["agent_runtime"]["defaults"]["model"] = "gpt-base"
-    workers["agent_runtime"]["lanes"]["news.item_brief"]["model"] = "gpt-news"
     workers["agent_runtime"]["lanes"]["news.story_brief"]["model"] = "gpt-story"
     write_workers_config(tmp_path, workers)
 
     settings = load_settings()
 
     assert settings.agent_runtime_default_model == "gpt-base"
-    assert settings.agent_runtime_model_for_lane("news.item_brief") == "gpt-news"
-    assert settings.agent_runtime_model_for_lane("news.story_brief") == "gpt-story"
+    assert settings.workers.agent_runtime.lanes["news.story_brief"].model == "gpt-story"
     assert settings.news_agent_execution_enabled is True
 
 
@@ -466,7 +450,6 @@ def test_news_agent_execution_requires_domain_worker_and_llm_demand() -> None:
         "llm": {"api_key": "sk-test"},
         "workers": {
             "agent_runtime": {"defaults": {"model": "gpt-test"}},
-            "news_item_brief": {"enabled": False},
             "news_story_brief": {"enabled": False},
         },
     }
@@ -500,7 +483,6 @@ def test_load_settings_rejects_legacy_llm_model_fields(tmp_path, monkeypatch):
                 "model": "gpt-base",
                 "watchlist_handle_summary_model": "gpt-watchlist",
                 "narrative_intel_model": "gpt-narrative",
-                "news_item_brief_model": "gpt-news",
             },
         },
     )
@@ -1074,7 +1056,7 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
 def test_default_workers_yaml_keys_match_manifest_worker_names() -> None:
     payload = yaml.safe_load(default_workers_yaml())
 
-    assert set(payload) == _manifest_worker_names() | {"defaults", "agent_runtime"}
+    assert set(payload) == _manifest_worker_names() | {"agent_runtime"}
     assert set(WorkersSettings.model_fields) == set(payload)
 
 

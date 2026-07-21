@@ -9,14 +9,18 @@ from parallax.domains.macro_intel._constants import MACRO_CORE_CONCEPTS
 from parallax.domains.macro_intel.runtime.macro_view_projection_worker import (
     MacroViewProjectionWorker,
 )
+from parallax.domains.macro_intel.services.macro_module_catalog import (
+    MACRO_MODULE_CONCEPTS,
+    MACRO_MODULE_IDS,
+)
 from parallax.platform.config.settings import MacroViewProjectionWorkerSettings
 
 NOW_MS = 1_779_000_000_000
+PROJECTION_CONCEPTS = tuple(dict.fromkeys((*MACRO_CORE_CONCEPTS, *MACRO_MODULE_CONCEPTS)))
 
 
 def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     target = _concept_dirty_target("vol:vix")
-    wake_bus = FakeWakeBus()
     repo = FakeMacroIntelRepository(
         dirty_targets=[target],
         observations=[
@@ -35,7 +39,7 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
         ],
     )
     db = FakeDB(repo)
-    worker = _worker(db, wake_emitter=wake_bus)
+    worker = _worker(db)
 
     result = worker.run_once_sync()
 
@@ -44,7 +48,7 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     assert result.notes["projection_version"] == "macro_regime_v4"
     assert result.notes["status"] == "partial"
     assert result.notes["source_rows_scanned"] == 1
-    assert result.notes["targets_loaded"] == len(MACRO_CORE_CONCEPTS)
+    assert result.notes["targets_loaded"] == len(PROJECTION_CONCEPTS)
     assert result.notes["projected_rows_written"] == 3
     assert result.notes["snapshot_rows_written"] == 1
     assert result.notes["series_status"] == "published"
@@ -68,7 +72,6 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
         "lease_ms": 300_000,
         "lease_owner": "macro_view_projection",
         "now_ms": NOW_MS,
-        "commit": False,
     }
     assert repo.refresh_call == {
         "projection_version": "macro_regime_v4",
@@ -79,20 +82,15 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
         "concept_keys": ("vol:vix",),
     }
     assert repo.observations_for_series_call == {
-        "concept_keys": MACRO_CORE_CONCEPTS,
+        "concept_keys": PROJECTION_CONCEPTS,
         "lookback_days": 1095,
         "limit_per_series": 800,
     }
     assert len(repo.snapshots) == 1
     assert repo.snapshots[0]["panels_json"]["volatility"]["regime"] == "carry"
-    assert repo.done_targets == [(target, NOW_MS, False)]
-    assert wake_bus.macro_view_snapshot_updates == [
-        {
-            "projection_version": repo.snapshots[0]["projection_version"],
-            "status": repo.snapshots[0]["status"],
-            "regime": repo.snapshots[0]["regime"],
-        }
-    ]
+    assert repo.snapshots[0]["assets_brief_json"]["asof_date"] == "2026-05-20"
+    assert tuple(repo.snapshots[0]["module_views_json"]) == MACRO_MODULE_IDS
+    assert repo.done_targets == [(target, NOW_MS)]
     assert repo.call_depths == [
         ("claim_macro_projection_dirty_targets", 1),
         ("refresh_observation_series_rows_for_concepts", 2),
@@ -121,98 +119,8 @@ def test_macro_view_projection_worker_without_dirty_target_does_not_scan_sources
     assert repo.calls == ["claim_macro_projection_dirty_targets"]
 
 
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"batch_size": 0}, "macro_view_projection_batch_size_required", id="batch-zero"),
-        pytest.param({"batch_size": True}, "macro_view_projection_batch_size_required", id="batch-bool"),
-        pytest.param({"batch_size": "250"}, "macro_view_projection_batch_size_required", id="batch-string"),
-        pytest.param({"lease_ms": 0}, "macro_view_projection_lease_ms_required", id="lease-zero"),
-        pytest.param({"lease_ms": True}, "macro_view_projection_lease_ms_required", id="lease-bool"),
-        pytest.param({"lease_ms": "300000"}, "macro_view_projection_lease_ms_required", id="lease-string"),
-    ],
-)
-def test_macro_view_projection_worker_rejects_malformed_claim_settings_before_claim(
-    overrides: dict[str, object],
-    error_code: str,
-) -> None:
-    repo = FakeMacroIntelRepository(dirty_targets=[_dirty_target()], observations=[])
-    worker = _worker(FakeDB(repo), settings=_raw_macro_view_projection_settings(**overrides))
-
-    with pytest.raises(ValueError, match=error_code):
-        worker.run_once_sync(now_ms=NOW_MS)
-
-    assert repo.claim_call is None
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"lookback_days": 0}, "macro_view_projection_lookback_days_required", id="lookback-zero"),
-        pytest.param({"lookback_days": True}, "macro_view_projection_lookback_days_required", id="lookback-bool"),
-        pytest.param({"lookback_days": "1095"}, "macro_view_projection_lookback_days_required", id="lookback-string"),
-        pytest.param(
-            {"limit_per_series": 0},
-            "macro_view_projection_limit_per_series_required",
-            id="limit-zero",
-        ),
-        pytest.param(
-            {"limit_per_series": True},
-            "macro_view_projection_limit_per_series_required",
-            id="limit-bool",
-        ),
-        pytest.param(
-            {"limit_per_series": "800"},
-            "macro_view_projection_limit_per_series_required",
-            id="limit-string",
-        ),
-    ],
-)
-def test_macro_view_projection_worker_rejects_malformed_refresh_settings_before_refresh(
-    overrides: dict[str, object],
-    error_code: str,
-) -> None:
-    repo = FakeMacroIntelRepository(dirty_targets=[_concept_dirty_target("rates:dgs10")], observations=[])
-    worker = _worker(FakeDB(repo), settings=_raw_macro_view_projection_settings(**overrides))
-
-    with pytest.raises(ValueError, match=error_code):
-        worker.run_once_sync(now_ms=NOW_MS)
-
-    assert repo.claim_call is not None
-    assert repo.refresh_call is None
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"retry_ms": 0}, "macro_view_projection_retry_ms_required", id="retry-zero"),
-        pytest.param({"retry_ms": True}, "macro_view_projection_retry_ms_required", id="retry-bool"),
-        pytest.param({"retry_ms": "300000"}, "macro_view_projection_retry_ms_required", id="retry-string"),
-        pytest.param({"max_attempts": 0}, "macro_view_projection_max_attempts_required", id="attempts-zero"),
-        pytest.param({"max_attempts": True}, "macro_view_projection_max_attempts_required", id="attempts-bool"),
-        pytest.param({"max_attempts": "3"}, "macro_view_projection_max_attempts_required", id="attempts-string"),
-    ],
-)
-def test_macro_view_projection_worker_rejects_malformed_error_settings_without_mark_error(
-    overrides: dict[str, object],
-    error_code: str,
-) -> None:
-    repo = FakeMacroIntelRepository(
-        dirty_targets=[_concept_dirty_target("rates:dgs10")],
-        observations=[],
-        refresh_error=RuntimeError("boom"),
-    )
-    worker = _worker(FakeDB(repo), settings=_raw_macro_view_projection_settings(**overrides))
-
-    with pytest.raises(ValueError, match=error_code):
-        worker.run_once_sync(now_ms=NOW_MS)
-
-    assert repo.error_targets == []
-
-
 def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapshot() -> None:
     target = _concept_dirty_target("rates:dgs10")
-    wake_bus = FakeWakeBus()
     repo = FakeMacroIntelRepository(
         dirty_targets=[target],
         observations=[],
@@ -224,7 +132,7 @@ def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapsh
         },
     )
     db = FakeDB(repo)
-    worker = _worker(db, wake_emitter=wake_bus)
+    worker = _worker(db)
 
     result = worker.run_once_sync()
 
@@ -242,14 +150,12 @@ def test_macro_view_projection_worker_unchanged_series_marks_done_without_snapsh
         "refresh_observation_series_rows_for_concepts",
         "mark_macro_projection_dirty_targets_done",
     ]
-    assert repo.done_targets == [(target, NOW_MS, False)]
+    assert repo.done_targets == [(target, NOW_MS)]
     assert repo.snapshots == []
-    assert wake_bus.macro_view_snapshot_updates == []
 
 
-def test_macro_view_projection_worker_event_targets_refresh_without_numeric_snapshot() -> None:
+def test_macro_view_projection_worker_event_target_rebuilds_route_ready_modules() -> None:
     target = _concept_dirty_target("event:fomc_decision_next")
-    wake_bus = FakeWakeBus()
     repo = FakeMacroIntelRepository(
         dirty_targets=[target],
         observations=[],
@@ -261,7 +167,7 @@ def test_macro_view_projection_worker_event_targets_refresh_without_numeric_snap
         },
     )
     db = FakeDB(repo)
-    worker = _worker(db, wake_emitter=wake_bus)
+    worker = _worker(db)
 
     result = worker.run_once_sync()
 
@@ -269,13 +175,15 @@ def test_macro_view_projection_worker_event_targets_refresh_without_numeric_snap
     assert result.notes["claimed"] == 1
     assert result.notes["series_status"] == "published"
     assert result.notes["projected_rows_written"] == 2
-    assert result.notes["snapshot_rows_written"] == 0
+    assert result.notes["snapshot_rows_written"] == 1
     assert result.notes["source_rows_scanned"] == 0
-    assert result.notes["targets_loaded"] == 0
-    assert result.notes["rows_written"] == 2
+    assert result.notes["targets_loaded"] == len(PROJECTION_CONCEPTS)
+    assert result.notes["rows_written"] == 3
     assert repo.calls == [
         "claim_macro_projection_dirty_targets",
         "refresh_observation_series_rows_for_concepts",
+        "observations_for_concepts",
+        "insert_snapshot",
         "mark_macro_projection_dirty_targets_done",
     ]
     assert repo.refresh_call == {
@@ -286,14 +194,13 @@ def test_macro_view_projection_worker_event_targets_refresh_without_numeric_snap
         "claimed_targets": [target],
         "concept_keys": ("event:fomc_decision_next",),
     }
-    assert repo.done_targets == [(target, NOW_MS, False)]
-    assert repo.snapshots == []
-    assert wake_bus.macro_view_snapshot_updates == []
+    assert repo.done_targets == [(target, NOW_MS)]
+    assert len(repo.snapshots) == 1
+    assert tuple(repo.snapshots[0]["module_views_json"]) == MACRO_MODULE_IDS
 
 
 def test_macro_view_projection_worker_current_target_rebuilds_snapshot_when_series_is_unchanged() -> None:
     target = _dirty_target()
-    wake_bus = FakeWakeBus()
     repo = FakeMacroIntelRepository(
         dirty_targets=[target],
         observations=[
@@ -318,7 +225,7 @@ def test_macro_view_projection_worker_current_target_rebuilds_snapshot_when_seri
         },
     )
     db = FakeDB(repo)
-    worker = _worker(db, wake_emitter=wake_bus)
+    worker = _worker(db)
 
     result = worker.run_once_sync()
 
@@ -327,7 +234,7 @@ def test_macro_view_projection_worker_current_target_rebuilds_snapshot_when_seri
     assert result.notes["projected_rows_written"] == 0
     assert result.notes["snapshot_rows_written"] == 1
     assert result.notes["source_rows_scanned"] == 1
-    assert result.notes["targets_loaded"] == len(MACRO_CORE_CONCEPTS)
+    assert result.notes["targets_loaded"] == len(PROJECTION_CONCEPTS)
     assert result.notes["rows_written"] == 1
     assert repo.calls == [
         "claim_macro_projection_dirty_targets",
@@ -336,20 +243,12 @@ def test_macro_view_projection_worker_current_target_rebuilds_snapshot_when_seri
         "insert_snapshot",
         "mark_macro_projection_dirty_targets_done",
     ]
-    assert repo.done_targets == [(target, NOW_MS, False)]
+    assert repo.done_targets == [(target, NOW_MS)]
     assert len(repo.snapshots) == 1
-    assert wake_bus.macro_view_snapshot_updates == [
-        {
-            "projection_version": repo.snapshots[0]["projection_version"],
-            "status": repo.snapshots[0]["status"],
-            "regime": repo.snapshots[0]["regime"],
-        }
-    ]
 
 
-def test_macro_view_projection_worker_unchanged_snapshot_does_not_notify() -> None:
+def test_macro_view_projection_worker_unchanged_snapshot_writes_no_snapshot_row() -> None:
     target = _concept_dirty_target("vol:vix")
-    wake_bus = FakeWakeBus()
     repo = FakeMacroIntelRepository(
         dirty_targets=[target],
         observations=[
@@ -369,7 +268,7 @@ def test_macro_view_projection_worker_unchanged_snapshot_does_not_notify() -> No
         snapshot_changed=False,
     )
     db = FakeDB(repo)
-    worker = _worker(db, wake_emitter=wake_bus)
+    worker = _worker(db)
 
     result = worker.run_once_sync()
 
@@ -377,7 +276,6 @@ def test_macro_view_projection_worker_unchanged_snapshot_does_not_notify() -> No
     assert result.notes["projected_rows_written"] == 3
     assert result.notes["snapshot_rows_written"] == 0
     assert result.notes["rows_written"] == 3
-    assert wake_bus.macro_view_snapshot_updates == []
 
 
 def test_macro_view_projection_worker_refresh_failure_marks_dirty_target_error() -> None:
@@ -397,7 +295,7 @@ def test_macro_view_projection_worker_refresh_failure_marks_dirty_target_error()
         "refresh_observation_series_rows_for_concepts",
         "mark_macro_projection_dirty_targets_error",
     ]
-    assert repo.error_targets == [(target, "boom", 300_000, 3, "macro_view_projection", NOW_MS, False)]
+    assert repo.error_targets == [(target, "boom", 300_000, 3, "macro_view_projection", NOW_MS)]
     assert repo.call_depths == [
         ("claim_macro_projection_dirty_targets", 1),
         ("refresh_observation_series_rows_for_concepts", 2),
@@ -460,7 +358,7 @@ def test_macro_view_projection_worker_reads_formal_settings_for_claim_history_se
     error_result = error_worker.run_once_sync()
 
     assert error_result.failed == 1
-    assert error_repo.error_targets == [(target, "boom", 90_000, 4, "macro_view_projection", NOW_MS, False)]
+    assert error_repo.error_targets == [(target, "boom", 90_000, 4, "macro_view_projection", NOW_MS)]
 
 
 def test_macro_view_projection_worker_requires_session_transaction_before_claiming_dirty_target() -> None:
@@ -475,7 +373,7 @@ def test_macro_view_projection_worker_requires_session_transaction_before_claimi
     assert repo.calls == []
 
 
-def test_macro_view_projection_worker_notifies_after_transaction_commit() -> None:
+def test_macro_view_projection_worker_finishes_transaction_after_publication() -> None:
     target = _concept_dirty_target("vol:vix")
     repo = FakeMacroIntelRepository(
         dirty_targets=[target],
@@ -495,20 +393,17 @@ def test_macro_view_projection_worker_notifies_after_transaction_commit() -> Non
         ],
     )
     db = FakeDB(repo)
-    wake_bus = FakeWakeBus(db=db)
-    worker = _worker(db, wake_emitter=wake_bus)
+    worker = _worker(db)
 
     result = worker.run_once_sync()
 
     assert result.processed == 1
-    assert wake_bus.transaction_depths == [0]
     assert db.transaction_events[-1] == ("exit", 1)
 
 
 def _worker(
     db: FakeDB,
     *,
-    wake_emitter: object | None = None,
     settings: MacroViewProjectionWorkerSettings | None = None,
 ) -> MacroViewProjectionWorker:
     return MacroViewProjectionWorker(
@@ -516,7 +411,6 @@ def _worker(
         settings=settings or _macro_view_projection_settings(),
         db=db,
         telemetry=object(),
-        wake_emitter=wake_emitter,
         clock_ms=lambda: NOW_MS,
     )
 
@@ -646,8 +540,8 @@ class FakeMacroIntelRepository:
         self.refresh_call: dict[str, object] | None = None
         self.observations_for_series_call: dict[str, object] | None = None
         self.snapshots: list[dict[str, object]] = []
-        self.done_targets: list[tuple[dict[str, object], int, bool]] = []
-        self.error_targets: list[tuple[dict[str, object], str, int, int, str, int, bool]] = []
+        self.done_targets: list[tuple[dict[str, object], int]] = []
+        self.error_targets: list[tuple[dict[str, object], str, int, int, str, int]] = []
         self.session: FakeRepositorySession | None = None
 
     def _transaction_depth(self) -> int:
@@ -668,7 +562,6 @@ class FakeMacroIntelRepository:
         lease_ms: int,
         lease_owner: str,
         now_ms: int,
-        commit: bool = True,
     ) -> list[dict[str, object]]:
         self._record_call("claim_macro_projection_dirty_targets")
         self.claim_call = {
@@ -678,7 +571,6 @@ class FakeMacroIntelRepository:
             "lease_ms": lease_ms,
             "lease_owner": lease_owner,
             "now_ms": now_ms,
-            "commit": commit,
         }
         return self.dirty_targets[:limit]
 
@@ -730,10 +622,9 @@ class FakeMacroIntelRepository:
         claimed: list[dict[str, object]],
         *,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
         self._record_call("mark_macro_projection_dirty_targets_done")
-        self.done_targets.extend((target, now_ms, commit) for target in claimed)
+        self.done_targets.extend((target, now_ms) for target in claimed)
         return len(claimed)
 
     def mark_macro_projection_dirty_targets_error(
@@ -745,28 +636,7 @@ class FakeMacroIntelRepository:
         max_attempts: int,
         worker_name: str,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
         self._record_call("mark_macro_projection_dirty_targets_error")
-        self.error_targets.extend(
-            (target, error, retry_ms, max_attempts, worker_name, now_ms, commit) for target in claimed
-        )
+        self.error_targets.extend((target, error, retry_ms, max_attempts, worker_name, now_ms) for target in claimed)
         return len(claimed)
-
-
-class FakeWakeBus:
-    def __init__(self, *, db: FakeDB | None = None) -> None:
-        self.db = db
-        self.macro_view_snapshot_updates: list[dict[str, object]] = []
-        self.transaction_depths: list[int] = []
-
-    def notify_macro_view_snapshot_updated(self, *, projection_version: str, status: str, regime: str) -> None:
-        if self.db is not None:
-            self.transaction_depths.append(self.db.transaction_depth)
-        self.macro_view_snapshot_updates.append(
-            {
-                "projection_version": projection_version,
-                "status": status,
-                "regime": regime,
-            }
-        )

@@ -4,12 +4,12 @@ from parallax.domains.token_intel.repositories.token_radar_repository import (
     TokenRadarRepository,
     stable_generation_id,
 )
-from parallax.domains.token_intel.services import token_radar_projection
+from parallax.domains.token_intel.services import token_radar_projector
 
 
 def test_token_radar_venue_for_rank_input_prefers_cex_target_type() -> None:
     assert (
-        token_radar_projection.token_radar_venue_for_rank_input(
+        token_radar_projector.token_radar_venue_for_rank_input(
             {"target_type": "CexToken", "asset_chain_id": "eip155:56"}
         )
         == "cex"
@@ -18,11 +18,11 @@ def test_token_radar_venue_for_rank_input_prefers_cex_target_type() -> None:
 
 def test_token_radar_venue_for_rank_input_normalizes_bsc_chain_ids() -> None:
     assert (
-        token_radar_projection.token_radar_venue_for_rank_input({"target_type": "Asset", "asset_chain_id": "eip155:56"})
+        token_radar_projector.token_radar_venue_for_rank_input({"target_type": "Asset", "asset_chain_id": "eip155:56"})
         == "bsc"
     )
     assert (
-        token_radar_projection.token_radar_venue_for_rank_input(
+        token_radar_projector.token_radar_venue_for_rank_input(
             {"target_type": "Asset", "factor_snapshot_json": {"subject": {"chain": "bnb"}}}
         )
         == "bsc"

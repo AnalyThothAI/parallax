@@ -3,9 +3,9 @@ import json
 import unittest
 from types import SimpleNamespace
 
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.ingestion.interfaces import IngestedEvent
 from parallax.domains.ingestion.runtime.collector_service import CollectorService
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class MemoryStore:

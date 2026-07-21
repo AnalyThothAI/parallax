@@ -7,8 +7,9 @@ from dataclasses import dataclass
 from decimal import Decimal
 from typing import Any
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
+from parallax.platform.config.settings import LivePriceGatewayWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 @dataclass(frozen=True, slots=True)
@@ -64,7 +65,7 @@ class LivePriceGateway(WorkerBase):
     def __init__(
         self,
         *,
-        settings: Any,
+        settings: LivePriceGatewayWorkerSettings,
         pool_bundle: Any,
         projection_version: str,
         on_live_market_update: Callable[[dict[str, Any]], Awaitable[None]] | None = None,
@@ -72,20 +73,12 @@ class LivePriceGateway(WorkerBase):
         name: str = "live_price_gateway",
         telemetry: Any | None = None,
     ) -> None:
-        if settings is None:
-            raise RuntimeError("live_price_gateway_settings_required")
         if pool_bundle is None:
             raise RuntimeError("live_price_gateway_db_required")
         super().__init__(name=name, settings=settings, db=pool_bundle, telemetry=telemetry or object())
         self.projection_version = projection_version
-        self.target_limit = _required_nonnegative_int(
-            settings.target_limit,
-            error_code="live_price_gateway_target_limit_required",
-        )
-        self.target_ttl_seconds = _required_nonnegative_float(
-            settings.target_ttl_seconds,
-            error_code="live_price_gateway_target_ttl_seconds_required",
-        )
+        self.target_limit = settings.target_limit
+        self.target_ttl_seconds = settings.target_ttl_seconds
         self.live_stale_after_ms = int(self.target_ttl_seconds * 1000)
         self.on_live_market_update = on_live_market_update
         self.clock = clock or _now_ms
@@ -292,18 +285,6 @@ def _int(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_float(value: Any, *, error_code: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)) or float(value) < 0:
-        raise ValueError(error_code)
-    return float(value)
 
 
 def _now_ms() -> int:

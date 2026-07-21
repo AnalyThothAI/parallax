@@ -6,6 +6,7 @@ LEGACY_MARKET_FIELD = "market_overlay"
 
 
 def test_search_inspect_returns_canonical_token_result_without_agent_brief():
+    token_radar = FakeTokenRadar()
     service = SearchInspectService(
         search_query=FakeSearchQuery(
             candidates=[
@@ -20,26 +21,33 @@ def test_search_inspect_returns_canonical_token_result_without_agent_brief():
             ],
             target_hits=[hit("ev_1", route="target", target_id="cex_token:BTC")],
         ),
-        token_radar=FakeTokenRadar(),
+        token_radar=token_radar,
         targets=FakeTargets(rows=[target_row("ev_1", phase_text="$BTC first social wave")]),
         profiles=FakeProfiles(profile={"status": "ready", "provider": "test_profile"}),
-        cex_detail_snapshots=FakeCexDetailSnapshots(),
     )
 
-    result = service.inspect("$BTC", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
+    result = service.inspect("$BTC", window="1h", scope="all", limit=50, now_ms=1_700_086_400_000)
 
     assert result["query"]["result_kind"] == "token_result"
     assert result["resolver"]["selected_target"]["target_id"] == "cex_token:BTC"
-    assert list(result["token_result"]) == ["target", "profile", "timeline", "posts", "market_live", "cex_detail"]
+    assert list(result["token_result"]) == [
+        "target",
+        "profile",
+        "timeline",
+        "posts",
+        "narrative_admission",
+        "market_live",
+    ]
     assert result["token_result"]["timeline"]["summary"]["posts"] == 1
     assert result["token_result"]["timeline"]["market_candles"]["target_type"] == "CexToken"
     assert result["token_result"]["posts"]["items"][0]["event_id"] == "ev_1"
     assert result["token_result"]["profile"] == {"status": "ready", "provider": "test_profile"}
     assert "agent_brief" not in result["token_result"]
+    assert result["token_result"]["narrative_admission"]["currentness"]["display_status"] == "not_ready"
     assert result["token_result"]["market_live"]["status"] == "missing"
-    assert result["token_result"]["cex_detail"]["status"] == "missing"
     assert "radar_item" not in result["token_result"]
     assert LEGACY_MARKET_FIELD not in result["token_result"]
+    assert token_radar.current_row_calls[0]["target_id"] == "cex_token:BTC"
 
 
 def test_search_inspect_returns_topic_result_for_keyword_query():
@@ -190,6 +198,12 @@ class FakeTargets:
 
 
 class FakeTokenRadar:
+    def __init__(self) -> None:
+        self.current_row_calls = []
+
+    def current_row_for_target(self, **kwargs):
+        self.current_row_calls.append(kwargs)
+
     def latest_coverage(self, *, projection_version, windows, scopes):
         return {
             (window, scope): {
@@ -216,16 +230,6 @@ class FakeProfiles:
 
     def profiles_for_targets(self, targets):
         return {}
-
-
-class FakeCexDetailSnapshots:
-    def __init__(self, *, snapshot=None):
-        self.snapshot = snapshot
-        self.calls = []
-
-    def latest_snapshot(self, *, target_type, target_id):
-        self.calls.append({"target_type": target_type, "target_id": target_id})
-        return self.snapshot
 
 
 def hit(

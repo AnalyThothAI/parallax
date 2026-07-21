@@ -86,9 +86,6 @@ def build_parser() -> argparse.ArgumentParser:
         default=None,
     )
 
-    account_quality = subcommands.add_parser("account-quality", help="print account quality profiles")
-    account_quality.add_argument("--handles", default="", help="comma separated account handles")
-
     notification_deliveries = subcommands.add_parser(
         "notification-deliveries",
         help="inspect notification external delivery audit rows",
@@ -102,11 +99,6 @@ def build_parser() -> argparse.ArgumentParser:
 
     ops = subcommands.add_parser("ops", help="maintenance commands")
     ops_subcommands = ops.add_subparsers(dest="ops_command", required=True)
-    backfill_account_quality = ops_subcommands.add_parser(
-        "backfill-account-quality",
-        help="backfill account token-call stats and quality snapshots",
-    )
-    backfill_account_quality.add_argument("--limit", type=int, default=1000)
     enqueue_token_radar_dirty_targets = ops_subcommands.add_parser(
         "enqueue-token-radar-dirty-targets",
         help="enqueue Token Radar dirty targets from persisted facts",
@@ -130,8 +122,7 @@ def build_parser() -> argparse.ArgumentParser:
     )
     enqueue_token_capture_tier_rank_set_mode.add_argument("--dry-run", action="store_true")
     enqueue_token_capture_tier_rank_set_mode.add_argument("--execute", action="store_true")
-    ops_subcommands.add_parser("projection-status", help="print projection offsets and latest runs")
-    ops_subcommands.add_parser("worker-status", help="print canonical worker runtime status")
+    ops_subcommands.add_parser("projection-status", help="print Token Radar publication state")
     queue_inspect = ops_subcommands.add_parser("queue-inspect", help="inspect worker queue terminal evidence")
     queue_inspect.add_argument("--worker", default="")
     queue_inspect.add_argument("--source-table", default="")
@@ -199,11 +190,6 @@ def build_parser() -> argparse.ArgumentParser:
     sync_binance_universe_mode.add_argument("--execute", action="store_true")
     ops_subcommands.add_parser("sync-binance-cex-profiles", help="sync Binance CEX token profiles")
     ops_subcommands.add_parser("sync-us-equity-symbols", help="sync Nasdaq Trader US equity symbols")
-    sync_gmgn_directory = ops_subcommands.add_parser(
-        "sync-gmgn-directory",
-        help="one-shot sync of GMGN twitter directory into account_profiles",
-    )
-    sync_gmgn_directory.add_argument("--max-pages", type=int, default=200)
     run_resolution_refresh = ops_subcommands.add_parser(
         "run-resolution-refresh",
         help="refresh due token resolution lookups and reprocess recent intents",

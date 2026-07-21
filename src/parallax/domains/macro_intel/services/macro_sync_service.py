@@ -3,11 +3,11 @@ from __future__ import annotations
 import re
 import time
 import uuid
-from collections.abc import Callable, Mapping
+from collections.abc import Callable, Mapping, Sequence
 from contextlib import AbstractContextManager
 from datetime import UTC, date, datetime
 from os import environ as process_environ
-from typing import TYPE_CHECKING, Any, Protocol, cast
+from typing import Any, Protocol, cast
 
 from parallax.domains.macro_intel.observation_identity import normalize_macro_date
 from parallax.domains.macro_intel.services.macro_sync_scheduler import ensure_due_macro_sync_windows
@@ -16,9 +16,6 @@ from parallax.domains.macro_intel.services.macrodata_bundle_importer import (
     parse_macrodata_bundle,
     write_macrodata_bundle_import,
 )
-
-if TYPE_CHECKING:
-    from parallax.app.runtime.repository_session import RepositorySession
 
 
 class MacrodataBundleRunnerProtocol(Protocol):
@@ -45,7 +42,7 @@ class MacroSyncService:
         *,
         settings: Any,
         db: Any | None = None,
-        repository_factory: Callable[[], AbstractContextManager[RepositorySession]] | None = None,
+        repository_factory: Callable[[], AbstractContextManager[Any]] | None = None,
         runner: MacrodataBundleRunnerProtocol | None = None,
         wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
@@ -64,7 +61,7 @@ class MacroSyncService:
 
     def enqueue_due_windows(self, *, now_ms: int | None = None) -> dict[str, Any]:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        with self._repository_session() as repos:
+        with self._repository_session() as repos, repos.transaction():
             bundle_summaries: list[dict[str, Any]] = []
             for bundle_name in _macro_sync_bundle_names(self.sync_settings):
                 bundle_summary = ensure_due_macro_sync_windows(
@@ -76,7 +73,6 @@ class MacroSyncService:
                     bootstrap_lookback_days=self.sync_settings.bootstrap_lookback_days,
                     max_window_days=self.sync_settings.max_window_days,
                     steady_overlap_days=self.sync_settings.steady_overlap_days,
-                    steady_interval_seconds=self.sync_settings.interval_seconds,
                     max_bootstrap_windows_per_cycle=self.sync_settings.max_bootstrap_windows_per_cycle,
                     max_attempts=self.sync_settings.max_attempts,
                 )
@@ -87,7 +83,7 @@ class MacroSyncService:
 
     def run_claimed_window_once(self, *, lease_owner: str, now_ms: int | None = None) -> MacroSyncRunSummary | None:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        with self._repository_session() as repos:
+        with self._repository_session() as repos, repos.transaction():
             window = repos.macro_intel.claim_macro_sync_window(
                 lease_owner=lease_owner,
                 lease_ms=int(self.sync_settings.lease_ms),
@@ -108,7 +104,7 @@ class MacroSyncService:
         now_ms: int | None = None,
     ) -> MacroSyncRunSummary:
         now = int(now_ms if now_ms is not None else self.clock_ms())
-        with self._repository_session() as repos, _unit_of_work(repos):
+        with self._repository_session() as repos, repos.transaction():
             sync_window_id = repos.macro_intel.enqueue_macro_sync_window(
                 source_name=str(self.sync_settings.source_name),
                 bundle_name=bundle_name,
@@ -149,14 +145,13 @@ class MacroSyncService:
             )
             parsed = parse_macrodata_bundle(_run_result_envelope(run_result), now_ms=now_ms)
             diagnostics = _safe_diagnostics(_run_result_diagnostics(run_result))
-            with self._repository_session() as repos, _unit_of_work(repos):
+            with self._repository_session() as repos, repos.transaction():
                 import_summary = write_macrodata_bundle_import(parsed, repos=repos)
                 completed_at_ms = int(self.clock_ms())
                 run_payload = _sync_run_payload(
                     sync_run_id=sync_run_id,
                     window=window,
                     status=_sync_success_status(import_summary.get("status")),
-                    import_run_id=cast("str | None", import_summary.get("import_run_id")),
                     observations_count=int(import_summary.get("observations_count") or 0),
                     imported_observation_count=int(import_summary.get("imported_observation_count") or 0),
                     seen_observation_count=int(import_summary.get("seen_observation_count") or 0),
@@ -168,6 +163,10 @@ class MacroSyncService:
                     max_seen_observed_at=_to_date(import_summary.get("max_seen_observed_at")),
                     min_changed_observed_at=_to_date(import_summary.get("min_changed_observed_at")),
                     max_changed_observed_at=_to_date(import_summary.get("max_changed_observed_at")),
+                    coverage=parsed.coverage,
+                    missing_series=parsed.missing_series,
+                    series_errors=parsed.series_errors,
+                    reason_codes=parsed.reason_codes,
                     diagnostics=diagnostics,
                     started_at_ms=started_at_ms,
                     completed_at_ms=completed_at_ms,
@@ -254,7 +253,6 @@ class MacroSyncService:
             sync_run_id=sync_run_id,
             window=window,
             status=status,
-            import_run_id=None,
             observations_count=0,
             imported_observation_count=0,
             seen_observation_count=0,
@@ -266,6 +264,10 @@ class MacroSyncService:
             max_seen_observed_at=None,
             min_changed_observed_at=None,
             max_changed_observed_at=None,
+            coverage={},
+            missing_series=(),
+            series_errors=(),
+            reason_codes=(),
             diagnostics=diagnostics,
             started_at_ms=started_at_ms,
             completed_at_ms=completed_at_ms,
@@ -274,7 +276,7 @@ class MacroSyncService:
             error_message=_safe_error_message(error_message),
         )
         try:
-            with self._repository_session() as repos, _unit_of_work(repos):
+            with self._repository_session() as repos, repos.transaction():
                 repos.macro_intel.record_macro_sync_run(payload)
                 if retry:
                     terminalized = repos.macro_intel.retry_macro_sync_window(
@@ -303,13 +305,13 @@ class MacroSyncService:
             return _stale_claim_summary(sync_run_id=sync_run_id)
         return _summary_from_payload(payload)
 
-    def _repository_session(self) -> AbstractContextManager[RepositorySession]:
+    def _repository_session(self) -> AbstractContextManager[Any]:
         if self.repository_factory is not None:
             return self.repository_factory()
         if self.db is None:
             raise RuntimeError("MacroSyncService requires db or repository_factory")
         return cast(
-            "AbstractContextManager[RepositorySession]",
+            "AbstractContextManager[Any]",
             self.db.worker_session(
                 "macro_sync",
                 statement_timeout_seconds=self.sync_settings.statement_timeout_seconds,
@@ -394,7 +396,6 @@ def _sync_run_payload(
     sync_run_id: str,
     window: Mapping[str, Any],
     status: str,
-    import_run_id: str | None,
     observations_count: int,
     imported_observation_count: int,
     seen_observation_count: int,
@@ -406,6 +407,10 @@ def _sync_run_payload(
     max_seen_observed_at: date | None,
     min_changed_observed_at: date | None,
     max_changed_observed_at: date | None,
+    coverage: Mapping[str, Any],
+    missing_series: Sequence[Any],
+    series_errors: Sequence[Any],
+    reason_codes: Sequence[Any],
     diagnostics: Mapping[str, Any],
     started_at_ms: int,
     completed_at_ms: int,
@@ -422,7 +427,6 @@ def _sync_run_payload(
         "requested_start": _to_date(window["window_start"]),
         "requested_end": _to_date(window["window_end"]),
         "status": status,
-        "import_run_id": import_run_id,
         "asof_date": asof_date,
         "max_observed_at": max_observed_at,
         "observations_count": observations_count,
@@ -434,10 +438,10 @@ def _sync_run_payload(
         "max_seen_observed_at": max_seen_observed_at,
         "min_changed_observed_at": min_changed_observed_at,
         "max_changed_observed_at": max_changed_observed_at,
-        "coverage_json": {},
-        "missing_series_json": [],
-        "series_errors_json": [],
-        "reason_codes_json": [],
+        "coverage_json": dict(coverage),
+        "missing_series_json": list(missing_series),
+        "series_errors_json": list(series_errors),
+        "reason_codes_json": list(reason_codes),
         "diagnostics_json": dict(diagnostics),
         "fred_api_key_env": diagnostics.get("fred_api_key_env") or fred_state["fred_api_key_env"],
         "fred_api_key_configured": bool(
@@ -454,7 +458,6 @@ def _sync_run_payload(
 def _summary_from_payload(payload: Mapping[str, Any]) -> MacroSyncRunSummary:
     return MacroSyncRunSummary(
         sync_run_id=str(payload["sync_run_id"]),
-        import_run_id=cast("str | None", payload.get("import_run_id")),
         status=str(payload["status"]),
         observations_count=int(payload.get("observations_count") or 0),
         imported_observation_count=int(payload.get("imported_observation_count") or 0),
@@ -474,7 +477,6 @@ def _summary_from_payload(payload: Mapping[str, Any]) -> MacroSyncRunSummary:
 def _stale_claim_summary(*, sync_run_id: str) -> MacroSyncRunSummary:
     return MacroSyncRunSummary(
         sync_run_id=sync_run_id,
-        import_run_id=None,
         status="stale_claim",
         observations_count=0,
         imported_observation_count=0,
@@ -553,11 +555,6 @@ def _safe_error_message(message: str) -> str:
     redacted = _URI_CREDENTIAL_RE.sub(r"\1:***@", str(message))
     redacted = _SECRET_ASSIGNMENT_RE.sub(lambda match: f"{match.group(1)}=***", redacted)
     return redacted[:240]
-
-
-def _unit_of_work(repos: RepositorySession) -> AbstractContextManager[Any]:
-    unit_of_work = cast(Callable[[], AbstractContextManager[Any]], repos.unit_of_work)
-    return unit_of_work()
 
 
 def _date_string(value: object) -> str:

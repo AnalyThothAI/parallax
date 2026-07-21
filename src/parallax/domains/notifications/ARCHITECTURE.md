@@ -58,6 +58,10 @@ from the formal worker settings.
 
 - Rules read source timestamps and identities fail-closed; malformed rows are
   not repaired with the worker clock, blank ids, or empty JSON defaults.
+- News recency is a required repository query boundary. The rule computes one
+  `since_ms`, News SQL filters `latest_at_ms` before its limit, and the rule
+  consumes typed `NewsNotificationCandidate` rows; stale wide rows are not
+  fetched and filtered in Python.
 - The rule engine does not write SQL. The repository owns notification,
   read-state, and delivery SQL; workers own transaction and side-effect order.
 - External providers are adapters used only by the delivery worker after a

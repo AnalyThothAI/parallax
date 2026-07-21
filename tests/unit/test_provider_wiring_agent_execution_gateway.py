@@ -21,7 +21,7 @@ def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> 
                 "global_max_concurrency": 2,
                 "global_rpm_limit": 30,
                 "lanes": {
-                    "news.item_brief": {
+                    "news.story_brief": {
                         "priority": "high",
                         "max_concurrency": 1,
                         "timeout_seconds": 90,
@@ -35,7 +35,7 @@ def test_build_agent_execution_gateway_uses_workers_agent_runtime_settings() -> 
 
     snapshot = gateway.status_snapshot()
     assert snapshot["global_max_concurrency"] == 2
-    assert snapshot["lanes"]["news.item_brief"]["timeout_seconds"] == 90
+    assert snapshot["lanes"]["news.story_brief"]["timeout_seconds"] == 90
 
 
 def test_build_agent_execution_gateway_hard_cuts_safety_net() -> None:
@@ -57,21 +57,20 @@ def test_wire_providers_passes_agent_execution_gateway_to_news_provider(monkeypa
             "agent_runtime": {
                 "defaults": {"model": "gpt-social"},
                 "lanes": {
-                    "news.item_brief": {"model": "gpt-news"},
                     "news.story_brief": {"model": "gpt-story"},
                 },
             },
-            "news_item_brief": {"enabled": True},
+            "news_story_brief": {"enabled": True},
         },
     )
     agent_gateway = object()
     calls: list[object] = []
 
-    def fake_news_item_brief(*, agent_gateway: object) -> object:
+    def fake_news_story_brief(*, agent_gateway: object) -> object:
         calls.append(agent_gateway)
         return object()
 
-    monkeypatch.setattr(model_execution, "litellm_news_item_brief_provider", fake_news_item_brief)
+    monkeypatch.setattr(model_execution, "litellm_news_story_brief_provider", fake_news_story_brief)
 
     providers = provider_wiring.wire_providers(
         settings,
@@ -80,5 +79,5 @@ def test_wire_providers_passes_agent_execution_gateway_to_news_provider(monkeypa
     )
 
     assert providers.agent_execution_gateway is agent_gateway
-    assert providers.news_intel.brief_provider is not None
+    assert providers.news_intel.story_brief_provider is not None
     assert calls == [agent_gateway]

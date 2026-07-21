@@ -84,7 +84,6 @@ def _radar_settings(*, cold_interval_seconds: float = 0) -> SimpleNamespace:
     return SimpleNamespace(
         enabled=True,
         interval_seconds=0,
-        soft_timeout_seconds=1,
         hard_timeout_seconds=2,
         windows=("1h",),
         scopes=("all",),
@@ -141,16 +140,17 @@ def _seed_resolved_radar_source(conn: Any) -> None:
     intent_id = "intent-worker-missed-wake"
     resolution_id = "resolution-worker-missed-wake"
 
-    EvidenceRepository(conn).insert_event(
-        make_event(
-            event_id=event_id,
-            author_handle="missed_wake_builder",
-            text="$WAKE fresh onchain momentum",
-            received_at_ms=EVENT_MS,
+    with conn.transaction():
+        EvidenceRepository(conn).insert_event(
+            make_event(
+                event_id=event_id,
+                author_handle="missed_wake_builder",
+                text="$WAKE fresh onchain momentum",
+                received_at_ms=EVENT_MS,
+                is_watched=True,
+            ),
             is_watched=True,
-        ),
-        is_watched=True,
-    )
+        )
     _insert_intent(conn, intent_id=intent_id, event_id=event_id, observed_at_ms=EVENT_MS)
     asset_id = _insert_asset(conn, observed_at_ms=EVENT_MS)
     _insert_current_identity(conn, asset_id=asset_id, observed_at_ms=EVENT_MS)
@@ -191,7 +191,6 @@ def _insert_asset(conn: Any, *, observed_at_ms: int) -> str:
         address=ASSET_ADDRESS,
         observed_at_ms=observed_at_ms,
         status="candidate",
-        commit=False,
     )
     return str(asset["asset_id"])
 

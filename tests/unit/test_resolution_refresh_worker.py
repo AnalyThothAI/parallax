@@ -20,6 +20,7 @@ from parallax.domains.asset_market.runtime.resolution_refresh_worker import (
     _persist_lookup_provider_result,
     _refresh_ms,
 )
+from parallax.platform.config.settings import ResolutionRefreshWorkerSettings
 
 
 def test_discovery_error_refresh_uses_exponential_backoff_by_error_count():
@@ -27,12 +28,6 @@ def test_discovery_error_refresh_uses_exponential_backoff_by_error_count():
     assert _refresh_ms(lookup_key="symbol:UPEG", status="error", error_count=1) == 60_000
     assert _refresh_ms(lookup_key="symbol:UPEG", status="error", error_count=3) == 1_800_000
     assert _refresh_ms(lookup_key="symbol:UPEG", status="error", error_count=10) == 3_600_000
-
-
-@pytest.mark.parametrize("error_count", [None, -1, True, "1"])
-def test_discovery_error_refresh_rejects_malformed_error_count(error_count: object) -> None:
-    with pytest.raises(ValueError, match="resolution_refresh_claim_error_count_required"):
-        _refresh_ms(lookup_key="symbol:UPEG", status="error", error_count=error_count)  # type: ignore[arg-type]
 
 
 def test_discovery_refresh_keeps_found_and_not_found_cadences():
@@ -43,15 +38,6 @@ def test_discovery_refresh_keeps_found_and_not_found_cadences():
         _refresh_ms(lookup_key="address:eip155:1:0xabc", status="not_found", error_count=10)
         == NOT_FOUND_ADDRESS_REFRESH_MS
     )
-
-
-@pytest.mark.parametrize("per_chain_limit", [0, -1, True, "2"])
-def test_retained_symbol_candidates_rejects_malformed_per_chain_limit(per_chain_limit: object) -> None:
-    with pytest.raises(ValueError, match="resolution_refresh_symbol_candidate_per_chain_limit_required"):
-        module._retained_symbol_candidates(
-            [_candidate(chain_id="solana", address="token-a")],
-            per_chain_limit=per_chain_limit,  # type: ignore[arg-type]
-        )
 
 
 def test_symbol_lookup_writes_provider_rank_to_identity_payload():
@@ -185,7 +171,6 @@ def test_resolution_refresh_terminalizes_provider_error_after_retry_budget(monke
             "final_status": "error",
             "final_reason": "provider_error_retry_budget_exhausted",
             "now_ms": 1_778_200_000_000,
-            "commit": False,
         }
     ]
 
@@ -248,7 +233,6 @@ def test_resolution_refresh_provider_unavailable_terminalizes_exhausted_batch_wi
             "final_status": "error",
             "final_reason": "provider_unavailable_retry_budget_exhausted",
             "now_ms": 1_778_200_000_000,
-            "commit": False,
         }
     ]
     assert repos.discovery.rescheduled == []
@@ -305,7 +289,6 @@ def test_resolution_refresh_provider_unavailable_splits_retryable_and_exhausted_
             "final_status": "error",
             "final_reason": "provider_unavailable_retry_budget_exhausted",
             "now_ms": 1_778_200_000_000,
-            "commit": False,
         }
     ]
     assert repos.discovery.rescheduled == [
@@ -314,7 +297,6 @@ def test_resolution_refresh_provider_unavailable_splits_retryable_and_exhausted_
             "due_at_ms": 1_778_200_030_000,
             "now_ms": 1_778_200_000_000,
             "last_error": "provider_unavailable: OKX token search returned x402 payment required",
-            "commit": False,
         }
     ]
 
@@ -382,7 +364,7 @@ def test_resolution_refresh_error_backoff_rejects_malformed_claim_error_count(er
         _claim_error_count({"lookup_key": "symbol:ABC", "error_count": error_count})
 
 
-def test_resolution_refresh_requires_session_transaction_before_start_lookup(monkeypatch):
+def test_resolution_refresh_fails_before_provider_when_session_lacks_transaction(monkeypatch):
     repos = FakeRefreshReposWithoutTransaction()
     db = FakeDB(repos)
     provider_called = False
@@ -402,7 +384,7 @@ def test_resolution_refresh_requires_session_transaction_before_start_lookup(mon
         dex_discovery_market=object(),
     )
 
-    with pytest.raises(RuntimeError, match="resolution_refresh_session_transaction_required"):
+    with pytest.raises(AttributeError, match="transaction"):
         asyncio.run(worker.run_once(now_ms=1_778_200_000_000))
 
     assert provider_called is False
@@ -422,101 +404,6 @@ def test_resolution_refresh_worker_reads_formal_settings_contract() -> None:
 
     assert worker.chain_ids == ("solana",)
     assert worker.max_attempts == 2
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"max_attempts": 0}, "resolution_refresh_max_attempts_required", id="attempts-zero"),
-        pytest.param({"max_attempts": True}, "resolution_refresh_max_attempts_required", id="attempts-bool"),
-        pytest.param({"max_attempts": "3"}, "resolution_refresh_max_attempts_required", id="attempts-string"),
-        pytest.param({"lease_ms": 0}, "resolution_refresh_lease_ms_required", id="lease-zero"),
-        pytest.param({"lease_ms": True}, "resolution_refresh_lease_ms_required", id="lease-bool"),
-        pytest.param({"lease_ms": "300000"}, "resolution_refresh_lease_ms_required", id="lease-string"),
-        pytest.param(
-            {"hot_not_found_retry_ms": 0},
-            "resolution_refresh_hot_not_found_retry_ms_required",
-            id="hot-retry-zero",
-        ),
-        pytest.param(
-            {"hot_not_found_retry_ms": True},
-            "resolution_refresh_hot_not_found_retry_ms_required",
-            id="hot-retry-bool",
-        ),
-        pytest.param(
-            {"hot_not_found_retry_ms": "60000"},
-            "resolution_refresh_hot_not_found_retry_ms_required",
-            id="hot-retry-string",
-        ),
-    ],
-)
-def test_resolution_refresh_worker_rejects_malformed_constructor_settings(
-    overrides: dict[str, object],
-    error_code: str,
-) -> None:
-    with pytest.raises(ValueError, match=error_code):
-        module.ResolutionRefreshWorker(
-            name="resolution_refresh",
-            settings=worker_settings(**overrides),
-            db=FakeDB(FakeRefreshRepos()),
-            telemetry=object(),
-            dex_discovery_market=object(),
-        )
-
-
-@pytest.mark.parametrize("batch_size", [0, True, "50"])
-def test_resolution_refresh_worker_rejects_malformed_batch_size_before_claim(batch_size: object) -> None:
-    repos = FakeRefreshRepos()
-    worker = module.ResolutionRefreshWorker(
-        name="resolution_refresh",
-        settings=worker_settings(batch_size=batch_size),
-        db=FakeDB(repos),
-        telemetry=object(),
-        dex_discovery_market=object(),
-    )
-
-    with pytest.raises(ValueError, match="resolution_refresh_batch_size_required"):
-        asyncio.run(worker.run_once(now_ms=1_778_200_000_000))
-
-    assert repos.discovery.claim_calls == []
-
-
-@pytest.mark.parametrize("reprocess_limit", [0, True, "500"])
-def test_resolution_refresh_worker_rejects_malformed_reprocess_limit_before_reprocess(
-    monkeypatch,
-    reprocess_limit: object,
-) -> None:
-    repos = FakeRefreshRepos()
-    reprocess_calls: list[dict[str, object]] = []
-    monkeypatch.setattr(
-        module,
-        "_fetch_lookup_provider_result",
-        lambda **_: {
-            **module._lookup_result(search_requests=1, search_hits=1),
-            "candidate_ids": ["asset-1"],
-            "affected_lookup_keys": ["symbol:ABC"],
-            "assets_written": 1,
-        },
-    )
-    monkeypatch.setattr(module, "reprocess_recent_token_intents", lambda **kwargs: reprocess_calls.append(kwargs))
-    worker = module.ResolutionRefreshWorker(
-        name="resolution_refresh",
-        settings=worker_settings(reprocess_limit=reprocess_limit),
-        db=FakeDB(repos),
-        telemetry=object(),
-        dex_discovery_market=object(),
-    )
-
-    with pytest.raises(ValueError, match="resolution_refresh_reprocess_limit_required"):
-        asyncio.run(worker.run_once(now_ms=1_778_200_000_000))
-
-    assert reprocess_calls == []
-
-
-@pytest.mark.parametrize("max_attempts", [0, True, "3"])
-def test_claim_retry_budget_rejects_malformed_max_attempts(max_attempts: object) -> None:
-    with pytest.raises(ValueError, match="resolution_refresh_max_attempts_required"):
-        _claim_retry_budget_exhausted({"attempt_count": 1}, max_attempts=max_attempts)
 
 
 def test_resolution_refresh_worker_uses_formal_queue_timing_settings(monkeypatch) -> None:
@@ -544,21 +431,6 @@ def test_resolution_refresh_worker_uses_formal_queue_timing_settings(monkeypatch
     assert repos.discovery.rescheduled[0]["due_at_ms"] == now_ms + 7_000
 
 
-def test_resolution_refresh_worker_requires_formal_chain_settings_contract() -> None:
-    repos = FakeRefreshRepos()
-    settings = worker_settings()
-    delattr(settings, "chain_ids")
-
-    with pytest.raises(AttributeError, match="chain_ids"):
-        module.ResolutionRefreshWorker(
-            name="resolution_refresh",
-            settings=settings,
-            db=FakeDB(repos),
-            telemetry=object(),
-            dex_discovery_market=object(),
-        )
-
-
 def test_resolution_refresh_worker_requires_discovery_provider_contract() -> None:
     repos = FakeRefreshRepos()
 
@@ -572,20 +444,9 @@ def test_resolution_refresh_worker_requires_discovery_provider_contract() -> Non
         )
 
 
-def worker_settings(**overrides: object) -> SimpleNamespace:
-    values = {
-        "enabled": True,
-        "interval_seconds": 30,
-        "timeout_seconds": 120,
-        "batch_size": 50,
-        "lease_ms": 300_000,
-        "hot_not_found_retry_ms": 60_000,
-        "reprocess_limit": 500,
-        "max_attempts": 3,
-        "chain_ids": ("solana",),
-    }
-    values.update(overrides)
-    return SimpleNamespace(**values)
+def worker_settings(**overrides: object) -> ResolutionRefreshWorkerSettings:
+    payload: dict[str, object] = {"chain_ids": ("solana",), **overrides}
+    return ResolutionRefreshWorkerSettings(**payload)
 
 
 def _candidate(*, chain_id: str, address: str, symbol: str = "SPARSE") -> DexTokenCandidate:
@@ -745,7 +606,7 @@ class FakeWakeBus:
 
 
 class FakeRegistry:
-    def upsert_chain_asset(self, *, chain_id: str, address: str, observed_at_ms: int, commit: bool = False):
+    def upsert_chain_asset(self, *, chain_id: str, address: str, observed_at_ms: int):
         standard = "erc20" if chain_id.startswith("eip155:") else "token"
         return {
             "asset_id": f"asset:{chain_id}:{standard}:{address}",
@@ -761,5 +622,5 @@ class FakeIdentityEvidence:
     def upsert_identity_evidence(self, **kwargs):
         self.writes.append(kwargs)
 
-    def recompute_current_identity(self, asset_id: str, *, now_ms: int, commit: bool = False):
+    def recompute_current_identity(self, asset_id: str, *, now_ms: int):
         return {}

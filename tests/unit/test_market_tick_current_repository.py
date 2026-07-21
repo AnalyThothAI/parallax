@@ -26,7 +26,6 @@ def test_enqueue_targets_coalesces_by_target() -> None:
         ],
         reason="market_tick_written",
         now_ms=1_700_000_000_000,
-        commit=False,
     )
 
     assert count == 2
@@ -56,7 +55,6 @@ def test_claim_due_uses_lease_token_and_skip_locked() -> None:
         now_ms=1_700_000_000_000,
         lease_ms=60_000,
         lease_owner="worker-a",
-        commit=False,
     )
 
     sql = conn.sql[-1]
@@ -119,7 +117,6 @@ def test_mark_done_cannot_delete_newer_dirty_work() -> None:
             }
         ],
         now_ms=1_700_000_010_000,
-        commit=False,
     )
 
     sql = conn.sql[-1]
@@ -152,7 +149,6 @@ def test_mark_error_reschedules_only_matching_claim() -> None:
         max_attempts=3,
         worker_name="market_tick_current_projection",
         now_ms=1_700_000_010_000,
-        commit=False,
     )
 
     sql = conn.sql[-1]
@@ -236,7 +232,6 @@ def test_mark_error_terminalizes_exhausted_claims_into_queue_terminal() -> None:
         max_attempts=3,
         worker_name="market_tick_current_projection",
         now_ms=1_700_000_010_000,
-        commit=False,
     )
 
     assert changed == 1
@@ -255,44 +250,7 @@ def test_mark_error_terminalizes_exhausted_claims_into_queue_terminal() -> None:
 @pytest.mark.parametrize(
     "operation",
     [
-        lambda repo: repo.enqueue_targets(
-            [("chain_token", "solana:abc")],
-            reason="market_tick_written",
-            now_ms=1_700_000_000_000,
-        ),
-        lambda repo: repo.claim_due(
-            limit=25,
-            now_ms=1_700_000_000_000,
-            lease_ms=60_000,
-            lease_owner="market_tick_current_projection",
-        ),
-        lambda repo: repo.mark_done([_dirty_claim()], now_ms=1_700_000_010_000),
-        lambda repo: repo.mark_error(
-            [_dirty_claim()],
-            error="projection failed",
-            retry_ms=30_000,
-            max_attempts=3,
-            worker_name="market_tick_current_projection",
-            now_ms=1_700_000_010_000,
-        ),
-    ],
-)
-def test_market_tick_current_dirty_mutations_require_connection_transaction_before_sql_when_committing(
-    operation: Callable[[MarketTickCurrentDirtyTargetRepository], object],
-) -> None:
-    conn = _MissingTransactionConnection()
-
-    with pytest.raises(RuntimeError, match="market_tick_current_dirty_target_transaction_required"):
-        operation(MarketTickCurrentDirtyTargetRepository(conn))
-
-    assert conn.sql == []
-    assert conn.commits == 0
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False), id="done"),
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000), id="done"),
         pytest.param(
             lambda repo, claim: repo.mark_error(
                 [claim],
@@ -301,7 +259,6 @@ def test_market_tick_current_dirty_mutations_require_connection_transaction_befo
                 max_attempts=3,
                 worker_name="market_tick_current_projection",
                 now_ms=1_700_000_010_000,
-                commit=False,
             ),
             id="error",
         ),
@@ -338,7 +295,6 @@ def test_market_tick_current_dirty_completion_rejects_malformed_attempt_count(
         MarketTickCurrentDirtyTargetRepository(conn).mark_done(
             [claim],
             now_ms=1_700_000_010_000,
-            commit=False,
         )
 
     assert conn.sql == []
@@ -348,8 +304,8 @@ def test_market_tick_current_dirty_completion_counts_require_cursor_rowcount() -
     conn = _RowcountConnection(omit_rowcount=True)
     repo = MarketTickCurrentDirtyTargetRepository(conn)
 
-    with pytest.raises(TypeError, match="market_tick_current_dirty_target_rowcount_required"):
-        repo.mark_done([_dirty_claim()], now_ms=1_700_000_010_000, commit=False)
+    with pytest.raises(TypeError, match="market_tick_current_dirty_target_rowcount_invalid"):
+        repo.mark_done([_dirty_claim()], now_ms=1_700_000_010_000)
 
 
 @pytest.mark.parametrize("rowcount", ["bad", True, -1])
@@ -365,7 +321,6 @@ def test_market_tick_current_dirty_completion_counts_reject_invalid_cursor_rowco
             max_attempts=3,
             worker_name="market_tick_current_projection",
             now_ms=1_700_000_010_000,
-            commit=False,
         )
 
 
@@ -373,12 +328,11 @@ def test_market_tick_current_dirty_enqueue_counts_require_cursor_rowcount() -> N
     conn = _RowcountConnection(omit_rowcount=True)
     repo = MarketTickCurrentDirtyTargetRepository(conn)
 
-    with pytest.raises(TypeError, match="market_tick_current_dirty_target_rowcount_required"):
+    with pytest.raises(TypeError, match="market_tick_current_dirty_target_rowcount_invalid"):
         repo.enqueue_targets(
             [("chain_token", "solana:abc")],
             reason="market_tick_written",
             now_ms=1_700_000_000_000,
-            commit=False,
         )
 
 
@@ -392,7 +346,6 @@ def test_market_tick_current_dirty_enqueue_counts_reject_invalid_cursor_rowcount
             [("chain_token", "solana:abc")],
             reason="market_tick_written",
             now_ms=1_700_000_000_000,
-            commit=False,
         )
 
 
@@ -407,7 +360,6 @@ def test_market_tick_current_dirty_enqueue_count_uses_postgres_rowcount_not_cand
         ],
         reason="market_tick_written",
         now_ms=1_700_000_000_000,
-        commit=False,
     )
 
     assert changed == 0
@@ -457,7 +409,7 @@ def test_upsert_current_from_tick_returning_changed_requires_cursor_rowcount() -
     conn = _CurrentRowcountConnection(row={"changed": True}, omit_rowcount=True)
     repo = MarketTickCurrentRepository(conn)
 
-    with pytest.raises(TypeError, match="market_tick_current_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="market_tick_current_repository_rowcount_invalid"):
         repo.upsert_current_from_tick(_tick_row(tick_id="tick-rowcount-missing"), now_ms=1_700_000_010_000)
 
 

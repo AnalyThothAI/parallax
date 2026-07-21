@@ -189,13 +189,9 @@ def _deduped_observations(concept_key: str, observations: Sequence[Mapping[str, 
     return deduped
 
 
-def _sort_key(observation: Mapping[str, Any]) -> tuple[int, int, int]:
+def _sort_key(observation: Mapping[str, Any]) -> tuple[int]:
     observed_date = _date_value(observation.get("observed_at"))
-    return (
-        observed_date.toordinal() if observed_date is not None else 0,
-        _int_value(observation.get("source_priority")),
-        _int_value(observation.get("ingested_at_ms")),
-    )
+    return (observed_date.toordinal() if observed_date is not None else 0,)
 
 
 def _numeric_observation(observation: Mapping[str, Any]) -> dict[str, Any] | None:

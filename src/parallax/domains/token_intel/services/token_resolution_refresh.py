@@ -70,7 +70,6 @@ def _reprocess_recent_token_intents(
             keys=decision.lookup_keys,
             source_evidence_id=intent.get("primary_evidence_id"),
             created_at_ms=now_ms,
-            commit=False,
         )
         reprocessed += 1
         if decision.target_type and decision.target_id:
@@ -79,22 +78,20 @@ def _reprocess_recent_token_intents(
             discovery_lookup_keys.update(
                 key for key in decision.lookup_keys if str(key).startswith(("symbol:", "address:"))
             )
-        dirty_event = _source_dirty_event_for_decision(decision)
-        if dirty_event is not None:
-            dirty_targets.append(dirty_event)
+        dirty_target = _dirty_target_for_decision(decision)
+        if dirty_target is not None:
+            dirty_targets.append(dirty_target)
     if discovery_lookup_keys:
         repos.discovery.enqueue_lookup_keys(
             sorted(discovery_lookup_keys),
             reason="resolution_refresh_unresolved",
             now_ms=now_ms,
-            commit=False,
         )
     if dirty_targets:
-        repos.token_radar_source_dirty_events.enqueue_events(
+        repos.token_radar_dirty_targets.enqueue_targets(
             dirty_targets,
             reason="resolution_refresh",
             now_ms=now_ms,
-            commit=False,
         )
     return {
         "window": window,
@@ -115,15 +112,13 @@ def deferred_token_radar_projection() -> dict[str, Any]:
     }
 
 
-def _source_dirty_event_for_decision(decision: TokenIntentResolutionDecision) -> dict[str, Any] | None:
+def _dirty_target_for_decision(decision: TokenIntentResolutionDecision) -> dict[str, Any] | None:
     if not isinstance(decision, TokenIntentResolutionDecision):
         raise RuntimeError("token_resolution_refresh_decision_contract_required")
     target_type = decision.target_type
     target_id = decision.target_id
-    event_id = decision.event_id
-    if event_id and target_type in {"Asset", "CexToken"} and target_id:
+    if target_type in {"Asset", "CexToken"} and target_id:
         return {
-            "source_event_id": event_id,
             "target_type_key": str(target_type),
             "identity_id": str(target_id),
         }

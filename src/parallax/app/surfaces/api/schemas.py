@@ -34,12 +34,9 @@ class WorkerLaneStatusData(ApiSchema):
     unavailable_workers: int = 0
     degraded_workers: int = 0
     failed_workers: int = 0
-    soft_timed_out_workers: int = 0
     hard_timed_out_workers: int = 0
     oldest_active_run_once_age_ms: int | None = None
     iteration_duration_p99_ms: float | None = None
-    queue_depth: int | None = None
-    queue_health: JsonObject = Field(default_factory=dict)
 
 
 class StatusData(ApiSchema):
@@ -55,6 +52,15 @@ class StatusData(ApiSchema):
     worker_lanes: dict[str, WorkerLaneStatusData] = Field(default_factory=dict)
 
 
+class ReadinessData(ApiSchema):
+    ok: bool
+    reasons: list[str] = Field(default_factory=list)
+    handles: list[str] = Field(default_factory=list)
+    store: str
+    db: JsonObject
+    composition: JsonObject
+
+
 class WorkerStatusData(ApiSchema):
     enabled: bool
     running: bool
@@ -65,12 +71,9 @@ class WorkerStatusData(ApiSchema):
     last_result: JsonObject | None = None
     last_error: str | None = None
     iteration_duration_p99_ms: float | None = None
-    queue_depth: int | None = None
-    queue_health: JsonObject = Field(default_factory=dict)
     pool_wait_ms_p99: float | None = None
     active_run_once_started_at_ms: int | None = None
     active_run_once_age_ms: int | None = None
-    active_run_once_soft_timed_out_at_ms: int | None = None
     active_run_once_hard_timed_out_at_ms: int | None = None
     active_run_once_count: int = 0
     details: JsonObject = Field(default_factory=dict)
@@ -125,7 +128,6 @@ class TokenCaseData(ApiSchema):
     posts: JsonObject
     narrative_admission: NarrativeAdmissionData
     market_live: JsonObject
-    cex_detail: JsonObject | None = None
 
 
 class TokenRadarRowData(ApiSchema):
@@ -397,11 +399,6 @@ class AccountAlertsData(ApiSchema):
     items: list[JsonObject] = Field(default_factory=list)
 
 
-class AccountQualityData(ApiSchema):
-    query: JsonObject | None = None
-    accounts: list[JsonObject] = Field(default_factory=list)
-
-
 class NotificationSummary(ApiSchema):
     subscriber_key: str | None = None
     unread_count: int = 0
@@ -452,8 +449,6 @@ class WatchlistHandleRowOverview(ApiSchema):
     handle: str
     last_source_event_at_ms: int | None = None
     recent_source_event_count: int = 0
-    recent_signal_event_count: int = 0
-    total_signal_event_count: int = 0
 
 
 class WatchlistHandlesOverviewData(ApiSchema):
@@ -463,13 +458,11 @@ class WatchlistHandlesOverviewData(ApiSchema):
 
 class WatchlistOverviewQuery(ApiSchema):
     handle: str
-    scope: Literal["signal", "all"]
     window: str
 
 
 class WatchlistOverviewMetrics(ApiSchema):
     source_event_count: int = 0
-    signal_event_count: int = 0
     resolved_token_count: int = 0
     candidate_mention_count: int = 0
     narrative_count: int = 0

@@ -31,89 +31,6 @@ RESULT_ROW = {
     "updated_at_ms": NOW_MS - 1,
 }
 
-MutationCall = Callable[[DiscoveryRepository], object]
-
-
-@pytest.mark.parametrize(
-    "call",
-    [
-        pytest.param(
-            lambda repository: repository.enqueue_lookup_keys(
-                ["symbol:ABC"],
-                reason="token_resolution_refresh",
-                now_ms=NOW_MS,
-            ),
-            id="enqueue_lookup_keys",
-        ),
-        pytest.param(
-            lambda repository: repository.claim_due_lookup_keys(
-                now_ms=NOW_MS,
-                limit=1,
-                lease_ms=60_000,
-                running_timeout_ms=60_000,
-                lease_owner="resolution_refresh",
-            ),
-            id="claim_due_lookup_keys",
-        ),
-        pytest.param(
-            lambda repository: repository.mark_lookup_done([CLAIM], now_ms=NOW_MS),
-            id="mark_lookup_done",
-        ),
-        pytest.param(
-            lambda repository: repository.reschedule_lookup_claims(
-                [CLAIM],
-                due_at_ms=NOW_MS + 60_000,
-                now_ms=NOW_MS,
-                last_error="provider retry",
-            ),
-            id="reschedule_lookup_claims",
-        ),
-        pytest.param(
-            lambda repository: repository.start_lookup(
-                provider="okx_dex_search",
-                lookup_key="symbol:ABC",
-                lookup_type="dex_symbol_lookup",
-                now_ms=NOW_MS,
-                running_timeout_ms=60_000,
-            ),
-            id="start_lookup",
-        ),
-        pytest.param(
-            lambda repository: repository.finish_lookup(
-                provider="okx_dex_search",
-                lookup_key="symbol:ABC",
-                lookup_type="dex_symbol_lookup",
-                status="found",
-                candidate_ids=["chain:token"],
-                result_hash="hash-new",
-                next_refresh_at_ms=NOW_MS + 600_000,
-                now_ms=NOW_MS,
-            ),
-            id="finish_lookup",
-        ),
-        pytest.param(
-            lambda repository: repository.fail_lookup(
-                provider="okx_dex_search",
-                lookup_key="symbol:ABC",
-                lookup_type="dex_symbol_lookup",
-                last_error="provider unavailable",
-                next_refresh_at_ms=NOW_MS + 600_000,
-                now_ms=NOW_MS,
-            ),
-            id="fail_lookup",
-        ),
-    ],
-)
-def test_discovery_mutations_require_connection_transaction_before_sql_when_committing(call: MutationCall) -> None:
-    conn = NoTransactionDiscoveryConnection()
-    repository = DiscoveryRepository(conn)
-
-    with pytest.raises(RuntimeError, match="discovery_repository_transaction_required"):
-        call(repository)
-
-    assert conn.sql == []
-    assert conn.commits == 0
-
 
 @pytest.mark.parametrize(
     ("intent_count", "error"),
@@ -218,120 +135,12 @@ def test_start_lookup_rejects_malformed_running_timeout_before_transaction(runni
 
 
 @pytest.mark.parametrize(
-    "call",
-    [
-        pytest.param(
-            lambda repository: repository.enqueue_lookup_keys(
-                ["symbol:ABC"],
-                reason="token_resolution_refresh",
-                now_ms=NOW_MS,
-            ),
-            id="enqueue_lookup_keys",
-        ),
-        pytest.param(
-            lambda repository: repository.claim_due_lookup_keys(
-                now_ms=NOW_MS,
-                limit=1,
-                lease_ms=60_000,
-                running_timeout_ms=60_000,
-                lease_owner="resolution_refresh",
-            ),
-            id="claim_due_lookup_keys",
-        ),
-        pytest.param(
-            lambda repository: repository.mark_lookup_done([CLAIM], now_ms=NOW_MS),
-            id="mark_lookup_done",
-        ),
-        pytest.param(
-            lambda repository: repository.reschedule_lookup_claims(
-                [CLAIM],
-                due_at_ms=NOW_MS + 60_000,
-                now_ms=NOW_MS,
-                last_error="provider retry",
-            ),
-            id="reschedule_lookup_claims",
-        ),
-        pytest.param(
-            lambda repository: repository.start_lookup(
-                provider="okx_dex_search",
-                lookup_key="symbol:ABC",
-                lookup_type="dex_symbol_lookup",
-                now_ms=NOW_MS,
-                running_timeout_ms=60_000,
-            ),
-            id="start_lookup",
-        ),
-        pytest.param(
-            lambda repository: repository.finish_lookup(
-                provider="okx_dex_search",
-                lookup_key="symbol:ABC",
-                lookup_type="dex_symbol_lookup",
-                status="found",
-                candidate_ids=["chain:token"],
-                result_hash="hash-new",
-                next_refresh_at_ms=NOW_MS + 600_000,
-                now_ms=NOW_MS,
-            ),
-            id="finish_lookup",
-        ),
-        pytest.param(
-            lambda repository: repository.fail_lookup(
-                provider="okx_dex_search",
-                lookup_key="symbol:ABC",
-                lookup_type="dex_symbol_lookup",
-                last_error="provider unavailable",
-                next_refresh_at_ms=NOW_MS + 600_000,
-                now_ms=NOW_MS,
-            ),
-            id="fail_lookup",
-        ),
-    ],
-)
-def test_discovery_commit_owned_writes_use_connection_transaction_without_manual_commit(call: MutationCall) -> None:
-    conn = FakeDiscoveryConnection()
-    repository = DiscoveryRepository(conn)
-
-    call(repository)
-
-    assert conn.transaction_commits == 1
-    assert conn.commits == 0
-    assert conn.sql_depths
-    assert set(conn.sql_depths) == {1}
-
-
-def test_terminalize_lookup_claims_requires_connection_transaction_before_delete_or_ledger_sql() -> None:
-    conn = NoTransactionDiscoveryConnection()
-    repository = DiscoveryRepository(conn)
-
-    with pytest.raises(RuntimeError, match="discovery_repository_transaction_required"):
-        repository.terminalize_lookup_claims(
-            [
-                {
-                    "provider": "okx_dex_search",
-                    "lookup_key": "symbol:ABC",
-                    "payload_hash": "hash-abc",
-                    "lease_owner": "resolution_refresh",
-                    "attempt_count": 1,
-                }
-            ],
-            worker_name="resolution_refresh",
-            final_status="error",
-            final_reason="provider_error_retry_budget_exhausted",
-            now_ms=1_778_200_000_000,
-        )
-
-    assert conn.sql == []
-    assert conn.commits == 0
-
-
-@pytest.mark.parametrize(
     "operation",
     [
         pytest.param(
             lambda repository, claim: repository.mark_lookup_done(
                 [claim],
                 now_ms=NOW_MS,
-                commit=False,
             ),
             id="done",
         ),
@@ -341,7 +150,6 @@ def test_terminalize_lookup_claims_requires_connection_transaction_before_delete
                 due_at_ms=NOW_MS + 60_000,
                 now_ms=NOW_MS,
                 last_error="provider retry",
-                commit=False,
             ),
             id="reschedule",
         ),
@@ -352,7 +160,6 @@ def test_terminalize_lookup_claims_requires_connection_transaction_before_delete
                 final_status="error",
                 final_reason="provider_error_retry_budget_exhausted",
                 now_ms=NOW_MS,
-                commit=False,
             ),
             id="terminalize",
         ),
@@ -385,7 +192,7 @@ def test_lookup_claim_completion_rejects_malformed_attempt_count(attempt_count: 
         ValueError,
         match="token discovery lookup claim completion requires attempt_count",
     ):
-        DiscoveryRepository(conn).mark_lookup_done([claim], now_ms=NOW_MS, commit=False)
+        DiscoveryRepository(conn).mark_lookup_done([claim], now_ms=NOW_MS)
 
     assert conn.sql == []
 
@@ -413,7 +220,7 @@ def test_terminalize_lookup_claims_returning_counts_require_cursor_rowcount_befo
     conn = TerminalizeRowcountConnection(omit_rowcount=True)
     repository = DiscoveryRepository(conn)
 
-    with pytest.raises(TypeError, match="discovery_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="discovery_repository_rowcount_invalid"):
         repository.terminalize_lookup_claims(
             [CLAIM],
             worker_name="resolution_refresh",
@@ -448,7 +255,7 @@ def test_claim_due_lookup_keys_returning_rows_require_cursor_rowcount() -> None:
     conn = ClaimDueRowcountConnection(rowcount=None, rows=[CLAIM])
     repository = DiscoveryRepository(conn)
 
-    with pytest.raises(TypeError, match="discovery_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="discovery_repository_rowcount_invalid"):
         repository.claim_due_lookup_keys(
             now_ms=NOW_MS,
             limit=1,
@@ -521,7 +328,7 @@ def test_lookup_result_returning_writes_require_cursor_rowcount(
     conn = LookupResultWriteConnection(rowcount=None, row=RESULT_ROW)
     repository = DiscoveryRepository(conn)
 
-    with pytest.raises(TypeError, match="discovery_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="discovery_repository_rowcount_invalid"):
         operation(repository)
 
 
@@ -558,7 +365,7 @@ def test_finish_lookup_requires_single_cursor_rowcount() -> None:
     conn = LookupResultWriteConnection(rowcount=None, row=RESULT_ROW)
     repository = DiscoveryRepository(conn)
 
-    with pytest.raises(TypeError, match="discovery_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="discovery_repository_rowcount_invalid"):
         repository.finish_lookup(
             provider="okx_dex_search",
             lookup_key="symbol:ABC",
@@ -618,7 +425,7 @@ def test_discovery_lookup_write_counts_require_cursor_rowcount(
     conn = RowcountDiscoveryConnection(rowcount=None)
     repository = DiscoveryRepository(conn)
 
-    with pytest.raises(TypeError, match="discovery_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="discovery_repository_rowcount_invalid"):
         operation(repository)
 
 

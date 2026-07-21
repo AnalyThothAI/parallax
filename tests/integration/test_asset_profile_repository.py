@@ -205,7 +205,6 @@ def test_upsert_status_rejects_ready_status():
             observed_at_ms=None,
             next_refresh_at_ms=1_778_000_000_000,
             last_error=None,
-            commit=False,
         )
 
 
@@ -214,6 +213,5 @@ def _insert_asset(conn) -> str:
         chain_id="eip155:1",
         address="0x999b49c0d1612e619a4a4f6280733184da025108",
         observed_at_ms=1_778_000_000_000,
-        commit=False,
     )
     return str(row["asset_id"])

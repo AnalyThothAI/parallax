@@ -28,14 +28,14 @@ def bootstrap(request: Request) -> JSONResponse:
     )
 
 
-def create_router(readiness_payload: Callable[[Any], tuple[dict[str, Any], int]]) -> APIRouter:
+def create_router(status_payload: Callable[[Any], tuple[dict[str, Any], int]]) -> APIRouter:
     status_router = APIRouter()
     status_router.include_router(router)
 
     @status_router.get("/status", response_model=api_schemas.ApiEnvelope[api_schemas.StatusData])
     def status(request: Request) -> JSONResponse:
         runtime = _authenticated_runtime(request)
-        payload, _status_code = readiness_payload(runtime)
+        payload, _status_code = status_payload(runtime)
         return _json({"ok": True, "data": payload})
 
     return status_router

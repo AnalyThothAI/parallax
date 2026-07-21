@@ -4,6 +4,7 @@ import time
 from typing import Any
 
 from parallax.domains.asset_market.interfaces import message_price_payload
+from parallax.platform.validation import require_nonnegative_int
 
 from .asset_flow_service import WINDOW_MS
 from .token_target_cursor import decode_target_cursor, encode_target_cursor
@@ -35,7 +36,10 @@ class TokenTargetSocialTimelineService:
         cursor: str | None = None,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
-        row_limit = _required_nonnegative_int(limit, "token_target_social_timeline_limit_required")
+        row_limit = require_nonnegative_int(
+            limit,
+            error_code="token_target_social_timeline_limit_required",
+        )
         resolved_now_ms = int(now_ms or time.time() * 1000)
         window_ms = _window_ms(window)
         watched_only = _watched_only(scope)
@@ -103,14 +107,6 @@ def _watched_only(scope: str) -> bool:
     if scope == "all":
         return False
     raise TokenTargetSocialTimelineScopeError(scope)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _summary(rows: list[dict[str, Any]]) -> dict[str, Any]:

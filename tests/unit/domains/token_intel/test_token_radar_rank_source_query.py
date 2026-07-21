@@ -1,12 +1,14 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
 import pytest
+from psycopg import pq
 
 from parallax.domains.token_intel._constants import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from parallax.domains.token_intel.queries.token_radar_rank_source_query import (
     TokenRadarFeatureSourceRequest,
     TokenRadarRankSourceQuery,
-    TokenRadarSourceEdgeRequest,
 )
 from parallax.domains.token_intel.repositories.token_radar_rank_source_repository import (
     TokenRadarRankSourceRepository,
@@ -14,7 +16,14 @@ from parallax.domains.token_intel.repositories.token_radar_rank_source_repositor
 
 
 class FakeConn:
-    def __init__(self, rows=None, *, rowcount: object = 0, omit_rowcount: bool = False):
+    def __init__(
+        self,
+        rows=None,
+        *,
+        rowcount: object = 0,
+        omit_rowcount: bool = False,
+        active_transaction: bool = True,
+    ):
         self.rows = rows or []
         self.sql = ""
         self.sqls = []
@@ -27,6 +36,9 @@ class FakeConn:
         self.transaction_exit_count = 0
         self.transaction_depth = 0
         self.execute_depths = []
+        self.info = SimpleNamespace(
+            transaction_status=(pq.TransactionStatus.INTRANS if active_transaction else pq.TransactionStatus.IDLE)
+        )
 
     def execute(self, sql, params=None):
         self.sql = str(sql)
@@ -52,11 +64,13 @@ class FakeConn:
             def __enter__(self):
                 conn.transaction_enter_count += 1
                 conn.transaction_depth += 1
+                conn.info.transaction_status = pq.TransactionStatus.INTRANS
                 return self
 
             def __exit__(self, exc_type, exc, tb):
                 conn.transaction_depth -= 1
                 conn.transaction_exit_count += 1
+                conn.info.transaction_status = pq.TransactionStatus.IDLE
                 return False
 
         return Transaction()
@@ -64,7 +78,7 @@ class FakeConn:
 
 class NoTransactionConn(FakeConn):
     def __init__(self, rows=None, *, rowcount: object = 0):
-        super().__init__(rows=rows, rowcount=rowcount)
+        super().__init__(rows=rows, rowcount=rowcount, active_transaction=False)
         self.transaction = None
 
 
@@ -93,92 +107,6 @@ def test_rank_source_query_loads_feature_rows_from_narrow_source_edges() -> None
     assert "venue text" in conn.sql
     assert "rank_source.event_received_at_ms >= requested.analysis_since_ms" in conn.sql
     assert "source_kind = 'event'" in conn.sql
-
-
-def test_rank_source_query_populates_windowless_event_edges() -> None:
-    conn = FakeConn(rows=[{"upserted_count": 3, "deleted_count": 1}])
-
-    changed = TokenRadarRankSourceRepository(conn).populate_edges_for_event_ids(
-        [TokenRadarSourceEdgeRequest(source_event_id="event-1")],
-        projected_at_ms=4,
-        commit=True,
-    )
-
-    assert changed == 4
-    assert "requested_event_ids" in conn.sql
-    assert "SELECT DISTINCT ON (projection_version, target_type_key, identity_id, source_kind, source_id)" in conn.sql
-    assert "INSERT INTO token_radar_rank_source_events" in conn.sql
-    assert "ON CONFLICT(projection_version, target_type_key, identity_id, source_kind, source_id)" in conn.sql
-    assert '"window"' not in conn.sql
-    assert "source_payload_json" not in conn.sql
-    assert "account_profiles" not in conn.sql
-    assert "market_tick_current" not in conn.sql
-    assert "row_number() OVER" not in conn.sql
-    assert "sha256(" not in conn.sql
-    assert conn.commit_count == 0
-    assert conn.transaction_enter_count == 1
-    assert conn.transaction_exit_count == 1
-    assert conn.execute_depths == [1]
-
-
-def test_rank_source_query_deletes_stale_edges_for_requested_event_ids_only() -> None:
-    conn = FakeConn(rows=[{"upserted_count": 0, "deleted_count": 1}])
-
-    changed = TokenRadarRankSourceQuery(conn).populate_edges_for_event_ids(
-        ["event-1"],
-        projected_at_ms=4,
-    )
-
-    assert changed == 1
-    assert "DELETE FROM token_radar_rank_source_events stale_edges" in conn.sql
-    assert "USING requested_event_ids requested" in conn.sql
-    assert "stale_edges.source_id = requested.source_event_id" in conn.sql
-    assert "NOT EXISTS" in conn.sql
-    assert "fresh.source_id = stale_edges.source_id" in conn.sql
-
-
-@pytest.mark.parametrize(
-    ("rows", "error"),
-    [
-        pytest.param([], "token_radar_rank_source_write_count_required:result", id="missing-row"),
-        pytest.param(
-            [{"deleted_count": 0}],
-            "token_radar_rank_source_write_count_required:upserted_count",
-            id="missing-upserted",
-        ),
-        pytest.param(
-            [{"upserted_count": 0}],
-            "token_radar_rank_source_write_count_required:deleted_count",
-            id="missing-deleted",
-        ),
-        pytest.param(
-            [{"upserted_count": "not-a-count", "deleted_count": 0}],
-            "token_radar_rank_source_write_count_invalid:upserted_count",
-            id="invalid-upserted",
-        ),
-        pytest.param(
-            [{"upserted_count": 0, "deleted_count": -1}],
-            "token_radar_rank_source_write_count_invalid:deleted_count",
-            id="negative-deleted",
-        ),
-        pytest.param(
-            [{"upserted_count": True, "deleted_count": 0}],
-            "token_radar_rank_source_write_count_invalid:upserted_count",
-            id="bool-upserted",
-        ),
-    ],
-)
-def test_rank_source_query_populate_edges_for_events_requires_sql_count_evidence(
-    rows: list[dict[str, object]],
-    error: str,
-) -> None:
-    conn = FakeConn(rows=rows)
-
-    with pytest.raises(TypeError, match=error):
-        TokenRadarRankSourceQuery(conn).populate_edges_for_event_ids(
-            ["event-1"],
-            projected_at_ms=4,
-        )
 
 
 def test_rank_source_query_populates_edges_for_repair_targets() -> None:
@@ -305,32 +233,6 @@ def test_rank_source_query_latest_market_context_requires_formal_identity_withou
     assert conn.sqls == []
 
 
-def test_rank_source_query_loads_existing_and_current_affected_targets_for_events() -> None:
-    conn = FakeConn(
-        rows=[
-            {"target_type_key": "Asset", "identity_id": "old-asset"},
-            {"target_type_key": "Asset", "identity_id": "new-asset"},
-        ]
-    )
-
-    targets = TokenRadarRankSourceQuery(conn).affected_targets_for_event_ids(["event-1"])
-
-    assert targets == [
-        {"target_type_key": "Asset", "identity_id": "old-asset"},
-        {"target_type_key": "Asset", "identity_id": "new-asset"},
-    ]
-    assert "existing_edges AS" in conn.sql
-    assert "current_edges AS" in conn.sql
-    assert "UNION" in conn.sql
-
-
-def test_rank_source_query_affected_targets_requires_formal_output_identity_without_silent_skip() -> None:
-    conn = FakeConn(rows=[{"target_type_key": "Asset"}])
-
-    with pytest.raises(ValueError, match="token_radar_rank_source_target_identity_required:identity_id"):
-        TokenRadarRankSourceQuery(conn).affected_targets_for_event_ids(["event-1"])
-
-
 def test_rank_source_query_prunes_edges_by_projection_and_cutoff() -> None:
     conn = FakeConn(rowcount=5)
 
@@ -377,7 +279,7 @@ def test_rank_source_query_rejects_malformed_chunk_size_before_sql(chunk_size: o
 def test_rank_source_query_prune_edges_requires_cursor_rowcount() -> None:
     conn = FakeConn(omit_rowcount=True)
 
-    with pytest.raises(TypeError, match="token_radar_rank_source_rowcount_required"):
+    with pytest.raises(TypeError, match="token_radar_rank_source_rowcount_invalid"):
         TokenRadarRankSourceQuery(conn).prune_edges(
             projection_version="token-radar-v13-social-attention",
             event_received_before_ms=1_777_800_000_000,
@@ -455,16 +357,15 @@ def test_rank_source_repository_uses_query_facade() -> None:
 def test_rank_source_repository_populates_and_prunes_edges() -> None:
     conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 0}], rowcount=4)
 
-    changed = TokenRadarRankSourceRepository(conn).populate_edges_for_event_ids(
-        [TokenRadarSourceEdgeRequest(source_event_id="event-1")],
+    changed = TokenRadarRankSourceRepository(conn).populate_edges_for_targets(
+        [{"target_type_key": "Asset", "identity_id": "asset-1"}],
         projected_at_ms=4,
-        commit=False,
+        analysis_since_ms=2,
     )
     deleted = TokenRadarRankSourceRepository(conn).prune_edges(
         projection_version="token-radar-v13-social-attention",
         event_received_before_ms=1_777_000_000_000,
         limit=13,
-        commit=False,
     )
 
     assert changed == 1
@@ -474,10 +375,6 @@ def test_rank_source_repository_populates_and_prunes_edges() -> None:
 
 def test_rank_source_repository_mutations_require_connection_transaction_before_sql_when_committing() -> None:
     operations = (
-        lambda repo: repo.populate_edges_for_event_ids(
-            [TokenRadarSourceEdgeRequest(source_event_id="event-1")],
-            projected_at_ms=4,
-        ),
         lambda repo: repo.populate_edges_for_targets(
             [{"target_type_key": "Asset", "identity_id": "asset-1"}],
             projected_at_ms=4,
@@ -494,37 +391,34 @@ def test_rank_source_repository_mutations_require_connection_transaction_before_
         conn = NoTransactionConn(rows=[{"upserted_count": 1, "deleted_count": 0}], rowcount=1)
         repo = TokenRadarRankSourceRepository(conn)
 
-        try:
+        with pytest.raises(RuntimeError, match="requires_explicit_transaction"):
             operation(repo)
-        except RuntimeError as exc:
-            assert str(exc) == "token_radar_rank_source_repository_transaction_required"
-        else:
-            raise AssertionError("expected missing transaction support to fail")
 
         assert conn.sqls == []
 
 
-def test_rank_source_repository_commit_owned_mutations_use_connection_transaction_without_manual_commit() -> None:
-    conn = FakeConn(rows=[{"upserted_count": 1, "deleted_count": 1}], rowcount=3)
+def test_rank_source_repository_mutations_share_caller_owned_transaction() -> None:
+    conn = FakeConn(
+        rows=[{"upserted_count": 1, "deleted_count": 1}],
+        rowcount=3,
+        active_transaction=False,
+    )
     repo = TokenRadarRankSourceRepository(conn)
 
-    changed_by_event = repo.populate_edges_for_event_ids(
-        [TokenRadarSourceEdgeRequest(source_event_id="event-1")],
-        projected_at_ms=4,
-    )
-    changed_by_target = repo.populate_edges_for_targets(
-        [{"target_type_key": "Asset", "identity_id": "asset-1"}],
-        projected_at_ms=5,
-        analysis_since_ms=2,
-    )
-    pruned = repo.prune_edges(
-        projection_version="token-radar-v13-social-attention",
-        event_received_before_ms=1_777_000_000_000,
-        limit=10,
-    )
+    with conn.transaction():
+        changed_by_target = repo.populate_edges_for_targets(
+            [{"target_type_key": "Asset", "identity_id": "asset-1"}],
+            projected_at_ms=5,
+            analysis_since_ms=2,
+        )
+        pruned = repo.prune_edges(
+            projection_version="token-radar-v13-social-attention",
+            event_received_before_ms=1_777_000_000_000,
+            limit=10,
+        )
 
-    assert (changed_by_event, changed_by_target, pruned) == (2, 2, 3)
+    assert (changed_by_target, pruned) == (2, 3)
     assert conn.commit_count == 0
-    assert conn.transaction_enter_count == 3
-    assert conn.transaction_exit_count == 3
-    assert conn.execute_depths == [1, 1, 1]
+    assert conn.transaction_enter_count == 1
+    assert conn.transaction_exit_count == 1
+    assert conn.execute_depths == [1, 1]

@@ -1145,12 +1145,8 @@ def _latest_by_concept(observations: Sequence[Mapping[str, Any]]) -> dict[str, M
     return latest
 
 
-def _sort_key(observation: Mapping[str, Any]) -> tuple[str, int, int]:
-    return (
-        str(observation.get("observed_at") or ""),
-        _int_value(observation.get("source_priority")),
-        _int_value(observation.get("ingested_at_ms") or observation.get("source_ts")),
-    )
+def _sort_key(observation: Mapping[str, Any]) -> tuple[str]:
+    return (str(observation.get("observed_at") or ""),)
 
 
 def _asof_date(*, latest: Mapping[str, Mapping[str, Any]], computed_at_ms: int) -> str:

@@ -184,35 +184,6 @@
     border-color: var(--agent-line);
   }
 
-  .watchlist-scope-tabs {
-    display: inline-flex;
-    width: fit-content;
-    border: 1px solid var(--line);
-    background: rgba(7, 10, 10, 0.72);
-    padding: 3px;
-  }
-
-  .watchlist-scope-tabs button,
-  .watchlist-inline-command {
-    border: 0;
-    color: var(--ash);
-    background: transparent;
-    padding: 7px 10px;
-    font-family: var(--mono);
-    font-size: 11px;
-    text-transform: uppercase;
-    cursor: pointer;
-  }
-
-  .watchlist-scope-tabs button.active,
-  .watchlist-scope-tabs button:hover,
-  .watchlist-scope-tabs button:focus-visible,
-  .watchlist-inline-command:hover,
-  .watchlist-inline-command:focus-visible {
-    color: var(--bone);
-    background: var(--opportunity-soft);
-  }
-
   .watchlist-monitor-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.35fr) minmax(310px, 0.65fr);

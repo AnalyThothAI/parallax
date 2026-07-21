@@ -8,8 +8,6 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any
 
-from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
-
 _MACRO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 _NON_FACT_RAW_PAYLOAD_KEYS = {
     "fetch_ts",
@@ -22,7 +20,6 @@ _NON_FACT_RAW_PAYLOAD_KEYS = {
     "received_at_ms",
     "run_id",
     "sync_run_id",
-    "import_run_id",
 }
 
 
@@ -67,25 +64,6 @@ def macro_observation_fact_payload_hash(observation: Mapping[str, Any]) -> str:
     return _stable_payload_hash(payload)
 
 
-def macro_series_current_row_payload_hash(row: Mapping[str, Any]) -> str:
-    payload = {
-        "projection_version": row.get("projection_version"),
-        "concept_key": row.get("concept_key"),
-        "observed_at": normalize_macro_date(row.get("observed_at")),
-        "series_rank": int(row.get("series_rank") or 0),
-        "value_numeric": row.get("value_numeric"),
-        "source_name": row.get("source_name"),
-        "series_key": row.get("series_key"),
-        "source_priority": int(row.get("source_priority") or 0),
-        "unit": row.get("unit"),
-        "frequency": row.get("frequency"),
-        "data_quality": row.get("data_quality"),
-        "source_ts": row.get("source_ts"),
-        "raw_payload_json": row.get("raw_payload_json") or row.get("raw_payload") or {},
-    }
-    return stable_current_payload_hash(payload)
-
-
 def _stable_payload_hash(payload: Mapping[str, Any]) -> str:
     encoded = json.dumps(_json_ready(payload), sort_keys=True, separators=(",", ":"), allow_nan=False)
     return f"sha256:{hashlib.sha256(encoded.encode()).hexdigest()}"
@@ -114,6 +92,5 @@ def _json_ready(value: Any) -> Any:
 __all__ = [
     "macro_observation_fact_payload_hash",
     "macro_observation_id",
-    "macro_series_current_row_payload_hash",
     "normalize_macro_date",
 ]

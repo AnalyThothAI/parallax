@@ -35,7 +35,6 @@ def test_enqueue_targets_coalesces_by_target_and_uses_lower_priority() -> None:
         ],
         reason="token_radar_changed",
         now_ms=1_700_000_000_000,
-        commit=False,
     )
 
     sql = conn.sql[-1]
@@ -102,7 +101,6 @@ def test_enqueue_targets_requires_formal_source_watermark_without_runtime_fallba
             [target],
             reason="token_radar_changed",
             now_ms=1_700_000_000_000,
-            commit=False,
         )
 
     assert conn.sql == []
@@ -130,7 +128,6 @@ def test_claim_due_orders_by_priority_due_and_updated_and_increments_attempts() 
         limit=25,
         lease_owner="profile-a",
         lease_ms=60_000,
-        commit=False,
     )
 
     sql = conn.sql[-1]
@@ -194,7 +191,6 @@ def test_mark_done_requires_full_stale_completion_token() -> None:
             }
         ],
         now_ms=1_700_000_010_000,
-        commit=False,
     )
 
     sql = conn.sql[-1]
@@ -227,7 +223,6 @@ def test_mark_error_releases_claim_below_terminal_attempt_limit() -> None:
         max_attempts=3,
         worker_name="token_profile_current",
         now_ms=1_700_000_010_000,
-        commit=False,
     )
 
     sql = conn.sql[-1]
@@ -263,7 +258,6 @@ def test_mark_error_terminalizes_claim_at_retry_budget() -> None:
         max_attempts=3,
         worker_name="token_profile_current",
         now_ms=1_700_000_010_000,
-        commit=False,
     )
 
     assert changed == 1
@@ -299,7 +293,6 @@ def test_completion_rejects_claim_without_payload_hash() -> None:
         TokenProfileCurrentDirtyTargetRepository(conn).mark_done(
             [{"target_type": "Asset", "target_id": "asset-1", "attempt_count": 1}],
             now_ms=1_700_000_010_000,
-            commit=False,
         )
     except ValueError as exc:
         assert "payload_hash" in str(exc)
@@ -312,7 +305,7 @@ def test_completion_rejects_claim_without_payload_hash() -> None:
 @pytest.mark.parametrize(
     "operation",
     [
-        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000, commit=False), id="done"),
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=1_700_000_010_000), id="done"),
         pytest.param(
             lambda repo, claim: repo.mark_error(
                 [claim],
@@ -321,7 +314,6 @@ def test_completion_rejects_claim_without_payload_hash() -> None:
                 max_attempts=3,
                 worker_name="token_profile_current",
                 now_ms=1_700_000_010_000,
-                commit=False,
             ),
             id="error",
         ),
@@ -356,7 +348,6 @@ def test_profile_current_dirty_completion_rejects_malformed_attempt_count(attemp
         TokenProfileCurrentDirtyTargetRepository(conn).mark_done(
             [claim],
             now_ms=1_700_000_010_000,
-            commit=False,
         )
 
     assert conn.sql == []
@@ -366,8 +357,8 @@ def test_profile_current_dirty_completion_counts_require_cursor_rowcount() -> No
     conn = _RowcountConnection(omit_rowcount=True)
     repo = TokenProfileCurrentDirtyTargetRepository(conn)
 
-    with pytest.raises(TypeError, match="token_profile_current_dirty_target_rowcount_required"):
-        repo.mark_done([_dirty_claim()], now_ms=1_700_000_010_000, commit=False)
+    with pytest.raises(TypeError, match="token_profile_current_dirty_target_rowcount_invalid"):
+        repo.mark_done([_dirty_claim()], now_ms=1_700_000_010_000)
 
 
 @pytest.mark.parametrize("rowcount", ["bad", True, -1])
@@ -383,7 +374,6 @@ def test_profile_current_dirty_completion_counts_reject_invalid_cursor_rowcount(
             max_attempts=3,
             worker_name="token_profile_current",
             now_ms=1_700_000_010_000,
-            commit=False,
         )
 
 
@@ -395,43 +385,6 @@ def test_repository_session_exposes_token_profile_current_dirty_targets() -> Non
     )
 
     assert isinstance(session.token_profile_current_dirty_targets, TokenProfileCurrentDirtyTargetRepository)
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        lambda repo: repo.enqueue_targets(
-            [{"target_type": "Asset", "target_id": "asset-1", "source_watermark_ms": 1_700_000_000_000}],
-            reason="token_radar_changed",
-            now_ms=1_700_000_000_000,
-        ),
-        lambda repo: repo.claim_due(
-            now_ms=1_700_000_000_000,
-            limit=25,
-            lease_owner="profile-a",
-            lease_ms=60_000,
-        ),
-        lambda repo: repo.mark_done([_dirty_claim()], now_ms=1_700_000_010_000),
-        lambda repo: repo.mark_error(
-            [_dirty_claim()],
-            error="source failed",
-            retry_ms=30_000,
-            max_attempts=3,
-            worker_name="token_profile_current",
-            now_ms=1_700_000_010_000,
-        ),
-    ],
-)
-def test_profile_current_dirty_mutations_require_connection_transaction_before_sql_when_committing(
-    operation: Callable[[TokenProfileCurrentDirtyTargetRepository], object],
-) -> None:
-    conn = _MissingTransactionConnection()
-
-    with pytest.raises(RuntimeError, match="token_profile_current_dirty_target_transaction_required"):
-        operation(TokenProfileCurrentDirtyTargetRepository(conn))
-
-    assert conn.sql == []
-    assert conn.commits == 0
 
 
 def _dirty_claim() -> dict[str, Any]:

@@ -11,6 +11,7 @@ from parallax.integrations.model_execution.output_schema import StrictJsonOutput
 from parallax.integrations.model_execution.usage import extract_model_usage
 from parallax.platform.agent_capabilities import AgentCapabilityProfile, AgentRequestOptions
 from parallax.platform.agent_execution import AgentStageSpec
+from parallax.platform.validation import require_nonnegative_int
 
 
 @dataclass(frozen=True, slots=True)
@@ -41,9 +42,9 @@ class ChatJsonObjectStrategy:
             input_payload=context.stage.input_payload,
             schema=schema,
         )
-        client_validation_retries = _required_nonnegative_int(
+        client_validation_retries = require_nonnegative_int(
             context.capability_profile.client_validation_retries,
-            "structured_json_client_validation_retries_required",
+            error_code="structured_json_client_validation_retries_required",
         )
         attempts = client_validation_retries + 1
         last_error: Exception | None = None
@@ -114,12 +115,6 @@ def _response_get(value: Any, key: str) -> Any:
     if isinstance(value, dict):
         return value.get(key)
     return getattr(value, key, None)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
-    return value
 
 
 def _append_validation_reask(

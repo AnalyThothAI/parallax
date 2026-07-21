@@ -9,8 +9,6 @@ from typing import Any
 import pytest
 import yaml
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from parallax.domains.asset_market.runtime.token_capture_tier_worker import (
     ADVISORY_LOCK_KEY,
@@ -19,6 +17,8 @@ from parallax.domains.asset_market.runtime.token_capture_tier_worker import (
 )
 from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
 from parallax.platform.config.settings import WorkersSettings, default_workers_yaml
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 def _worker_settings(
@@ -34,7 +34,6 @@ def _worker_settings(
     return SimpleNamespace(
         enabled=True,
         interval_seconds=interval_seconds,
-        soft_timeout_seconds=120.0,
         hard_timeout_seconds=180.0,
         backoff=SimpleNamespace(base_ms=1_000, max_ms=60_000),
         batch_size=batch_size,
@@ -228,89 +227,9 @@ def test_project_once_uses_zero_score_when_rank_score_is_missing() -> None:
     ]
 
 
-def test_worker_requires_formal_settings_and_db_contracts() -> None:
-    db = FakeDB(FakeRepos([]))
-
-    with pytest.raises(RuntimeError, match="token_capture_tier_settings_required"):
-        TokenCaptureTierWorker(pool_bundle=db, settings=None)
+def test_worker_requires_db_contract() -> None:
     with pytest.raises(RuntimeError, match="token_capture_tier_db_required"):
         TokenCaptureTierWorker(pool_bundle=None, settings=_worker_settings())
-
-
-def test_worker_reads_formal_settings_fields_directly() -> None:
-    db = FakeDB(FakeRepos([]))
-
-    with pytest.raises(AttributeError, match="batch_size"):
-        TokenCaptureTierWorker(
-            pool_bundle=db,
-            settings=SimpleNamespace(enabled=True, interval_seconds=30.0, ws_limit=1, poll_limit=1),
-        )
-    with pytest.raises(AttributeError, match="ws_limit"):
-        TokenCaptureTierWorker(
-            pool_bundle=db,
-            settings=SimpleNamespace(enabled=True, interval_seconds=30.0, batch_size=5, poll_limit=1),
-        )
-    with pytest.raises(AttributeError, match="poll_limit"):
-        TokenCaptureTierWorker(
-            pool_bundle=db,
-            settings=SimpleNamespace(enabled=True, interval_seconds=30.0, batch_size=5, ws_limit=1),
-        )
-
-    lease_repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
-    lease_worker = TokenCaptureTierWorker(
-        pool_bundle=FakeDB(lease_repos),
-        settings=SimpleNamespace(enabled=True, interval_seconds=30.0, batch_size=5, ws_limit=1, poll_limit=1),
-    )
-
-    with pytest.raises(AttributeError, match="lease_ms"):
-        asyncio.run(lease_worker.run_once(now_ms=1_800_000_000_000))
-
-    assert lease_repos.token_capture_tier_dirty_targets.claim_calls == []
-    assert lease_repos.token_capture_tiers.upserts == []
-    assert lease_repos.token_capture_tier_dirty_targets.done_count == 0
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "error_code"),
-    [
-        pytest.param("batch_size", 0, "token_capture_tier_batch_size_required", id="batch-zero"),
-        pytest.param("batch_size", True, "token_capture_tier_batch_size_required", id="batch-bool"),
-        pytest.param("batch_size", "5", "token_capture_tier_batch_size_required", id="batch-string"),
-        pytest.param("ws_limit", -1, "token_capture_tier_ws_limit_required", id="ws-negative"),
-        pytest.param("ws_limit", True, "token_capture_tier_ws_limit_required", id="ws-bool"),
-        pytest.param("ws_limit", "1", "token_capture_tier_ws_limit_required", id="ws-string"),
-        pytest.param("poll_limit", -1, "token_capture_tier_poll_limit_required", id="poll-negative"),
-        pytest.param("poll_limit", True, "token_capture_tier_poll_limit_required", id="poll-bool"),
-        pytest.param("poll_limit", "1", "token_capture_tier_poll_limit_required", id="poll-string"),
-    ],
-)
-def test_worker_rejects_malformed_runtime_settings(
-    field: str,
-    value: Any,
-    error_code: str,
-) -> None:
-    settings = _worker_settings()
-    setattr(settings, field, value)
-
-    with pytest.raises(ValueError, match=error_code):
-        TokenCaptureTierWorker(pool_bundle=FakeDB(FakeRepos([])), settings=settings)
-
-
-@pytest.mark.parametrize("lease_ms", [0, True, "60000"])
-def test_worker_rejects_malformed_lease_before_claiming_dirty_target(lease_ms: Any) -> None:
-    repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
-    worker = TokenCaptureTierWorker(
-        pool_bundle=FakeDB(repos),
-        telemetry=object(),
-        settings=_worker_settings(batch_size=5, ws_limit=1, poll_limit=1, lease_ms=lease_ms),
-    )
-
-    with pytest.raises(ValueError, match="token_capture_tier_lease_ms_required"):
-        asyncio.run(worker.run_once(now_ms=1_800_000_000_000))
-
-    assert repos.token_capture_tier_dirty_targets.claim_calls == []
-    assert repos.token_capture_tiers.upserts == []
-    assert repos.token_capture_tier_dirty_targets.done_count == 0
 
 
 def test_worker_run_once_returns_worker_result_processed_count() -> None:
@@ -377,7 +296,7 @@ def test_worker_retries_claim_when_projection_fails_instead_of_rolling_back_atte
     assert result.failed == 1
     assert result.notes["claimed"] == 1
     assert result.notes["rows_written"] == 0
-    assert repos.transaction_events == ["rollback", "commit"]
+    assert repos.transaction_events == ["commit", "rollback", "commit"]
     assert repos.token_capture_tier_dirty_targets.done_count == 0
     assert repos.token_capture_tier_dirty_targets.errors[0]["retry_ms"] == 7_000
     assert repos.token_capture_tier_dirty_targets.errors[0]["max_attempts"] == 3
@@ -412,36 +331,6 @@ def test_project_once_rejects_invalid_changed_count_without_zero_fallback() -> N
     assert repos.token_capture_tier_dirty_targets.done_count == 0
 
 
-@pytest.mark.parametrize(
-    ("override", "error_code"),
-    [
-        pytest.param({"batch_size": 0}, "token_capture_tier_project_batch_size_required", id="batch-zero"),
-        pytest.param({"batch_size": True}, "token_capture_tier_project_batch_size_required", id="batch-bool"),
-        pytest.param({"batch_size": "5"}, "token_capture_tier_project_batch_size_required", id="batch-string"),
-        pytest.param({"ws_limit": -1}, "token_capture_tier_project_ws_limit_required", id="ws-negative"),
-        pytest.param({"ws_limit": True}, "token_capture_tier_project_ws_limit_required", id="ws-bool"),
-        pytest.param({"ws_limit": "1"}, "token_capture_tier_project_ws_limit_required", id="ws-string"),
-        pytest.param({"poll_limit": -1}, "token_capture_tier_project_poll_limit_required", id="poll-negative"),
-        pytest.param({"poll_limit": True}, "token_capture_tier_project_poll_limit_required", id="poll-bool"),
-        pytest.param({"poll_limit": "1"}, "token_capture_tier_project_poll_limit_required", id="poll-string"),
-    ],
-)
-def test_project_once_rejects_malformed_projection_limits_without_runtime_repair(
-    override: dict[str, Any],
-    error_code: str,
-) -> None:
-    repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
-    kwargs: dict[str, Any] = {"batch_size": 5, "ws_limit": 1, "poll_limit": 1}
-    kwargs.update(override)
-
-    with pytest.raises(ValueError, match=error_code), repos.transaction():
-        project_once(repos, now_ms=1_800_000_000_000, **kwargs)
-
-    assert repos.registry.calls == []
-    assert repos.token_capture_tiers.upserts == []
-    assert repos.token_capture_tiers.demotion_calls == []
-
-
 def test_project_once_requires_external_session_transaction() -> None:
     repos = FakeRepos([asset_target("asset-hot", chain_id="sol", address="hot", score=3)])
 
@@ -465,8 +354,7 @@ def test_worker_requires_session_transaction_before_projecting_claimed_dirty_tar
     with pytest.raises(AttributeError, match="transaction"):
         asyncio.run(worker.run_once(now_ms=1_800_000_000_000))
 
-    assert len(repos.token_capture_tier_dirty_targets.claim_calls) == 1
-    assert repos.token_capture_tier_dirty_targets.claim_calls[0]["commit"] is True
+    assert repos.token_capture_tier_dirty_targets.claim_calls == []
     assert repos.token_capture_tiers.upserts == []
     assert repos.token_capture_tier_dirty_targets.done_count == 0
 

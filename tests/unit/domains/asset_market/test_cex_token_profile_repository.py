@@ -13,34 +13,11 @@ _ROWCOUNT_MISSING = object()
 _ROW_MISSING = object()
 
 
-def test_cex_token_profile_mutation_requires_connection_transaction_before_sql_when_committing() -> None:
-    conn = NoTransactionCexTokenProfileConnection()
-    repo = CexTokenProfileRepository(conn)
-
-    with pytest.raises(RuntimeError, match="cex_token_profile_repository_transaction_required"):
-        _upsert_ready(repo)
-
-    assert conn.sql == []
-    assert conn.commits == 0
-
-
-def test_cex_token_profile_commit_owned_write_uses_connection_transaction_without_manual_commit() -> None:
-    conn = FakeCexTokenProfileConnection()
-    repo = CexTokenProfileRepository(conn)
-
-    row = _upsert_ready(repo)
-
-    assert row == {"cex_token_id": "cex_token:BTC", "status": "ready"}
-    assert conn.transaction_commits == 1
-    assert conn.commits == 0
-    assert conn.sql_depths == [1]
-
-
 def test_cex_token_profile_returning_write_requires_cursor_rowcount() -> None:
     conn = FakeCexTokenProfileConnection(rowcount=_ROWCOUNT_MISSING)
 
-    with pytest.raises(TypeError, match="cex_token_profile_repository_rowcount_required"):
-        _upsert_ready(CexTokenProfileRepository(conn), commit=False)
+    with pytest.raises(TypeError, match="cex_token_profile_repository_rowcount_invalid"):
+        _upsert_ready(CexTokenProfileRepository(conn))
 
 
 @pytest.mark.parametrize(
@@ -58,7 +35,7 @@ def test_cex_token_profile_returning_write_requires_formal_raw_payload_before_sq
     conn = FakeCexTokenProfileConnection()
 
     with pytest.raises(TypeError, match=error):
-        _upsert_ready(CexTokenProfileRepository(conn), commit=False, raw_payload=raw_payload)
+        _upsert_ready(CexTokenProfileRepository(conn), raw_payload=raw_payload)
 
     assert conn.sql_depths == []
 
@@ -82,19 +59,19 @@ def test_cex_token_profile_returning_write_rejects_invalid_or_mismatched_rowcoun
     conn = FakeCexTokenProfileConnection(row=row, rowcount=rowcount)
 
     with pytest.raises(TypeError, match="cex_token_profile_repository_rowcount_invalid"):
-        _upsert_ready(CexTokenProfileRepository(conn), commit=False)
+        _upsert_ready(CexTokenProfileRepository(conn))
 
 
 def test_cex_token_profile_returning_write_accepts_zero_rowcount_without_existing_token() -> None:
     conn = FakeCexTokenProfileConnection(row=None, rowcount=0)
 
-    assert _upsert_ready(CexTokenProfileRepository(conn), commit=False) is None
+    assert _upsert_ready(CexTokenProfileRepository(conn)) is None
 
 
 def test_cex_token_profile_returning_write_accepts_valid_single_rowcount() -> None:
     conn = FakeCexTokenProfileConnection(rowcount=1)
 
-    assert _upsert_ready(CexTokenProfileRepository(conn), commit=False) == {
+    assert _upsert_ready(CexTokenProfileRepository(conn)) == {
         "cex_token_id": "cex_token:BTC",
         "status": "ready",
     }
@@ -103,7 +80,6 @@ def test_cex_token_profile_returning_write_accepts_valid_single_rowcount() -> No
 def _upsert_ready(
     repo: CexTokenProfileRepository,
     *,
-    commit: bool = True,
     raw_payload: object = _ROW_MISSING,
 ) -> dict[str, Any] | None:
     payload = {"rank": 1} if raw_payload is _ROW_MISSING else raw_payload
@@ -116,7 +92,6 @@ def _upsert_ready(
         source_ref="binance_marketing_symbol_list:BTC",
         raw_payload=payload,
         observed_at_ms=1_779_100_000_000,
-        commit=commit,
     )
 
 

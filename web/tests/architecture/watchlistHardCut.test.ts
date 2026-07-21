@@ -13,6 +13,13 @@ describe("watchlist hard cut", () => {
       "buildWatchlistAccountCases",
       "accountCases=",
       'searchParams.get("scope") as WatchlistTimelineScope',
+      "WatchlistTimelineScope",
+      "timeline_scope",
+      "recent_signal_event_count",
+      "total_signal_event_count",
+      "signal_event_count",
+      "watchlist-scope-tabs",
+      "WatchlistSocialEvent",
     ];
     const offenders = collectFiles(srcRoot)
       .filter((path) => sourceExtensions.has(extname(path)))

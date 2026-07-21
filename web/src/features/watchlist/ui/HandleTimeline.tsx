@@ -1,4 +1,4 @@
-import type { WatchlistHandleTimelineData, WatchlistTimelineScope } from "@lib/types";
+import type { WatchlistHandleTimelineData } from "@lib/types";
 import * as PageState from "@shared/ui/PageState";
 import { ChevronDown } from "lucide-react";
 
@@ -16,15 +16,7 @@ type TimelineQueryResult = {
   refetch: () => unknown;
 };
 
-export function HandleTimeline({
-  onScopeChange,
-  query,
-  scope,
-}: {
-  onScopeChange: (scope: WatchlistTimelineScope) => void;
-  query: TimelineQueryResult;
-  scope: WatchlistTimelineScope;
-}) {
+export function HandleTimeline({ query }: { query: TimelineQueryResult }) {
   if (query.isPending) {
     return <PageState.Loading label="Loading handle timeline" layout="panel" rows={6} />;
   }
@@ -35,26 +27,6 @@ export function HandleTimeline({
   const items = pages.flatMap((page) => page.data.items);
   return (
     <PageState.Stale updating={query.isFetching}>
-      <div className="watchlist-scope-tabs" role="tablist" aria-label="Timeline scope">
-        <button
-          aria-selected={scope === "signal"}
-          className={scope === "signal" ? "active" : ""}
-          role="tab"
-          type="button"
-          onClick={() => onScopeChange("signal")}
-        >
-          signal
-        </button>
-        <button
-          aria-selected={scope === "all"}
-          className={scope === "all" ? "active" : ""}
-          role="tab"
-          type="button"
-          onClick={() => onScopeChange("all")}
-        >
-          all
-        </button>
-      </div>
       {items.length ? (
         <ol className="watchlist-evidence-stream">
           {items.map((item) => (
@@ -62,20 +34,7 @@ export function HandleTimeline({
           ))}
         </ol>
       ) : (
-        <PageState.Empty
-          action={
-            scope === "signal" ? (
-              <button
-                className="watchlist-inline-command"
-                type="button"
-                onClick={() => onScopeChange("all")}
-              >
-                Show all
-              </button>
-            ) : null
-          }
-          title={scope === "signal" ? "No signal events yet." : "No source events yet."}
-        />
+        <PageState.Empty title="No source events yet." />
       )}
       {query.hasNextPage ? (
         <div className="watchlist-load-more-row">

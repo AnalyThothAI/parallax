@@ -11,6 +11,8 @@ from psycopg import Connection, conninfo, pq
 from psycopg.rows import dict_row
 from psycopg_pool import ConnectionPool
 
+from parallax.platform.validation import require_nonnegative_float
+
 _COMPOSE_POSTGRES_HOST = "postgres"
 _HOST_LOOPBACK = "127.0.0.1"
 _DEFAULT_HOST_POSTGRES_PORT = "56532"
@@ -106,14 +108,11 @@ def _postgres_runtime_options(
 
 
 def _seconds_to_ms(seconds: float) -> int:
-    timeout_seconds = _nonnegative_timeout_seconds(seconds)
+    timeout_seconds = require_nonnegative_float(
+        seconds,
+        error_code="postgres_runtime_timeout_seconds_required",
+    )
     return int(timeout_seconds * 1000)
-
-
-def _nonnegative_timeout_seconds(value: Any) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
-        raise ValueError("postgres_runtime_timeout_seconds_required")
-    return float(value)
 
 
 def _running_in_container() -> bool:
@@ -200,6 +199,35 @@ def postgres_health_check(conn: Any, *, expected_migration_version: str | None =
                 else {}
             ),
         }
+    except Exception as exc:
+        try:
+            conn.rollback()
+        except Exception as rollback_exc:
+            return {
+                "ok": False,
+                "probe": "postgres_liveness",
+                "error": type(rollback_exc).__name__,
+                "detail": str(rollback_exc),
+                "original_error": type(exc).__name__,
+                "original_detail": str(exc),
+            }
+        return {"ok": False, "probe": "postgres_liveness", "error": type(exc).__name__, "detail": str(exc)}
+
+
+def postgres_liveness_check(conn: Any) -> dict[str, object]:
+    """Probe only whether PostgreSQL can serve a trivial query.
+
+    Schema compatibility is a startup invariant. Runtime readiness uses this
+    deliberately smaller probe so it does not re-read migration state for
+    every request.
+    """
+    try:
+        row = conn.execute("SELECT 1 AS ok").fetchone()
+        if row is None or int(row["ok"]) != 1:
+            conn.rollback()
+            return {"ok": False, "probe": "postgres_liveness", "detail": "missing_select_result"}
+        conn.commit()
+        return {"ok": True, "probe": "postgres_liveness"}
     except Exception as exc:
         try:
             conn.rollback()

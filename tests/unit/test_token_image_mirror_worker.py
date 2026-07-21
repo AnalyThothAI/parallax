@@ -4,8 +4,6 @@ import asyncio
 from contextlib import contextmanager
 from types import SimpleNamespace
 
-import pytest
-
 from parallax.domains.asset_market.runtime import token_image_mirror_worker as worker_module
 from parallax.domains.asset_market.runtime.token_image_mirror_worker import TokenImageMirrorWorker
 
@@ -67,7 +65,6 @@ def test_token_image_mirror_worker_mirrors_claimed_rows_outside_db_sessions(monk
         "limit": 3,
         "lease_owner": "token_image_mirror",
         "lease_ms": 600_000,
-        "commit": True,
     }
     assert db.repo.terminal_source_urls == [
         "https://gmgn.ai/external-res/ready.png",
@@ -88,97 +85,8 @@ def test_token_image_mirror_worker_mirrors_claimed_rows_outside_db_sessions(monk
             "max_attempts": 3,
             "worker_name": "token_image_mirror",
             "now_ms": 1_700_000_000_000,
-            "commit": False,
         }
     ]
-
-
-def test_token_image_mirror_worker_requires_formal_statement_timeout_settings_contract(tmp_path) -> None:
-    db = FakeDB()
-    settings = SimpleNamespace(
-        enabled=True,
-        interval_seconds=60,
-        source_limit=2,
-        batch_size=3,
-        lease_ms=600_000,
-        retry_ms=300_000,
-    )
-    worker = TokenImageMirrorWorker(
-        name="token_image_mirror",
-        settings=settings,
-        db=db,
-        telemetry=object(),
-        app_home=tmp_path,
-    )
-
-    with pytest.raises(AttributeError, match="statement_timeout_seconds"):
-        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
-
-    assert db.statement_timeouts == []
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"batch_size": 0}, "token_image_mirror_batch_size_required", id="batch-zero"),
-        pytest.param({"batch_size": True}, "token_image_mirror_batch_size_required", id="batch-bool"),
-        pytest.param({"batch_size": "3"}, "token_image_mirror_batch_size_required", id="batch-string"),
-        pytest.param({"lease_ms": 0}, "token_image_mirror_lease_ms_required", id="lease-zero"),
-        pytest.param({"lease_ms": True}, "token_image_mirror_lease_ms_required", id="lease-bool"),
-        pytest.param({"lease_ms": "600000"}, "token_image_mirror_lease_ms_required", id="lease-string"),
-    ],
-)
-def test_token_image_mirror_worker_rejects_malformed_claim_settings_before_claim(
-    overrides,
-    error_code,
-    tmp_path,
-) -> None:
-    db = FakeDB()
-    worker = TokenImageMirrorWorker(
-        name="token_image_mirror",
-        settings=_settings(**overrides),
-        db=db,
-        telemetry=object(),
-        app_home=tmp_path,
-    )
-
-    with pytest.raises(ValueError, match=error_code):
-        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
-
-    assert db.dirty.claimed is None
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"retry_ms": 0}, "token_image_mirror_retry_ms_required", id="retry-zero"),
-        pytest.param({"retry_ms": True}, "token_image_mirror_retry_ms_required", id="retry-bool"),
-        pytest.param({"retry_ms": "300000"}, "token_image_mirror_retry_ms_required", id="retry-string"),
-        pytest.param({"max_attempts": 0}, "token_image_mirror_max_attempts_required", id="attempts-zero"),
-        pytest.param({"max_attempts": True}, "token_image_mirror_max_attempts_required", id="attempts-bool"),
-        pytest.param({"max_attempts": "3"}, "token_image_mirror_max_attempts_required", id="attempts-string"),
-    ],
-)
-def test_token_image_mirror_worker_rejects_malformed_retry_settings_without_mark_error(
-    monkeypatch,
-    overrides,
-    error_code,
-    tmp_path,
-) -> None:
-    db = FakeDB()
-    monkeypatch.setattr(worker_module, "TokenImageMirrorService", lambda **kwargs: FakeMirrorService(db=db, **kwargs))
-    worker = TokenImageMirrorWorker(
-        name="token_image_mirror",
-        settings=_settings(**overrides),
-        db=db,
-        telemetry=object(),
-        app_home=tmp_path,
-    )
-
-    with pytest.raises(ValueError, match=error_code):
-        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
-
-    assert db.dirty.errors == []
 
 
 def test_token_image_asset_session_repository_uses_session_transaction_with_caller_owned_writes() -> None:
@@ -212,7 +120,7 @@ def test_token_image_asset_session_repository_uses_session_transaction_with_call
 
     assert ready["status"] == "ready"
     assert db.transactions == 3
-    assert db.repo.asset_write_commits == [False, False, False]
+    assert db.repo.asset_writes == ["ready", "error", "unsupported"]
 
 
 class FakeMirrorService:
@@ -237,10 +145,9 @@ class FakeTokenImageRepo:
     def __init__(self) -> None:
         self.upserted_now_ms: int | None = None
         self.terminal_source_urls: list[str] = []
-        self.asset_write_commits: list[bool] = []
+        self.asset_writes: list[str] = []
 
-    def upsert_pending_sources(self, rows, *, now_ms: int, commit: bool = True):
-        assert commit is False
+    def upsert_pending_sources(self, rows, *, now_ms: int):
         self.upserted_now_ms = now_ms
         return len(rows)
 
@@ -258,16 +165,15 @@ class FakeTokenImageRepo:
         byte_size,
         storage_path,
         now_ms,
-        commit=True,
     ):
-        self.asset_write_commits.append(commit)
+        self.asset_writes.append("ready")
         return {"status": "ready", "source_url": source_url}
 
-    def mark_error(self, *, source_url, error, now_ms, retry_ms, commit=True):
-        self.asset_write_commits.append(commit)
+    def mark_error(self, *, source_url, error, now_ms, retry_ms):
+        self.asset_writes.append("error")
 
-    def mark_unsupported(self, *, source_url, error, now_ms, commit=True):
-        self.asset_write_commits.append(commit)
+    def mark_unsupported(self, *, source_url, error, now_ms):
+        self.asset_writes.append("unsupported")
 
 
 class FakeDB:
@@ -345,7 +251,7 @@ class FakeProfileDirtyTargets:
     def __init__(self) -> None:
         self.enqueued_targets: list[tuple[str, str]] = []
 
-    def enqueue_targets(self, targets, *, reason, now_ms, commit):
+    def enqueue_targets(self, targets, *, reason, now_ms):
         self.enqueued_targets.extend((target["target_type"], target["target_id"]) for target in targets)
         return {"targets": len(targets)}
 

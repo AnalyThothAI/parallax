@@ -10,7 +10,7 @@ from parallax.domains.asset_market.services.asset_market_sync import BinanceUsdt
 def test_sync_binance_usdt_perp_routes_writes_instruments_and_feeds_without_market_ticks():
     registry = _Registry()
     result = sync_binance_usdt_perp_routes(
-        registry=registry,
+        repos=_Repos(registry),
         routes=_binance_routes(),
         observed_at_ms=1_778_000_000_000,
         dry_run=False,
@@ -43,7 +43,6 @@ def test_sync_binance_usdt_perp_routes_writes_instruments_and_feeds_without_mark
             "quote_symbol": "USDT",
             "multiplier": None,
             "observed_at_ms": 1_778_000_000_000,
-            "commit": False,
         }
     ]
     assert registry.conn.events == ["enter", "exit"]
@@ -53,7 +52,7 @@ def test_sync_binance_usdt_perp_routes_writes_instruments_and_feeds_without_mark
 def test_sync_binance_usdt_perp_routes_dry_run_does_not_write_or_commit():
     registry = _Registry()
     result = sync_binance_usdt_perp_routes(
-        registry=registry,
+        repos=_Repos(registry),
         routes=_binance_routes(),
         observed_at_ms=1_778_000_000_000,
         dry_run=True,
@@ -74,7 +73,7 @@ def test_sync_binance_usdt_perp_routes_requires_formal_plan_count_repository_con
 
     with pytest.raises(AttributeError, match="binance_usdt_perp_sync_plan_counts"):
         sync_binance_usdt_perp_routes(
-            registry=registry,
+            repos=_Repos(registry),
             routes=_binance_routes(),
             observed_at_ms=1_778_000_000_000,
             dry_run=True,
@@ -88,9 +87,9 @@ def test_sync_binance_usdt_perp_routes_requires_formal_plan_count_repository_con
 def test_sync_binance_usdt_perp_routes_requires_transaction_before_writes():
     registry = _Registry(conn=object())
 
-    with pytest.raises(RuntimeError, match="asset_market_sync_transaction_required"):
+    with pytest.raises(AttributeError, match="transaction"):
         sync_binance_usdt_perp_routes(
-            registry=registry,
+            repos=_Repos(registry),
             routes=_binance_routes(),
             observed_at_ms=1_778_000_000_000,
             dry_run=False,
@@ -105,7 +104,7 @@ def test_sync_binance_usdt_perp_routes_requires_formal_route_dto_without_object_
 
     with pytest.raises(RuntimeError, match="asset_market_sync_binance_route_contract_required"):
         sync_binance_usdt_perp_routes(
-            registry=registry,
+            repos=_Repos(registry),
             routes=[
                 SimpleNamespace(
                     native_market_id="BTCUSDT",
@@ -142,7 +141,6 @@ class _Registry:
             "base_symbol": "BTC",
             "source": "binance_cex",
             "observed_at_ms": 1_778_000_000_000,
-            "commit": False,
         }
         return {"cex_token_id": "cex_token:BTC"}
 
@@ -167,6 +165,14 @@ class _RegistryWithoutPlanCounts:
         self.conn = _Conn()
 
 
+class _Repos:
+    def __init__(self, registry) -> None:
+        self.registry = registry
+
+    def transaction(self):
+        return self.registry.conn.transaction()
+
+
 class _Conn:
     def __init__(self) -> None:
         self.commits = 0
@@ -178,7 +184,7 @@ class _Conn:
 
     def commit(self) -> None:
         self.commits += 1
-        raise AssertionError("sync_binance_usdt_perp_routes must use conn.transaction(), not conn.commit()")
+        raise AssertionError("sync_binance_usdt_perp_routes must use repos.transaction(), not conn.commit()")
 
 
 class _Transaction:

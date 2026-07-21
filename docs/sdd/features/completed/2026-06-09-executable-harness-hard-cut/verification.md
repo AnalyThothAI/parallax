@@ -1,7 +1,7 @@
 # Verification — Executable Harness Hard Cut
 
 **Status**: Superseded
-**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
+**Superseded by**: `docs/sdd/features/completed/2026-06-11-executable-harness-followup/`
 **Date**: 2026-06-09
 **Owning spec**: `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut/spec.md`
 **Owning plan**: `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut/plan.md`

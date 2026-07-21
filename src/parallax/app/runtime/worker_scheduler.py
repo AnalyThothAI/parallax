@@ -6,6 +6,7 @@ from typing import Any
 
 from parallax.app.runtime.worker_manifest import worker_start_priority
 from parallax.app.runtime.worker_status import effective_worker_status
+from parallax.platform.validation import require_nonnegative_float
 
 _START_PRIORITY = worker_start_priority()
 
@@ -20,7 +21,10 @@ class WorkerScheduler:
     ) -> None:
         self.workers = dict(workers)
         self.db = db
-        self.stop_timeout_seconds = _nonnegative_timeout_seconds(stop_timeout_seconds)
+        self.stop_timeout_seconds = require_nonnegative_float(
+            stop_timeout_seconds,
+            error_code="worker_scheduler_stop_timeout_seconds_required",
+        )
         self.tasks: dict[str, asyncio.Task[None]] = {}
         self._started = False
 
@@ -130,14 +134,6 @@ class WorkerScheduler:
 
 def _worker_startable(worker: Any) -> bool:
     return worker_effective_status(worker) not in {"disabled", "intentionally_not_started", "unavailable"}
-
-
-def _nonnegative_timeout_seconds(value: float) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError("worker_scheduler_stop_timeout_seconds_required")
-    if value < 0:
-        raise ValueError("worker_scheduler_stop_timeout_seconds_required")
-    return float(value)
 
 
 def worker_effective_status(worker: Any) -> str:

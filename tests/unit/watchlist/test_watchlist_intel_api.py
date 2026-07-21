@@ -8,32 +8,27 @@ from parallax.app.surfaces.api.exceptions import (
     api_unauthorized_response,
 )
 from parallax.app.surfaces.api.http import create_api_router
-from parallax.domains.watchlist_intel.types import encode_watchlist_timeline_cursor
+from parallax.domains.evidence.types.watchlist import encode_watchlist_timeline_cursor
 from parallax.platform.config.settings import Settings
 
 
-def test_watchlist_handle_timeline_endpoint_validates_cursor_and_scope():
-    app = _app(FakeWatchlistIntelRepository())
+def test_watchlist_handle_timeline_endpoint_validates_cursor():
+    app = _app(FakeWatchlistQuery())
     cursor = encode_watchlist_timeline_cursor(received_at_ms=2_000, event_id="event-2")
 
     with TestClient(app) as client:
-        ok = client.get(f"/api/watchlist/handle/toly/timeline?token=secret&scope=signal&cursor={cursor}")
+        ok = client.get(f"/api/watchlist/handle/toly/timeline?token=secret&cursor={cursor}")
         bad_cursor = client.get("/api/watchlist/handle/toly/timeline?token=secret&cursor=broken")
-        bad_scope = client.get("/api/watchlist/handle/toly/timeline?token=secret&scope=legacy")
 
     assert ok.status_code == 200
-    assert ok.json()["data"]["query"]["scope"] == "signal"
     item = ok.json()["data"]["items"][0]
     assert item["event_id"] == "event-1"
-    assert item["social_event"] is None
     assert bad_cursor.status_code == 400
     assert bad_cursor.json()["error"] == "invalid_cursor"
-    assert bad_scope.status_code == 400
-    assert bad_scope.json()["error"] == "invalid_scope"
 
 
 def test_watchlist_handle_timeline_endpoint_uses_spec_limit_contract():
-    app = _app(FakeWatchlistIntelRepository())
+    app = _app(FakeWatchlistQuery())
 
     with TestClient(app) as client:
         default_response = client.get("/api/watchlist/handle/toly/timeline?token=secret")
@@ -47,7 +42,7 @@ def test_watchlist_handle_timeline_endpoint_uses_spec_limit_contract():
 
 
 def test_watchlist_handle_overview_endpoint_requires_configured_handle():
-    app = _app(FakeWatchlistIntelRepository())
+    app = _app(FakeWatchlistQuery())
 
     with TestClient(app) as client:
         ok = client.get("/api/watchlist/handle/toly/overview?token=secret")
@@ -60,20 +55,19 @@ def test_watchlist_handle_overview_endpoint_requires_configured_handle():
     assert missing.json()["error"] == "handle_not_found"
 
 
-class FakeWatchlistIntelRepository:
-    def timeline(self, *, handle, scope, cursor, limit):
-        from parallax.domains.watchlist_intel.types import decode_watchlist_timeline_cursor
+class FakeWatchlistQuery:
+    def timeline(self, *, handle, cursor, limit):
+        from parallax.domains.evidence.types.watchlist import decode_watchlist_timeline_cursor
 
         if cursor:
             decode_watchlist_timeline_cursor(cursor)
         return {
-            "query": {"handle": handle, "scope": scope, "limit": limit},
+            "query": {"handle": handle, "limit": limit},
             "items": [
                 {
                     "event_id": "event-1",
                     "received_at_ms": 1_000,
                     "text_clean": "$SOL launch",
-                    "social_event": None,
                 }
             ],
             "has_more": False,
@@ -86,20 +80,17 @@ class FakeWatchlistIntelRepository:
                 "handle": handle,
                 "last_source_event_at_ms": 1_000,
                 "recent_source_event_count": 1,
-                "recent_signal_event_count": 0,
-                "total_signal_event_count": 0,
             }
             for handle in handles
         ]
 
-    def handle_overview(self, *, handle, scope, since_ms, source_limit, cluster_limit):
+    def handle_overview(self, *, handle, since_ms, source_limit, cluster_limit):
         assert source_limit == 500
         assert cluster_limit == 500
         return {
-            "query": {"handle": handle, "scope": scope},
+            "query": {"handle": handle},
             "metrics": {
                 "source_event_count": 1,
-                "signal_event_count": 0,
                 "resolved_token_count": 0,
                 "candidate_mention_count": 1,
                 "narrative_count": 0,
@@ -114,8 +105,8 @@ class FakeWatchlistIntelRepository:
 
 
 class FakeRepositoryContext:
-    def __init__(self, watchlist_intel):
-        self.watchlist_intel = watchlist_intel
+    def __init__(self, watchlist):
+        self.watchlist = watchlist
 
     def __enter__(self):
         return self
@@ -125,18 +116,18 @@ class FakeRepositoryContext:
 
 
 class FakeRuntime:
-    def __init__(self, watchlist_intel):
+    def __init__(self, watchlist):
         self.settings = Settings(ws_token="secret", handles=("toly",))
-        self._watchlist_intel = watchlist_intel
+        self._watchlist = watchlist
 
     def repositories(self):
-        return FakeRepositoryContext(self._watchlist_intel)
+        return FakeRepositoryContext(self._watchlist)
 
 
-def _app(watchlist_intel):
+def _app(watchlist):
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
     app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
-    app.state.service = FakeRuntime(watchlist_intel)
+    app.state.service = FakeRuntime(watchlist)
     return app

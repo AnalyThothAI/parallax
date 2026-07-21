@@ -4,8 +4,8 @@ import asyncio
 from types import SimpleNamespace
 from typing import Any
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -54,7 +54,6 @@ def test_worker_base_single_writer_uses_real_postgres_advisory_lock(tmp_path) ->
         settings = SimpleNamespace(
             enabled=True,
             interval_seconds=0.01,
-            soft_timeout_seconds=1,
             hard_timeout_seconds=2,
             advisory_lock_key=LOCK_KEY,
         )

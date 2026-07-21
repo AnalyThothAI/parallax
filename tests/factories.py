@@ -113,7 +113,8 @@ def open_runtime(tmp_path):
         market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
         enriched_events=repos.enriched_events,
         event_anchor_jobs=repos.event_anchor_jobs,
-        token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
+        token_radar_dirty_targets=repos.token_radar_dirty_targets,
+        transaction=repos.transaction,
         event_anchor_active_window_ms=300_000,
     )
     return conn, ingest, repos.signals, repos.registry

@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from parallax.platform.validation import require_nonnegative_int
 
 
 class TokenTargetRepository:
@@ -143,7 +144,7 @@ class TokenTargetRepository:
         limit: int,
         cursor: tuple[int, str] | None = None,
     ) -> list[dict[str, Any]]:
-        row_limit = _required_nonnegative_int(limit, "token_target_repository_limit_required")
+        row_limit = require_nonnegative_int(limit, error_code="token_target_repository_limit_required")
         clauses = [
             "tir.target_type = %s",
             "tir.target_id = %s",
@@ -292,7 +293,7 @@ class TokenTargetRepository:
         watched_only: bool,
         limit: int,
     ) -> list[dict[str, Any]]:
-        row_limit = _required_nonnegative_int(limit, "token_target_repository_limit_required")
+        row_limit = require_nonnegative_int(limit, error_code="token_target_repository_limit_required")
         source_event_ids = [str(event_id).strip() for event_id in event_ids if str(event_id or "").strip()]
         if not source_event_ids or row_limit <= 0:
             return []
@@ -471,11 +472,3 @@ def _target_identity_payload(*, target_type: str, row: Any) -> dict[str, Any] | 
         "quote_symbol": row_dict.get("quote_symbol"),
         "feed_type": row_dict.get("feed_type"),
     }
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)

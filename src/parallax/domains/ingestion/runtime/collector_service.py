@@ -7,8 +7,6 @@ from typing import Any
 
 from loguru import logger
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.ingestion.providers import (
     EventPublisherProtocol,
     IngestStoreProtocol,
@@ -16,6 +14,8 @@ from parallax.domains.ingestion.providers import (
 )
 from parallax.domains.ingestion.services.normalizer import normalize_gmgn_payload, parse_gmgn_frame
 from parallax.domains.ingestion.services.subscriptions import event_matches_handles, normalize_handles
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 @dataclass(slots=True)

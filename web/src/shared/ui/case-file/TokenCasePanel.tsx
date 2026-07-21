@@ -5,7 +5,6 @@ import type {
   TokenCaseWindow,
 } from "@shared/model/tokenCaseViewModel";
 
-import { TokenCaseCexDetailRail } from "./TokenCaseCexDetailRail";
 import { TokenCaseDataGapsRail } from "./TokenCaseDataGapsRail";
 import { TokenCaseHero } from "./TokenCaseHero";
 import styles from "./TokenCasePanel.module.css";
@@ -46,7 +45,6 @@ export function TokenCasePanel({
           />
         </div>
         <div className={styles.sideRail} aria-label="Token case side rail">
-          {vm.cexDetail ? <TokenCaseCexDetailRail cexDetail={vm.cexDetail} /> : null}
           <TokenCaseDataGapsRail dataGaps={vm.dataGaps} />
         </div>
       </div>

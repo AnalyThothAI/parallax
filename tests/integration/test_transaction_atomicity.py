@@ -27,7 +27,7 @@ def _worker_pool_bundle(pool: Any) -> DBPoolBundle:
     )
 
 
-def test_worker_transaction_rolls_back_all_statements() -> None:
+def test_worker_session_explicit_transaction_rolls_back_all_statements() -> None:
     setup_conn = connect_postgres_test(read_only=False)
     pool = create_pool(
         postgres_test_dsn(),
@@ -50,7 +50,11 @@ def test_worker_transaction_rolls_back_all_statements() -> None:
         setup_conn.commit()
         bundle = _worker_pool_bundle(pool)
 
-        with pytest.raises(RuntimeError, match="boom"), bundle.worker_transaction("atomicity_probe") as repos:
+        with (
+            pytest.raises(RuntimeError, match="boom"),
+            bundle.worker_session("atomicity_probe") as repos,
+            repos.transaction(),
+        ):
             repos.conn.execute(
                 "INSERT INTO transaction_atomicity_probe (id, label) VALUES (%s, %s)",
                 ("first", "inside"),
@@ -93,7 +97,7 @@ def test_require_transaction_rejects_fake_connections_without_psycopg_info() -> 
         postgres_client.require_transaction(object(), operation="fake_write")
 
 
-def test_repository_session_transaction_alias_uses_unit_of_work() -> None:
+def test_repository_session_transaction_owns_database_transaction() -> None:
     conn = FakeTransactionConnection()
     repos = repositories_for_connection(
         conn,
@@ -133,7 +137,8 @@ def test_market_tick_persistence_rolls_back_tick_and_dirty_target_after_enqueue(
         bundle = _worker_pool_bundle(pool)
         with (
             pytest.raises(RuntimeError, match="fail_after_ticks_for_test"),
-            bundle.worker_transaction("market_tick_atomicity") as repos,
+            bundle.worker_session("market_tick_atomicity") as repos,
+            repos.transaction(),
         ):
             dirty_recorder = DirtyTargetRecorder(repos.market_tick_current_dirty_targets)
             service = MarketTickPersistenceService(
@@ -156,7 +161,6 @@ def test_market_tick_persistence_rolls_back_tick_and_dirty_target_after_enqueue(
                 "targets": [(tick.target_type, tick.target_id)],
                 "reason": "test_atomicity",
                 "now_ms": now_ms,
-                "commit": False,
             }
         ]
 
@@ -209,17 +213,16 @@ class DirtyTargetRecorder:
         self.delegate = delegate
         self.calls: list[dict[str, Any]] = []
 
-    def enqueue_targets(self, targets: Any, *, reason: str, now_ms: int, commit: bool) -> int:
+    def enqueue_targets(self, targets: Any, *, reason: str, now_ms: int) -> int:
         materialized = list(targets)
         self.calls.append(
             {
                 "targets": materialized,
                 "reason": reason,
                 "now_ms": now_ms,
-                "commit": commit,
             }
         )
-        return self.delegate.enqueue_targets(materialized, reason=reason, now_ms=now_ms, commit=commit)
+        return self.delegate.enqueue_targets(materialized, reason=reason, now_ms=now_ms)
 
 
 def _delete_market_tick_target(conn: Any, tick: MarketTick) -> None:

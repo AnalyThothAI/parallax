@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from typing import Any
 
 from parallax.domains.asset_market.types import EnrichedEventCapture
 from parallax.platform.db.queue_terminal import terminalize_source_row
+from parallax.platform.db.write_contract import expect_mutation_count, returning_mutation_count
+from parallax.platform.validation import require_nonnegative_int, require_positive_int
 
 PENDING_CAPTURE_REASON = "pending_backfill"
 
@@ -60,7 +61,7 @@ class EventAnchorBackfillJobRepository:
                 "status": "pending",
                 "next_run_at_ms": capture.created_at_ms,
                 "active_until_ms": capture.created_at_ms
-                + _required_positive_int(
+                + require_positive_int(
                     active_window_ms,
                     error_code="event_anchor_active_window_ms_required",
                 ),
@@ -105,11 +106,11 @@ class EventAnchorBackfillJobRepository:
             {
                 "now_ms": int(now_ms),
                 "ready_before_ms": int(now_ms)
-                - _required_nonnegative_int(min_age_ms, error_code="event_anchor_min_age_ms_required"),
+                - require_nonnegative_int(min_age_ms, error_code="event_anchor_min_age_ms_required"),
                 "lease_owner": _required_text(lease_owner, "lease_owner"),
                 "leased_until_ms": int(now_ms)
-                + _required_positive_int(lease_ms, error_code="event_anchor_lease_ms_required"),
-                "limit": _required_positive_int(limit, error_code="event_anchor_limit_required"),
+                + require_positive_int(lease_ms, error_code="event_anchor_lease_ms_required"),
+                "limit": require_positive_int(limit, error_code="event_anchor_limit_required"),
             },
         )
         return _returning_rows(cursor)
@@ -122,46 +123,45 @@ class EventAnchorBackfillJobRepository:
         max_attempts: int,
         retry_backoff_ms: int,
     ) -> dict[str, Any]:
-        parsed_limit = _required_positive_int(limit, error_code="event_anchor_limit_required")
-        required_max_attempts = _required_positive_int(
+        parsed_limit = require_positive_int(limit, error_code="event_anchor_limit_required")
+        required_max_attempts = require_positive_int(
             max_attempts,
             error_code="event_anchor_max_attempts_required",
         )
-        required_retry_backoff_ms = _required_positive_int(
+        required_retry_backoff_ms = require_positive_int(
             retry_backoff_ms,
             error_code="event_anchor_retry_backoff_ms_required",
         )
-        with _transaction(self._conn):
-            expired_rows = self._terminalize_expired_jobs(limit=parsed_limit, now_ms=now_ms)
-            remaining = max(0, parsed_limit - len(expired_rows))
-            rescheduled_rows = self._reschedule_stale_running_jobs(
-                limit=remaining,
+        expired_rows = self._terminalize_expired_jobs(limit=parsed_limit, now_ms=now_ms)
+        remaining = max(0, parsed_limit - len(expired_rows))
+        rescheduled_rows = self._reschedule_stale_running_jobs(
+            limit=remaining,
+            now_ms=now_ms,
+            max_attempts=required_max_attempts,
+            retry_backoff_ms=required_retry_backoff_ms,
+        )
+        remaining = max(0, remaining - len(rescheduled_rows))
+        failed_rows = self._fail_exhausted_stale_running_jobs(
+            limit=remaining,
+            now_ms=now_ms,
+            max_attempts=required_max_attempts,
+        )
+        for row in expired_rows:
+            _terminalize_event_anchor_row(
+                self._conn,
+                row,
+                status="expired",
+                reason="backfill_expired",
                 now_ms=now_ms,
-                max_attempts=required_max_attempts,
-                retry_backoff_ms=required_retry_backoff_ms,
             )
-            remaining = max(0, remaining - len(rescheduled_rows))
-            failed_rows = self._fail_exhausted_stale_running_jobs(
-                limit=remaining,
+        for row in failed_rows:
+            _terminalize_event_anchor_row(
+                self._conn,
+                row,
+                status="failed",
+                reason="lease_expired_max_attempts",
                 now_ms=now_ms,
-                max_attempts=required_max_attempts,
             )
-            for row in expired_rows:
-                _terminalize_event_anchor_row(
-                    self._conn,
-                    row,
-                    status="expired",
-                    reason="backfill_expired",
-                    now_ms=now_ms,
-                )
-            for row in failed_rows:
-                _terminalize_event_anchor_row(
-                    self._conn,
-                    row,
-                    status="failed",
-                    reason="lease_expired_max_attempts",
-                    now_ms=now_ms,
-                )
         terminal_rows = expired_rows + failed_rows
         return {
             "expired": len(expired_rows),
@@ -202,7 +202,7 @@ class EventAnchorBackfillJobRepository:
             },
         )
         row = cursor.fetchone()
-        return _single_returning_rowcount(cursor, row) == 1
+        return returning_mutation_count(cursor, row, error_code="event_anchor_job_repository_rowcount_invalid") == 1
 
     def mark_terminal(
         self,
@@ -217,37 +217,36 @@ class EventAnchorBackfillJobRepository:
     ) -> bool:
         if status not in {"expired", "failed"}:
             raise ValueError("terminal event-anchor job status must be expired or failed")
-        with _transaction(self._conn):
-            cursor = self._conn.execute(
-                """
-                UPDATE event_anchor_backfill_jobs
-                SET status = %(status)s,
-                    last_reason = %(reason)s,
-                    lease_owner = NULL,
-                    leased_until_ms = NULL,
-                    updated_at_ms = %(now_ms)s
-                WHERE event_id = %(event_id)s
-                  AND intent_id = %(intent_id)s
-                  AND status = 'running'
-                  AND lease_owner = %(lease_owner)s
-                  AND attempt_count = %(attempt_count)s
-                RETURNING *
-                """,
-                {
-                    "event_id": event_id,
-                    "intent_id": intent_id,
-                    "status": status,
-                    "reason": reason,
-                    "now_ms": int(now_ms),
-                    "lease_owner": _required_text(lease_owner, "lease_owner"),
-                    "attempt_count": int(attempt_count),
-                },
-            )
-            row = cursor.fetchone()
-            if _single_returning_rowcount(cursor, row) == 0:
-                return False
-            source_row = dict(row)
-            _terminalize_event_anchor_row(self._conn, source_row, status=status, reason=reason, now_ms=now_ms)
+        cursor = self._conn.execute(
+            """
+            UPDATE event_anchor_backfill_jobs
+            SET status = %(status)s,
+                last_reason = %(reason)s,
+                lease_owner = NULL,
+                leased_until_ms = NULL,
+                updated_at_ms = %(now_ms)s
+            WHERE event_id = %(event_id)s
+              AND intent_id = %(intent_id)s
+              AND status = 'running'
+              AND lease_owner = %(lease_owner)s
+              AND attempt_count = %(attempt_count)s
+            RETURNING *
+            """,
+            {
+                "event_id": event_id,
+                "intent_id": intent_id,
+                "status": status,
+                "reason": reason,
+                "now_ms": int(now_ms),
+                "lease_owner": _required_text(lease_owner, "lease_owner"),
+                "attempt_count": int(attempt_count),
+            },
+        )
+        row = cursor.fetchone()
+        if returning_mutation_count(cursor, row, error_code="event_anchor_job_repository_rowcount_invalid") == 0:
+            return False
+        source_row = dict(row)
+        _terminalize_event_anchor_row(self._conn, source_row, status=status, reason=reason, now_ms=now_ms)
         return True
 
     def retry_terminal_job_from_snapshot(
@@ -265,7 +264,7 @@ class EventAnchorBackfillJobRepository:
         active_until_ms = _optional_int(source_row.get("active_until_ms"))
         if created_at_ms is None or active_until_ms is None:
             raise ValueError("event_anchor_terminal_active_window_required")
-        retry_active_until_ms = int(now_ms) + _required_positive_int(
+        retry_active_until_ms = int(now_ms) + require_positive_int(
             active_until_ms - created_at_ms,
             error_code="event_anchor_terminal_active_window_required",
         )
@@ -294,7 +293,7 @@ class EventAnchorBackfillJobRepository:
             },
         )
         row = cursor.fetchone()
-        if _single_returning_rowcount(cursor, row) == 0:
+        if returning_mutation_count(cursor, row, error_code="event_anchor_job_repository_rowcount_invalid") == 0:
             return None
         return dict(row) if row is not None else None
 
@@ -305,7 +304,7 @@ class EventAnchorBackfillJobRepository:
         now_ms: int,
         execute: bool,
     ) -> dict[str, Any]:
-        parsed_limit = _required_positive_int(limit, error_code="event_anchor_limit_required")
+        parsed_limit = require_positive_int(limit, error_code="event_anchor_limit_required")
         explain = [
             _explain_text(row)
             for row in self._conn.execute(
@@ -386,7 +385,7 @@ class EventAnchorBackfillJobRepository:
               LIMIT %(limit)s
             ) ready
             """,
-            {"limit": _required_positive_int(limit, error_code="event_anchor_limit_required")},
+            {"limit": require_positive_int(limit, error_code="event_anchor_limit_required")},
         ).fetchone()
         return int((row or {}).get("count") or 0)
 
@@ -422,7 +421,7 @@ class EventAnchorBackfillJobRepository:
               AND jobs.intent_id = due.intent_id
             RETURNING jobs.*
             """,
-            {"now_ms": int(now_ms), "limit": _required_positive_int(limit, error_code="event_anchor_limit_required")},
+            {"now_ms": int(now_ms), "limit": require_positive_int(limit, error_code="event_anchor_limit_required")},
         )
         return _returning_rows(cursor)
 
@@ -464,15 +463,15 @@ class EventAnchorBackfillJobRepository:
             {
                 "now_ms": int(now_ms),
                 "next_run_at_ms": int(now_ms)
-                + _required_positive_int(
+                + require_positive_int(
                     retry_backoff_ms,
                     error_code="event_anchor_retry_backoff_ms_required",
                 ),
-                "max_attempts": _required_positive_int(
+                "max_attempts": require_positive_int(
                     max_attempts,
                     error_code="event_anchor_max_attempts_required",
                 ),
-                "limit": _required_positive_int(limit, error_code="event_anchor_limit_required"),
+                "limit": require_positive_int(limit, error_code="event_anchor_limit_required"),
             },
         )
         return _returning_rows(cursor)
@@ -512,11 +511,11 @@ class EventAnchorBackfillJobRepository:
             """,
             {
                 "now_ms": int(now_ms),
-                "max_attempts": _required_positive_int(
+                "max_attempts": require_positive_int(
                     max_attempts,
                     error_code="event_anchor_max_attempts_required",
                 ),
-                "limit": _required_positive_int(limit, error_code="event_anchor_limit_required"),
+                "limit": require_positive_int(limit, error_code="event_anchor_limit_required"),
             },
         )
         return _returning_rows(cursor)
@@ -559,58 +558,18 @@ class EventAnchorBackfillJobRepository:
             },
         )
         row = cursor.fetchone()
-        return _single_returning_rowcount(cursor, row) == 1
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("event_anchor_job_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("event_anchor_job_repository_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("event_anchor_job_repository_rowcount_invalid")
-    return rowcount
-
-
-def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
-    count = _cursor_rowcount(cursor)
-    if count != len(rows):
-        raise TypeError("event_anchor_job_repository_rowcount_invalid")
-    return count
-
-
-def _single_returning_rowcount(cursor: Any, row: Any | None) -> int:
-    count = _cursor_rowcount(cursor)
-    if count not in (0, 1):
-        raise TypeError("event_anchor_job_repository_rowcount_invalid")
-    if count != (1 if row is not None else 0):
-        raise TypeError("event_anchor_job_repository_rowcount_invalid")
-    return count
+        return returning_mutation_count(cursor, row, error_code="event_anchor_job_repository_rowcount_invalid") == 1
 
 
 def _returning_rows(cursor: Any) -> list[dict[str, Any]]:
     rows = cursor.fetchall()
-    _returned_rowcount(cursor, rows)
+    expect_mutation_count(cursor, expected=len(rows), error_code="event_anchor_job_repository_rowcount_invalid")
     return [dict(row) for row in rows]
 
 
 def _optional_int(value: Any) -> int | None:
     if value is None or value == "":
         return None
-    return int(value)
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
     return int(value)
 
 
@@ -633,7 +592,6 @@ def _terminalize_event_anchor_row(
         now_ms=now_ms,
         first_seen_at_ms=_optional_int(row.get("created_at_ms")),
         last_attempted_at_ms=now_ms,
-        commit=False,
     )
 
 
@@ -642,16 +600,6 @@ def _required_text(value: Any, name: str) -> str:
     if not text:
         raise ValueError(f"{name}_required")
     return text
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("event_anchor_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("event_anchor_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
 
 
 def _explain_text(row: Any) -> str:

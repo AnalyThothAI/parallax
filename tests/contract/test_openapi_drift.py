@@ -29,7 +29,7 @@ FRONTEND_CONTRACTS_PATH = ROOT / "web" / "src" / "lib" / "types" / "frontend-con
 @pytest.mark.contract
 def test_openapi_json_matches_committed_artefact(tmp_path: Path) -> None:
     """Regenerate openapi.json into a tmp dir and compare bytes with the committed one."""
-    from parallax.app.runtime.app import create_app
+    from parallax.app.surfaces.api.app import create_app
     from parallax.platform.config.settings import Settings
 
     settings = Settings(ws_token="schema-gen-placeholder")

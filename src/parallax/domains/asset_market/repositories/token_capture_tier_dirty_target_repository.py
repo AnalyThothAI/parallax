@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
-from contextlib import AbstractContextManager
+from collections.abc import Iterable, Mapping
 from decimal import Decimal
-from typing import Any, cast
+from typing import Any
 
 from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 from parallax.platform.db.queue_terminal import terminalize_source_row
+from parallax.platform.db.write_contract import expect_mutation_count, mutation_count
+from parallax.platform.validation import require_nonnegative_int, require_positive_int
 
 
 class TokenCaptureTierDirtyTargetRepository:
@@ -21,7 +22,6 @@ class TokenCaptureTierDirtyTargetRepository:
         exited_rows: Iterable[Mapping[str, Any]] = (),
         now_ms: int,
         source_watermark_ms: int | None = None,
-        commit: bool = True,
     ) -> dict[str, int | str]:
         row_records = list(rows)
         exited_records = list(exited_rows)
@@ -32,71 +32,68 @@ class TokenCaptureTierDirtyTargetRepository:
         )
         max_watermark_ms = _source_watermark_ms(source_watermark_ms)
 
-        def _write() -> dict[str, int | str]:
-            cursor = self.conn.execute(
-                """
-                INSERT INTO token_capture_tier_dirty_targets(
-                  work_name,
-                  partition_key,
-                  dirty_reason,
-                  payload_hash,
-                  source_watermark_ms,
-                  priority,
-                  due_at_ms,
-                  leased_until_ms,
-                  lease_owner,
-                  attempt_count,
-                  last_error,
-                  first_dirty_at_ms,
-                  updated_at_ms
-                )
-                VALUES (
-                  'active_live_market_rank_set',
-                  'global',
-                  %(reason)s,
-                  %(payload_hash)s,
-                  %(source_watermark_ms)s,
-                  50,
-                  %(now_ms)s,
-                  NULL,
-                  NULL,
-                  0,
-                  NULL,
-                  %(now_ms)s,
-                  %(now_ms)s
-                )
-                ON CONFLICT(work_name, partition_key) DO UPDATE SET
-                  dirty_reason = EXCLUDED.dirty_reason,
-                  payload_hash = EXCLUDED.payload_hash,
-                  source_watermark_ms = GREATEST(
-                    token_capture_tier_dirty_targets.source_watermark_ms,
-                    EXCLUDED.source_watermark_ms
-                  ),
-                  priority = LEAST(token_capture_tier_dirty_targets.priority, EXCLUDED.priority),
-                  due_at_ms = LEAST(token_capture_tier_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
-                  leased_until_ms = NULL,
-                  lease_owner = NULL,
-                  attempt_count = CASE
-                    WHEN token_capture_tier_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                    THEN 0
-                    ELSE token_capture_tier_dirty_targets.attempt_count
-                  END,
-                  last_error = NULL,
-                  first_dirty_at_ms = token_capture_tier_dirty_targets.first_dirty_at_ms,
-                  updated_at_ms = EXCLUDED.updated_at_ms
-                WHERE token_capture_tier_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                """,
-                {
-                    "reason": str(reason),
-                    "payload_hash": payload_hash,
-                    "now_ms": int(now_ms),
-                    "source_watermark_ms": int(max_watermark_ms),
-                },
+        cursor = self.conn.execute(
+            """
+            INSERT INTO token_capture_tier_dirty_targets(
+              work_name,
+              partition_key,
+              dirty_reason,
+              payload_hash,
+              source_watermark_ms,
+              priority,
+              due_at_ms,
+              leased_until_ms,
+              lease_owner,
+              attempt_count,
+              last_error,
+              first_dirty_at_ms,
+              updated_at_ms
             )
-            changed = _cursor_rowcount(cursor)
-            return {"targets": changed, "payload_hash": payload_hash}
-
-        return _run_repository_write(self.conn, commit, _write)
+            VALUES (
+              'active_live_market_rank_set',
+              'global',
+              %(reason)s,
+              %(payload_hash)s,
+              %(source_watermark_ms)s,
+              50,
+              %(now_ms)s,
+              NULL,
+              NULL,
+              0,
+              NULL,
+              %(now_ms)s,
+              %(now_ms)s
+            )
+            ON CONFLICT(work_name, partition_key) DO UPDATE SET
+              dirty_reason = EXCLUDED.dirty_reason,
+              payload_hash = EXCLUDED.payload_hash,
+              source_watermark_ms = GREATEST(
+                token_capture_tier_dirty_targets.source_watermark_ms,
+                EXCLUDED.source_watermark_ms
+              ),
+              priority = LEAST(token_capture_tier_dirty_targets.priority, EXCLUDED.priority),
+              due_at_ms = LEAST(token_capture_tier_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+              leased_until_ms = NULL,
+              lease_owner = NULL,
+              attempt_count = CASE
+                WHEN token_capture_tier_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                THEN 0
+                ELSE token_capture_tier_dirty_targets.attempt_count
+              END,
+              last_error = NULL,
+              first_dirty_at_ms = token_capture_tier_dirty_targets.first_dirty_at_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            WHERE token_capture_tier_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+            """,
+            {
+                "reason": str(reason),
+                "payload_hash": payload_hash,
+                "now_ms": int(now_ms),
+                "source_watermark_ms": int(max_watermark_ms),
+            },
+        )
+        changed = mutation_count(cursor, error_code="token_capture_tier_dirty_target_rowcount_invalid")
+        return {"targets": changed, "payload_hash": payload_hash}
 
     def claim_due(
         self,
@@ -105,84 +102,77 @@ class TokenCaptureTierDirtyTargetRepository:
         limit: int,
         lease_owner: str,
         lease_ms: int,
-        commit: bool = True,
     ) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(
+        parsed_limit = require_nonnegative_int(
             limit,
-            "token_capture_tier_dirty_target_claim_limit_required",
+            error_code="token_capture_tier_dirty_target_claim_limit_required",
         )
-        parsed_lease_ms = _required_positive_int(
+        parsed_lease_ms = require_positive_int(
             lease_ms,
-            "token_capture_tier_dirty_target_claim_lease_ms_required",
+            error_code="token_capture_tier_dirty_target_claim_lease_ms_required",
         )
 
-        def _write() -> list[dict[str, Any]]:
-            cursor = self.conn.execute(
-                """
-                WITH due AS (
-                  SELECT work_name, partition_key
-                  FROM token_capture_tier_dirty_targets
-                  WHERE due_at_ms <= %(now_ms)s
-                    AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
-                  ORDER BY priority ASC, due_at_ms ASC, updated_at_ms ASC, work_name ASC, partition_key ASC
-                  LIMIT %(limit)s
-                  FOR UPDATE SKIP LOCKED
-                )
-                UPDATE token_capture_tier_dirty_targets
-                SET leased_until_ms = %(leased_until_ms)s,
-                    lease_owner = %(lease_owner)s,
-                    attempt_count = token_capture_tier_dirty_targets.attempt_count + 1,
-                    last_error = NULL,
-                    updated_at_ms = %(now_ms)s
-                FROM due
-                WHERE token_capture_tier_dirty_targets.work_name = due.work_name
-                  AND token_capture_tier_dirty_targets.partition_key = due.partition_key
-                RETURNING token_capture_tier_dirty_targets.*
-                """,
-                {
-                    "now_ms": int(now_ms),
-                    "leased_until_ms": int(now_ms) + parsed_lease_ms,
-                    "lease_owner": str(lease_owner),
-                    "limit": parsed_limit,
-                },
+        cursor = self.conn.execute(
+            """
+            WITH due AS (
+              SELECT work_name, partition_key
+              FROM token_capture_tier_dirty_targets
+              WHERE due_at_ms <= %(now_ms)s
+                AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
+              ORDER BY priority ASC, due_at_ms ASC, updated_at_ms ASC, work_name ASC, partition_key ASC
+              LIMIT %(limit)s
+              FOR UPDATE SKIP LOCKED
             )
-            rows = cursor.fetchall()
-            _returned_rowcount(cursor, rows)
-            return [dict(row) for row in rows]
+            UPDATE token_capture_tier_dirty_targets
+            SET leased_until_ms = %(leased_until_ms)s,
+                lease_owner = %(lease_owner)s,
+                attempt_count = token_capture_tier_dirty_targets.attempt_count + 1,
+                last_error = NULL,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            WHERE token_capture_tier_dirty_targets.work_name = due.work_name
+              AND token_capture_tier_dirty_targets.partition_key = due.partition_key
+            RETURNING token_capture_tier_dirty_targets.*
+            """,
+            {
+                "now_ms": int(now_ms),
+                "leased_until_ms": int(now_ms) + parsed_lease_ms,
+                "lease_owner": str(lease_owner),
+                "limit": parsed_limit,
+            },
+        )
+        rows = cursor.fetchall()
+        expect_mutation_count(cursor, expected=len(rows), error_code="token_capture_tier_dirty_target_rowcount_invalid")
+        return [dict(row) for row in rows]
 
-        return _run_repository_write(self.conn, commit, _write)
-
-    def mark_done(self, claims: Iterable[Mapping[str, Any]], *, now_ms: int, commit: bool = True) -> int:
+    def mark_done(self, claims: Iterable[Mapping[str, Any]], *, now_ms: int) -> int:
         records = _claim_records(claims)
         if not records:
             return 0
 
-        def _write() -> int:
-            cursor = self.conn.execute(
-                """
-                WITH done AS (
-                  SELECT *
-                  FROM unnest(
-                    %(work_names)s::text[],
-                    %(partition_keys)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(lease_owners)s::text[],
-                    %(attempt_counts)s::bigint[]
-                  ) AS done(work_name, partition_key, payload_hash, lease_owner, attempt_count)
-                )
-                DELETE FROM token_capture_tier_dirty_targets queue
-                USING done
-                WHERE queue.work_name = done.work_name
-                  AND queue.partition_key = done.partition_key
-                  AND queue.payload_hash = done.payload_hash
-                  AND queue.lease_owner = done.lease_owner
-                  AND queue.attempt_count = done.attempt_count
-                """,
-                _claim_params(records),
+        cursor = self.conn.execute(
+            """
+            WITH done AS (
+              SELECT *
+              FROM unnest(
+                %(work_names)s::text[],
+                %(partition_keys)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS done(work_name, partition_key, payload_hash, lease_owner, attempt_count)
             )
-            return _cursor_rowcount(cursor)
-
-        return _run_repository_write(self.conn, commit, _write)
+            DELETE FROM token_capture_tier_dirty_targets queue
+            USING done
+            WHERE queue.work_name = done.work_name
+              AND queue.partition_key = done.partition_key
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            """,
+            _claim_params(records),
+        )
+        return mutation_count(cursor, error_code="token_capture_tier_dirty_target_rowcount_invalid")
 
     def mark_error(
         self,
@@ -193,81 +183,76 @@ class TokenCaptureTierDirtyTargetRepository:
         max_attempts: int,
         worker_name: str,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
         records = _claim_records(claims)
         if not records:
             return 0
-        parsed_retry_ms = _required_positive_int(
+        parsed_retry_ms = require_positive_int(
             retry_ms,
-            "token_capture_tier_dirty_target_retry_ms_required",
+            error_code="token_capture_tier_dirty_target_retry_ms_required",
         )
-        parsed_max_attempts = _required_positive_int(
+        parsed_max_attempts = require_positive_int(
             max_attempts,
-            "token_capture_tier_dirty_target_max_attempts_required",
+            error_code="token_capture_tier_dirty_target_max_attempts_required",
         )
         parsed_worker_name = _required_text(worker_name, "token_capture_tier_dirty_target_worker_name_required")
         retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
         exhausted_records = [record for record in records if int(record["attempt_count"]) >= parsed_max_attempts]
 
-        def _write() -> int:
-            changed = 0
-            if retry_records:
-                cursor = self.conn.execute(
-                    """
-                    WITH failed AS (
-                      SELECT *
-                      FROM unnest(
-                        %(work_names)s::text[],
-                        %(partition_keys)s::text[],
-                        %(payload_hashes)s::text[],
-                        %(lease_owners)s::text[],
-                        %(attempt_counts)s::bigint[]
-                      ) AS failed(work_name, partition_key, payload_hash, lease_owner, attempt_count)
-                    )
-                    UPDATE token_capture_tier_dirty_targets queue
-                    SET due_at_ms = %(due_at_ms)s,
-                        leased_until_ms = NULL,
-                        lease_owner = NULL,
-                        last_error = %(last_error)s,
-                        updated_at_ms = %(now_ms)s
-                    FROM failed
-                    WHERE queue.work_name = failed.work_name
-                      AND queue.partition_key = failed.partition_key
-                      AND queue.payload_hash = failed.payload_hash
-                      AND queue.lease_owner = failed.lease_owner
-                      AND queue.attempt_count = failed.attempt_count
-                    """,
-                    {
-                        **_claim_params(retry_records),
-                        "due_at_ms": int(now_ms) + parsed_retry_ms,
-                        "now_ms": int(now_ms),
-                        "last_error": str(error)[:2048],
-                    },
+        changed = 0
+        if retry_records:
+            cursor = self.conn.execute(
+                """
+                WITH failed AS (
+                  SELECT *
+                  FROM unnest(
+                    %(work_names)s::text[],
+                    %(partition_keys)s::text[],
+                    %(payload_hashes)s::text[],
+                    %(lease_owners)s::text[],
+                    %(attempt_counts)s::bigint[]
+                  ) AS failed(work_name, partition_key, payload_hash, lease_owner, attempt_count)
                 )
-                changed += _cursor_rowcount(cursor)
-            if exhausted_records:
-                deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
-                changed += deleted_count
-                for row in deleted_rows:
-                    terminalize_source_row(
-                        self.conn,
-                        worker_name=parsed_worker_name,
-                        source_table="token_capture_tier_dirty_targets",
-                        target_key=f"{row['work_name']}:{row['partition_key']}",
-                        source_row=row,
-                        final_status="terminal",
-                        final_reason=f"retry_budget_exhausted:{str(error)[:512]}",
-                        now_ms=int(now_ms),
-                        attempt_count=int(row["attempt_count"]),
-                        payload_hash=str(row["payload_hash"]),
-                        first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
-                        last_attempted_at_ms=int(now_ms),
-                        commit=False,
-                    )
-            return changed
-
-        return _run_repository_write(self.conn, commit, _write)
+                UPDATE token_capture_tier_dirty_targets queue
+                SET due_at_ms = %(due_at_ms)s,
+                    leased_until_ms = NULL,
+                    lease_owner = NULL,
+                    last_error = %(last_error)s,
+                    updated_at_ms = %(now_ms)s
+                FROM failed
+                WHERE queue.work_name = failed.work_name
+                  AND queue.partition_key = failed.partition_key
+                  AND queue.payload_hash = failed.payload_hash
+                  AND queue.lease_owner = failed.lease_owner
+                  AND queue.attempt_count = failed.attempt_count
+                """,
+                {
+                    **_claim_params(retry_records),
+                    "due_at_ms": int(now_ms) + parsed_retry_ms,
+                    "now_ms": int(now_ms),
+                    "last_error": str(error)[:2048],
+                },
+            )
+            changed += mutation_count(cursor, error_code="token_capture_tier_dirty_target_rowcount_invalid")
+        if exhausted_records:
+            deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
+            changed += deleted_count
+            for row in deleted_rows:
+                terminalize_source_row(
+                    self.conn,
+                    worker_name=parsed_worker_name,
+                    source_table="token_capture_tier_dirty_targets",
+                    target_key=f"{row['work_name']}:{row['partition_key']}",
+                    source_row=row,
+                    final_status="terminal",
+                    final_reason=f"retry_budget_exhausted:{str(error)[:512]}",
+                    now_ms=int(now_ms),
+                    attempt_count=int(row["attempt_count"]),
+                    payload_hash=str(row["payload_hash"]),
+                    first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
+                    last_attempted_at_ms=int(now_ms),
+                )
+        return changed
 
     def _delete_claims_returning(
         self,
@@ -297,7 +282,11 @@ class TokenCaptureTierDirtyTargetRepository:
             _claim_params(records),
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows], _returned_rowcount(cursor, rows)
+        return [dict(row) for row in rows], expect_mutation_count(
+            cursor,
+            expected=len(rows),
+            error_code="token_capture_tier_dirty_target_rowcount_invalid",
+        )
 
     def queue_depth(self, *, now_ms: int) -> int:
         row = self.conn.execute(
@@ -310,23 +299,6 @@ class TokenCaptureTierDirtyTargetRepository:
             {"now_ms": int(now_ms)},
         ).fetchone()
         return int(row["count"] if row else 0)
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("token_capture_tier_dirty_target_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("token_capture_tier_dirty_target_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()
 
 
 def _claim_records(claims: Iterable[Mapping[str, Any]]) -> list[dict[str, str | int]]:
@@ -368,29 +340,10 @@ def _completion_attempt_count(claim: Mapping[str, Any]) -> int:
         value = claim["attempt_count"]
     except KeyError as exc:
         raise ValueError("token capture tier dirty target completion requires attempt_count from claim_due") from exc
-    return _required_positive_int(
+    return require_positive_int(
         value,
-        "token capture tier dirty target completion requires attempt_count from claim_due",
+        error_code="token capture tier dirty target completion requires attempt_count from claim_due",
     )
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("token_capture_tier_dirty_target_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("token_capture_tier_dirty_target_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("token_capture_tier_dirty_target_rowcount_invalid")
-    return int(rowcount)
-
-
-def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount != len(rows):
-        raise TypeError("token_capture_tier_dirty_target_rowcount_invalid")
-    return rowcount
 
 
 def _source_watermark_ms(value: Any) -> int:
@@ -398,12 +351,6 @@ def _source_watermark_ms(value: Any) -> int:
         raise ValueError("token_capture_tier_dirty_target_source_watermark_required")
     if value <= 0:
         raise ValueError("token_capture_tier_dirty_target_source_watermark_required")
-    return int(value)
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
     return int(value)
 
 
@@ -416,12 +363,6 @@ def _required_text(value: Any, error_code: str) -> str:
 
 def _optional_int(value: Any) -> int | None:
     return None if value is None else int(value)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def token_capture_tier_rank_set_payload_hash(

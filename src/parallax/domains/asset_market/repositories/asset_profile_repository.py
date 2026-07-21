@@ -1,9 +1,7 @@
 from __future__ import annotations
 
 import time
-from collections.abc import Callable
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from typing import Any
 
 from psycopg.types.json import Jsonb
 
@@ -38,64 +36,60 @@ class AssetProfileRepository:
         raw_payload: dict[str, Any] | None,
         observed_at_ms: int,
         next_refresh_at_ms: int,
-        commit: bool = True,
     ) -> None:
         updated_at_ms = int(observed_at_ms)
 
-        def _write() -> None:
-            self.conn.execute(
-                """
-                INSERT INTO asset_profiles(
-                  asset_id, provider, status, symbol, name, logo_url, banner_url, website_url,
-                  twitter_username, twitter_url, telegram_url, gmgn_url, geckoterminal_url,
-                  description, raw_payload_json, observed_at_ms, next_refresh_at_ms, last_error,
-                  created_at_ms, updated_at_ms
-                )
-                VALUES (
-                  %s, %s, 'ready', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s, %s
-                )
-                ON CONFLICT(asset_id, provider) DO UPDATE SET
-                  status = 'ready',
-                  symbol = excluded.symbol,
-                  name = excluded.name,
-                  logo_url = excluded.logo_url,
-                  banner_url = excluded.banner_url,
-                  website_url = excluded.website_url,
-                  twitter_username = excluded.twitter_username,
-                  twitter_url = excluded.twitter_url,
-                  telegram_url = excluded.telegram_url,
-                  gmgn_url = excluded.gmgn_url,
-                  geckoterminal_url = excluded.geckoterminal_url,
-                  description = excluded.description,
-                  raw_payload_json = excluded.raw_payload_json,
-                  observed_at_ms = excluded.observed_at_ms,
-                  next_refresh_at_ms = excluded.next_refresh_at_ms,
-                  last_error = NULL,
-                  updated_at_ms = excluded.updated_at_ms
-                """,
-                (
-                    asset_id,
-                    _required_text(provider),
-                    _optional_text(symbol),
-                    _optional_text(name),
-                    _optional_text(logo_url),
-                    _optional_text(banner_url),
-                    _optional_text(website_url),
-                    _optional_text(twitter_username),
-                    _optional_text(twitter_url),
-                    _optional_text(telegram_url),
-                    _optional_text(gmgn_url),
-                    _optional_text(geckoterminal_url),
-                    _optional_text(description),
-                    Jsonb(_sanitize_json(raw_payload or {})),
-                    int(observed_at_ms),
-                    int(next_refresh_at_ms),
-                    updated_at_ms,
-                    updated_at_ms,
-                ),
+        self.conn.execute(
+            """
+            INSERT INTO asset_profiles(
+              asset_id, provider, status, symbol, name, logo_url, banner_url, website_url,
+              twitter_username, twitter_url, telegram_url, gmgn_url, geckoterminal_url,
+              description, raw_payload_json, observed_at_ms, next_refresh_at_ms, last_error,
+              created_at_ms, updated_at_ms
             )
-
-        _run_repository_write(self.conn, commit, _write)
+            VALUES (
+              %s, %s, 'ready', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, NULL, %s, %s
+            )
+            ON CONFLICT(asset_id, provider) DO UPDATE SET
+              status = 'ready',
+              symbol = excluded.symbol,
+              name = excluded.name,
+              logo_url = excluded.logo_url,
+              banner_url = excluded.banner_url,
+              website_url = excluded.website_url,
+              twitter_username = excluded.twitter_username,
+              twitter_url = excluded.twitter_url,
+              telegram_url = excluded.telegram_url,
+              gmgn_url = excluded.gmgn_url,
+              geckoterminal_url = excluded.geckoterminal_url,
+              description = excluded.description,
+              raw_payload_json = excluded.raw_payload_json,
+              observed_at_ms = excluded.observed_at_ms,
+              next_refresh_at_ms = excluded.next_refresh_at_ms,
+              last_error = NULL,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            (
+                asset_id,
+                _required_text(provider),
+                _optional_text(symbol),
+                _optional_text(name),
+                _optional_text(logo_url),
+                _optional_text(banner_url),
+                _optional_text(website_url),
+                _optional_text(twitter_username),
+                _optional_text(twitter_url),
+                _optional_text(telegram_url),
+                _optional_text(gmgn_url),
+                _optional_text(geckoterminal_url),
+                _optional_text(description),
+                Jsonb(_sanitize_json(raw_payload or {})),
+                int(observed_at_ms),
+                int(next_refresh_at_ms),
+                updated_at_ms,
+                updated_at_ms,
+            ),
+        )
 
     def upsert_status(
         self,
@@ -107,59 +101,55 @@ class AssetProfileRepository:
         next_refresh_at_ms: int,
         last_error: str | None,
         raw_payload: dict[str, Any] | None = None,
-        commit: bool = True,
     ) -> None:
         normalized_status = str(status or "").strip().lower()
         if normalized_status not in _NON_READY_STATUSES:
             raise ValueError("asset profile status upsert requires a non-ready status")
         updated_at_ms = int(observed_at_ms) if observed_at_ms is not None else _now_ms()
 
-        def _write() -> None:
-            self.conn.execute(
-                """
-                INSERT INTO asset_profiles(
-                  asset_id, provider, status, symbol, name, logo_url, banner_url, website_url,
-                  twitter_username, twitter_url, telegram_url, gmgn_url, geckoterminal_url,
-                  description, raw_payload_json, observed_at_ms, next_refresh_at_ms, last_error,
-                  created_at_ms, updated_at_ms
-                )
-                VALUES (
-                  %s, %s, %s, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, %s,
-                  %s, %s, %s, %s, %s
-                )
-                ON CONFLICT(asset_id, provider) DO UPDATE SET
-                  status = excluded.status,
-                  symbol = NULL,
-                  name = NULL,
-                  logo_url = NULL,
-                  banner_url = NULL,
-                  website_url = NULL,
-                  twitter_username = NULL,
-                  twitter_url = NULL,
-                  telegram_url = NULL,
-                  gmgn_url = NULL,
-                  geckoterminal_url = NULL,
-                  description = NULL,
-                  raw_payload_json = excluded.raw_payload_json,
-                  observed_at_ms = excluded.observed_at_ms,
-                  next_refresh_at_ms = excluded.next_refresh_at_ms,
-                  last_error = excluded.last_error,
-                  updated_at_ms = excluded.updated_at_ms
-                """,
-                (
-                    asset_id,
-                    _required_text(provider),
-                    normalized_status,
-                    Jsonb(_sanitize_json(raw_payload or {})),
-                    int(observed_at_ms) if observed_at_ms is not None else None,
-                    int(next_refresh_at_ms),
-                    _optional_text(last_error),
-                    updated_at_ms,
-                    updated_at_ms,
-                ),
+        self.conn.execute(
+            """
+            INSERT INTO asset_profiles(
+              asset_id, provider, status, symbol, name, logo_url, banner_url, website_url,
+              twitter_username, twitter_url, telegram_url, gmgn_url, geckoterminal_url,
+              description, raw_payload_json, observed_at_ms, next_refresh_at_ms, last_error,
+              created_at_ms, updated_at_ms
             )
-
-        _run_repository_write(self.conn, commit, _write)
+            VALUES (
+              %s, %s, %s, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, NULL, %s,
+              %s, %s, %s, %s, %s
+            )
+            ON CONFLICT(asset_id, provider) DO UPDATE SET
+              status = excluded.status,
+              symbol = NULL,
+              name = NULL,
+              logo_url = NULL,
+              banner_url = NULL,
+              website_url = NULL,
+              twitter_username = NULL,
+              twitter_url = NULL,
+              telegram_url = NULL,
+              gmgn_url = NULL,
+              geckoterminal_url = NULL,
+              description = NULL,
+              raw_payload_json = excluded.raw_payload_json,
+              observed_at_ms = excluded.observed_at_ms,
+              next_refresh_at_ms = excluded.next_refresh_at_ms,
+              last_error = excluded.last_error,
+              updated_at_ms = excluded.updated_at_ms
+            """,
+            (
+                asset_id,
+                _required_text(provider),
+                normalized_status,
+                Jsonb(_sanitize_json(raw_payload or {})),
+                int(observed_at_ms) if observed_at_ms is not None else None,
+                int(next_refresh_at_ms),
+                _optional_text(last_error),
+                updated_at_ms,
+                updated_at_ms,
+            ),
+        )
 
     def profiles_for_asset_ids(
         self,
@@ -200,20 +190,3 @@ def _sanitize_json(value: Any) -> Any:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("asset_profile_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("asset_profile_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()

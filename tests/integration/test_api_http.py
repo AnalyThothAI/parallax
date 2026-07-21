@@ -7,10 +7,9 @@ from hashlib import sha256
 
 from fastapi.testclient import TestClient
 
-from parallax.app.runtime.app import create_app
 from parallax.app.runtime.worker_manifest import all_worker_manifests
+from parallax.app.surfaces.api.app import create_app
 from parallax.app.surfaces.api.responses import _json
-from parallax.domains.account_quality.repositories.account_quality_repository import AccountQualityRepository
 from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
 from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from parallax.platform.config.settings import Settings
@@ -292,7 +291,7 @@ def make_token_event(
 
 
 def rebuild_token_radar(client: TestClient, *, now_ms: int | None = None) -> None:
-    worker_entry = client.app.state.service.workers["token_radar_projection"]
+    worker_entry = client.app.state.service.scheduler.workers["token_radar_projection"]
     worker = getattr(worker_entry, "worker", worker_entry)
     assert worker is not None
     deadline = time.monotonic() + 10.0
@@ -334,16 +333,9 @@ def _token_radar_dirty_queue_counts(client: TestClient) -> tuple[int, int]:
         row = conn.execute(
             """
             SELECT
-              (
-                SELECT COUNT(*) FROM token_radar_source_dirty_events
-              ) + (
-                SELECT COUNT(*) FROM token_radar_dirty_targets
-              ) AS pending,
-              (
-                SELECT COUNT(*) FROM token_radar_source_dirty_events WHERE lease_owner IS NOT NULL
-              ) + (
-                SELECT COUNT(*) FROM token_radar_dirty_targets WHERE lease_owner IS NOT NULL
-              ) AS leased
+              COUNT(*) AS pending,
+              COUNT(*) FILTER (WHERE lease_owner IS NOT NULL) AS leased
+            FROM token_radar_dirty_targets
             """
         ).fetchone()
     return int(row["pending"] or 0), int(row["leased"] or 0)
@@ -545,7 +537,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert account_alerts.json()["data"]["items"][0]["token_resolution_status"] == "EXACT"
 
 
-def test_token_radar_public_payload_excludes_unresolved_source_dirty_rows(tmp_path):
+def test_token_radar_public_payload_excludes_unresolved_rows(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -751,51 +743,52 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
 
     with TestClient(app) as client:
         runtime = client.app.state.service
-        first = runtime.notifications.insert_notification(
-            dedup_key="activity:event-1",
-            rule_id="watched_account_activity",
-            severity="info",
-            title="activity",
-            body="new post",
-            entity_type="account",
-            entity_key="account:toly",
-            author_handle="toly",
-            event_id="event-1",
-            source_table="events",
-            source_id="event-1",
-            occurrence_at_ms=1_700_000_000_000,
-            payload={"event_id": "event-1"},
-            channels=["in_app"],
-        )
-        runtime.notifications.insert_notification(
-            dedup_key="news:pepe",
-            rule_id="news_high_signal",
-            severity="high",
-            title="PEPE news",
-            body="agent news driver",
-            entity_type="token",
-            entity_key="token:eth:pepe",
-            symbol="PEPE",
-            chain="eth",
-            address=PEPE,
-            source_table="news_items",
-            source_id="token:eth:pepe",
-            occurrence_at_ms=1_700_000_060_000,
-            payload={
-                "decision_class": "driver",
-                "agent_run_id": "run-legacy",
-                "artifact_version_hash": "artifact-legacy",
-                "provider_signal": {"score": 95},
-                "agent_brief": {
-                    "status": "ready",
+        with runtime.repositories() as repos, repos.transaction():
+            first = repos.notifications.insert_notification(
+                dedup_key="activity:event-1",
+                rule_id="watched_account_activity",
+                severity="info",
+                title="activity",
+                body="new post",
+                entity_type="account",
+                entity_key="account:toly",
+                author_handle="toly",
+                event_id="event-1",
+                source_table="events",
+                source_id="event-1",
+                occurrence_at_ms=1_700_000_000_000,
+                payload={"event_id": "event-1"},
+                channels=["in_app"],
+            )
+            repos.notifications.insert_notification(
+                dedup_key="news:pepe",
+                rule_id="news_high_signal",
+                severity="high",
+                title="PEPE news",
+                body="agent news driver",
+                entity_type="token",
+                entity_key="token:eth:pepe",
+                symbol="PEPE",
+                chain="eth",
+                address=PEPE,
+                source_table="news_items",
+                source_id="token:eth:pepe",
+                occurrence_at_ms=1_700_000_060_000,
+                payload={
+                    "news_item_id": "news-1",
+                    "representative_news_item_id": "news-1",
+                    "story_key": "story-1",
+                    "decision_class": "driver",
                     "direction": "bullish",
-                    "summary_zh": "Agent news driver.",
-                    "agent_run_id": "run-legacy",
-                    "artifact_version_hash": "artifact-legacy",
+                    "symbols": ["PEPE"],
+                    "semantic_signature": "semantic-1",
+                    "display_title": "PEPE news",
+                    "summary": "Agent news driver.",
+                    "source_domain": "example.test",
+                    "external_push_eligible": False,
                 },
-            },
-            channels=["in_app"],
-        )
+                channels=["in_app"],
+            )
         assert first is not None
 
         headers = {"Authorization": "Bearer secret"}
@@ -813,11 +806,9 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
     assert listed.status_code == 200
     assert listed.json()["data"]["items"][0]["rule_id"] == "news_high_signal"
     assert listed.json()["data"]["items"][0]["payload"]["decision_class"] == "driver"
-    assert "agent_run_id" not in listed.json()["data"]["items"][0]["payload"]
-    assert "artifact_version_hash" not in listed.json()["data"]["items"][0]["payload"]
-    assert "provider_signal" not in listed.json()["data"]["items"][0]["payload"]
-    assert "agent_run_id" not in listed.json()["data"]["items"][0]["payload"]["agent_brief"]
-    assert "artifact_version_hash" not in listed.json()["data"]["items"][0]["payload"]["agent_brief"]
+    assert listed.json()["data"]["items"][0]["payload"]["symbols"] == ["PEPE"]
+    assert "agent_brief" not in listed.json()["data"]["items"][0]["payload"]
+    assert "story" not in listed.json()["data"]["items"][0]["payload"]
     assert listed.json()["data"]["items"][0]["channels"] == ["in_app"]
 
     assert read.status_code == 200
@@ -832,39 +823,40 @@ def test_api_marks_author_notifications_read(tmp_path):
 
     with TestClient(app) as client:
         runtime = client.app.state.service
-        for suffix in ("1", "2"):
-            runtime.notifications.insert_notification(
-                dedup_key=f"activity:toly:{suffix}",
+        with runtime.repositories() as repos, repos.transaction():
+            for suffix in ("1", "2"):
+                repos.notifications.insert_notification(
+                    dedup_key=f"activity:toly:{suffix}",
+                    rule_id="watched_account_activity",
+                    severity="info",
+                    title="activity",
+                    body="new post",
+                    entity_type="account",
+                    entity_key="account:toly",
+                    author_handle="toly",
+                    event_id=f"event-toly-{suffix}",
+                    source_table="events",
+                    source_id=f"event-toly-{suffix}",
+                    occurrence_at_ms=1_700_000_000_000 + int(suffix),
+                    payload={"event_id": f"event-toly-{suffix}"},
+                    channels=["in_app"],
+                )
+            repos.notifications.insert_notification(
+                dedup_key="activity:elon",
                 rule_id="watched_account_activity",
                 severity="info",
                 title="activity",
                 body="new post",
                 entity_type="account",
-                entity_key="account:toly",
-                author_handle="toly",
-                event_id=f"event-toly-{suffix}",
+                entity_key="account:elonmusk",
+                author_handle="elonmusk",
+                event_id="event-elon",
                 source_table="events",
-                source_id=f"event-toly-{suffix}",
-                occurrence_at_ms=1_700_000_000_000 + int(suffix),
-                payload={"event_id": f"event-toly-{suffix}"},
+                source_id="event-elon",
+                occurrence_at_ms=1_700_000_000_010,
+                payload={"event_id": "event-elon"},
                 channels=["in_app"],
             )
-        runtime.notifications.insert_notification(
-            dedup_key="activity:elon",
-            rule_id="watched_account_activity",
-            severity="info",
-            title="activity",
-            body="new post",
-            entity_type="account",
-            entity_key="account:elonmusk",
-            author_handle="elonmusk",
-            event_id="event-elon",
-            source_table="events",
-            source_id="event-elon",
-            occurrence_at_ms=1_700_000_000_010,
-            payload={"event_id": "event-elon"},
-            channels=["in_app"],
-        )
 
         headers = {"Authorization": "Bearer secret"}
         read = client.post("/api/notifications/author/toly/read", headers=headers)
@@ -882,29 +874,30 @@ def test_api_exposes_notification_delivery_audit(tmp_path):
 
     with TestClient(app) as client:
         runtime = client.app.state.service
-        notification = runtime.notifications.insert_notification(
-            dedup_key="news:pepe",
-            rule_id="news_high_signal",
-            severity="high",
-            title="PEPE news",
-            body="agent news driver",
-            entity_type="token",
-            entity_key="token:eth:pepe",
-            symbol="PEPE",
-            source_table="news_items",
-            source_id="token:eth:pepe",
-            occurrence_at_ms=1_700_000_060_000,
-            payload={"decision_class": "driver"},
-            channels=["in_app", "pushdeer"],
-        )
-        assert notification is not None
-        runtime.notifications.enqueue_delivery(
-            notification_id=notification["notification_id"],
-            channel_id="pushdeer",
-            provider="apprise",
-            max_attempts=5,
-            next_run_at_ms=1_700_000_060_000,
-        )
+        with runtime.repositories() as repos, repos.transaction():
+            notification = repos.notifications.insert_notification(
+                dedup_key="news:pepe",
+                rule_id="news_high_signal",
+                severity="high",
+                title="PEPE news",
+                body="agent news driver",
+                entity_type="token",
+                entity_key="token:eth:pepe",
+                symbol="PEPE",
+                source_table="news_items",
+                source_id="token:eth:pepe",
+                occurrence_at_ms=1_700_000_060_000,
+                payload={"decision_class": "driver"},
+                channels=["in_app", "pushdeer"],
+            )
+            assert notification is not None
+            repos.notifications.enqueue_delivery(
+                notification_id=notification["notification_id"],
+                channel_id="pushdeer",
+                provider="apprise",
+                max_attempts=5,
+                next_run_at_ms=1_700_000_060_000,
+            )
 
         response = client.get("/api/notification-deliveries", headers={"Authorization": "Bearer secret"})
 
@@ -1289,7 +1282,7 @@ def test_api_status_exposes_operational_state(tmp_path):
     collector = data["workers"]["collector"]
     assert collector["enabled"] is False
     assert collector["running"] is False
-    assert collector["queue_depth"] is None
+    assert "queue_depth" not in collector
     assert collector["details"]["frames_received"] == 0
     assert collector["details"]["matched_twitter_events"] == 0
     assert collector["details"]["snapshot_gate_outcomes"] == data["snapshot_gate"]
@@ -1342,10 +1335,10 @@ def test_social_events_by_ids_returns_full_records(tmp_path):
     events = response.json()["data"]["events"]
     assert {event["event_id"] for event in events} == set(ids)
     by_handle = {event["author_handle"]: event for event in events}
-    assert by_handle["watched_kol"]["author_watched"] is True
+    assert by_handle["toly"]["author_watched"] is True
     assert by_handle["random_dude"]["author_watched"] is False
-    assert by_handle["watched_kol"]["source_provider"] == "gmgn"
-    assert by_handle["watched_kol"]["channel"] == "twitter_monitor_basic"
+    assert by_handle["toly"]["source_provider"] == "gmgn"
+    assert by_handle["toly"]["channel"] == "twitter_monitor_basic"
 
 
 def test_social_events_by_ids_skips_missing(tmp_path):
@@ -1391,27 +1384,17 @@ def test_social_events_by_ids_requires_ids(tmp_path):
 
 
 def _seed_social_event_batch(app) -> None:
-    with app.state.service.repositories() as repos:
-        account_quality = AccountQualityRepository(repos.conn)
-        account_quality.upsert_profile(
-            handle="watched_kol",
-            first_seen_ms=1_700_000_000_000,
-            latest_seen_ms=1_700_000_100_000,
-            follower_max=12_000,
-            watched_status="watched",
-        )
-        account_quality.upsert_profile(
-            handle="random_dude",
-            first_seen_ms=1_700_000_000_000,
-            latest_seen_ms=1_700_000_100_000,
-            follower_max=200,
-            watched_status="public",
-        )
+    with app.state.service.repositories() as repos, repos.transaction():
         repos.evidence.insert_event(
-            make_event("event-watched", handle="watched_kol", text="$PEPE watched", received_at_ms=1_700_000_000_000),
+            make_event("event-watched", handle="toly", text="$PEPE watched", received_at_ms=1_700_000_000_000),
             is_watched=True,
         )
         repos.evidence.insert_event(
-            make_event("event-public", handle="random_dude", text="$PEPE public", received_at_ms=1_700_000_010_000),
+            make_event(
+                "event-public",
+                handle="random_dude",
+                text="$PEPE public",
+                received_at_ms=1_700_000_010_000,
+            ),
             is_watched=False,
         )

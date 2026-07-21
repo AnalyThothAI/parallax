@@ -7,7 +7,6 @@ import pytest
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
-    macro_series_current_row_payload_hash,
     normalize_macro_date,
 )
 
@@ -66,7 +65,6 @@ def test_macro_observation_fact_payload_hash_ignores_import_runtime_metadata() -
     assert base_hash == macro_observation_fact_payload_hash(
         _observation(
             ingested_at_ms=2,
-            import_run_id="macro-import:runtime",
             sync_run_id="macro-sync:runtime",
             provider_fetch_ts="2026-05-28T01:02:03Z",
             raw_payload_json={
@@ -78,25 +76,3 @@ def test_macro_observation_fact_payload_hash_ignores_import_runtime_metadata() -
     )
     assert base_hash != macro_observation_fact_payload_hash(_observation(value_numeric=3.52))
     assert base_hash.startswith("sha256:")
-
-
-def test_macro_series_current_row_payload_hash_ignores_projection_runtime_metadata() -> None:
-    row = _observation(projection_version="macro_regime_v4", series_rank=1)
-    base_hash = macro_series_current_row_payload_hash(row)
-
-    assert base_hash == macro_series_current_row_payload_hash(
-        row | {"ingested_at_ms": 2, "projected_at_ms": 3, "run_id": "runtime"}
-    )
-    assert base_hash != macro_series_current_row_payload_hash(row | {"series_rank": 2})
-    assert base_hash.startswith("sha256:")
-
-
-def test_macro_series_current_row_payload_hash_rejects_legacy_raw_payload_keys() -> None:
-    row = _observation(
-        projection_version="macro_regime_v4",
-        series_rank=1,
-        raw_payload_json={123: "legacy-key", "value": 3.51},
-    )
-
-    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
-        macro_series_current_row_payload_hash(row)

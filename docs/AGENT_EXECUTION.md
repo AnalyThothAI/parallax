@@ -5,7 +5,7 @@
 Parallax uses the word "agent" in two different ways:
 
 - **development agents**: coding tools that read this repository, write specs/plans/code, run tests, and hand work to subagents.
-- **product LLM agents**: runtime workers that call models to produce bounded semantic outputs for product workflows such as News item/story briefs and Narrative Intelligence.
+- **product LLM agents**: runtime workers that call models to produce bounded semantic outputs. The current production lane is the News story brief.
 
 Do not mix these planes. Development agent traces, chat history, branch summaries, and subagent findings are engineering workflow evidence. They are not Parallax product truth.
 
@@ -44,17 +44,13 @@ workflow name when the constructor argument is omitted, but an explicit blank or
 
 ## Domain-Local Harnesses
 
-Some product agents may prepare bounded input evidence before submitting an
-`AgentStageSpec`. The News item brief lane builds one deterministic packet from
-the current news item, token/entity evidence, fact lanes, provider signal
-evidence, market-scope metadata, and host-computed agent admission/similarity
-context. The News story brief lane builds one deterministic story packet from
-the representative item, bounded member evidence, and the same News-owned
-entity/fact context. Neither path runs a News-local research tool loop or
-database retrieval tools at agent time.
+The News story brief lane prepares one deterministic packet from the
+representative item, bounded member evidence, and News-owned entity/fact
+context before submitting an `AgentStageSpec`. It does not run a News-local
+research tool loop or database retrieval tools at agent time.
 
 Prompt text is part of the execution artefact. The shared gateway hashes
-`AgentStageSpec.instructions`, and the News item brief client includes the
+`AgentStageSpec.instructions`, and the News story brief client includes the
 current News prompt text hash in its artifact version hash. A prompt edit
 therefore changes request audit/freshness even when a version constant was not
 manually bumped.
@@ -69,37 +65,15 @@ rebuildable read models remain truth, and model output becomes product state
 only if the owning domain validation and writer path publishes a derived read
 model.
 
-`NewsItemBriefWorker` remains the only runtime writer for
-`news_item_agent_runs` and `news_item_agent_briefs`. `NewsStoryBriefWorker`
-remains the only runtime writer for `news_story_agent_runs` and
-`news_story_agent_briefs`. Item brief rows are audit/supporting state after the
-story-agent hard cut; public News rows and item detail consume projected
-story-current state. Both workers recheck deterministic market-wide
-`agent_admission` state and `market_scope_json` after claiming work. Admission
-decides whether a brief may execute; dirty-target priority is only a
-deterministic scheduling hint from admission status, material delta, market
-scope, source role, trust tier, and content class. Bounded packet builders keep
-context intentionally narrow so repeated or low-value news does not consume the
-same model budget as fresh material changes.
-Model output budgets live in `workers.agent_runtime` lane policy; the default
-`news.item_brief` and `news.story_brief` lanes cap generated tokens while still
-using the shared gateway audit hash for all request options.
-
-## Read-Only Context Registry
-
-Parallax borrows the useful part of agent harness tool catalogs without adding
-a model-driven tool loop. `src/parallax/platform/agent_read_tools.py` declares
-read-only `ReadOnlySqlAgentTool` metadata over current read models such as
-`news_story_agent_briefs` and `token_radar_current_rows`.
-These tools are not passed to models as callable tools. They are a typed
-catalog for deterministic host-side context assembly, operator inspection, and
-future reviewed retrieval code.
-
-Tool SQL must be a single `SELECT`/`WITH` statement and the manifest must not
-expose raw SQL. Mutating verbs, multiple statements, and writable tool metadata
-fail validation. Product agents may reference tool ids through
-`AgentStageSpec.read_only_tool_refs`, but the owning domain still decides what
-data to load and remains responsible for all product writes.
+`NewsStoryBriefWorker` is the only runtime writer for
+`news_story_agent_runs` and `news_story_agent_briefs`; the retired item-brief
+tables and worker have no compatibility path. The worker rechecks deterministic
+market-wide `agent_admission` state and `market_scope_json` after claiming
+work. Admission decides whether a brief may execute; dirty-target priority is
+only a deterministic scheduling hint. Bounded packet builders keep context
+intentionally narrow so repeated or low-value news does not consume the same
+model budget as fresh material changes. Model output budgets live in the
+`workers.agent_runtime.lanes["news.story_brief"]` policy.
 
 ## Knowledge Catalog
 
@@ -121,10 +95,11 @@ requirement because Parallax models do not execute tools. The runtime does not
 need shell-command guards, tool-permission callbacks, or generic post-tool
 mutation hooks inside `AgentExecutionGateway`.
 
-The justified hooks are typed observer seams that already match the service:
-worker status, queue health, wake hints, agent audit envelopes, telemetry, and
-domain ledgers. New hook-like extension points must be typed, read-only unless
-owned by the domain writer, and testable through the manifest/audit contract.
+The justified observer seams are worker status, wake hints, agent audit
+envelopes, telemetry, and domain ledgers. Queue-depth sampling is an explicit
+operator diagnostic, not a runtime hook or hot status-path dependency. New
+observer seams must be typed, read-only unless owned by the domain writer, and
+testable through the manifest/audit contract.
 
 ## Runtime Flow
 
@@ -175,9 +150,9 @@ No-start backpressure does not claim business work, burn a provider attempt, or 
 Use these checks when editing the product LLM agent plane:
 
 ```bash
-uv run pytest tests/architecture/test_agent_execution_plane_contracts.py
-uv run pytest tests/architecture/test_agent_model_capability_contracts.py
+uv run pytest tests/architecture/test_kiss_runtime_invariants.py
 uv run pytest tests/unit/integrations/model_execution/test_agent_execution_gateway.py
+uv run pytest tests/unit/domains/news_intel/test_news_story_brief_worker.py
 ```
 
 For a domain-specific product LLM agent, also run the affected worker/client unit tests and update the owning domain `ARCHITECTURE.md` when runtime ownership changes.

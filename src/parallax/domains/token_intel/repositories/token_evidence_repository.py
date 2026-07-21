@@ -1,10 +1,11 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Mapping, Sequence
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from collections.abc import Mapping, Sequence
+from typing import Any
 
 from parallax.domains.token_intel.types.token_fact_inputs import TokenEvidenceInput
+from parallax.platform.db.postgres_client import require_transaction
+from parallax.platform.db.write_contract import expect_mutation_count, mutation_count
 
 TokenEvidenceWriteInput = TokenEvidenceInput | Mapping[str, Any]
 
@@ -13,51 +14,48 @@ class TokenEvidenceRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def insert_many(self, evidence: Sequence[TokenEvidenceWriteInput], *, commit: bool = True) -> list[dict[str, Any]]:
-        def _write() -> list[dict[str, Any]]:
-            return [self.insert(item, commit=False) for item in evidence]
+    def insert_many(self, evidence: Sequence[TokenEvidenceWriteInput]) -> list[dict[str, Any]]:
+        require_transaction(self.conn, operation="insert_token_evidence_batch")
+        return [self.insert(item) for item in evidence]
 
-        return _run_repository_write(self.conn, commit, _write)
-
-    def insert(self, evidence: TokenEvidenceWriteInput, *, commit: bool = True) -> dict[str, Any]:
-        def _write() -> dict[str, Any]:
-            payload = _payload(evidence)
-            cursor = self.conn.execute(
-                """
-                INSERT INTO token_evidence(
-                  evidence_id, event_id, source_kind, source_id, evidence_type, raw_value,
-                  normalized_symbol, chain_hint, address_hint, provider, provider_ref,
-                  text_surface, span_start, span_end, sentence_id, local_group_key,
-                  strength, confidence, created_at_ms
-                )
-                VALUES (
-                  %(evidence_id)s, %(event_id)s, %(source_kind)s, %(source_id)s, %(evidence_type)s, %(raw_value)s,
-                  %(normalized_symbol)s, %(chain_hint)s, %(address_hint)s, %(provider)s, %(provider_ref)s,
-                  %(text_surface)s, %(span_start)s, %(span_end)s, %(sentence_id)s, %(local_group_key)s,
-                  %(strength)s, %(confidence)s, %(created_at_ms)s
-                )
-                ON CONFLICT(evidence_id) DO UPDATE SET
-                  normalized_symbol = excluded.normalized_symbol,
-                  chain_hint = excluded.chain_hint,
-                  address_hint = excluded.address_hint,
-                  strength = excluded.strength,
-                  confidence = excluded.confidence
-                RETURNING *
-                """,
-                payload,
+    def insert(self, evidence: TokenEvidenceWriteInput) -> dict[str, Any]:
+        require_transaction(self.conn, operation="insert_token_evidence")
+        payload = _payload(evidence)
+        cursor = self.conn.execute(
+            """
+            INSERT INTO token_evidence(
+              evidence_id, event_id, source_kind, source_id, evidence_type, raw_value,
+              normalized_symbol, chain_hint, address_hint, provider, provider_ref,
+              text_surface, span_start, span_end, sentence_id, local_group_key,
+              strength, confidence, created_at_ms
             )
-            row = cursor.fetchone()
-            return _required_returning_row(cursor, row)
-
-        return _run_repository_write(self.conn, commit, _write)
+            VALUES (
+              %(evidence_id)s, %(event_id)s, %(source_kind)s, %(source_id)s, %(evidence_type)s, %(raw_value)s,
+              %(normalized_symbol)s, %(chain_hint)s, %(address_hint)s, %(provider)s, %(provider_ref)s,
+              %(text_surface)s, %(span_start)s, %(span_end)s, %(sentence_id)s, %(local_group_key)s,
+              %(strength)s, %(confidence)s, %(created_at_ms)s
+            )
+            ON CONFLICT(evidence_id) DO UPDATE SET
+              normalized_symbol = excluded.normalized_symbol,
+              chain_hint = excluded.chain_hint,
+              address_hint = excluded.address_hint,
+              strength = excluded.strength,
+              confidence = excluded.confidence
+            RETURNING *
+            """,
+            payload,
+        )
+        row = cursor.fetchone()
+        return _required_returning_row(cursor, row)
 
     def get(self, evidence_id: str) -> dict[str, Any] | None:
         row = self.conn.execute("SELECT * FROM token_evidence WHERE evidence_id = %s", (evidence_id,)).fetchone()
         return dict(row) if row else None
 
     def delete_by_event_id(self, event_id: str) -> None:
+        require_transaction(self.conn, operation="delete_token_evidence_by_event")
         cursor = self.conn.execute("DELETE FROM token_evidence WHERE event_id = %s", (event_id,))
-        _cursor_rowcount(cursor)
+        mutation_count(cursor, error_code="token_evidence_repository_rowcount_invalid")
 
     def evidence_for_intent(self, intent_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -153,42 +151,8 @@ def _unique_ids(values: list[str]) -> list[str]:
     return unique
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("token_evidence_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("token_evidence_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("token_evidence_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int) or rowcount < 0:
-        raise TypeError("token_evidence_repository_rowcount_invalid")
-    return rowcount
-
-
-def _required_single_rowcount(cursor: Any) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount != 1:
-        raise TypeError("token_evidence_repository_rowcount_invalid")
-    return rowcount
-
-
 def _required_returning_row(cursor: Any, row: Any | None) -> dict[str, Any]:
-    _required_single_rowcount(cursor)
+    expect_mutation_count(cursor, expected=1, error_code="token_evidence_repository_rowcount_invalid")
     if row is None:
         raise TypeError("token_evidence_repository_rowcount_invalid")
     return dict(row)
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()

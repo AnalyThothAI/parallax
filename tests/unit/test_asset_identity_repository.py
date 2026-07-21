@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -51,7 +50,6 @@ def test_recompute_current_identity_writes_policy_result_without_source_preceden
     current = repo.recompute_current_identity(
         "asset:eip155:1:erc20:0x999b49c0d1612e619a4a4f6280733184da025108",
         now_ms=1_000,
-        commit=False,
     )
 
     assert current["canonical_symbol"] == "SLOP"
@@ -91,7 +89,6 @@ def test_recompute_current_identity_reports_zero_rows_written_when_projection_un
     current = IdentityEvidenceRepository(conn).recompute_current_identity(
         "asset:eip155:1:erc20:0x999b49c0d1612e619a4a4f6280733184da025108",
         now_ms=2_000,
-        commit=False,
     )
 
     assert current["rows_written"] == 0
@@ -107,11 +104,10 @@ def test_recompute_current_identity_returning_changed_requires_cursor_rowcount()
         omit_current_rowcount=True,
     )
 
-    with pytest.raises(TypeError, match="identity_evidence_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="identity_evidence_repository_rowcount_invalid"):
         IdentityEvidenceRepository(conn).recompute_current_identity(
             ASSET_ID,
             now_ms=NOW_MS,
-            commit=False,
         )
 
 
@@ -128,7 +124,6 @@ def test_recompute_current_identity_returning_changed_rejects_invalid_cursor_row
         IdentityEvidenceRepository(conn).recompute_current_identity(
             ASSET_ID,
             now_ms=NOW_MS,
-            commit=False,
         )
 
 
@@ -154,76 +149,7 @@ def test_recompute_current_identity_returning_changed_rejects_rowcount_returning
         IdentityEvidenceRepository(conn).recompute_current_identity(
             ASSET_ID,
             now_ms=NOW_MS,
-            commit=False,
         )
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        pytest.param(
-            lambda repo: repo.upsert_identity_evidence(
-                asset_id=ASSET_ID,
-                evidence_kind=EVIDENCE_TWEET_CONTRACT_MENTION,
-                provider="twitter",
-                lookup_mode="tweet_mention",
-                chain_id="eth",
-                address=ADDRESS,
-                symbol="SATO",
-                observed_at_ms=NOW_MS,
-            ),
-            id="upsert_identity_evidence",
-        ),
-        pytest.param(
-            lambda repo: repo.recompute_current_identity(ASSET_ID, now_ms=NOW_MS),
-            id="recompute_current_identity",
-        ),
-    ],
-)
-def test_identity_evidence_mutations_require_connection_transaction_before_sql_when_committing(
-    operation: Callable[[IdentityEvidenceRepository], object],
-) -> None:
-    conn = NoTransactionIdentityConnection(evidence_rows=_policy_evidence_rows())
-
-    with pytest.raises(RuntimeError, match="identity_evidence_repository_transaction_required"):
-        operation(IdentityEvidenceRepository(conn))
-
-    assert conn.sql == []
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        pytest.param(
-            lambda repo: repo.upsert_identity_evidence(
-                asset_id=ASSET_ID,
-                evidence_kind=EVIDENCE_TWEET_CONTRACT_MENTION,
-                provider="twitter",
-                lookup_mode="tweet_mention",
-                chain_id="eth",
-                address=ADDRESS,
-                symbol="SATO",
-                observed_at_ms=NOW_MS,
-            ),
-            id="upsert_identity_evidence",
-        ),
-        pytest.param(
-            lambda repo: repo.recompute_current_identity(ASSET_ID, now_ms=NOW_MS),
-            id="recompute_current_identity",
-        ),
-    ],
-)
-def test_identity_evidence_commit_owned_writes_use_connection_transaction_without_manual_commit(
-    operation: Callable[[IdentityEvidenceRepository], object],
-) -> None:
-    conn = FakeIdentityConnection(evidence_rows=_policy_evidence_rows())
-
-    operation(IdentityEvidenceRepository(conn))
-
-    assert conn.transaction_commits == 1
-    assert conn.commits == 0
-    assert conn.sql_depths
-    assert set(conn.sql_depths) == {1}
 
 
 class FakeCursor:

@@ -13,43 +13,6 @@ NOW_MS = 1_700_000_000_000
 
 
 @pytest.mark.parametrize(
-    "operation",
-    (
-        lambda repo: repo.enqueue_targets([_target()], reason="resolution_updated", now_ms=NOW_MS),
-        lambda repo: repo.claim_due(
-            provider="gmgn_dex_profile",
-            now_ms=NOW_MS,
-            limit=25,
-            lease_owner="asset_profile_refresh",
-            lease_ms=600_000,
-        ),
-        lambda repo: repo.reschedule(
-            [_claim()],
-            due_at_ms=NOW_MS + 60_000,
-            now_ms=NOW_MS,
-            reason="profile_ready_written",
-        ),
-        lambda repo: repo.mark_error(
-            [_claim()],
-            error="provider failed",
-            now_ms=NOW_MS,
-            retry_ms=300_000,
-        ),
-    ),
-)
-def test_asset_profile_refresh_target_mutations_require_connection_transaction_before_sql_when_committing(
-    operation: Callable[[AssetProfileRefreshTargetRepository], object],
-) -> None:
-    conn = _MissingTransactionConnection()
-
-    with pytest.raises(RuntimeError, match="asset_profile_refresh_target_transaction_required"):
-        operation(AssetProfileRefreshTargetRepository(conn))
-
-    assert conn.sql == []
-    assert conn.commits == 0
-
-
-@pytest.mark.parametrize(
     ("overrides", "error"),
     [
         pytest.param({"limit": -1}, "asset_profile_refresh_target_claim_limit_required", id="negative-limit"),
@@ -105,7 +68,6 @@ def test_asset_profile_refresh_ops_discovery_limit_rejects_malformed_before_tran
                 due_at_ms=NOW_MS + 60_000,
                 now_ms=NOW_MS,
                 reason="profile_ready_written",
-                commit=False,
             ),
             id="reschedule",
         ),
@@ -115,7 +77,6 @@ def test_asset_profile_refresh_ops_discovery_limit_rejects_malformed_before_tran
                 error="provider failed",
                 now_ms=NOW_MS,
                 retry_ms=300_000,
-                commit=False,
             ),
             id="error",
         ),
@@ -152,7 +113,6 @@ def test_asset_profile_refresh_completion_rejects_malformed_attempt_count(attemp
             due_at_ms=NOW_MS + 60_000,
             now_ms=NOW_MS,
             reason="profile_ready_written",
-            commit=False,
         )
 
     assert conn.sql == []
@@ -162,13 +122,12 @@ def test_asset_profile_refresh_completion_counts_require_cursor_rowcount() -> No
     conn = _RowcountConnection(omit_rowcount=True)
     repo = AssetProfileRefreshTargetRepository(conn)
 
-    with pytest.raises(TypeError, match="asset_profile_refresh_target_rowcount_required"):
+    with pytest.raises(TypeError, match="asset_profile_refresh_target_rowcount_invalid"):
         repo.reschedule(
             [_claim()],
             due_at_ms=NOW_MS + 60_000,
             now_ms=NOW_MS,
             reason="profile_ready_written",
-            commit=False,
         )
 
 
@@ -183,7 +142,6 @@ def test_asset_profile_refresh_completion_counts_reject_invalid_cursor_rowcount(
             error="provider failed",
             now_ms=NOW_MS,
             retry_ms=300_000,
-            commit=False,
         )
 
 
@@ -244,7 +202,6 @@ def test_asset_profile_refresh_target_enqueue_requires_formal_source_watermark_w
             [target],
             reason="resolution_updated",
             now_ms=NOW_MS,
-            commit=False,
         )
 
     assert conn.sql == ""
@@ -268,7 +225,6 @@ def test_ops_discovery_enqueues_missing_current_token_radar_assets() -> None:
         provider="gmgn_dex_profile",
         now_ms=NOW_MS,
         limit=25,
-        commit=False,
     )
 
     assert result == {"targets": 1, "source_rows_scanned": 1}

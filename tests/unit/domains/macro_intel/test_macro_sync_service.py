@@ -186,7 +186,9 @@ def test_sync_service_claims_window_before_provider_io() -> None:
 
     assert events.index("claim") < events.index("session-close")
     assert events.index("session-close") < events.index("runner")
-    assert events.index("runner") < events.index("transaction-commit")
+    commit_indexes = [index for index, event in enumerate(events) if event == "transaction-commit"]
+    assert events.index("claim") < commit_indexes[0] < events.index("session-close")
+    assert events.index("runner") < commit_indexes[-1]
 
 
 def test_sync_service_import_success_writes_facts_completes_window_and_wakes_projection() -> None:
@@ -209,8 +211,8 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
     assert result.status == "ok"
     assert result.imported_observation_count == 1
     assert repo.observations[0]["series_key"] == "nyfed:SOFR"
-    assert repo.import_runs[0]["bundle_name"] == "macro-core"
-    assert repo.sync_runs[0]["import_run_id"] == repo.import_runs[0]["run_id"]
+    assert repo.sync_runs[0]["bundle_name"] == "macro-core"
+    assert repo.sync_runs[0]["coverage_json"] == {"available": 1, "requested": 1}
     assert repo.sync_state_updates == [
         {
             "source_name": "macrodata-cli",
@@ -244,7 +246,6 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
             "now_ms": NOW_MS,
             "due_at_ms": NOW_MS,
             "reason": "macro_observations_changed",
-            "commit": False,
         }
     ]
     assert wake_bus.notifications == [{"count": 1, "max_observed_at": "2026-05-27", "asof_date": "2026-05-27"}]
@@ -359,7 +360,6 @@ def test_sync_service_stale_completion_rolls_back_facts_and_does_not_wake() -> N
     assert result is not None
     assert result.status == "stale_claim"
     assert repo.observations == []
-    assert repo.import_runs == []
     assert repo.sync_runs == []
     assert repo.sync_state_updates == []
     assert wake_bus.notifications == []
@@ -384,7 +384,6 @@ def test_sync_service_provider_failure_records_retry_without_fabricating_facts()
     assert result is not None
     assert result.status == "retryable_error"
     assert repo.observations == []
-    assert repo.import_runs == []
     assert repo.sync_runs[0]["status"] == "retryable_error"
     assert repo.sync_state_updates == []
     assert repo.retry_windows[0]["error_code"] == "provider_down"
@@ -822,7 +821,7 @@ class FakeRepositorySession:
         self.events = events
         self.in_transaction = False
 
-    def unit_of_work(self):
+    def transaction(self):
         return FakeTransaction(self, events=self.events)
 
     def require_transaction(self, *, operation: str) -> None:
@@ -837,14 +836,20 @@ class FakeTransaction:
 
     def __enter__(self):
         self.repos.in_transaction = True
-        self.observations = list(self.repos.macro_intel.observations)
-        self.import_runs = list(self.repos.macro_intel.import_runs)
-        self.sync_runs = list(self.repos.macro_intel.sync_runs)
-        self.sync_state_updates = list(self.repos.macro_intel.sync_state_updates)
-        self.completed_windows = list(self.repos.macro_intel.completed_windows)
-        self.retry_windows = list(self.repos.macro_intel.retry_windows)
-        self.failed_windows = list(self.repos.macro_intel.failed_windows)
-        self.enqueued_dirty_targets = list(self.repos.macro_intel.enqueued_dirty_targets)
+        self.snapshots = {
+            name: list(getattr(self.repos.macro_intel, name))
+            for name in (
+                "observations",
+                "sync_runs",
+                "sync_state_updates",
+                "completed_windows",
+                "retry_windows",
+                "failed_windows",
+                "enqueued_dirty_targets",
+                "enqueued_windows",
+            )
+            if hasattr(self.repos.macro_intel, name)
+        }
         if self.events is not None:
             self.events.append("transaction-open")
         return self
@@ -859,14 +864,8 @@ class FakeTransaction:
         if self.events is not None:
             self.events.append("transaction-rollback" if exc_type else "transaction-commit")
         if exc_type is not None:
-            self.repos.macro_intel.observations = self.observations
-            self.repos.macro_intel.import_runs = self.import_runs
-            self.repos.macro_intel.sync_runs = self.sync_runs
-            self.repos.macro_intel.sync_state_updates = self.sync_state_updates
-            self.repos.macro_intel.completed_windows = self.completed_windows
-            self.repos.macro_intel.retry_windows = self.retry_windows
-            self.repos.macro_intel.failed_windows = self.failed_windows
-            self.repos.macro_intel.enqueued_dirty_targets = self.enqueued_dirty_targets
+            for name, snapshot in self.snapshots.items():
+                setattr(self.repos.macro_intel, name, snapshot)
         return False
 
 
@@ -888,7 +887,6 @@ class FakeMacroIntelRepository:
         self.fail_result = fail_result
         self.upsert_statuses = list(upsert_statuses or [])
         self.observations: list[dict[str, object]] = []
-        self.import_runs: list[dict[str, object]] = []
         self.sync_runs: list[dict[str, object]] = []
         self.sync_state_updates: list[dict[str, object]] = []
         self.completed_windows: list[dict[str, object]] = []
@@ -928,9 +926,6 @@ class FakeMacroIntelRepository:
             "observed_at": observation["observed_at"],
             "fact_payload_hash": f"hash-{len(self.observations)}",
         }
-
-    def record_import_run(self, import_run: dict[str, object]) -> None:
-        self.import_runs.append(import_run)
 
     def enqueue_macro_projection_dirty_targets_for_changes(self, **kwargs: object) -> int:
         self.enqueued_dirty_targets.append(dict(kwargs))

@@ -25,7 +25,6 @@ def _raw_live_settings(**overrides: Any) -> SimpleNamespace:
     payload: dict[str, Any] = {
         "enabled": True,
         "interval_seconds": 0.01,
-        "soft_timeout_seconds": 120.0,
         "hard_timeout_seconds": 180.0,
         "target_limit": 100,
         "target_ttl_seconds": 300.0,
@@ -219,29 +218,6 @@ def test_live_price_gateway_reads_formal_settings_for_target_limit_and_tick_ttl(
     ]
 
 
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"target_limit": -1}, "live_price_gateway_target_limit_required", id="limit-negative"),
-        pytest.param({"target_limit": True}, "live_price_gateway_target_limit_required", id="limit-bool"),
-        pytest.param({"target_limit": "100"}, "live_price_gateway_target_limit_required", id="limit-string"),
-        pytest.param({"target_ttl_seconds": -0.1}, "live_price_gateway_target_ttl_seconds_required", id="ttl-negative"),
-        pytest.param({"target_ttl_seconds": True}, "live_price_gateway_target_ttl_seconds_required", id="ttl-bool"),
-        pytest.param({"target_ttl_seconds": "300"}, "live_price_gateway_target_ttl_seconds_required", id="ttl-string"),
-    ],
-)
-def test_live_price_gateway_rejects_malformed_runtime_settings(
-    overrides: dict[str, Any],
-    error_code: str,
-) -> None:
-    with pytest.raises(ValueError, match=error_code):
-        LivePriceGateway(
-            settings=_raw_live_settings(**overrides),
-            pool_bundle=FakeDB(FakeRepos(active_targets=[], latest_ticks={})),
-            projection_version="token_radar_v7",
-        )
-
-
 def test_live_price_gateway_does_not_repair_legacy_target_type_rows() -> None:
     repos = FakeRepos(
         active_targets=[
@@ -290,17 +266,6 @@ def test_live_price_gateway_does_not_repair_legacy_target_type_rows() -> None:
     assert result.notes["result"]["targets_selected"] == 2
     assert result.notes["result"]["targets_loaded"] == 2
     assert result.notes["result"]["live_market_updates_published"] == 0
-
-
-def test_live_price_gateway_requires_formal_settings_contract() -> None:
-    repos = FakeRepos(active_targets=[], latest_ticks={})
-
-    with pytest.raises(RuntimeError, match="live_price_gateway_settings_required"):
-        LivePriceGateway(
-            settings=None,
-            pool_bundle=FakeDB(repos),
-            projection_version="token_radar_v7",
-        )
 
 
 def test_live_price_gateway_requires_db_pool_bundle_contract() -> None:

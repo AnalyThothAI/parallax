@@ -301,7 +301,7 @@ def test_macro_constants_map_average_hourly_earnings_labor_concept() -> None:
     }
 
 
-def test_repository_latest_observations_reads_projected_rows() -> None:
+def test_repository_observations_for_concepts_reads_bounded_projected_rows() -> None:
     rows = [
         {
             "concept_key": "asset:spx",
@@ -313,18 +313,23 @@ def test_repository_latest_observations_reads_projected_rows() -> None:
     conn = FakeConnection(rows)
     repo = MacroIntelRepository(conn)
 
-    result = repo.latest_observations(limit=25, concept_keys=("asset:spx",))
+    result = repo.observations_for_concepts(
+        concept_keys=("asset:spx",),
+        lookback_days=60,
+        limit_per_series=25,
+    )
 
     assert result == rows
     query, params = conn.executions[0]
-    assert "FROM macro_observation_series_rows AS rows" in query
+    assert "CROSS JOIN LATERAL" in query
+    assert "FROM macro_observation_series_rows AS series" in query
     assert "macro_observation_series_active_generation" not in query
     assert "generation_id" not in query
     assert "projection_version = %s" in query
-    assert "series_rank = 1" in query
+    assert "LIMIT %s" in query
     assert "FROM macro_observations" not in query
     assert "row_number() OVER" not in query
-    assert params == ("macro_regime_v4", ["asset:spx"], 25)
+    assert params == (["asset:spx"], "macro_regime_v4", 60, 25)
 
 
 def test_repository_concept_history_counts_reads_projected_rows() -> None:
@@ -378,18 +383,16 @@ def test_repository_refresh_observation_series_rows_writes_current_read_model() 
     assert "macro_observation_series_generations" not in queries
     assert "macro_observation_series_active_generation" not in queries
     assert "FROM macro_observations" in queries
-    assert "row_number() OVER" in queries
-    assert "PARTITION BY concept_key, observed_at" in queries
-    assert "PARTITION BY concept_key" in queries
+    assert "DISTINCT ON (observed_at)" in queries
+    assert "CROSS JOIN LATERAL" in queries
     select_query, select_params = conn.executions[0]
-    assert "WITH source_ranked AS" in select_query
-    assert "concept_key = ANY" in select_query
+    assert "WITH requested AS" in select_query
+    assert "concept_key = requested.concept_key" in select_query
     assert select_params == (
         ["rates:dgs10"],
+        "macro_regime_v4",
         730,
         list(_constants.MACRO_EVENT_CONCEPTS),
-        "macro_regime_v4",
-        1_779_000_000_000,
         252,
     )
 
@@ -538,29 +541,24 @@ class FakeRefreshConnection:
                 "projection_version": "macro_regime_v4",
                 "concept_key": "rates:dgs10",
                 "observed_at": "2026-05-20",
-                "series_rank": 1,
                 "value_numeric": 4.7,
                 "source_name": "fred",
                 "series_key": "fred:DGS10",
-                "source_priority": 100,
                 "unit": "percent",
                 "frequency": "daily",
                 "data_quality": "ok",
-                "source_ts": "2026-05-20",
                 "raw_payload_json": {},
-                "ingested_at_ms": 1,
-                "projected_at_ms": 1_779_000_000_000,
             }
         ]
 
     def execute(self, query: str, params: tuple[object, ...]) -> FakeCursor:
         self.executions.append((query, params))
-        if "WITH source_ranked AS" in query:
+        if "FROM macro_observations" in query:
             return FakeCursor(self.rows[: self.row_count])
         if "FROM macro_observation_series_publication_state" in query:
             return FakeCursor([])
         if "INSERT INTO macro_observation_series_rows" in query:
-            return FakeCursor([], rowcount=self.row_count)
+            return FakeCursor([{"changed": 1}] * self.row_count, rowcount=self.row_count)
         return FakeCursor([], rowcount=0)
 
     def transaction(self):

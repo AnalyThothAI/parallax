@@ -361,61 +361,6 @@ def test_story_packet_requires_story_identity_context() -> None:
 
 
 @pytest.mark.parametrize(
-    ("formal_key", "alias_key", "alias_value", "error"),
-    [
-        pytest.param(
-            "story_identity_json",
-            "story_identity",
-            {"basis": "exchange_listing"},
-            "news_story_brief_story_identity_json_required",
-            id="story_identity_alias",
-        ),
-        pytest.param(
-            "agent_admission_json",
-            "agent_admission",
-            {"status": "eligible"},
-            "news_story_brief_agent_admission_json_required",
-            id="agent_admission_alias",
-        ),
-        pytest.param(
-            "similarity_json",
-            "similarity",
-            {"similar_story": True},
-            "news_story_brief_similarity_json_required",
-            id="similarity_alias",
-        ),
-        pytest.param(
-            "material_delta_json",
-            "material_delta",
-            {"has_delta": True},
-            "news_story_brief_material_delta_json_required",
-            id="material_delta_alias",
-        ),
-    ],
-)
-def test_story_packet_rejects_context_aliases(
-    formal_key: str,
-    alias_key: str,
-    alias_value: object,
-    error: str,
-) -> None:
-    story = _story()
-    story.pop(formal_key)
-    story[alias_key] = alias_value
-
-    with pytest.raises(ValueError, match=error):
-        build_news_story_brief_input_packet(
-            story=story,
-            representative_item=_item("news-1", "Binance lists FOO", published_at_ms=1_779_000_000_000),
-            member_items=[_item("news-1", "Binance lists FOO", published_at_ms=1_779_000_000_000)],
-            entities=[],
-            token_mentions=[],
-            fact_candidates=[],
-            agent_config=_agent_config(),
-        )
-
-
-@pytest.mark.parametrize(
     ("formal_key", "error"),
     [
         pytest.param("story_identity_json", "news_story_brief_story_identity_json_required", id="story_identity"),

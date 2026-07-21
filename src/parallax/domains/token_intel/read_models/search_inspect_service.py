@@ -2,6 +2,8 @@ from __future__ import annotations
 
 from typing import Any
 
+from parallax.platform.validation import require_positive_int
+
 from .search_agent_brief import build_topic_agent_brief
 from .search_service import SearchService
 from .token_case_service import TokenCaseService
@@ -16,14 +18,12 @@ class SearchInspectService:
         targets: Any,
         profiles: Any,
         market_candles: Any | None = None,
-        cex_detail_snapshots: Any | None = None,
     ) -> None:
         self.search_query = search_query
         self.token_radar = token_radar
         self.targets = targets
         self.profiles = profiles
         self.market_candles = market_candles
-        self.cex_detail_snapshots = cex_detail_snapshots
 
     def inspect(
         self,
@@ -34,7 +34,7 @@ class SearchInspectService:
         limit: int,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
-        parsed_limit = _required_positive_int(limit, "search_inspect_limit_required")
+        parsed_limit = require_positive_int(limit, error_code="search_inspect_limit_required")
         search_page = SearchService(search_query=self.search_query).search(
             q,
             limit=parsed_limit,
@@ -101,10 +101,10 @@ class SearchInspectService:
         target_type = str(selected["target_type"])
         target_id = str(selected["target_id"])
         return TokenCaseService(
+            token_radar=self.token_radar,
             targets=self.targets,
             profiles=self.profiles,
             market_candles=self.market_candles,
-            cex_detail_snapshots=self.cex_detail_snapshots,
         ).dossier(
             target_type=target_type,
             target_id=target_id,
@@ -167,11 +167,3 @@ def _topic_summary(items: list[dict[str, Any]]) -> dict[str, int]:
 
 def _dict(value: Any) -> dict[str, Any]:
     return value if isinstance(value, dict) else {}
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value <= 0:
-        raise ValueError(error_code)
-    return int(value)

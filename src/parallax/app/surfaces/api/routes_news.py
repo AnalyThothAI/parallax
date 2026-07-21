@@ -82,7 +82,10 @@ def get_news_source_status(request: Request) -> JSONResponse:
 
 
 def _news_read_model(repos: Any) -> NewsPageQuery:
-    return NewsPageQuery(repository=repos.news)
+    return NewsPageQuery(
+        page_repository=repos.news_pages,
+        source_repository=repos.news_sources,
+    )
 
 
 def _signal(value: str) -> str | None:

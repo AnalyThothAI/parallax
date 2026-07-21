@@ -14,9 +14,9 @@ def test_token_profile_current_upsert_returns_false_when_payload_unchanged() -> 
     repo = TokenProfileCurrentRepository(conn)
     row = _profile_row(target_id="sol:abc", computed_at_ms=1_000)
 
-    first = repo.upsert_current(row, commit=True)
+    first = repo.upsert_current(row)
     first_payload_hash = conn.params[-1][-1]
-    second = repo.upsert_current({**row, "computed_at_ms": 2_000, "updated_at_ms": 2_000}, commit=True)
+    second = repo.upsert_current({**row, "computed_at_ms": 2_000, "updated_at_ms": 2_000})
     second_payload_hash = conn.params[-1][-1]
 
     sql = conn.sql[-1]
@@ -25,9 +25,9 @@ def test_token_profile_current_upsert_returns_false_when_payload_unchanged() -> 
     assert first_payload_hash == second_payload_hash
     assert "payload_hash IS DISTINCT FROM excluded.payload_hash" in sql
     assert "RETURNING true AS changed" in sql
-    assert conn.transaction_commits == 2
+    assert conn.transaction_commits == 0
     assert conn.manual_commits == 0
-    assert conn.sql_depths == [1, 1]
+    assert conn.sql_depths == [0, 0]
 
 
 def test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys() -> None:
@@ -37,12 +37,12 @@ def test_token_profile_current_payload_hash_rejects_legacy_source_payload_keys()
     row["source_payload_json"] = {123: "legacy"}
 
     with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
-        repo.upsert_current(row, commit=True)
+        repo.upsert_current(row)
 
     assert conn.sql == []
     assert conn.params == []
     assert conn.manual_commits == 0
-    assert conn.transaction_rollbacks == 1
+    assert conn.transaction_rollbacks == 0
 
 
 def _profile_row(*, target_id: str, computed_at_ms: int) -> dict[str, Any]:

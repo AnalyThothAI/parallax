@@ -1,11 +1,11 @@
 import asyncio
 from types import SimpleNamespace
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
 from parallax.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from parallax.platform.config.settings import NotificationChannelConfig
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 

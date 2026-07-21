@@ -17,7 +17,6 @@ from parallax.app.surfaces.api.validators import (
     _window,
 )
 from parallax.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
-from parallax.domains.narrative_intel.read_models.narrative_read_model import NarrativeReadModel
 from parallax.domains.token_intel.read_models.asset_flow_service import AssetFlowService
 from parallax.domains.token_intel.read_models.stocks_radar_service import StocksRadarService
 
@@ -108,12 +107,4 @@ def _token_radar_data(
             venue=venue,
             now_ms=now_ms,
         )
-        return _narrative_read_model(repos).hydrate_token_radar(
-            data,
-            window=window,
-            scope=scope,
-        )
-
-
-def _narrative_read_model(repos: Any) -> Any:
-    return NarrativeReadModel(repository=repos.narratives)
+        return data

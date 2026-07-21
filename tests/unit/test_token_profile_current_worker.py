@@ -59,67 +59,6 @@ def test_token_profile_current_worker_run_once_records_result_and_uses_one_db_se
     assert db.session_names == ["token_profile_current"]
 
 
-def test_token_profile_current_worker_requires_formal_statement_timeout_settings_contract(monkeypatch):
-    calls: list[dict] = []
-
-    def fake_rebuild(**kwargs):
-        calls.append(kwargs)
-        return {"claimed": 0}
-
-    monkeypatch.setattr(module, "rebuild_token_profile_current_once", fake_rebuild)
-    settings = worker_settings()
-    delattr(settings, "statement_timeout_seconds")
-    db = FakeDB()
-    worker = module.TokenProfileCurrentWorker(
-        name="token_profile_current",
-        settings=settings,
-        db=db,
-        telemetry=object(),
-    )
-
-    with pytest.raises(AttributeError, match="statement_timeout_seconds"):
-        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
-
-    assert calls == []
-    assert db.session_names == []
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"batch_size": 0}, "token_profile_current_batch_size_required", id="batch-zero"),
-        pytest.param({"batch_size": True}, "token_profile_current_batch_size_required", id="batch-bool"),
-        pytest.param({"batch_size": "500"}, "token_profile_current_batch_size_required", id="batch-string"),
-        pytest.param({"lease_ms": 0}, "token_profile_current_lease_ms_required", id="lease-zero"),
-        pytest.param({"lease_ms": True}, "token_profile_current_lease_ms_required", id="lease-bool"),
-        pytest.param({"lease_ms": "60000"}, "token_profile_current_lease_ms_required", id="lease-string"),
-        pytest.param({"retry_ms": 0}, "token_profile_current_retry_ms_required", id="retry-zero"),
-        pytest.param({"retry_ms": True}, "token_profile_current_retry_ms_required", id="retry-bool"),
-        pytest.param({"retry_ms": "30000"}, "token_profile_current_retry_ms_required", id="retry-string"),
-    ],
-)
-def test_token_profile_current_worker_rejects_malformed_runtime_settings(monkeypatch, overrides, error_code):
-    calls: list[dict] = []
-
-    def fake_rebuild(**kwargs):
-        calls.append(kwargs)
-        return {"claimed": 0}
-
-    monkeypatch.setattr(module, "rebuild_token_profile_current_once", fake_rebuild)
-    db = FakeDB()
-    worker = module.TokenProfileCurrentWorker(
-        name="token_profile_current",
-        settings=worker_settings(**overrides),
-        db=db,
-        telemetry=object(),
-    )
-
-    with pytest.raises(ValueError, match=error_code):
-        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
-
-    assert calls == []
-
-
 def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
     ready_assets = {
         "https://gmgn.ai/external-res/logo.png": ready_image(
@@ -242,14 +181,12 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
         ["https://bin.bnbstatic.com/static/images/btc.png"],
     ]
     assert repos.token_image_source_dirty_targets.enqueued == []
-    assert repos.token_profiles.commits == [False, False, False]
     assert repos.dirty_targets.claim_calls == [
         {
             "now_ms": 10_000,
             "limit": 100,
             "lease_owner": "profile-worker",
             "lease_ms": 60_000,
-            "commit": True,
         }
     ]
     assert repos.dirty_targets.done == [
@@ -257,7 +194,7 @@ def test_rebuild_token_profile_current_once_projects_sources_and_writes_rows():
         claim("Asset", "asset:stream"),
         claim("CexToken", "cex_token:BTC"),
     ]
-    assert repos.transactions == 4
+    assert repos.transactions == 5
 
 
 @pytest.mark.parametrize("failure_stage", ["admission", "upsert"])
@@ -286,10 +223,10 @@ def test_rebuild_token_profile_current_once_isolates_bad_target_from_valid_claim
     )
     upsert_current = repos.token_profiles.upsert_current
 
-    def fail_one_target(row, *, commit=True):
+    def fail_one_target(row):
         if row["target_id"] == "asset:bad":
             raise ValueError("malformed profile row")
-        return upsert_current(row, commit=commit)
+        return upsert_current(row)
 
     if failure_stage == "upsert":
         repos.token_profiles.upsert_current = fail_one_target
@@ -418,7 +355,7 @@ def test_rebuild_token_profile_current_once_empty_queue_does_not_load_profile_so
     assert result["rows_written"] == 0
     assert repos.source_query.profile_loader_calls == []
     assert repos.token_profiles.rows == []
-    assert repos.transactions == 0
+    assert repos.transactions == 1
 
 
 def test_rebuild_token_profile_current_once_marks_claim_error_when_exact_load_fails():
@@ -450,7 +387,6 @@ def test_rebuild_token_profile_current_once_marks_claim_error_when_exact_load_fa
             "max_attempts": 3,
             "worker_name": "profile-worker",
             "now_ms": 10_000,
-            "commit": False,
         }
     ]
 
@@ -513,7 +449,6 @@ def test_rebuild_token_profile_current_once_does_not_let_malformed_claim_poison_
             "max_attempts": 3,
             "worker_name": "profile-worker",
             "now_ms": 10_000,
-            "commit": False,
         }
     ]
 
@@ -573,7 +508,6 @@ def test_rebuild_token_profile_current_once_requires_session_source_query_contra
             "max_attempts": 3,
             "worker_name": "profile-worker",
             "now_ms": 10_000,
-            "commit": False,
         }
     ]
 
@@ -701,11 +635,11 @@ class FakeDirtyTargets:
     def queue_depth(self, **kwargs):
         return 0
 
-    def mark_done(self, claims, *, now_ms, commit=True):
+    def mark_done(self, claims, *, now_ms):
         self.done.extend(dict(claim) for claim in claims)
         return len(claims)
 
-    def mark_error(self, claims, *, error, retry_ms, max_attempts, worker_name, now_ms, commit=True):
+    def mark_error(self, claims, *, error, retry_ms, max_attempts, worker_name, now_ms):
         self.errors.extend(
             {
                 **dict(claim),
@@ -714,7 +648,6 @@ class FakeDirtyTargets:
                 "max_attempts": max_attempts,
                 "worker_name": worker_name,
                 "now_ms": now_ms,
-                "commit": commit,
             }
             for claim in claims
         )
@@ -767,12 +700,10 @@ class FakeSourceQuery:
 class FakeTokenProfiles:
     def __init__(self) -> None:
         self.rows: list[dict] = []
-        self.commits: list[bool] = []
         self.upsert_results: list[bool] = []
 
-    def upsert_current(self, row, *, commit=True):
+    def upsert_current(self, row):
         self.rows.append(row)
-        self.commits.append(commit)
         return self.upsert_results.pop(0) if self.upsert_results else True
 
 
@@ -824,8 +755,8 @@ class FakeImageSourceDirtyTargets:
         assert worker_name == "token_image_mirror"
         return {}
 
-    def enqueue_targets(self, targets, *, reason, now_ms, commit=True):
-        self.enqueue_calls.append({"reason": reason, "now_ms": now_ms, "commit": commit})
+    def enqueue_targets(self, targets, *, reason, now_ms):
+        self.enqueue_calls.append({"reason": reason, "now_ms": now_ms})
         self.enqueued.extend(dict(target) for target in targets)
         return {"targets": len(targets)}
 

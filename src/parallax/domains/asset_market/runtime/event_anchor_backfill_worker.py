@@ -16,18 +16,17 @@ from collections.abc import Iterator, Mapping, Sequence
 from contextlib import contextmanager
 from dataclasses import dataclass, replace
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
+from parallax.domains.asset_market.providers import AssetMarketProviderBundle
 from parallax.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,
 )
 from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
 from parallax.domains.asset_market.types import EnrichedEventCapture, MarketTick
-
-if TYPE_CHECKING:
-    from parallax.app.runtime.providers_wiring import AssetMarketProviders
+from parallax.platform.config.settings import EventAnchorBackfillWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 TEMPORARY_RETRY_BACKOFF_MS = 10_000
 TEMPORARY_REASONS = frozenset({"provider_error", "provider_timeout", "rate_limited"})
@@ -80,11 +79,9 @@ class EventAnchorBackfillWorker(WorkerBase):
         wake_emitter: Any | None = None,
         clock: Any | None = None,
         name: str = "event_anchor_backfill",
-        settings: Any | None = None,
+        settings: EventAnchorBackfillWorkerSettings,
         telemetry: Any | None = None,
     ) -> None:
-        if settings is None:
-            raise RuntimeError("event_anchor_backfill_settings_required")
         if pool_bundle is None:
             raise RuntimeError("event_anchor_backfill_db_required")
         super().__init__(
@@ -98,39 +95,18 @@ class EventAnchorBackfillWorker(WorkerBase):
             if providers is None:
                 raise RuntimeError("event_anchor_backfill_providers_required")
             capture_service = EventMarketCaptureService(
-                providers=cast("AssetMarketProviders", providers),
+                providers=cast("AssetMarketProviderBundle", providers),
                 now_ms=lambda: int(self.clock()),
             )
         self._capture_service = capture_service
         self.wake_emitter = wake_emitter
-        self.batch_size = _required_positive_int(
-            settings.batch_size,
-            error_code="event_anchor_backfill_batch_size_required",
-        )
-        self.concurrency = _required_positive_int(
-            settings.concurrency,
-            error_code="event_anchor_backfill_concurrency_required",
-        )
-        self.max_attempts = _required_positive_int(
-            settings.max_attempts,
-            error_code="event_anchor_backfill_max_attempts_required",
-        )
-        self.min_age_ms = _required_nonnegative_int(
-            settings.min_age_ms,
-            error_code="event_anchor_backfill_min_age_ms_required",
-        )
-        self.lease_ms = _required_positive_int(
-            settings.lease_ms,
-            error_code="event_anchor_backfill_lease_ms_required",
-        )
-        self.active_window_ms = _required_positive_int(
-            settings.active_window_ms,
-            error_code="event_anchor_backfill_active_window_ms_required",
-        )
-        self.max_anchor_lag_ms = _required_positive_int(
-            settings.max_anchor_lag_ms,
-            error_code="event_anchor_backfill_max_anchor_lag_ms_required",
-        )
+        self.batch_size = settings.batch_size
+        self.concurrency = settings.concurrency
+        self.max_attempts = settings.max_attempts
+        self.min_age_ms = settings.min_age_ms
+        self.lease_ms = settings.lease_ms
+        self.active_window_ms = settings.active_window_ms
+        self.max_anchor_lag_ms = settings.max_anchor_lag_ms
 
     async def run_once(self) -> WorkerResult:
         now_ms = int(self.clock())
@@ -298,7 +274,7 @@ class EventAnchorBackfillWorker(WorkerBase):
         return abs(now_ms - int(row["t_event_ms"])) <= self.max_anchor_lag_ms
 
     def _expire_stale_jobs(self, *, now_ms: int) -> dict[str, int]:
-        with self._transaction_session() as repos:
+        with self._worker_session() as repos, repos.transaction():
             summary = repos.event_anchor_jobs.expire_stale(
                 limit=self.batch_size,
                 now_ms=now_ms,
@@ -318,7 +294,7 @@ class EventAnchorBackfillWorker(WorkerBase):
             return {"expired": expired, "failed": failed, "rescheduled": rescheduled}
 
     def _claim_due_jobs(self, *, now_ms: int) -> list[dict[str, Any]]:
-        with self._worker_session() as repos:
+        with self._worker_session() as repos, repos.transaction():
             rows = repos.event_anchor_jobs.claim_due(
                 limit=self.batch_size,
                 now_ms=now_ms,
@@ -338,7 +314,7 @@ class EventAnchorBackfillWorker(WorkerBase):
     ) -> tuple[int, list[MarketTick], int, int]:
         if not attaches and not terminals and not reschedules:
             return 0, [], 0, 0
-        with self._transaction_session() as repos:
+        with self._worker_session() as repos, repos.transaction():
             persistence = MarketTickPersistenceService(repos)
             inserted = 0
             attached_ticks: list[MarketTick] = []
@@ -410,11 +386,6 @@ class EventAnchorBackfillWorker(WorkerBase):
             self.name,
             statement_timeout_seconds=self.settings.statement_timeout_seconds,
         ) as repos:
-            yield repos
-
-    @contextmanager
-    def _transaction_session(self) -> Iterator[Any]:
-        with self._worker_session() as repos, repos.unit_of_work():
             yield repos
 
 
@@ -518,18 +489,6 @@ def _decimal_or_none(value: Any) -> Decimal | None:
 def _int_or_none(value: Any) -> int | None:
     if value is None:
         return None
-    return int(value)
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
     return int(value)
 
 

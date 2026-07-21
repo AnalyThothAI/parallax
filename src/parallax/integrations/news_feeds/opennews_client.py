@@ -13,19 +13,10 @@ from parallax.domains.news_intel.services.opennews_provider_signal import (
     provider_token_impacts_from_opennews_payload,
 )
 from parallax.integrations.news_feeds.feed_client import FeedFetchResult
+from parallax.platform.config.news_provider_types import OPENNEWS_FETCH_POLICY_KEYS
 
 DEFAULT_OPENNEWS_API_BASE_URL = "https://ai.6551.io"
 MAX_REST_LIMIT = 100
-_REMOVED_WEBSOCKET_POLICY_KEYS = {
-    "fetch_mode",
-    "wss_url",
-    "stream_timeout_seconds",
-    "streamTimeoutSeconds",
-    "max_messages",
-    "maxMessages",
-    "connect_timeout_seconds",
-    "connectTimeoutSeconds",
-}
 
 
 class _OpenNewsPostJson(Protocol):
@@ -60,7 +51,6 @@ class OpenNewsFeedClient:
         if not self._token:
             raise ValueError("OpenNews token is not configured")
         policy = _source_fetch_policy(source or {})
-        _reject_removed_websocket_policy(policy)
         subscription = _subscription_params(url, policy)
         entries, next_cursor = _run_rest_fetch(
             self._fetch_rest_entries(
@@ -192,21 +182,18 @@ def _run_rest_fetch[ResultT](coro: Coroutine[Any, Any, ResultT]) -> ResultT:
 def _source_fetch_policy(source: Mapping[str, Any]) -> dict[str, Any]:
     raw = source.get("fetch_policy_json")
     if isinstance(raw, Mapping):
+        unknown = sorted(set(raw) - OPENNEWS_FETCH_POLICY_KEYS)
+        if unknown:
+            raise ValueError(f"OpenNews fetch_policy_json has unknown keys: {', '.join(unknown)}")
         return dict(raw)
     if raw is not None:
         raise ValueError("OpenNews fetch_policy_json must be a mapping")
     return {}
 
 
-def _reject_removed_websocket_policy(policy: Mapping[str, Any]) -> None:
-    removed = sorted(key for key in _REMOVED_WEBSOCKET_POLICY_KEYS if key in policy)
-    if removed:
-        raise ValueError(f"removed OpenNews websocket policy keys: {', '.join(removed)}")
-
-
 def _subscription_params(url: str, policy: Mapping[str, Any]) -> dict[str, Any]:
     params: dict[str, Any] = {}
-    engine_types = _engine_types(policy.get("engineTypes") or policy.get("engine_types"))
+    engine_types = _engine_types(policy.get("engineTypes"))
     if not engine_types:
         engine_types = _engine_types_from_url(url)
     if engine_types:
@@ -216,10 +203,10 @@ def _subscription_params(url: str, policy: Mapping[str, Any]) -> dict[str, Any]:
     if coins:
         params["coins"] = coins
 
-    if "hasCoin" in policy or "has_coin" in policy:
-        params["hasCoin"] = _truthy(policy.get("hasCoin", policy.get("has_coin")))
+    if "hasCoin" in policy:
+        params["hasCoin"] = _truthy(policy.get("hasCoin"))
     else:
-        has_coin = _first_query_value(url, "hasCoin") or _first_query_value(url, "has_coin")
+        has_coin = _first_query_value(url, "hasCoin")
         if has_coin is not None:
             params["hasCoin"] = _truthy(has_coin)
     return params
@@ -265,10 +252,10 @@ def _rest_search_body(
     for key in ("engineTypes", "coins", "hasCoin"):
         if key in subscription:
             body[key] = subscription[key]
-    query = _optional_text(policy.get("q") or policy.get("query") or policy.get("keyword"))
+    query = _optional_text(policy.get("q"))
     if query:
         body["q"] = query
-    score = _positive_int_or_none(policy.get("score", policy.get("min_score", policy.get("minScore"))))
+    score = _positive_int_or_none(policy.get("score"))
     if score is not None:
         body["score"] = score
     published_after_ms = _positive_int_or_none(since_ms)

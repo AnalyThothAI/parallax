@@ -151,24 +151,11 @@ def test_opennews_run_rest_fetch_requires_formal_coroutine_close_contract_withou
     asyncio.run(run_in_active_loop())
 
 
-@pytest.mark.parametrize(
-    ("key", "value"),
-    [
-        ("fetch_mode", "hybrid"),
-        ("wss_url", "wss://example.test/open/news_wss"),
-        ("stream_timeout_seconds", 10),
-        ("streamTimeoutSeconds", 10),
-        ("max_messages", 20),
-        ("maxMessages", 20),
-        ("connect_timeout_seconds", 3),
-        ("connectTimeoutSeconds", 3),
-    ],
-)
-def test_opennews_client_rejects_removed_websocket_policy_keys(key: str, value: object) -> None:
+def test_opennews_client_rejects_unknown_fetch_policy_key() -> None:
     client = OpenNewsFeedClient(token="test-token", post_json=_unused_post_json)
 
-    with pytest.raises(ValueError, match=f"removed OpenNews websocket policy keys: {key}"):
-        client.fetch("opennews://subscribe", source={"fetch_policy_json": {key: value}})
+    with pytest.raises(ValueError, match="OpenNews fetch_policy_json has unknown keys: unknown"):
+        client.fetch("opennews://subscribe", source={"fetch_policy_json": {"unknown": True}})
 
 
 def test_opennews_client_requires_configured_token_without_echoing_value() -> None:

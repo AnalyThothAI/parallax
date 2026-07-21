@@ -15,11 +15,14 @@ from parallax.domains.news_intel._constants import (
     NEWS_ITEM_AGENT_ADMISSION_VERSION,
     NEWS_MARKET_SCOPE_VERSION,
     NEWS_PAGE_PROJECTION_VERSION,
+    NEWS_STORY_BRIEF_GUARDRAIL_VERSION,
+    NEWS_STORY_BRIEF_PROMPT_VERSION,
+    NEWS_STORY_BRIEF_SCHEMA_VERSION,
+    NEWS_STORY_BRIEF_VALIDATOR_VERSION,
 )
-from parallax.domains.news_intel.repositories.news_repository import (
+from parallax.domains.news_intel.repositories.news_repository_support import (
     _public_agent_brief_payload,
 )
-from parallax.domains.news_intel.types.news_item_brief_contract import CURRENT_NEWS_ITEM_BRIEF_CONTRACT
 
 
 def test_news_api_lists_agent_signal_news_rows_without_postgres() -> None:
@@ -80,7 +83,7 @@ def test_news_api_lists_agent_signal_news_rows_without_postgres() -> None:
                             "label_zh": "利好",
                             "title_zh": "AI 标题：SOL ETF approved",
                             "summary_zh": "Agent summary.",
-                            "method": "news_item_brief",
+                            "method": "news_story_brief",
                         },
                         "agent_signal": {
                             "status": "ready",
@@ -398,8 +401,8 @@ def test_news_item_detail_hides_retired_brief_fields() -> None:
             "research_todos_zh": ["retired"],
             "confidence": 0.9,
             "prompt_version": "news-item-brief-v2",
-            "schema_version": "news_item_brief_v1",
-            "validator_version": "news_item_brief_validator_v2",
+            "schema_version": NEWS_STORY_BRIEF_SCHEMA_VERSION,
+            "validator_version": NEWS_STORY_BRIEF_VALIDATOR_VERSION,
             "computed_at_ms": 123,
         },
     }
@@ -570,7 +573,10 @@ def test_news_item_detail_hides_agent_brief_runtime_audit_fields() -> None:
     news.item_detail = {
         "news_item_id": "news-1",
         "agent_brief": {
-            **CURRENT_NEWS_ITEM_BRIEF_CONTRACT,
+            "prompt_version": NEWS_STORY_BRIEF_PROMPT_VERSION,
+            "schema_version": NEWS_STORY_BRIEF_SCHEMA_VERSION,
+            "validator_version": NEWS_STORY_BRIEF_VALIDATOR_VERSION,
+            "guardrail_version": NEWS_STORY_BRIEF_GUARDRAIL_VERSION,
             "status": "ready",
             "direction": "bullish",
             "decision_class": "driver",
@@ -722,7 +728,8 @@ class FakeNewsRepository:
 
 class FakeRepositoryContext:
     def __init__(self, news: FakeNewsRepository) -> None:
-        self.news = news
+        self.news_pages = news
+        self.news_sources = news
 
     def __enter__(self):
         return self
@@ -769,7 +776,7 @@ def _news_row(*, row_id: str, latest_at_ms: int) -> dict[str, object]:
                 "label_zh": "利好",
                 "title_zh": "AI 标题：SOL ETF approved",
                 "summary_zh": "Agent summary.",
-                "method": "news_item_brief",
+                "method": "news_story_brief",
             },
             "agent_signal": {
                 "status": "ready",

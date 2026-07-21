@@ -161,7 +161,7 @@ describe("news API client normalization", () => {
                   status: "ready",
                   direction: "bearish",
                   label_zh: "利空",
-                  method: "news_item_brief",
+                  method: "news_story_brief",
                 }),
                 agent_brief: {
                   status: "ready",

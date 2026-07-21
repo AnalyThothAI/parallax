@@ -101,7 +101,7 @@ def test_backfill_lifecycle_write_counts_report_single_row_mutation(
 def test_backfill_lifecycle_write_counts_require_cursor_rowcount(operation: str) -> None:
     conn = _ScriptedConnection([])
 
-    with pytest.raises(TypeError, match="enriched_event_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="enriched_event_repository_rowcount_invalid"):
         _run_backfill_lifecycle_write(EnrichedEventRepository(conn), operation)
 
 

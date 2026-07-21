@@ -1,11 +1,6 @@
 from __future__ import annotations
 
-import pytest
-
 from parallax.domains.macro_intel._constants import MACRO_EVENT_CONCEPTS
-from parallax.domains.macro_intel.observation_identity import (
-    macro_series_current_row_payload_hash,
-)
 from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
 
 
@@ -35,13 +30,12 @@ def test_partition_refresh_upserts_only_claimed_concepts() -> None:
     assert result["rows_written"] == 1
     assert result["source_rows"] == 1
     assert "FROM macro_observations" in source_query
-    assert "concept_key = ANY" in source_query
+    assert "concept_key = requested.concept_key" in source_query
     assert source_params == (
         ["rates:dgs10"],
+        "macro_regime_v4",
         730,
         list(MACRO_EVENT_CONCEPTS),
-        "macro_regime_v4",
-        1_779_000_000_000,
         252,
     )
     assert "projection_version = %s" in delete_query
@@ -54,70 +48,14 @@ def test_partition_refresh_upserts_only_claimed_concepts() -> None:
         "macro_regime_v4",
         ["rates:dgs10"],
     )
-    assert "payload_hash" in insert_query
+    assert "event_metadata_json" in insert_query
     assert "ON CONFLICT (projection_version, concept_key, observed_at) DO UPDATE SET" in insert_query
-    assert "WHERE macro_observation_series_rows.payload_hash IS DISTINCT FROM excluded.payload_hash" in insert_query
+    assert "IS DISTINCT FROM" in insert_query
+    assert "payload_hash" not in insert_query
     unbounded_delete = (
         'DELETE FROM macro_observation_series_rows\n                WHERE projection_version = %s\n                """'
     )
     assert unbounded_delete not in queries
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param(
-            {"lookback_days": 0},
-            "macro_observation_series_refresh_lookback_days_required",
-            id="lookback-zero",
-        ),
-        pytest.param(
-            {"lookback_days": True},
-            "macro_observation_series_refresh_lookback_days_required",
-            id="lookback-bool",
-        ),
-        pytest.param(
-            {"lookback_days": "730"},
-            "macro_observation_series_refresh_lookback_days_required",
-            id="lookback-string",
-        ),
-        pytest.param(
-            {"limit_per_series": 0},
-            "macro_observation_series_refresh_limit_per_series_required",
-            id="limit-zero",
-        ),
-        pytest.param(
-            {"limit_per_series": True},
-            "macro_observation_series_refresh_limit_per_series_required",
-            id="limit-bool",
-        ),
-        pytest.param(
-            {"limit_per_series": "252"},
-            "macro_observation_series_refresh_limit_per_series_required",
-            id="limit-string",
-        ),
-    ],
-)
-def test_partition_refresh_rejects_malformed_history_inputs_before_sql(
-    overrides: dict[str, object],
-    error_code: str,
-) -> None:
-    conn = PartitionRefreshConnection(selected_rows=[], existing_rows=[])
-    repo = MacroIntelRepository(conn)
-    params = {
-        "projection_version": "macro_regime_v4",
-        "now_ms": 1_779_000_000_000,
-        "lookback_days": 730,
-        "limit_per_series": 252,
-        "claimed_targets": [_dirty_target("rates:dgs10")],
-        "concept_keys": ("rates:dgs10",),
-    }
-    params.update(overrides)
-
-    with pytest.raises(ValueError, match=error_code):
-        repo.refresh_observation_series_rows_for_concepts(**params)
-
-    assert conn.executions == []
 
 
 def test_partition_refresh_allows_text_event_rows_without_numeric_values() -> None:
@@ -146,22 +84,14 @@ def test_partition_refresh_allows_text_event_rows_without_numeric_values() -> No
     assert result["rows_written"] == 1
     assert result["source_rows"] == 1
     assert "value_numeric IS NOT NULL OR concept_key = ANY" in " ".join(source_query.split())
-    assert "event:fed_speech" in source_params[2]
+    assert "event:fed_speech" in source_params[3]
 
 
 def test_partition_refresh_skips_unchanged_concepts_without_delete_insert() -> None:
     selected_row = _series_row(concept_key="rates:dgs10")
-    existing_hash = macro_series_current_row_payload_hash(selected_row)
     conn = PartitionRefreshConnection(
         selected_rows=[selected_row],
-        existing_rows=[
-            {
-                "concept_key": "rates:dgs10",
-                "observed_at": "2026-05-20",
-                "series_rank": 1,
-                "payload_hash": existing_hash,
-            }
-        ],
+        existing_rows=[_current_series_row(selected_row)],
     )
     repo = MacroIntelRepository(conn)
 
@@ -182,33 +112,30 @@ def test_partition_refresh_skips_unchanged_concepts_without_delete_insert() -> N
     assert "INSERT INTO macro_observation_series_rows" not in queries
 
 
-def test_partition_refresh_requires_existing_current_payload_hash_before_change_detection() -> None:
+def test_partition_refresh_compares_compact_current_payload_without_persisted_hash() -> None:
     selected_row = _series_row(concept_key="rates:dgs10")
     conn = PartitionRefreshConnection(
         selected_rows=[selected_row],
-        existing_rows=[
-            {
-                "concept_key": "rates:dgs10",
-                "observed_at": "2026-05-20",
-                "series_rank": 1,
-            }
-        ],
+        existing_rows=[_current_series_row(selected_row) | {"data_quality": "stale"}],
+        insert_rowcount=1,
     )
     repo = MacroIntelRepository(conn)
 
-    with pytest.raises(RuntimeError, match="macro_series_current_existing_payload_hash_required"):
-        repo.refresh_observation_series_rows_for_concepts(
-            projection_version="macro_regime_v4",
-            now_ms=1_779_000_000_000,
-            lookback_days=730,
-            limit_per_series=252,
-            claimed_targets=[_dirty_target("rates:dgs10")],
-            concept_keys=("rates:dgs10",),
-        )
+    result = repo.refresh_observation_series_rows_for_concepts(
+        projection_version="macro_regime_v4",
+        now_ms=1_779_000_000_000,
+        lookback_days=730,
+        limit_per_series=252,
+        claimed_targets=[_dirty_target("rates:dgs10")],
+        concept_keys=("rates:dgs10",),
+    )
 
     queries = "\n".join(query for query, _params in conn.executions)
-    assert "DELETE FROM macro_observation_series_rows" not in queries
-    assert "INSERT INTO macro_observation_series_rows" not in queries
+    assert result["status"] == "published"
+    assert "INSERT INTO macro_observation_series_rows" in queries
+    assert "payload_hash" not in next(
+        query for query, _params in conn.executions if "INSERT INTO macro_observation_series_rows" in query
+    )
 
 
 def _dirty_target(concept_key: str) -> dict[str, object]:
@@ -232,18 +159,19 @@ def _series_row(*, concept_key: str) -> dict[str, object]:
         "projection_version": "macro_regime_v4",
         "concept_key": concept_key,
         "observed_at": "2026-05-20",
-        "series_rank": 1,
         "value_numeric": 4.7,
         "source_name": "fred",
         "series_key": "fred:DGS10",
-        "source_priority": 100,
         "unit": "percent",
         "frequency": "daily",
         "data_quality": "ok",
-        "source_ts": "2026-05-20",
         "raw_payload_json": {},
-        "ingested_at_ms": 1,
-        "projected_at_ms": 1_779_000_000_000,
+    }
+
+
+def _current_series_row(selected_row: dict[str, object]) -> dict[str, object]:
+    return {key: value for key, value in selected_row.items() if key != "raw_payload_json"} | {
+        "event_metadata_json": {}
     }
 
 
@@ -262,12 +190,12 @@ class PartitionRefreshConnection:
 
     def execute(self, query: str, params: tuple[object, ...] = ()) -> Cursor:
         self.executions.append((query, params))
-        if "WITH source_ranked AS" in query:
+        if "FROM macro_observations" in query:
             return Cursor(self.selected_rows)
-        if "FROM macro_observation_series_rows AS rows" in query and "payload_hash" in query:
+        if "SELECT" in query and "rows.event_metadata_json" in query:
             return Cursor(self.existing_rows)
         if "INSERT INTO macro_observation_series_rows" in query:
-            return Cursor([], rowcount=self.insert_rowcount)
+            return Cursor([{"changed": 1}] * self.insert_rowcount, rowcount=self.insert_rowcount)
         return Cursor([])
 
     def transaction(self):

@@ -1,12 +1,14 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
+from parallax.platform.db.postgres_client import require_transaction
 from parallax.platform.db.queue_terminal import terminalize_source_row
+from parallax.platform.db.write_contract import expect_mutation_count, mutation_count
+from parallax.platform.validation import require_nonnegative_int, require_positive_int
 
 MARKET_DIRTY_MIN_INTERVAL_MS = 60_000
 
@@ -48,20 +50,16 @@ class TokenRadarDirtyTargetRepository:
         reason: str,
         now_ms: int,
         due_at_ms: int | None = None,
-        commit: bool = True,
     ) -> int:
+        require_transaction(self.conn, operation="enqueue_token_radar_dirty_targets")
         records = _dirty_records(rows, reason=reason, now_ms=int(now_ms), due_at_ms=due_at_ms)
         if not records:
             return 0
-
-        def _enqueue_targets() -> int:
-            cursor = self.conn.execute(
-                _TARGET_DIRTY_INSERT_SQL,
-                _target_dirty_params(records, reason=reason, now_ms=now_ms),
-            )
-            return _cursor_rowcount(cursor)
-
-        return _run_repository_write(self.conn, commit, _enqueue_targets)
+        cursor = self.conn.execute(
+            _TARGET_DIRTY_INSERT_SQL,
+            _target_dirty_params(records, reason=reason, now_ms=now_ms),
+        )
+        return mutation_count(cursor, error_code="token_radar_dirty_target_rowcount_invalid")
 
     def enqueue_market_targets(
         self,
@@ -70,29 +68,25 @@ class TokenRadarDirtyTargetRepository:
         reason: str,
         now_ms: int,
         due_at_ms: int | None = None,
-        commit: bool = True,
     ) -> int:
+        require_transaction(self.conn, operation="enqueue_token_radar_market_dirty_targets")
         records = _market_target_records(rows)
         if not records:
             return 0
-
-        def _enqueue_market_targets() -> int:
-            cursor = self.conn.execute(
-                _MARKET_TARGET_INSERT_SQL,
-                {
-                    "target_types": [record["target_type"] for record in records],
-                    "target_ids": [record["target_id"] for record in records],
-                    "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
-                    "dirty_reason": str(reason),
-                    **dirty_kind_flags(reason),
-                    "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
-                    "now_ms": int(now_ms),
-                    "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
-                },
-            )
-            return _cursor_rowcount(cursor)
-
-        return _run_repository_write(self.conn, commit, _enqueue_market_targets)
+        cursor = self.conn.execute(
+            _MARKET_TARGET_INSERT_SQL,
+            {
+                "target_types": [record["target_type"] for record in records],
+                "target_ids": [record["target_id"] for record in records],
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+                "dirty_reason": str(reason),
+                **dirty_kind_flags(reason),
+                "due_at_ms": int(due_at_ms if due_at_ms is not None else now_ms),
+                "now_ms": int(now_ms),
+                "market_dirty_min_interval_ms": MARKET_DIRTY_MIN_INTERVAL_MS,
+            },
+        )
+        return mutation_count(cursor, error_code="token_radar_dirty_target_rowcount_invalid")
 
     def claim_due(
         self,
@@ -101,52 +95,49 @@ class TokenRadarDirtyTargetRepository:
         lease_ms: int,
         now_ms: int,
         lease_owner: str,
-        commit: bool = True,
     ) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(
+        parsed_limit = require_nonnegative_int(
             limit,
-            "token_radar_dirty_target_claim_limit_required",
+            error_code="token_radar_dirty_target_claim_limit_required",
         )
-        parsed_lease_ms = _required_positive_int(
+        parsed_lease_ms = require_positive_int(
             lease_ms,
-            "token_radar_dirty_target_claim_lease_ms_required",
+            error_code="token_radar_dirty_target_claim_lease_ms_required",
         )
+        require_transaction(self.conn, operation="claim_token_radar_dirty_targets")
 
-        def _claim_due() -> list[dict[str, Any]]:
-            cursor = self.conn.execute(
-                """
-                WITH due AS (
-                  SELECT target_type_key, identity_id
-                  FROM token_radar_dirty_targets
-                  WHERE due_at_ms <= %(now_ms)s
-                    AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
-                  ORDER BY due_at_ms ASC, updated_at_ms ASC, target_type_key ASC, identity_id ASC
-                  LIMIT %(limit)s
-                  FOR UPDATE SKIP LOCKED
-                )
-                UPDATE token_radar_dirty_targets queue
-                SET leased_until_ms = %(leased_until_ms)s,
-                    lease_owner = %(lease_owner)s,
-                    attempt_count = queue.attempt_count + 1,
-                    last_error = NULL,
-                    updated_at_ms = %(now_ms)s
-                FROM due
-                WHERE queue.target_type_key = due.target_type_key
-                  AND queue.identity_id = due.identity_id
-                RETURNING queue.*
-                """,
-                {
-                    "now_ms": int(now_ms),
-                    "leased_until_ms": int(now_ms) + parsed_lease_ms,
-                    "lease_owner": str(lease_owner),
-                    "limit": parsed_limit,
-                },
+        cursor = self.conn.execute(
+            """
+            WITH due AS (
+              SELECT target_type_key, identity_id
+              FROM token_radar_dirty_targets
+              WHERE due_at_ms <= %(now_ms)s
+                AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
+              ORDER BY due_at_ms ASC, updated_at_ms ASC, target_type_key ASC, identity_id ASC
+              LIMIT %(limit)s
+              FOR UPDATE SKIP LOCKED
             )
-            rows = cursor.fetchall()
-            _returned_rowcount(cursor, rows)
-            return [dict(row) for row in rows]
-
-        return _run_repository_write(self.conn, commit, _claim_due)
+            UPDATE token_radar_dirty_targets queue
+            SET leased_until_ms = %(leased_until_ms)s,
+                lease_owner = %(lease_owner)s,
+                attempt_count = queue.attempt_count + 1,
+                last_error = NULL,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            WHERE queue.target_type_key = due.target_type_key
+              AND queue.identity_id = due.identity_id
+            RETURNING queue.*
+            """,
+            {
+                "now_ms": int(now_ms),
+                "leased_until_ms": int(now_ms) + parsed_lease_ms,
+                "lease_owner": str(lease_owner),
+                "limit": parsed_limit,
+            },
+        )
+        rows = cursor.fetchall()
+        expect_mutation_count(cursor, expected=len(rows), error_code="token_radar_dirty_target_rowcount_invalid")
+        return [dict(row) for row in rows]
 
     def enqueue_recent_resolved_targets(
         self,
@@ -155,33 +146,30 @@ class TokenRadarDirtyTargetRepository:
         now_ms: int,
         limit: int,
         reason: str,
-        commit: bool = True,
     ) -> int:
-        parsed_limit = _required_nonnegative_int(
+        require_transaction(self.conn, operation="enqueue_recent_token_radar_targets")
+        parsed_limit = require_nonnegative_int(
             limit,
-            "token_radar_dirty_target_limit_required",
+            error_code="token_radar_dirty_target_limit_required",
         )
 
-        def _enqueue_recent_resolved_targets() -> int:
-            cursor = self.conn.execute(
-                _RECENT_RESOLVED_TARGET_ENQUEUE_SQL,
-                {
-                    "since_ms": int(since_ms),
-                    "now_ms": int(now_ms),
-                    "limit": parsed_limit,
-                    "dirty_reason": str(reason),
-                    **dirty_kind_flags(reason),
-                    "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
-                },
-            )
-            return _cursor_rowcount(cursor)
-
-        return _run_repository_write(self.conn, commit, _enqueue_recent_resolved_targets)
+        cursor = self.conn.execute(
+            _RECENT_RESOLVED_TARGET_ENQUEUE_SQL,
+            {
+                "since_ms": int(since_ms),
+                "now_ms": int(now_ms),
+                "limit": parsed_limit,
+                "dirty_reason": str(reason),
+                **dirty_kind_flags(reason),
+                "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
+            },
+        )
+        return mutation_count(cursor, error_code="token_radar_dirty_target_rowcount_invalid")
 
     def count_recent_resolved_target_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
-        parsed_limit = _required_nonnegative_int(
+        parsed_limit = require_nonnegative_int(
             limit,
-            "token_radar_dirty_target_limit_required",
+            error_code="token_radar_dirty_target_limit_required",
         )
         row = self.conn.execute(
             """
@@ -212,9 +200,9 @@ class TokenRadarDirtyTargetRepository:
         return _count(row)
 
     def count_recent_resolved_target_enqueue_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
-        parsed_limit = _required_nonnegative_int(
+        parsed_limit = require_nonnegative_int(
             limit,
-            "token_radar_dirty_target_limit_required",
+            error_code="token_radar_dirty_target_limit_required",
         )
         row = self.conn.execute(
             _RECENT_RESOLVED_TARGET_ELIGIBLE_CTES + "SELECT COUNT(*) AS count FROM eligible",
@@ -228,9 +216,9 @@ class TokenRadarDirtyTargetRepository:
         return _count(row)
 
     def count_market_current_target_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
-        parsed_limit = _required_nonnegative_int(
+        parsed_limit = require_nonnegative_int(
             limit,
-            "token_radar_dirty_target_limit_required",
+            error_code="token_radar_dirty_target_limit_required",
         )
         row = self.conn.execute(
             """
@@ -253,9 +241,9 @@ class TokenRadarDirtyTargetRepository:
         return _count(row)
 
     def count_market_current_target_enqueue_candidates(self, *, since_ms: int, now_ms: int, limit: int) -> int:
-        parsed_limit = _required_nonnegative_int(
+        parsed_limit = require_nonnegative_int(
             limit,
-            "token_radar_dirty_target_limit_required",
+            error_code="token_radar_dirty_target_limit_required",
         )
         row = self.conn.execute(
             _MARKET_CURRENT_ELIGIBLE_CTES + "SELECT COUNT(*) AS count FROM eligible",
@@ -275,64 +263,58 @@ class TokenRadarDirtyTargetRepository:
         now_ms: int,
         limit: int,
         reason: str,
-        commit: bool = True,
     ) -> int:
-        parsed_limit = _required_nonnegative_int(
+        require_transaction(self.conn, operation="enqueue_token_radar_market_current_targets")
+        parsed_limit = require_nonnegative_int(
             limit,
-            "token_radar_dirty_target_limit_required",
+            error_code="token_radar_dirty_target_limit_required",
         )
 
-        def _enqueue_market_current_targets() -> int:
-            cursor = self.conn.execute(
-                _MARKET_CURRENT_ENQUEUE_SQL,
-                _market_current_params(
-                    since_ms=since_ms,
-                    now_ms=now_ms,
-                    limit=parsed_limit,
-                    reason=reason,
-                ),
-            )
-            return _cursor_rowcount(cursor)
-
-        return _run_repository_write(self.conn, commit, _enqueue_market_current_targets)
+        cursor = self.conn.execute(
+            _MARKET_CURRENT_ENQUEUE_SQL,
+            _market_current_params(
+                since_ms=since_ms,
+                now_ms=now_ms,
+                limit=parsed_limit,
+                reason=reason,
+            ),
+        )
+        return mutation_count(cursor, error_code="token_radar_dirty_target_rowcount_invalid")
 
     def mark_done(
         self,
         keys: Iterable[Mapping[str, Any]],
         *,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
+        require_transaction(self.conn, operation="complete_token_radar_dirty_targets")
         records = _key_records(keys)
         if not records:
             return 0
 
-        def _mark_done() -> int:
-            cursor = self.conn.execute(
-                """
-                WITH done AS (
-                  SELECT *
-                  FROM unnest(
-                    %(target_type_keys)s::text[],
-                    %(identity_ids)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(lease_owners)s::text[],
-                    %(attempt_counts)s::bigint[]
-                  ) AS done(target_type_key, identity_id, payload_hash, lease_owner, attempt_count)
-                )
-                DELETE FROM token_radar_dirty_targets queue
-                USING done
-                WHERE queue.target_type_key = done.target_type_key
-                  AND queue.identity_id = done.identity_id
-                  AND queue.payload_hash = done.payload_hash
-                  AND queue.lease_owner = done.lease_owner
-                  AND queue.attempt_count = done.attempt_count
-                """,
-                _key_params(records),
+        cursor = self.conn.execute(
+            """
+            WITH done AS (
+              SELECT *
+              FROM unnest(
+                %(target_type_keys)s::text[],
+                %(identity_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS done(target_type_key, identity_id, payload_hash, lease_owner, attempt_count)
             )
-            return _cursor_rowcount(cursor)
-
-        return _run_repository_write(self.conn, commit, _mark_done)
+            DELETE FROM token_radar_dirty_targets queue
+            USING done
+            WHERE queue.target_type_key = done.target_type_key
+              AND queue.identity_id = done.identity_id
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            """,
+            _key_params(records),
+        )
+        return mutation_count(cursor, error_code="token_radar_dirty_target_rowcount_invalid")
 
     def mark_error(
         self,
@@ -343,17 +325,17 @@ class TokenRadarDirtyTargetRepository:
         max_attempts: int,
         worker_name: str,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
         records = _key_records(keys)
         if not records:
             return 0
         parsed_max_attempts = _required_max_attempts(max_attempts)
-        parsed_retry_ms = _required_positive_int(
+        parsed_retry_ms = require_positive_int(
             retry_ms,
-            "token_radar_dirty_target_retry_ms_required",
+            error_code="token_radar_dirty_target_retry_ms_required",
         )
         parsed_worker_name = _required_text(worker_name, "worker_name")
+        require_transaction(self.conn, operation="fail_token_radar_dirty_targets")
         retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
         exhausted_records = [record for record in records if int(record["attempt_count"]) >= parsed_max_attempts]
         retry_params = {
@@ -363,11 +345,10 @@ class TokenRadarDirtyTargetRepository:
             "last_error": str(error)[:2048],
         }
 
-        def _mark_error() -> int:
-            changed = 0
-            if retry_records:
-                cursor = self.conn.execute(
-                    """
+        changed = 0
+        if retry_records:
+            cursor = self.conn.execute(
+                """
                     WITH failed AS (
                       SELECT *
                       FROM unnest(
@@ -391,31 +372,28 @@ class TokenRadarDirtyTargetRepository:
                       AND queue.lease_owner = failed.lease_owner
                       AND queue.attempt_count = failed.attempt_count
                     """,
-                    retry_params,
+                retry_params,
+            )
+            changed += mutation_count(cursor, error_code="token_radar_dirty_target_rowcount_invalid")
+        if exhausted_records:
+            deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
+            changed += deleted_count
+            for row in deleted_rows:
+                terminalize_source_row(
+                    self.conn,
+                    worker_name=parsed_worker_name,
+                    source_table="token_radar_dirty_targets",
+                    target_key=_terminal_target_key(row),
+                    source_row=row,
+                    final_status="terminal",
+                    final_reason=_retry_budget_exhausted_reason(error),
+                    now_ms=now_ms,
+                    attempt_count=int(row["attempt_count"]),
+                    payload_hash=_completion_payload_hash(row),
+                    first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
+                    last_attempted_at_ms=now_ms,
                 )
-                changed += _cursor_rowcount(cursor)
-            if exhausted_records:
-                deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
-                changed += deleted_count
-                for row in deleted_rows:
-                    terminalize_source_row(
-                        self.conn,
-                        worker_name=parsed_worker_name,
-                        source_table="token_radar_dirty_targets",
-                        target_key=_terminal_target_key(row),
-                        source_row=row,
-                        final_status="terminal",
-                        final_reason=_retry_budget_exhausted_reason(error),
-                        now_ms=now_ms,
-                        attempt_count=int(row["attempt_count"]),
-                        payload_hash=_completion_payload_hash(row),
-                        first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
-                        last_attempted_at_ms=now_ms,
-                        commit=False,
-                    )
-            return changed
-
-        return _run_repository_write(self.conn, commit, _mark_error)
+        return changed
 
     def _delete_claims_returning(self, records: list[dict[str, str | int]]) -> tuple[list[dict[str, Any]], int]:
         cursor = self.conn.execute(
@@ -442,60 +420,16 @@ class TokenRadarDirtyTargetRepository:
             _key_params(records),
         )
         rows = cursor.fetchall()
-        deleted_count = _returned_rowcount(cursor, rows)
+        deleted_count = expect_mutation_count(
+            cursor,
+            expected=len(rows),
+            error_code="token_radar_dirty_target_rowcount_invalid",
+        )
         return [dict(row) for row in rows], deleted_count
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("token_radar_dirty_target_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("token_radar_dirty_target_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("token_radar_dirty_target_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("token_radar_dirty_target_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("token_radar_dirty_target_rowcount_invalid")
-    return rowcount
-
-
-def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount != len(rows):
-        raise TypeError("token_radar_dirty_target_rowcount_invalid")
-    return rowcount
-
-
 def _required_max_attempts(value: Any) -> int:
-    return _required_positive_int(value, "token_radar_dirty_target_max_attempts_required")
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
-    return int(value)
+    return require_positive_int(value, error_code="token_radar_dirty_target_max_attempts_required")
 
 
 def _required_text(value: Any, field_name: str) -> str:
@@ -1048,9 +982,9 @@ def _completion_attempt_count(key: Mapping[str, Any]) -> int:
         value = key["attempt_count"]
     except KeyError as exc:
         raise ValueError("token radar dirty target completion requires attempt_count from claim_due") from exc
-    return _required_positive_int(
+    return require_positive_int(
         value,
-        "token radar dirty target completion requires attempt_count from claim_due",
+        error_code="token radar dirty target completion requires attempt_count from claim_due",
     )
 
 

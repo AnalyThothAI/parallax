@@ -5,7 +5,6 @@ export type WatchlistRow = {
   handle: string;
   lastSeenAtMs: number | null;
   recentSourceCount: number;
-  totalSignalCount: number;
   unreadCount: number;
 };
 
@@ -25,7 +24,6 @@ export function buildWatchlistRows({
       handle: row.handle,
       lastSeenAtMs: row.last_source_event_at_ms ?? null,
       recentSourceCount: Number(row.recent_source_event_count ?? 0),
-      totalSignalCount: Number(row.total_signal_event_count ?? 0),
       unreadCount: Number(accountUnreadCounts?.[row.handle] ?? 0),
     }))
     .sort(
@@ -42,9 +40,5 @@ export function emptyWatchlistHandleRow(handle: string): WatchlistHandleRowOverv
     handle,
     last_source_event_at_ms: null,
     recent_source_event_count: 0,
-    recent_signal_event_count: 0,
-    total_signal_event_count: 0,
-    summary_status: "not_ready",
-    summary_is_stale: false,
   };
 }

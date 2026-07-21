@@ -3,7 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from parallax.domains.news_intel.services.news_item_brief_input import (
+from parallax.domains.news_intel.services.news_story_brief_input_support import (
     BODY_EXCERPT_MAX_CHARS,
     MAX_ENTITY_LANES,
     MAX_FACT_LANES,
@@ -17,15 +17,13 @@ from parallax.domains.news_intel.services.news_item_brief_input import (
     _stable_unique,
     _str,
 )
-from parallax.domains.news_intel.types.news_item_brief import (
-    NewsItemBriefConstraints,
-    NewsItemBriefNewsItem,
-    NewsItemBriefSource,
-)
 from parallax.domains.news_intel.types.news_story_brief import (
     NewsStoryBriefAgentConfig,
+    NewsStoryBriefConstraints,
     NewsStoryBriefInputPacket,
     NewsStoryBriefMember,
+    NewsStoryBriefNewsItem,
+    NewsStoryBriefSource,
     story_brief_key_for,
 )
 from parallax.platform.agent_hashing import json_sha256
@@ -56,9 +54,9 @@ def build_news_story_brief_input_packet(
     member_ids = [member.news_item_id for member in members]
     entity_lanes = _entity_lanes(entities=entities, token_mentions=token_mentions)
     fact_lanes = [_fact_lane(row) for row in sorted(fact_candidates, key=_fact_sort_key)[:MAX_FACT_LANES]]
-    agent_admission = _required_context_object(story, "agent_admission_json", alias_key="agent_admission")
-    similarity = _optional_context_object(story, "similarity_json", alias_key="similarity")
-    material_delta = _optional_context_object(story, "material_delta_json", alias_key="material_delta")
+    agent_admission = _required_context_object(story, "agent_admission_json")
+    similarity = _optional_context_object(story, "similarity_json")
+    material_delta = _optional_context_object(story, "material_delta_json")
     event_type = _optional_bounded(story.get("event_type"), 80)
     story_market_scope = _required_market_scope(story)
     market_scope = _market_scope(
@@ -86,7 +84,7 @@ def build_news_story_brief_input_packet(
         story_brief_key=story_brief_key,
         story_key=story_key,
         story_identity_version=story_identity_version,
-        story_identity=_required_context_object(story, "story_identity_json", alias_key="story_identity"),
+        story_identity=_required_context_object(story, "story_identity_json"),
         representative_news_item_id=representative.news_item_id,
         member_news_item_ids=member_ids,
         representative_item=representative,
@@ -99,7 +97,7 @@ def build_news_story_brief_input_packet(
         similarity=similarity,
         material_delta=material_delta,
         evidence_refs=evidence_refs,
-        constraints=NewsItemBriefConstraints(),
+        constraints=NewsStoryBriefConstraints(),
         prompt_version=agent_config.prompt_version,
         schema_version=agent_config.schema_version,
     )
@@ -114,8 +112,8 @@ def news_story_brief_material_input_hash(packet: NewsStoryBriefInputPacket) -> s
     return json_sha256(news_story_brief_material_input_payload(packet))
 
 
-def _news_item(item: Mapping[str, Any]) -> NewsItemBriefNewsItem:
-    return NewsItemBriefNewsItem(
+def _news_item(item: Mapping[str, Any]) -> NewsStoryBriefNewsItem:
+    return NewsStoryBriefNewsItem(
         news_item_id=_str(item.get("news_item_id")),
         title=_bounded(item.get("title"), 500),
         summary=_bounded(item.get("summary"), 2000),
@@ -127,7 +125,7 @@ def _news_item(item: Mapping[str, Any]) -> NewsItemBriefNewsItem:
             error_code="news_story_brief_representative_published_at_ms_required",
         ),
         content_hash=_bounded(item.get("content_hash"), 160),
-        source=NewsItemBriefSource(
+        source=NewsStoryBriefSource(
             source_domain=_bounded(item.get("source_domain"), 255),
             source_name=_bounded(item.get("source_name"), 255),
             source_role=_bounded(item.get("source_role"), 64),
@@ -168,9 +166,7 @@ def _required_positive_int(row: Mapping[str, Any], field_name: str, *, error_cod
     return value
 
 
-def _optional_context_object(item: Mapping[str, Any], json_key: str, *, alias_key: str) -> dict[str, object]:
-    if alias_key in item and item[alias_key] is not None:
-        raise ValueError(f"news_story_brief_{json_key}_required")
+def _optional_context_object(item: Mapping[str, Any], json_key: str) -> dict[str, object]:
     if json_key not in item or item[json_key] is None:
         return {}
     return _required_bounded_json_object(
@@ -179,9 +175,7 @@ def _optional_context_object(item: Mapping[str, Any], json_key: str, *, alias_ke
     )
 
 
-def _required_context_object(item: Mapping[str, Any], json_key: str, *, alias_key: str) -> dict[str, object]:
-    if alias_key in item and item[alias_key] is not None:
-        raise ValueError(f"news_story_brief_{json_key}_required")
+def _required_context_object(item: Mapping[str, Any], json_key: str) -> dict[str, object]:
     if json_key not in item or item[json_key] is None:
         raise ValueError(f"news_story_brief_{json_key}_required")
     value = item[json_key]
@@ -218,7 +212,7 @@ def _required_member_rows(rows: Sequence[Mapping[str, Any]]) -> Sequence[Mapping
 
 def _evidence_refs(
     *,
-    representative: NewsItemBriefNewsItem,
+    representative: NewsStoryBriefNewsItem,
     members: Sequence[NewsStoryBriefMember],
     fact_lanes: Sequence[Any],
     entity_lanes: Sequence[Any],

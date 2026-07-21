@@ -1,29 +1,31 @@
 from __future__ import annotations
 
-from parallax.domains.news_intel.services.news_item_brief_stage import news_item_brief_instructions
+from functools import lru_cache
+from pathlib import Path
+
 from parallax.domains.news_intel.services.news_story_brief_input import news_story_brief_material_input_payload
-from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefPayload
 from parallax.domains.news_intel.types.news_story_brief import (
     NEWS_STORY_BRIEF_AGENT_NAME,
     NEWS_STORY_BRIEF_LANE,
     NEWS_STORY_BRIEF_WORKFLOW_NAME,
     NewsStoryBriefInputPacket,
+    NewsStoryBriefPayload,
 )
 from parallax.platform.agent_execution import AgentStageSpec
 from parallax.platform.agent_hashing import text_sha256
 from parallax.platform.agent_knowledge import render_agent_instructions
 
 _NEWS_STORY_BRIEF_KNOWLEDGE_REFS = ("market_research_harness",)
-_STORY_DELTA_INSTRUCTIONS = """
-The input is a story-level packet, not a single article packet. Treat representative_item as the lead article,
-member_items as the bounded story evidence set, and evidence refs beginning with story:member: as source-backed
-story evidence. Produce one current market brief for the whole story.
-""".strip()
+
+
+@lru_cache(maxsize=1)
+def news_story_brief_instructions() -> str:
+    return (Path(__file__).resolve().parents[1] / "prompts" / "news_story_brief.md").read_text(encoding="utf-8")
 
 
 def news_story_brief_stage_instructions() -> str:
     return render_agent_instructions(
-        "\n\n".join([news_item_brief_instructions(), _STORY_DELTA_INSTRUCTIONS]),
+        news_story_brief_instructions(),
         knowledge_refs=_NEWS_STORY_BRIEF_KNOWLEDGE_REFS,
     )
 
@@ -38,7 +40,7 @@ def build_news_story_brief_stage(*, packet: NewsStoryBriefInputPacket, run_id: s
         stage="news_story_brief",
         instructions=news_story_brief_stage_instructions(),
         input_payload=news_story_brief_material_input_payload(packet),
-        output_type=NewsItemBriefPayload,
+        output_type=NewsStoryBriefPayload,
         prompt_version=packet.prompt_version,
         schema_version=packet.schema_version,
         workflow_name=NEWS_STORY_BRIEF_WORKFLOW_NAME,
@@ -60,6 +62,7 @@ def build_news_story_brief_stage(*, packet: NewsStoryBriefInputPacket, run_id: s
 
 __all__ = [
     "build_news_story_brief_stage",
+    "news_story_brief_instructions",
     "news_story_brief_prompt_text_hash",
     "news_story_brief_stage_instructions",
 ]

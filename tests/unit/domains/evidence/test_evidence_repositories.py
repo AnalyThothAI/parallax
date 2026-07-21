@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import Callable
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from psycopg import pq
 
 from parallax.domains.evidence.interfaces import EVM_QUERY_CHAINS
 from parallax.domains.evidence.repositories.entity_repository import EntityRepository
@@ -15,23 +17,24 @@ NOW_MS = 1_779_000_000_000
 _ROWCOUNT_MISSING = object()
 
 
-def test_evidence_fact_mutations_require_connection_transaction_before_sql_when_committing() -> None:
+def test_evidence_fact_mutations_require_explicit_transaction_before_sql() -> None:
     cases = _repository_cases()
     for case in cases:
         conn = NoTransactionEvidenceConnection()
 
-        with pytest.raises(RuntimeError, match=case.error):
+        with pytest.raises(RuntimeError, match="requires_explicit_transaction"):
             case.write(conn)
 
         assert conn.sql == []
 
 
-def test_evidence_fact_commit_owned_writes_use_connection_transaction_without_manual_commit() -> None:
+def test_evidence_fact_writes_run_inside_caller_owned_transaction() -> None:
     cases = _repository_cases()
     for case in cases:
         conn = FakeEvidenceConnection()
 
-        case.write(conn)
+        with conn.transaction():
+            case.write(conn)
 
         assert conn.transaction_entries == 1, case.name
         assert conn.transaction_exits == ["ok"], case.name
@@ -176,33 +179,31 @@ def _rowcount_cases() -> list[RowcountCase]:
     return [
         RowcountCase(
             name="raw_frame",
-            required_error="evidence_repository_rowcount_required",
+            required_error="evidence_repository_rowcount_invalid",
             invalid_error="evidence_repository_rowcount_invalid",
             write=lambda conn: EvidenceRepository(conn).insert_raw_frame(
                 source="gmgn",
                 channel="twitter_monitor_basic",
                 received_at_ms=event.received_at_ms,
                 raw_payload_json='{"id":"frame-rowcount"}',
-                commit=False,
             ),
         ),
         RowcountCase(
             name="event",
-            required_error="evidence_repository_rowcount_required",
+            required_error="evidence_repository_rowcount_invalid",
             invalid_error="evidence_repository_rowcount_invalid",
-            write=lambda conn: EvidenceRepository(conn).insert_event_without_commit(
+            write=lambda conn: EvidenceRepository(conn).insert_event_row(
                 event_to_row(event, is_watched=True, now_ms=NOW_MS)
             ),
         ),
         RowcountCase(
             name="event_entities",
-            required_error="entity_repository_rowcount_required",
+            required_error="entity_repository_rowcount_invalid",
             invalid_error="entity_repository_rowcount_invalid",
             write=lambda conn: EntityRepository(conn).insert_event_entities(
                 event,
                 [_entity()],
                 is_watched=True,
-                commit=False,
             ),
         ),
     ]
@@ -259,6 +260,7 @@ class FakeEvidenceConnection:
         self.transaction_depth = 0
         self.transaction_exits: list[str] = []
         self.manual_commits = 0
+        self.info = SimpleNamespace(transaction_status=pq.TransactionStatus.IDLE)
 
     def transaction(self) -> FakeTransaction:
         return FakeTransaction(self)
@@ -276,6 +278,7 @@ class FakeEvidenceConnection:
 class NoTransactionEvidenceConnection:
     def __init__(self) -> None:
         self.sql: list[str] = []
+        self.info = SimpleNamespace(transaction_status=pq.TransactionStatus.IDLE)
 
     def execute(self, sql: str, params: Any = None) -> FakeResult:
         self.sql.append(" ".join(str(sql).split()))
@@ -289,6 +292,7 @@ class RowcountEvidenceConnection:
     def __init__(self, *, rowcount: object) -> None:
         self.rowcount = rowcount
         self.sql: list[str] = []
+        self.info = SimpleNamespace(transaction_status=pq.TransactionStatus.INTRANS)
 
     def execute(self, sql: str, params: Any = None) -> RowcountResult:
         self.sql.append(" ".join(str(sql).split()))
@@ -316,9 +320,11 @@ class FakeTransaction:
     def __enter__(self) -> None:
         self.conn.transaction_entries += 1
         self.conn.transaction_depth += 1
+        self.conn.info.transaction_status = pq.TransactionStatus.INTRANS
 
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: Any) -> bool:
         self.conn.transaction_depth -= 1
+        self.conn.info.transaction_status = pq.TransactionStatus.IDLE
         self.conn.transaction_exits.append(exc_type.__name__ if exc_type else "ok")
         return False
 

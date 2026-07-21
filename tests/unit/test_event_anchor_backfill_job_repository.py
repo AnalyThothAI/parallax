@@ -292,7 +292,7 @@ def test_event_anchor_job_returning_writes_require_cursor_rowcount(
 ) -> None:
     conn = _ScriptedConnection(results, omit_rowcount=True)
 
-    with pytest.raises(TypeError, match="event_anchor_job_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="event_anchor_job_repository_rowcount_invalid"):
         operation(EventAnchorBackfillJobRepository(conn))
 
 
@@ -403,61 +403,6 @@ def test_event_anchor_multi_returning_writes_reject_rowcount_returning_mismatch(
             lease_owner="worker-a",
             lease_ms=60_000,
         )
-
-
-def test_expire_stale_requires_connection_transaction_before_terminal_writes() -> None:
-    conn = _ConnectionWithoutTransaction(
-        [
-            [
-                {
-                    "event_id": "event-1",
-                    "intent_id": "intent-1",
-                    "status": "expired",
-                    "attempt_count": 1,
-                    "created_at_ms": 1_700_000_000_000,
-                    "updated_at_ms": 1_700_000_001_000,
-                }
-            ]
-        ]
-    )
-
-    with pytest.raises(RuntimeError, match="event_anchor_repository_transaction_required"):
-        EventAnchorBackfillJobRepository(conn).expire_stale(
-            limit=5,
-            now_ms=1_700_000_010_000,
-            max_attempts=3,
-            retry_backoff_ms=10_000,
-        )
-
-    assert conn.sql == []
-
-
-def test_mark_terminal_requires_callable_connection_transaction_before_terminal_writes() -> None:
-    conn = _ConnectionWithNonCallableTransaction(
-        [
-            {
-                "event_id": "event-1",
-                "intent_id": "intent-1",
-                "status": "failed",
-                "attempt_count": 3,
-                "created_at_ms": 1_700_000_000_000,
-                "updated_at_ms": 1_700_000_001_000,
-            }
-        ]
-    )
-
-    with pytest.raises(RuntimeError, match="event_anchor_repository_transaction_required"):
-        EventAnchorBackfillJobRepository(conn).mark_terminal(
-            event_id="event-1",
-            intent_id="intent-1",
-            status="failed",
-            reason="provider_no_quote",
-            now_ms=1_700_000_001_000,
-            lease_owner="worker-a",
-            attempt_count=3,
-        )
-
-    assert conn.sql == []
 
 
 def test_reschedule_uses_claim_guard_without_incrementing_attempts() -> None:
@@ -704,14 +649,6 @@ class _ScriptedConnection:
             self.rowcount = len(result) if isinstance(result, list) else (1 if result is not None else 0)
         else:
             self.rowcount = self._rowcount_setting
-
-
-class _ConnectionWithoutTransaction(_ScriptedConnection):
-    transaction = None  # type: ignore[assignment]
-
-
-class _ConnectionWithNonCallableTransaction(_ScriptedConnection):
-    transaction = "not-callable"  # type: ignore[assignment]
 
 
 class _ScriptedTransaction:

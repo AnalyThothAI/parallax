@@ -9,7 +9,6 @@ from typing import Any
 @dataclass(frozen=True, slots=True)
 class MacroSyncRunSummary:
     sync_run_id: str
-    import_run_id: str | None
     status: str
     observations_count: int
     imported_observation_count: int
@@ -27,7 +26,9 @@ class MacroSyncRunSummary:
 
 @dataclass(frozen=True, slots=True)
 class MacrodataBundleImport:
-    import_run: Mapping[str, Any]
+    sync_run_id: str
+    started_at_ms: int
+    completed_at_ms: int
     observations: Sequence[Mapping[str, Any]]
     bundle_name: str
     asof: date | str | None
@@ -36,6 +37,7 @@ class MacrodataBundleImport:
     missing_series: Sequence[Any]
     series_errors: Sequence[Any]
     reason_codes: Sequence[Any]
+    min_observed_at: date | str | None
     max_observed_at: date | str | None
 
 

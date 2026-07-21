@@ -4,7 +4,6 @@ from pydantic import ValidationError
 
 from parallax.platform.agent_execution import AgentRuntimePolicy
 from parallax.platform.config.settings import (
-    NarrativeAdmissionWorkerSettings,
     Settings,
     WorkersSettings,
     default_config_yaml,
@@ -26,16 +25,10 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     payload = yaml.safe_load(default_workers_yaml())
     settings = WorkersSettings(**payload)
 
-    assert set(payload) - {"defaults", "agent_runtime"} == _manifest_worker_names()
+    assert set(payload) - {"agent_runtime"} == _manifest_worker_names()
     assert _old_anchor_worker_key() not in payload
-    assert settings.defaults.enabled is True
-    assert settings.defaults.interval_seconds == 5
-    assert settings.defaults.soft_timeout_seconds == 120
-    assert settings.defaults.hard_timeout_seconds == 180
-    assert settings.defaults.backoff.kind == "exponential"
     assert settings.agent_runtime.defaults.model == "deepseek-v4-flash"
     assert settings.collector.mode == "continuous"
-    assert settings.collector.soft_timeout_seconds == 0
     assert settings.collector.hard_timeout_seconds == 0
     assert settings.collector.snapshot_timeout_seconds == 0.5
     assert settings.market_tick_stream.interval_seconds == 5
@@ -84,20 +77,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.token_radar_projection.statement_timeout_seconds == 120
     assert settings.token_radar_projection.venues == ("all", "sol", "eth", "base", "bsc", "cex")
     assert settings.token_radar_projection.cold_interval_seconds == 60
-    assert settings.narrative_admission.interval_seconds == 60
-    assert settings.narrative_admission.soft_timeout_seconds == 180
-    assert settings.narrative_admission.hard_timeout_seconds == 300
-    assert settings.narrative_admission.advisory_lock_key == 2026051901
-    assert settings.narrative_admission.windows == ("1h",)
-    assert settings.narrative_admission.scopes == ("all",)
-    assert settings.narrative_admission.admission_limit == 200
-    assert settings.narrative_admission.source_limit == 2000
-    assert settings.narrative_admission.lease_ms == 60_000
-    assert settings.narrative_admission.retry_ms == 60_000
-    assert settings.narrative_admission.max_attempts == 3
-    assert settings.narrative_admission.statement_timeout_seconds == 30
-    assert settings.narrative_admission.hot_rank_limit == 50
-    assert settings.narrative_admission.min_rank_score == 30
+    assert "narrative_admission" not in payload
+    assert not hasattr(settings, "narrative_admission")
     assert "mention_semantics" not in payload
     assert "token_discussion_digest" not in payload
     assert not hasattr(settings, "mention_semantics")
@@ -125,18 +106,24 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.macro_view_projection.limit_per_series == 800
     assert settings.macro_view_projection.lease_ms == 300_000
     assert settings.macro_view_projection.retry_ms == 300_000
-    assert settings.macro_daily_brief_projection.statement_timeout_seconds == 30
     assert settings.notification_rule.batch_size == 50
     assert settings.notification_rule.statement_timeout_seconds == 30
     assert settings.notification_delivery.batch_size == 1
     assert settings.notification_delivery.max_attempts == 5
     assert settings.notification_delivery.statement_timeout_seconds == 30
-    assert settings.news_item_brief.enabled is False
     assert settings.news_story_brief.enabled is True
 
 
+def test_default_workers_yaml_round_trips_typed_defaults() -> None:
+    payload = yaml.safe_load(default_workers_yaml())
+    expected = WorkersSettings()
+
+    assert payload == expected.model_dump(mode="json")
+    assert WorkersSettings.model_validate(payload) == expected
+
+
 def test_worker_settings_schema_matches_manifest_worker_names() -> None:
-    worker_fields = set(WorkersSettings.model_fields) - {"defaults", "agent_runtime"}
+    worker_fields = set(WorkersSettings.model_fields) - {"agent_runtime"}
 
     assert worker_fields == _manifest_worker_names()
 
@@ -186,41 +173,22 @@ def test_default_workers_yaml_hard_cuts_old_market_observation_runtime_keys():
     assert "investigator_max_tool_calls" not in text
     assert "fallback_agent_brief" not in text
     assert "narrative_fallback" not in text
-    worker_payload = {key: value for key, value in payload.items() if key not in {"defaults", "agent_runtime"}}
-    assert "timeout_seconds" not in payload["defaults"]
+    worker_payload = {key: value for key, value in payload.items() if key != "agent_runtime"}
     assert all("timeout_seconds" not in value for value in worker_payload.values())
 
 
-def test_narrative_realtime_workers_reject_matched_scope():
-    with pytest.raises(ValidationError, match=r"must contain only|must be exactly"):
-        NarrativeAdmissionWorkerSettings(scopes=("matched",))
-
-
-def test_default_workers_yaml_hard_cuts_narrative_llm_workers() -> None:
+def test_default_workers_yaml_hard_cuts_narrative_workers() -> None:
     text = default_workers_yaml()
     payload = yaml.safe_load(text)
 
     assert "mention_semantics" not in text
     assert "token_discussion_digest" not in text
+    assert "narrative_admission" not in text
     assert "narrative.mention_semantics" not in text
     assert "narrative.discussion_digest" not in text
     assert "mention_semantics" not in payload
     assert "token_discussion_digest" not in payload
-
-
-def test_narrative_runtime_defaults_are_1h_only() -> None:
-    settings = WorkersSettings(**yaml.safe_load(default_workers_yaml()))
-
-    assert settings.token_radar_projection.windows == ("5m", "1h", "4h", "24h")
-    assert settings.narrative_admission.windows == ("1h",)
-
-
-def test_narrative_runtime_rejects_non_1h_windows() -> None:
-    payload = yaml.safe_load(default_workers_yaml())
-    payload["narrative_admission"]["windows"] = ["1h", "4h"]
-
-    with pytest.raises(ValidationError, match=r"narrative_admission.windows"):
-        WorkersSettings(**payload)
+    assert "narrative_admission" not in payload
 
 
 def test_worker_settings_reject_unknown_worker_key():
@@ -259,15 +227,13 @@ def test_agent_runtime_settings_default_lanes() -> None:
     assert settings.agent_runtime.defaults.include_usage is True
     assert "narrative.discussion_digest" not in settings.agent_runtime.lanes
     assert "narrative.mention_semantics" not in settings.agent_runtime.lanes
-    assert settings.agent_runtime.lanes["news.item_brief"].priority == "low"
-    assert settings.agent_runtime.lanes["news.item_brief"].max_concurrency == 1
-    assert settings.agent_runtime.lanes["news.item_brief"].timeout_seconds == 180
+    assert "news.item_brief" not in settings.agent_runtime.lanes
     assert settings.agent_runtime.lanes["news.story_brief"].priority == "low"
     assert settings.agent_runtime.lanes["news.story_brief"].max_concurrency == 1
     assert settings.agent_runtime.lanes["news.story_brief"].timeout_seconds == 180
 
 
-def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() -> None:
+def test_agent_runtime_settings_partial_story_lane_override_preserves_global_settings() -> None:
     from parallax.platform.config.settings import WorkersSettings
 
     settings = WorkersSettings(
@@ -275,7 +241,7 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
             "global_max_concurrency": 2,
             "global_rpm_limit": 30,
             "lanes": {
-                "news.item_brief": {
+                "news.story_brief": {
                     "priority": "high",
                     "model": "gpt-news",
                     "max_concurrency": 1,
@@ -290,37 +256,14 @@ def test_agent_runtime_settings_partial_lane_override_preserves_default_lanes() 
         }
     )
 
-    lane = settings.agent_runtime.lanes["news.item_brief"]
+    lane = settings.agent_runtime.lanes["news.story_brief"]
     assert settings.agent_runtime.global_max_concurrency == 2
     assert settings.agent_runtime.global_rpm_limit == 30
     assert lane.model == "gpt-news"
     assert lane.timeout_seconds == 90
     assert lane.circuit_breaker.failure_threshold == 3
     assert "narrative.mention_semantics" not in settings.agent_runtime.lanes
-    assert settings.agent_runtime.lanes["news.story_brief"].timeout_seconds == 180
-
-
-def test_agent_runtime_settings_accepts_news_item_brief_lane_override() -> None:
-    from parallax.platform.config.settings import WorkersSettings
-
-    settings = WorkersSettings(
-        agent_runtime={
-            "lanes": {
-                "news.item_brief": {
-                    "priority": "low",
-                    "model": "gpt-news",
-                    "max_concurrency": 1,
-                    "timeout_seconds": 210,
-                }
-            }
-        }
-    )
-
-    lane = settings.agent_runtime.lanes["news.item_brief"]
-    assert lane.priority == "low"
-    assert lane.model == "gpt-news"
-    assert lane.max_concurrency == 1
-    assert lane.timeout_seconds == 210
+    assert settings.agent_runtime.lanes["news.story_brief"].timeout_seconds == 90
 
 
 def test_agent_runtime_settings_accepts_news_story_brief_lane_override() -> None:
@@ -405,7 +348,6 @@ def test_news_workers_have_defaults():
     settings = WorkersSettings(**payload)
 
     assert settings.news_fetch.interval_seconds == 60
-    assert settings.news_fetch.soft_timeout_seconds == 120
     assert settings.news_fetch.hard_timeout_seconds == 180
     assert settings.news_fetch.batch_size == 5
     assert settings.news_fetch.lease_ms == 60_000
@@ -418,27 +360,19 @@ def test_news_workers_have_defaults():
     assert settings.news_item_process.retry_delay_ms == 60_000
     assert settings.news_item_process.statement_timeout_seconds == 30
     assert not hasattr(settings, "news_story_projection")
-    assert settings.news_item_brief.interval_seconds == 10
-    assert settings.news_item_brief.soft_timeout_seconds == 180
-    assert settings.news_item_brief.hard_timeout_seconds == 240
-    assert settings.news_item_brief.batch_size == 5
-    assert settings.news_item_brief.lease_ms == 120_000
-    assert settings.news_item_brief.retry_ms == 60_000
-    assert settings.news_item_brief.statement_timeout_seconds == 30
-    assert settings.news_item_brief.advisory_lock_key == 2026052001
-    assert settings.news_item_brief.backpressure_cooldown_ms == 60_000
+    assert settings.news_story_brief.interval_seconds == 10
+    assert settings.news_story_brief.hard_timeout_seconds == 240
+    assert settings.news_story_brief.batch_size == 5
+    assert settings.news_story_brief.lease_ms == 120_000
+    assert settings.news_story_brief.retry_ms == 60_000
+    assert settings.news_story_brief.statement_timeout_seconds == 30
+    assert settings.news_story_brief.advisory_lock_key == 2026061801
+    assert settings.news_story_brief.backpressure_cooldown_ms == 60_000
     assert settings.news_page_projection.batch_size == 100
     assert settings.news_page_projection.lease_ms == 120_000
     assert settings.news_page_projection.retry_ms == 30_000
     assert settings.news_page_projection.statement_timeout_seconds == 30
     assert settings.news_page_projection.advisory_lock_key == 2026051904
-    assert settings.news_source_quality_projection.interval_seconds == 60
-    assert settings.news_source_quality_projection.batch_size == 100
-    assert settings.news_source_quality_projection.lease_ms == 120_000
-    assert settings.news_source_quality_projection.retry_ms == 30_000
-    assert settings.news_source_quality_projection.statement_timeout_seconds == 30
-    assert settings.news_source_quality_projection.advisory_lock_key == 2026052201
-    assert settings.news_source_quality_projection.windows == ("24h", "7d")
 
 
 def test_default_worker_advisory_lock_keys_are_unique():
@@ -458,7 +392,6 @@ def test_agent_runtime_capability_fields_default_to_model_registry() -> None:
     assert settings.agent_runtime.defaults.provider_family is None
     assert settings.agent_runtime.defaults.client_validation_retries is None
     assert settings.agent_runtime.defaults.max_tokens is None
-    assert settings.agent_runtime.lanes["news.item_brief"].max_tokens == 2200
     assert settings.agent_runtime.lanes["news.story_brief"].max_tokens == 2200
 
 
@@ -466,7 +399,7 @@ def test_agent_runtime_default_model_uses_registered_capability_profile() -> Non
     settings = WorkersSettings(agent_runtime={"defaults": {"model": "deepseek-v4-flash"}})
     policy = AgentRuntimePolicy.model_validate(settings.agent_runtime.model_dump(mode="json"))
 
-    profile = policy.capability_for_lane("news.item_brief")
+    profile = policy.capability_for_lane("news.story_brief")
 
     assert profile.provider_family.value == "deepseek"
     assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
@@ -480,7 +413,7 @@ def test_agent_runtime_lane_accepts_capability_overrides() -> None:
     settings = WorkersSettings(
         agent_runtime={
             "lanes": {
-                "news.item_brief": {
+                "news.story_brief": {
                     "provider_family": "deepseek",
                     "client_validation_retries": 2,
                     "max_tokens": 1800,
@@ -489,7 +422,7 @@ def test_agent_runtime_lane_accepts_capability_overrides() -> None:
         }
     )
 
-    lane = settings.agent_runtime.lanes["news.item_brief"]
+    lane = settings.agent_runtime.lanes["news.story_brief"]
     assert lane.provider_family == "deepseek"
     assert lane.client_validation_retries == 2
     assert lane.max_tokens == 1800
@@ -500,7 +433,7 @@ def test_agent_runtime_rejects_legacy_output_strategy_field() -> None:
         WorkersSettings(
             agent_runtime={
                 "lanes": {
-                    "news.item_brief": {
+                    "news.story_brief": {
                         "output_strategy": "freeform_yaml",
                     }
                 }

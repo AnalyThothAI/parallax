@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
 from parallax.platform.db.json_safety import postgres_safe_text
+from parallax.platform.db.write_contract import expect_mutation_count, mutation_count
+from parallax.platform.validation import require_nonnegative_int, require_positive_int
 
 
 class AssetProfileRefreshTargetRepository:
@@ -19,117 +20,113 @@ class AssetProfileRefreshTargetRepository:
         reason: str,
         now_ms: int,
         due_at_ms: int | None = None,
-        commit: bool = True,
     ) -> dict[str, int]:
         records = _target_records(targets, reason=reason, now_ms=int(now_ms), due_at_ms=due_at_ms)
         if not records:
             return {"targets": 0}
 
-        def _write() -> dict[str, int]:
-            cursor = self.conn.execute(
-                """
-                WITH incoming AS (
-                  SELECT *
-                  FROM unnest(
-                    %(providers)s::text[],
-                    %(target_types)s::text[],
-                    %(target_ids)s::text[],
-                    %(chain_ids)s::text[],
-                    %(addresses)s::text[],
-                    %(symbols)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(source_watermark_ms_values)s::bigint[],
-                    %(priorities)s::integer[],
-                    %(due_at_ms_values)s::bigint[]
-                  ) AS incoming(
-                    provider,
-                    target_type,
-                    target_id,
-                    chain_id,
-                    address,
-                    symbol,
-                    payload_hash,
-                    source_watermark_ms,
-                    priority,
-                    due_at_ms
-                  )
-                )
-                INSERT INTO asset_profile_refresh_targets(
-                  provider,
-                  target_type,
-                  target_id,
-                  chain_id,
-                  address,
-                  symbol,
-                  dirty_reason,
-                  payload_hash,
-                  source_watermark_ms,
-                  priority,
-                  due_at_ms,
-                  leased_until_ms,
-                  lease_owner,
-                  attempt_count,
-                  last_error,
-                  first_dirty_at_ms,
-                  updated_at_ms
-                )
-                SELECT
-                  provider,
-                  target_type,
-                  target_id,
-                  chain_id,
-                  address,
-                  symbol,
-                  %(dirty_reason)s,
-                  payload_hash,
-                  source_watermark_ms,
-                  priority,
-                  due_at_ms,
-                  NULL,
-                  NULL,
-                  0,
-                  NULL,
-                  %(now_ms)s,
-                  %(now_ms)s
-                FROM incoming
-                ON CONFLICT(provider, target_type, target_id) DO UPDATE SET
-                  chain_id = EXCLUDED.chain_id,
-                  address = EXCLUDED.address,
-                  symbol = EXCLUDED.symbol,
-                  dirty_reason = EXCLUDED.dirty_reason,
-                  payload_hash = EXCLUDED.payload_hash,
-                  source_watermark_ms = GREATEST(
-                    asset_profile_refresh_targets.source_watermark_ms,
-                    EXCLUDED.source_watermark_ms
-                  ),
-                  priority = LEAST(asset_profile_refresh_targets.priority, EXCLUDED.priority),
-                  due_at_ms = LEAST(asset_profile_refresh_targets.due_at_ms, EXCLUDED.due_at_ms),
-                  leased_until_ms = CASE
-                    WHEN asset_profile_refresh_targets.leased_until_ms IS NOT NULL
-                      AND asset_profile_refresh_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                      THEN NULL
-                    ELSE asset_profile_refresh_targets.leased_until_ms
-                  END,
-                  lease_owner = CASE
-                    WHEN asset_profile_refresh_targets.leased_until_ms IS NOT NULL
-                      AND asset_profile_refresh_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                      THEN NULL
-                    ELSE asset_profile_refresh_targets.lease_owner
-                  END,
-                  attempt_count = CASE
-                    WHEN asset_profile_refresh_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                    THEN 0
-                    ELSE asset_profile_refresh_targets.attempt_count
-                  END,
-                  last_error = NULL,
-                  first_dirty_at_ms = asset_profile_refresh_targets.first_dirty_at_ms,
-                  updated_at_ms = EXCLUDED.updated_at_ms
-                """,
-                {**_target_params(records), "dirty_reason": str(reason), "now_ms": int(now_ms)},
+        cursor = self.conn.execute(
+            """
+            WITH incoming AS (
+              SELECT *
+              FROM unnest(
+                %(providers)s::text[],
+                %(target_types)s::text[],
+                %(target_ids)s::text[],
+                %(chain_ids)s::text[],
+                %(addresses)s::text[],
+                %(symbols)s::text[],
+                %(payload_hashes)s::text[],
+                %(source_watermark_ms_values)s::bigint[],
+                %(priorities)s::integer[],
+                %(due_at_ms_values)s::bigint[]
+              ) AS incoming(
+                provider,
+                target_type,
+                target_id,
+                chain_id,
+                address,
+                symbol,
+                payload_hash,
+                source_watermark_ms,
+                priority,
+                due_at_ms
+              )
             )
-            return {"targets": _cursor_rowcount(cursor)}
-
-        return _run_repository_write(self.conn, commit, _write)
+            INSERT INTO asset_profile_refresh_targets(
+              provider,
+              target_type,
+              target_id,
+              chain_id,
+              address,
+              symbol,
+              dirty_reason,
+              payload_hash,
+              source_watermark_ms,
+              priority,
+              due_at_ms,
+              leased_until_ms,
+              lease_owner,
+              attempt_count,
+              last_error,
+              first_dirty_at_ms,
+              updated_at_ms
+            )
+            SELECT
+              provider,
+              target_type,
+              target_id,
+              chain_id,
+              address,
+              symbol,
+              %(dirty_reason)s,
+              payload_hash,
+              source_watermark_ms,
+              priority,
+              due_at_ms,
+              NULL,
+              NULL,
+              0,
+              NULL,
+              %(now_ms)s,
+              %(now_ms)s
+            FROM incoming
+            ON CONFLICT(provider, target_type, target_id) DO UPDATE SET
+              chain_id = EXCLUDED.chain_id,
+              address = EXCLUDED.address,
+              symbol = EXCLUDED.symbol,
+              dirty_reason = EXCLUDED.dirty_reason,
+              payload_hash = EXCLUDED.payload_hash,
+              source_watermark_ms = GREATEST(
+                asset_profile_refresh_targets.source_watermark_ms,
+                EXCLUDED.source_watermark_ms
+              ),
+              priority = LEAST(asset_profile_refresh_targets.priority, EXCLUDED.priority),
+              due_at_ms = LEAST(asset_profile_refresh_targets.due_at_ms, EXCLUDED.due_at_ms),
+              leased_until_ms = CASE
+                WHEN asset_profile_refresh_targets.leased_until_ms IS NOT NULL
+                  AND asset_profile_refresh_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                  THEN NULL
+                ELSE asset_profile_refresh_targets.leased_until_ms
+              END,
+              lease_owner = CASE
+                WHEN asset_profile_refresh_targets.leased_until_ms IS NOT NULL
+                  AND asset_profile_refresh_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                  THEN NULL
+                ELSE asset_profile_refresh_targets.lease_owner
+              END,
+              attempt_count = CASE
+                WHEN asset_profile_refresh_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                THEN 0
+                ELSE asset_profile_refresh_targets.attempt_count
+              END,
+              last_error = NULL,
+              first_dirty_at_ms = asset_profile_refresh_targets.first_dirty_at_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            """,
+            {**_target_params(records), "dirty_reason": str(reason), "now_ms": int(now_ms)},
+        )
+        return {"targets": mutation_count(cursor, error_code="asset_profile_refresh_target_rowcount_invalid")}
 
     def enqueue_missing_token_radar_current_targets_for_ops(
         self,
@@ -137,94 +134,89 @@ class AssetProfileRefreshTargetRepository:
         provider: str,
         now_ms: int,
         limit: int,
-        commit: bool = True,
     ) -> dict[str, int]:
         parsed_provider = _required_text(provider, field_name="provider")
-        bounded_limit = _required_nonnegative_int(
+        bounded_limit = require_nonnegative_int(
             limit,
-            "asset_profile_refresh_target_limit_required",
+            error_code="asset_profile_refresh_target_limit_required",
         )
         if not parsed_provider or bounded_limit <= 0:
             return {"targets": 0, "source_rows_scanned": 0}
 
-        def _write() -> dict[str, int]:
-            rows = self.conn.execute(
-                """
-                WITH eligible AS (
-                  SELECT DISTINCT ON (current_rows.identity_id)
-                    'Asset' AS target_type,
-                    current_rows.identity_id AS target_id,
-                    COALESCE(
-                      current_rows.factor_snapshot_json #>> '{subject,chain_id}',
-                      current_rows.factor_snapshot_json #>> '{subject,chain}',
-                      current_rows.factor_snapshot_json #>> '{subject,asset_chain_id}'
-                    ) AS chain_id,
-                    current_rows.factor_snapshot_json #>> '{subject,address}' AS address,
-                    current_rows.factor_snapshot_json #>> '{subject,symbol}' AS symbol,
-                    current_rows.source_max_received_at_ms AS source_watermark_ms
-                  FROM token_radar_current_rows current_rows
-                  WHERE current_rows.target_type_key = 'Asset'
-                    AND current_rows.venue = 'all'
-                    AND current_rows.identity_id IS NOT NULL
-                    AND btrim(current_rows.identity_id) <> ''
-                    AND current_rows.source_max_received_at_ms > 0
-                    AND COALESCE(
-                      current_rows.factor_snapshot_json #>> '{subject,chain_id}',
-                      current_rows.factor_snapshot_json #>> '{subject,chain}',
-                      current_rows.factor_snapshot_json #>> '{subject,asset_chain_id}',
-                      ''
-                    ) <> ''
-                    AND COALESCE(current_rows.factor_snapshot_json #>> '{subject,address}', '') <> ''
-                    AND NOT EXISTS (
-                      SELECT 1
-                      FROM asset_profiles source_cache
-                      WHERE source_cache.provider = %(provider)s
-                        AND source_cache.asset_id = current_rows.identity_id
-                    )
-                    AND NOT EXISTS (
-                      SELECT 1
-                      FROM asset_profile_refresh_targets queue
-                      WHERE queue.provider = %(provider)s
-                        AND queue.target_type = 'Asset'
-                        AND queue.target_id = current_rows.identity_id
-                    )
-                  ORDER BY current_rows.identity_id,
-                           current_rows.source_max_received_at_ms DESC,
-                           current_rows.computed_at_ms DESC
+        rows = self.conn.execute(
+            """
+            WITH eligible AS (
+              SELECT DISTINCT ON (current_rows.identity_id)
+                'Asset' AS target_type,
+                current_rows.identity_id AS target_id,
+                COALESCE(
+                  current_rows.factor_snapshot_json #>> '{subject,chain_id}',
+                  current_rows.factor_snapshot_json #>> '{subject,chain}',
+                  current_rows.factor_snapshot_json #>> '{subject,asset_chain_id}'
+                ) AS chain_id,
+                current_rows.factor_snapshot_json #>> '{subject,address}' AS address,
+                current_rows.factor_snapshot_json #>> '{subject,symbol}' AS symbol,
+                current_rows.source_max_received_at_ms AS source_watermark_ms
+              FROM token_radar_current_rows current_rows
+              WHERE current_rows.target_type_key = 'Asset'
+                AND current_rows.venue = 'all'
+                AND current_rows.identity_id IS NOT NULL
+                AND btrim(current_rows.identity_id) <> ''
+                AND current_rows.source_max_received_at_ms > 0
+                AND COALESCE(
+                  current_rows.factor_snapshot_json #>> '{subject,chain_id}',
+                  current_rows.factor_snapshot_json #>> '{subject,chain}',
+                  current_rows.factor_snapshot_json #>> '{subject,asset_chain_id}',
+                  ''
+                ) <> ''
+                AND COALESCE(current_rows.factor_snapshot_json #>> '{subject,address}', '') <> ''
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM asset_profiles source_cache
+                  WHERE source_cache.provider = %(provider)s
+                    AND source_cache.asset_id = current_rows.identity_id
                 )
-                SELECT *
-                FROM eligible
-                ORDER BY source_watermark_ms DESC, target_id ASC
-                LIMIT %(limit)s
-                """,
-                {"provider": parsed_provider, "limit": bounded_limit},
-            ).fetchall()
-            targets = [
-                {
-                    "provider": parsed_provider,
-                    "target_type": str(row["target_type"]),
-                    "target_id": str(row["target_id"]),
-                    "chain_id": str(row["chain_id"]),
-                    "address": str(row["address"]),
-                    "symbol": row.get("symbol"),
-                    "source_watermark_ms": int(row["source_watermark_ms"]),
-                    "priority": 80,
-                    "due_at_ms": int(now_ms),
-                }
-                for row in rows
-            ]
-            enqueue_result = self.enqueue_targets(
-                targets,
-                reason="token_radar_current_backfill",
-                now_ms=now_ms,
-                commit=False,
+                AND NOT EXISTS (
+                  SELECT 1
+                  FROM asset_profile_refresh_targets queue
+                  WHERE queue.provider = %(provider)s
+                    AND queue.target_type = 'Asset'
+                    AND queue.target_id = current_rows.identity_id
+                )
+              ORDER BY current_rows.identity_id,
+                       current_rows.source_max_received_at_ms DESC,
+                       current_rows.computed_at_ms DESC
             )
-            return {
-                "targets": int(enqueue_result.get("targets") or 0),
-                "source_rows_scanned": len(rows),
+            SELECT *
+            FROM eligible
+            ORDER BY source_watermark_ms DESC, target_id ASC
+            LIMIT %(limit)s
+            """,
+            {"provider": parsed_provider, "limit": bounded_limit},
+        ).fetchall()
+        targets = [
+            {
+                "provider": parsed_provider,
+                "target_type": str(row["target_type"]),
+                "target_id": str(row["target_id"]),
+                "chain_id": str(row["chain_id"]),
+                "address": str(row["address"]),
+                "symbol": row.get("symbol"),
+                "source_watermark_ms": int(row["source_watermark_ms"]),
+                "priority": 80,
+                "due_at_ms": int(now_ms),
             }
-
-        return _run_repository_write(self.conn, commit, _write)
+            for row in rows
+        ]
+        enqueue_result = self.enqueue_targets(
+            targets,
+            reason="token_radar_current_backfill",
+            now_ms=now_ms,
+        )
+        return {
+            "targets": int(enqueue_result.get("targets") or 0),
+            "source_rows_scanned": len(rows),
+        }
 
     def claim_due(
         self,
@@ -234,59 +226,55 @@ class AssetProfileRefreshTargetRepository:
         limit: int,
         lease_owner: str,
         lease_ms: int,
-        commit: bool = True,
     ) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(
+        parsed_limit = require_nonnegative_int(
             limit,
-            "asset_profile_refresh_target_claim_limit_required",
+            error_code="asset_profile_refresh_target_claim_limit_required",
         )
-        parsed_lease_ms = _required_positive_int(
+        parsed_lease_ms = require_positive_int(
             lease_ms,
-            "asset_profile_refresh_target_claim_lease_ms_required",
+            error_code="asset_profile_refresh_target_claim_lease_ms_required",
         )
 
-        def _write() -> list[dict[str, Any]]:
-            cursor = self.conn.execute(
-                """
-                WITH due AS (
-                  SELECT provider, target_type, target_id
-                  FROM asset_profile_refresh_targets
-                  WHERE provider = %(provider)s
-                    AND due_at_ms <= %(now_ms)s
-                    AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
-                  ORDER BY priority ASC,
-                           due_at_ms ASC,
-                           updated_at_ms ASC,
-                           target_type ASC,
-                           target_id ASC
-                  LIMIT %(limit)s
-                  FOR UPDATE SKIP LOCKED
-                )
-                UPDATE asset_profile_refresh_targets
-                SET leased_until_ms = %(leased_until_ms)s,
-                    lease_owner = %(lease_owner)s,
-                    attempt_count = asset_profile_refresh_targets.attempt_count + 1,
-                    last_error = NULL,
-                    updated_at_ms = %(now_ms)s
-                FROM due
-                WHERE asset_profile_refresh_targets.provider = due.provider
-                  AND asset_profile_refresh_targets.target_type = due.target_type
-                  AND asset_profile_refresh_targets.target_id = due.target_id
-                RETURNING asset_profile_refresh_targets.*
-                """,
-                {
-                    "provider": str(provider),
-                    "now_ms": int(now_ms),
-                    "leased_until_ms": int(now_ms) + parsed_lease_ms,
-                    "lease_owner": str(lease_owner),
-                    "limit": parsed_limit,
-                },
+        cursor = self.conn.execute(
+            """
+            WITH due AS (
+              SELECT provider, target_type, target_id
+              FROM asset_profile_refresh_targets
+              WHERE provider = %(provider)s
+                AND due_at_ms <= %(now_ms)s
+                AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
+              ORDER BY priority ASC,
+                       due_at_ms ASC,
+                       updated_at_ms ASC,
+                       target_type ASC,
+                       target_id ASC
+              LIMIT %(limit)s
+              FOR UPDATE SKIP LOCKED
             )
-            rows = cursor.fetchall()
-            _returned_rowcount(cursor, rows)
-            return [dict(row) for row in rows]
-
-        return _run_repository_write(self.conn, commit, _write)
+            UPDATE asset_profile_refresh_targets
+            SET leased_until_ms = %(leased_until_ms)s,
+                lease_owner = %(lease_owner)s,
+                attempt_count = asset_profile_refresh_targets.attempt_count + 1,
+                last_error = NULL,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            WHERE asset_profile_refresh_targets.provider = due.provider
+              AND asset_profile_refresh_targets.target_type = due.target_type
+              AND asset_profile_refresh_targets.target_id = due.target_id
+            RETURNING asset_profile_refresh_targets.*
+            """,
+            {
+                "provider": str(provider),
+                "now_ms": int(now_ms),
+                "leased_until_ms": int(now_ms) + parsed_lease_ms,
+                "lease_owner": str(lease_owner),
+                "limit": parsed_limit,
+            },
+        )
+        rows = cursor.fetchall()
+        expect_mutation_count(cursor, expected=len(rows), error_code="asset_profile_refresh_target_rowcount_invalid")
+        return [dict(row) for row in rows]
 
     def reschedule(
         self,
@@ -295,46 +283,42 @@ class AssetProfileRefreshTargetRepository:
         due_at_ms: int,
         now_ms: int,
         reason: str | None = None,
-        commit: bool = True,
     ) -> int:
         records = _claim_records(claims)
         if not records:
             return 0
         params = {**_claim_params(records), "due_at_ms": int(due_at_ms), "now_ms": int(now_ms), "reason": reason}
 
-        def _write() -> int:
-            cursor = self.conn.execute(
-                """
-                WITH rescheduled AS (
-                  SELECT *
-                  FROM unnest(
-                    %(providers)s::text[],
-                    %(target_types)s::text[],
-                    %(target_ids)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(lease_owners)s::text[],
-                    %(attempt_counts)s::bigint[]
-                  ) AS rescheduled(provider, target_type, target_id, payload_hash, lease_owner, attempt_count)
-                )
-                UPDATE asset_profile_refresh_targets queue
-                SET due_at_ms = %(due_at_ms)s,
-                    leased_until_ms = NULL,
-                    lease_owner = NULL,
-                    dirty_reason = COALESCE(%(reason)s, queue.dirty_reason),
-                    updated_at_ms = %(now_ms)s
-                FROM rescheduled
-                WHERE queue.provider = rescheduled.provider
-                  AND queue.target_type = rescheduled.target_type
-                  AND queue.target_id = rescheduled.target_id
-                  AND queue.payload_hash = rescheduled.payload_hash
-                  AND queue.lease_owner = rescheduled.lease_owner
-                  AND queue.attempt_count = rescheduled.attempt_count
-                """,
-                params,
+        cursor = self.conn.execute(
+            """
+            WITH rescheduled AS (
+              SELECT *
+              FROM unnest(
+                %(providers)s::text[],
+                %(target_types)s::text[],
+                %(target_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS rescheduled(provider, target_type, target_id, payload_hash, lease_owner, attempt_count)
             )
-            return _cursor_rowcount(cursor)
-
-        return _run_repository_write(self.conn, commit, _write)
+            UPDATE asset_profile_refresh_targets queue
+            SET due_at_ms = %(due_at_ms)s,
+                leased_until_ms = NULL,
+                lease_owner = NULL,
+                dirty_reason = COALESCE(%(reason)s, queue.dirty_reason),
+                updated_at_ms = %(now_ms)s
+            FROM rescheduled
+            WHERE queue.provider = rescheduled.provider
+              AND queue.target_type = rescheduled.target_type
+              AND queue.target_id = rescheduled.target_id
+              AND queue.payload_hash = rescheduled.payload_hash
+              AND queue.lease_owner = rescheduled.lease_owner
+              AND queue.attempt_count = rescheduled.attempt_count
+            """,
+            params,
+        )
+        return mutation_count(cursor, error_code="asset_profile_refresh_target_rowcount_invalid")
 
     def mark_error(
         self,
@@ -343,14 +327,13 @@ class AssetProfileRefreshTargetRepository:
         error: str,
         now_ms: int,
         retry_ms: int,
-        commit: bool = True,
     ) -> int:
         records = _claim_records(claims)
         if not records:
             return 0
-        parsed_retry_ms = _required_positive_int(
+        parsed_retry_ms = require_positive_int(
             retry_ms,
-            "asset_profile_refresh_target_retry_ms_required",
+            error_code="asset_profile_refresh_target_retry_ms_required",
         )
         params = {
             **_claim_params(records),
@@ -359,39 +342,36 @@ class AssetProfileRefreshTargetRepository:
             "last_error": str(error)[:2048],
         }
 
-        def _write() -> int:
-            cursor = self.conn.execute(
-                """
-                WITH failed AS (
-                  SELECT *
-                  FROM unnest(
-                    %(providers)s::text[],
-                    %(target_types)s::text[],
-                    %(target_ids)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(lease_owners)s::text[],
-                    %(attempt_counts)s::bigint[]
-                  ) AS failed(provider, target_type, target_id, payload_hash, lease_owner, attempt_count)
-                )
-                UPDATE asset_profile_refresh_targets queue
-                SET due_at_ms = %(due_at_ms)s,
-                    leased_until_ms = NULL,
-                    lease_owner = NULL,
-                    last_error = %(last_error)s,
-                    updated_at_ms = %(now_ms)s
-                FROM failed
-                WHERE queue.provider = failed.provider
-                  AND queue.target_type = failed.target_type
-                  AND queue.target_id = failed.target_id
-                  AND queue.payload_hash = failed.payload_hash
-                  AND queue.lease_owner = failed.lease_owner
-                  AND queue.attempt_count = failed.attempt_count
-                """,
-                params,
+        cursor = self.conn.execute(
+            """
+            WITH failed AS (
+              SELECT *
+              FROM unnest(
+                %(providers)s::text[],
+                %(target_types)s::text[],
+                %(target_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS failed(provider, target_type, target_id, payload_hash, lease_owner, attempt_count)
             )
-            return _cursor_rowcount(cursor)
-
-        return _run_repository_write(self.conn, commit, _write)
+            UPDATE asset_profile_refresh_targets queue
+            SET due_at_ms = %(due_at_ms)s,
+                leased_until_ms = NULL,
+                lease_owner = NULL,
+                last_error = %(last_error)s,
+                updated_at_ms = %(now_ms)s
+            FROM failed
+            WHERE queue.provider = failed.provider
+              AND queue.target_type = failed.target_type
+              AND queue.target_id = failed.target_id
+              AND queue.payload_hash = failed.payload_hash
+              AND queue.lease_owner = failed.lease_owner
+              AND queue.attempt_count = failed.attempt_count
+            """,
+            params,
+        )
+        return mutation_count(cursor, error_code="asset_profile_refresh_target_rowcount_invalid")
 
     def queue_depth(self, *, provider: str, now_ms: int) -> int:
         row = self.conn.execute(
@@ -405,42 +385,6 @@ class AssetProfileRefreshTargetRepository:
             {"provider": str(provider), "now_ms": int(now_ms)},
         ).fetchone()
         return int(row["count"] if row else 0)
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("asset_profile_refresh_target_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("asset_profile_refresh_target_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("asset_profile_refresh_target_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("asset_profile_refresh_target_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("asset_profile_refresh_target_rowcount_invalid")
-    return int(rowcount)
-
-
-def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount != len(rows):
-        raise TypeError("asset_profile_refresh_target_rowcount_invalid")
-    return rowcount
 
 
 def _target_records(
@@ -523,9 +467,9 @@ def _completion_attempt_count(claim: Mapping[str, Any]) -> int:
         value = claim["attempt_count"]
     except KeyError as exc:
         raise ValueError("asset profile refresh target completion requires attempt_count from claim_due") from exc
-    return _required_positive_int(
+    return require_positive_int(
         value,
-        "asset profile refresh target completion requires attempt_count from claim_due",
+        error_code="asset profile refresh target completion requires attempt_count from claim_due",
     )
 
 
@@ -587,18 +531,6 @@ def _source_watermark_ms(target: Mapping[str, Any]) -> int:
         raise ValueError("asset_profile_refresh_target_source_watermark_required")
     if value <= 0:
         raise ValueError("asset_profile_refresh_target_source_watermark_required")
-    return int(value)
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
     return int(value)
 
 

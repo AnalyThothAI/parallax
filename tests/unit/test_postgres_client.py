@@ -8,6 +8,7 @@ from parallax.platform.db.postgres_client import (
     create_pool,
     local_docker_host_dsn,
     postgres_health_check,
+    postgres_liveness_check,
     require_transaction,
     with_password_from_file,
 )
@@ -232,6 +233,25 @@ def test_postgres_health_check_reports_liveness_and_migration_version():
     }
     assert conn.commits == 1
     assert conn.rollbacks == 0
+
+
+def test_postgres_liveness_check_does_not_requery_schema_version():
+    class RecordingConn(FakeConn):
+        def __init__(self) -> None:
+            super().__init__()
+            self.sql: list[str] = []
+
+        def execute(self, sql, params=None):
+            self.sql.append(str(sql))
+            return super().execute(sql, params)
+
+    conn = RecordingConn()
+
+    payload = postgres_liveness_check(conn)
+
+    assert payload == {"ok": True, "probe": "postgres_liveness"}
+    assert conn.sql == ["SELECT 1 AS ok"]
+    assert conn.commits == 1
 
 
 def test_postgres_health_check_rejects_stale_migration_when_expected_version_is_set():

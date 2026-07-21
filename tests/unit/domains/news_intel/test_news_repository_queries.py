@@ -9,12 +9,17 @@ import pytest
 from parallax.domains.news_intel._constants import (
     NEWS_ITEM_AGENT_ADMISSION_VERSION,
     NEWS_MARKET_SCOPE_VERSION,
+    NEWS_PAGE_PROJECTION_VERSION,
 )
-from parallax.domains.news_intel.repositories.news_repository import (
-    NewsRepository,
+from parallax.domains.news_intel.repositories.news_item_repository import NewsItemRepository
+from parallax.domains.news_intel.repositories.news_page_repository import NewsPageRepository
+from parallax.domains.news_intel.repositories.news_repository_support import (
     _current_policy_material_duplicate_groups,
     _news_item_aggregate_changed,
+    news_source_config_payload_hash,
 )
+from parallax.domains.news_intel.repositories.news_source_repository import NewsSourceRepository
+from parallax.domains.news_intel.repositories.news_story_agent_repository import NewsStoryAgentRepository
 from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
 from parallax.domains.news_intel.types.news_story_identity import NEWS_STORY_IDENTITY_VERSION, NewsStoryIdentity
@@ -22,7 +27,7 @@ from parallax.domains.news_intel.types.news_story_identity import NEWS_STORY_IDE
 
 def test_page_projection_loader_reads_source_payload_for_claimed_targets() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     rows = repo.load_items_for_page_projection(news_item_ids=["news-1"])
 
@@ -59,72 +64,12 @@ def test_page_projection_loader_rejects_malformed_evidence_arrays_without_json_l
     row = _valid_page_projection_loader_row()
     row[field_name] = bad_value
     conn = NewsPageRowsConnection(rows=[row])
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     with pytest.raises(ValueError, match=f"news_page_projection_input_evidence.*{field_name}"):
         repo.load_items_for_page_projection(news_item_ids=["news-1"])
 
 
-def test_brief_target_loader_includes_provider_duplicate_aggregation() -> None:
-    conn = CapturingConnection()
-    repo = NewsRepository(conn)
-
-    rows = repo.load_items_for_brief_targets(news_item_ids=["news-1"])
-
-    assert rows == []
-    assert "SELECT items.*" not in conn.sql
-    assert "to_jsonb(items.*)" not in conn.sql
-    assert "SELECT *" not in conn.sql
-    assert "edge_summary.duplicate_count" in conn.sql
-    assert "'duplicate_count', COALESCE(edge_summary.duplicate_count, 1)" in conn.sql
-    assert "'source_ids_json', COALESCE(edge_summary.source_ids_json, '[]'::jsonb)" in conn.sql
-    assert "'source_domains_json', COALESCE(edge_summary.source_domains_json, '[]'::jsonb)" in conn.sql
-    assert "'provider_article_keys_json', COALESCE(edge_summary.provider_article_keys_json, '[]'::jsonb)" in conn.sql
-    assert "'market_scope_json', items.market_scope_json -> 'scope'" in conn.sql
-    assert "edge_sources.enabled = true" in conn.sql
-    assert "story_member_rows" not in conn.sql
-    assert "news_story_groups AS stories" not in conn.sql
-
-
-@pytest.mark.parametrize(
-    ("field_name", "bad_value"),
-    [
-        ("entities", None),
-        ("entities", {}),
-        ("token_mentions", None),
-        ("token_mentions", {}),
-        ("fact_candidates", None),
-        ("fact_candidates", {}),
-    ],
-)
-def test_brief_target_loader_rejects_malformed_evidence_arrays_without_json_list_defaults(
-    field_name: str,
-    bad_value: object,
-) -> None:
-    row = _valid_brief_target_loader_row()
-    row[field_name] = bad_value
-    conn = NewsPageRowsConnection(rows=[row])
-    repo = NewsRepository(conn)
-
-    with pytest.raises(ValueError, match=f"news_item_brief_target_evidence.*{field_name}"):
-        repo.load_items_for_brief_targets(news_item_ids=["news-1"])
-
-
-@pytest.mark.parametrize(
-    ("loader", "kwargs"),
-    [
-        pytest.param(
-            "item",
-            {"news_item_ids": ["news-1"]},
-            id="item_brief",
-        ),
-        pytest.param(
-            "story",
-            {"story_keys": ["story:news-1"]},
-            id="story_brief",
-        ),
-    ],
-)
 @pytest.mark.parametrize(
     "source_updated_at_ms",
     [
@@ -135,30 +80,19 @@ def test_brief_target_loader_rejects_malformed_evidence_arrays_without_json_list
         pytest.param("10", id="string"),
     ],
 )
-def test_brief_target_loaders_require_positive_source_updated_at(
-    loader: str,
-    kwargs: dict[str, Any],
-    source_updated_at_ms: object,
-) -> None:
-    if loader == "item":
-        row = _valid_brief_target_loader_row()
-        row["source_updated_at_ms"] = source_updated_at_ms
-        conn = NewsPageRowsConnection(rows=[row])
-        method = NewsRepository(conn).load_items_for_brief_targets
-    else:
-        row = _valid_story_brief_target_row()
-        row["source_updated_at_ms"] = source_updated_at_ms
-        conn = StoryBriefTargetsConnection(rows=[row])
-        method = NewsRepository(conn).load_story_brief_targets
+def test_story_brief_targets_require_positive_source_updated_at(source_updated_at_ms: object) -> None:
+    row = _valid_story_brief_target_row()
+    row["source_updated_at_ms"] = source_updated_at_ms
+    conn = StoryBriefTargetsConnection(rows=[row])
 
-    with pytest.raises(ValueError, match="news_brief_target_source_updated_at_ms_required"):
-        method(**kwargs)
+    with pytest.raises(ValueError, match="news_story_brief_target_source_updated_at_ms_required"):
+        NewsStoryAgentRepository(conn).load_story_brief_targets(story_keys=["story:news-1"])
 
 
 def test_story_brief_target_loader_emits_formal_story_identity_json_without_alias() -> None:
     row = _valid_story_brief_target_row()
     conn = StoryBriefTargetsConnection(rows=[row])
-    repo = NewsRepository(conn)
+    repo = NewsStoryAgentRepository(conn)
 
     targets = repo.load_story_brief_targets(story_keys=["story:news-1"])
 
@@ -170,7 +104,7 @@ def test_story_brief_target_loader_emits_formal_story_identity_json_without_alia
 
 def test_news_item_source_watermarks_for_sources_reads_persisted_item_times() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     rows = repo.list_news_item_source_watermarks_for_sources(source_ids=["source-1"])
 
@@ -185,7 +119,7 @@ def test_news_item_source_watermarks_for_sources_reads_persisted_item_times() ->
 
 def test_news_item_source_watermarks_reads_persisted_item_times_without_worker_clock() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     rows = repo.list_news_item_source_watermarks(news_item_ids=["news-1"])
 
@@ -200,7 +134,7 @@ def test_news_item_source_watermarks_reads_persisted_item_times_without_worker_c
 
 def test_canonical_rebuild_list_reads_only_current_servable_news_items() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     rows = repo.list_news_items_for_canonical_rebuild(limit=25)
 
@@ -218,7 +152,7 @@ def test_canonical_rebuild_list_reads_only_current_servable_news_items() -> None
 @pytest.mark.parametrize("limit", [-1, True, "25"])
 def test_canonical_rebuild_list_rejects_malformed_limit_before_sql(limit: object) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(ValueError, match="news_canonical_rebuild_limit_required"):
         repo.list_news_items_for_canonical_rebuild(limit=limit)  # type: ignore[arg-type]
@@ -251,7 +185,7 @@ def test_source_sync_cursor_requires_explicit_nonnegative_sync_scalars(
     }
     row[field_name] = bad_value
     conn = SourceSyncCursorConnection(row=row)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(ValueError, match=f"news_source_sync_cursor_{field_name}_required"):
         repo.source_sync_cursor("source-1")
@@ -272,7 +206,7 @@ def test_story_brief_target_loader_rejects_malformed_member_evidence_arrays(
     row = _valid_story_brief_target_row()
     row[field_name] = bad_value
     conn = StoryBriefTargetsConnection(rows=[row])
-    repo = NewsRepository(conn)
+    repo = NewsStoryAgentRepository(conn)
 
     with pytest.raises(ValueError, match=f"news_story_brief_target_{field_name}_required"):
         repo.load_story_brief_targets(story_keys=["story:news-1"])
@@ -280,7 +214,7 @@ def test_story_brief_target_loader_rejects_malformed_member_evidence_arrays(
 
 def test_agent_admission_context_loader_uses_narrow_news_item_payloads() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     rows = repo.load_agent_admission_contexts(news_item_ids=["news-1"], now_ms=1_000)
 
@@ -306,7 +240,7 @@ def test_agent_admission_context_loader_uses_narrow_news_item_payloads() -> None
 
 def test_agent_admission_context_provider_duplicate_lookup_uses_observation_edges() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     rows = repo.load_agent_admission_contexts(news_item_ids=["news-1"], now_ms=1_000)
 
@@ -318,7 +252,7 @@ def test_agent_admission_context_provider_duplicate_lookup_uses_observation_edge
 
 def test_agent_admission_representative_current_state_uses_story_briefs() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     rows = repo.load_agent_admission_contexts(news_item_ids=["news-1"], now_ms=1_000)
 
@@ -338,7 +272,7 @@ def test_agent_admission_representative_current_state_uses_story_briefs() -> Non
 
 def test_agent_admission_context_loader_does_not_read_target_item_current_brief_audit_rows() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     rows = repo.load_agent_admission_contexts(news_item_ids=["news-1"], now_ms=1_000)
 
@@ -369,7 +303,7 @@ def test_agent_admission_context_loader_rejects_malformed_evidence_arrays_withou
     row = _valid_agent_admission_context_loader_row()
     row[field_name] = bad_value
     conn = NewsPageRowsConnection(rows=[row])
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(ValueError, match=f"news_agent_admission_context.*{field_name}"):
         repo.load_agent_admission_contexts(news_item_ids=["news-1"], now_ms=1_000)
@@ -377,7 +311,7 @@ def test_agent_admission_context_loader_rejects_malformed_evidence_arrays_withou
 
 def test_agent_similar_story_context_requires_story_identity_version_without_default() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(ValueError, match="news_agent_admission_story_identity_version_required"):
         repo._agent_similar_story_context({"news_item_id": "news-1", "story_key": "story:news-1"})
@@ -387,14 +321,14 @@ def test_agent_similar_story_context_requires_story_identity_version_without_def
 
 def test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     row["story"] = {123: "legacy"}
 
     with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
     assert conn.params is None or "INSERT INTO news_page_rows" not in conn.sql
 
@@ -424,7 +358,7 @@ def test_news_page_row_payload_hash_rejects_legacy_story_keys_before_write() -> 
 )
 def test_news_page_row_payload_requires_formal_json_sections_before_write(field_name: str, bad_value: object) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     if bad_value is None:
         row.pop(field_name)
@@ -432,9 +366,9 @@ def test_news_page_row_payload_requires_formal_json_sections_before_write(field_
         row[field_name] = bad_value
 
     with pytest.raises(ValueError, match=f"news_page_row_payload.*{field_name}"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
 
 
@@ -462,7 +396,7 @@ def test_news_page_row_payload_requires_formal_text_identity_before_write(
     bad_value: object,
 ) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     if bad_value is None:
         row.pop(field_name)
@@ -470,24 +404,24 @@ def test_news_page_row_payload_requires_formal_text_identity_before_write(
         row[field_name] = bad_value
 
     with pytest.raises(ValueError, match=f"news_page_row_payload.*{field_name}"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
 
 
 def test_news_page_row_payload_requires_formal_agent_brief_status_before_write() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     agent_brief = dict(row["agent_brief"])
     agent_brief.pop("status")
     row["agent_brief"] = agent_brief
 
     with pytest.raises(ValueError, match=r"news_page_row_payload.*agent_brief.*status"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
 
 
@@ -505,7 +439,7 @@ def test_news_page_row_payload_ready_agent_brief_requires_formal_signal_fields_b
     bad_value: object,
 ) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     agent_brief = {
         "status": "ready",
@@ -521,22 +455,22 @@ def test_news_page_row_payload_ready_agent_brief_requires_formal_signal_fields_b
     row["agent_status"] = "ready"
 
     with pytest.raises(ValueError, match=rf"news_page_row_payload.*agent_brief.*{field_name}"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
 
 
 def test_news_page_row_payload_rejects_agent_status_mismatch_before_write() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     row["agent_status"] = "ready"
 
     with pytest.raises(ValueError, match=r"news_page_row_payload.*agent_status.*mismatch"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
 
 
@@ -562,7 +496,7 @@ def test_news_page_row_payload_requires_formal_summary_fields_before_write(
     bad_value: object,
 ) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     if bad_value is None:
         row.pop(field_name)
@@ -570,9 +504,9 @@ def test_news_page_row_payload_requires_formal_summary_fields_before_write(
         row[field_name] = bad_value
 
     with pytest.raises(ValueError, match=f"news_page_row_payload.*{field_name}"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
 
 
@@ -594,7 +528,7 @@ def test_news_page_row_payload_requires_formal_display_strings_before_write(
     bad_value: object,
 ) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     if bad_value is None:
         row.pop(field_name)
@@ -602,9 +536,9 @@ def test_news_page_row_payload_requires_formal_display_strings_before_write(
         row[field_name] = bad_value
 
     with pytest.raises(ValueError, match=f"news_page_row_payload.*{field_name}"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
 
 
@@ -630,30 +564,30 @@ def test_news_page_row_payload_requires_typed_timing_fields_before_write(
     bad_value: object,
 ) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     row[field_name] = bad_value
 
     with pytest.raises(ValueError, match=f"news_page_row_payload.*{field_name}"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
 
 
 @pytest.mark.parametrize("field_name", ["status", "reason", "representative_news_item_id", "basis", "version"])
 def test_news_page_row_payload_requires_formal_agent_admission_fields_before_write(field_name: str) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     agent_admission = dict(row["agent_admission"])
     agent_admission.pop(field_name)
     row["agent_admission"] = agent_admission
 
     with pytest.raises(ValueError, match=f"news_page_row_payload.*agent_admission.*{field_name}"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
 
 
@@ -670,16 +604,16 @@ def test_news_page_row_payload_rejects_agent_admission_mismatch_before_write(
     admission_field: str,
 ) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
     row = _valid_news_page_row()
     agent_admission = dict(row["agent_admission"])
     agent_admission[admission_field] = "different"
     row["agent_admission"] = agent_admission
 
     with pytest.raises(ValueError, match=f"news_page_row_payload.*{top_level_field}.*mismatch"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row], commit=True)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[row])
 
-    assert conn.events == ["begin", "rollback"]
+    assert conn.events == []
     assert not any("INSERT INTO news_page_rows" in sql for sql, _params in conn.statements)
 
 
@@ -717,7 +651,7 @@ def test_news_item_detail_requires_formal_page_row_projection_without_raw_item_f
     else:
         page_row[field_name] = bad_value
     conn = NewsItemDetailConnection(page_row=page_row)
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     with pytest.raises(ValueError, match=f"news_item_detail_projection.*{field_name}"):
         repo.get_news_item_detail(news_item_id="news-1")
@@ -744,7 +678,7 @@ def test_news_item_detail_requires_explicit_evidence_arrays_without_json_list_de
         page_row=_valid_news_item_detail_page_row(),
         base_row=base_row,
     )
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     with pytest.raises(ValueError, match=f"news_item_detail_evidence.*{field_name}"):
         repo.get_news_item_detail(news_item_id="news-1")
@@ -759,7 +693,7 @@ def test_news_item_detail_reads_agent_current_from_projected_page_row_only() -> 
         "summary_zh": "Projected story current.",
     }
     conn = NewsItemDetailConnection(page_row=page_row)
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     detail = repo.get_news_item_detail(news_item_id="news-1")
 
@@ -814,7 +748,7 @@ def test_list_news_page_rows_requires_formal_projected_sections_without_public_d
     else:
         page_row[field_name] = bad_value
     conn = NewsPageRowsConnection(rows=[page_row])
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     with pytest.raises(ValueError, match=f"news_page_row_projection.*{field_name}"):
         repo.list_news_page_rows(limit=1)
@@ -823,7 +757,7 @@ def test_list_news_page_rows_requires_formal_projected_sections_without_public_d
 @pytest.mark.parametrize("limit", [-1, True, "1"])
 def test_list_news_page_rows_rejects_malformed_limit_before_sql(limit: object) -> None:
     conn = NewsPageRowsConnection(rows=[])
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     with pytest.raises(ValueError, match="news_page_rows_limit_required"):
         repo.list_news_page_rows(limit=limit)  # type: ignore[arg-type]
@@ -851,7 +785,7 @@ def test_list_news_page_rows_omits_blank_optional_text_from_failed_agent_brief()
         "bear_view": {"strength": "absent", "thesis_zh": "", "evidence_refs": []},
     }
     conn = NewsPageRowsConnection(rows=[page_row])
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     rows = repo.list_news_page_rows(limit=1)
 
@@ -883,7 +817,7 @@ def test_list_news_page_rows_filters_and_requires_macro_event_flow_when_requeste
         "watch": "SPX · 美联储",
     }
     conn = NewsPageRowsConnection(rows=[page_row])
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     rows = repo.list_news_page_rows(limit=1, macro_event_flow=True)
 
@@ -895,43 +829,81 @@ def test_list_news_page_rows_filters_and_requires_macro_event_flow_when_requeste
 def test_list_news_page_rows_rejects_macro_event_flow_rows_without_projection_contract() -> None:
     page_row = _valid_news_page_read_row()
     conn = NewsPageRowsConnection(rows=[page_row])
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     with pytest.raises(ValueError, match=r"news_page_row_projection.*macro_event_flow"):
         repo.list_news_page_rows(limit=1, macro_event_flow=True)
 
 
-def test_high_signal_notification_candidates_require_projected_agent_brief_without_pending_fallback() -> None:
-    page_row = _valid_news_page_read_row()
-    page_row["agent_brief"] = None
-    conn = NewsPageRowsConnection(rows=[page_row])
-    repo = NewsRepository(conn)
+def test_high_signal_notification_candidates_are_narrow_typed_and_sql_recent() -> None:
+    conn = NewsPageRowsConnection(
+        rows=[
+            {
+                "row_id": "row-1",
+                "news_item_id": "news-1",
+                "representative_news_item_id": "news-1",
+                "story_key": "story-1",
+                "latest_at_ms": 1_700_000_000_000,
+                "headline": "Headline",
+                "source_domain": "example.test",
+                "canonical_url": "https://example.test/news-1",
+                "direction": "bullish",
+                "decision_class": "driver",
+                "title_zh": "标题",
+                "projected_title_zh": "投影标题",
+                "summary_zh": "摘要",
+                "affected_entities": [{"symbol": "BTC"}],
+                "token_impacts": [{"symbol": "ETH"}],
+                "external_push_ready": True,
+                "external_push_basis": "agent_brief",
+                "external_push_block_reason": None,
+            }
+        ]
+    )
+    repo = NewsPageRepository(conn)
 
-    with pytest.raises(ValueError, match=r"news_page_row_projection.*agent_brief"):
-        repo.list_news_high_signal_notification_candidates(limit=1)
+    candidates = repo.list_news_high_signal_notification_candidates(limit=1, since_ms=1_699_999_000_000)
+
+    assert candidates[0].affected_symbols == ("BTC",)
+    assert conn.params == (NEWS_PAGE_PROJECTION_VERSION, 1_699_999_000_000, 1)
+    assert "latest_at_ms >= %s" in conn.sql
+    assert "agent_brief_json ->> 'direction' AS direction" in conn.sql
+    assert "story_json" not in conn.sql
+    assert "market_scope_json" not in conn.sql
+    assert "duplicate_count" not in conn.sql
 
 
 @pytest.mark.parametrize("limit", [-1, True, "1"])
 def test_high_signal_notification_candidates_reject_malformed_limit_before_sql(limit: object) -> None:
     conn = NewsPageRowsConnection(rows=[])
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     with pytest.raises(ValueError, match="news_high_signal_notification_limit_required"):
-        repo.list_news_high_signal_notification_candidates(limit=limit)  # type: ignore[arg-type]
+        repo.list_news_high_signal_notification_candidates(limit=limit, since_ms=1)  # type: ignore[arg-type]
+
+    assert conn.statements == []
+
+
+@pytest.mark.parametrize("since_ms", [-1, True, "1"])
+def test_high_signal_notification_candidates_reject_malformed_since_ms_before_sql(since_ms: object) -> None:
+    conn = NewsPageRowsConnection(rows=[])
+    repo = NewsPageRepository(conn)
+
+    with pytest.raises(ValueError, match="news_high_signal_notification_since_ms_required"):
+        repo.list_news_high_signal_notification_candidates(limit=1, since_ms=since_ms)  # type: ignore[arg-type]
 
     assert conn.statements == []
 
 
 def test_unprocessed_item_loader_selects_provider_article_keys_for_story_identity() -> None:
     conn = ClaimUnprocessedItemsConnection(rows=[], rowcount=0)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     rows = repo.claim_unprocessed_items(
         limit=10,
         lease_owner="worker",
         lease_ms=120_000,
         now_ms=1_000,
-        commit=False,
     )
 
     assert rows == []
@@ -944,15 +916,14 @@ def test_claim_unprocessed_items_returning_rows_require_cursor_rowcount() -> Non
         rows=[{"news_item_id": "news-1", "processing_attempts": 1}],
         omit_rowcount=True,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo.claim_unprocessed_items(
             limit=1,
             lease_owner="worker",
             lease_ms=120_000,
             now_ms=1_000,
-            commit=False,
         )
 
     assert "UPDATE news_items AS items" in conn.claim_sql
@@ -967,7 +938,7 @@ def test_claim_unprocessed_items_returning_rows_reject_invalid_or_mismatched_row
         rows=[{"news_item_id": "news-1", "processing_attempts": 1}],
         rowcount=rowcount,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo.claim_unprocessed_items(
@@ -975,7 +946,6 @@ def test_claim_unprocessed_items_returning_rows_reject_invalid_or_mismatched_row
             lease_owner="worker",
             lease_ms=120_000,
             now_ms=1_000,
-            commit=False,
         )
 
     assert "RETURNING items.*" in conn.claim_sql
@@ -983,14 +953,13 @@ def test_claim_unprocessed_items_returning_rows_reject_invalid_or_mismatched_row
 
 def test_claim_unprocessed_items_returning_rows_accept_zero_row_noop() -> None:
     conn = ClaimUnprocessedItemsConnection(rows=[], rowcount=0)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     rows = repo.claim_unprocessed_items(
         limit=1,
         lease_owner="worker",
         lease_ms=120_000,
         now_ms=1_000,
-        commit=False,
     )
 
     assert rows == []
@@ -1002,14 +971,13 @@ def test_claim_unprocessed_items_returning_rows_accept_matching_claim_rows() -> 
         rows=[{"news_item_id": "news-1", "processing_attempts": 1}],
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     rows = repo.claim_unprocessed_items(
         limit=1,
         lease_owner="worker",
         lease_ms=120_000,
         now_ms=1_000,
-        commit=False,
     )
 
     assert rows == [{"news_item_id": "news-1", "processing_attempts": 1}]
@@ -1032,13 +1000,12 @@ def test_claim_unprocessed_items_rejects_malformed_parameters_before_sql(
     error: str,
 ) -> None:
     conn = ClaimUnprocessedItemsConnection(rows=[], rowcount=0)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
     params: dict[str, object] = {
         "limit": 1,
         "lease_owner": "worker",
         "lease_ms": 120_000,
         "now_ms": 1_000,
-        "commit": False,
     }
     params.update(overrides)
 
@@ -1050,7 +1017,7 @@ def test_claim_unprocessed_items_rejects_malformed_parameters_before_sql(
 
 def test_update_item_market_scope_and_story_identity_rejects_unsupported_payload_shape() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     try:
         repo.update_item_market_scope_and_story_identity(
@@ -1058,7 +1025,6 @@ def test_update_item_market_scope_and_story_identity_rejects_unsupported_payload
             market_scope=object(),
             story_identity=_valid_story_identity(),
             now_ms=1_000,
-            commit=False,
         )
     except ValueError as exc:
         assert "market scope payload" in str(exc)
@@ -1070,7 +1036,7 @@ def test_update_item_market_scope_and_story_identity_rejects_unsupported_payload
 
 def test_update_item_market_scope_and_story_identity_rejects_unsupported_story_identity_shape() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(ValueError, match="story identity payload"):
         repo.update_item_market_scope_and_story_identity(
@@ -1078,7 +1044,6 @@ def test_update_item_market_scope_and_story_identity_rejects_unsupported_story_i
             market_scope=_valid_market_scope(),
             story_identity=object(),
             now_ms=1_000,
-            commit=False,
         )
 
     assert conn.statements == []
@@ -1086,7 +1051,7 @@ def test_update_item_market_scope_and_story_identity_rejects_unsupported_story_i
 
 def test_update_item_market_scope_and_story_identity_requires_formal_current_objects_without_mapping_fallback() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(ValueError, match="market scope payload"):
         repo.update_item_market_scope_and_story_identity(
@@ -1094,7 +1059,6 @@ def test_update_item_market_scope_and_story_identity_requires_formal_current_obj
             market_scope=_valid_market_scope_payload(),
             story_identity=_valid_story_identity(),
             now_ms=1_000,
-            commit=False,
         )
 
     with pytest.raises(ValueError, match="story identity payload"):
@@ -1103,7 +1067,6 @@ def test_update_item_market_scope_and_story_identity_requires_formal_current_obj
             market_scope=_valid_market_scope(),
             story_identity=_valid_story_identity_payload(),
             now_ms=1_000,
-            commit=False,
         )
 
     assert conn.statements == []
@@ -1111,7 +1074,7 @@ def test_update_item_market_scope_and_story_identity_requires_formal_current_obj
 
 def test_update_item_agent_admission_requires_formal_admission_without_alias_or_default_fallback() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(ValueError, match="agent admission payload"):
         repo.update_item_agent_admission(
@@ -1123,7 +1086,6 @@ def test_update_item_agent_admission_requires_formal_admission_without_alias_or_
                 "basis": {"market_scope": ["crypto"]},
             },
             now_ms=1_000,
-            commit=False,
         )
 
     with pytest.raises(ValueError, match="agent admission payload"):
@@ -1133,7 +1095,6 @@ def test_update_item_agent_admission_requires_formal_admission_without_alias_or_
             story_identity=_valid_story_identity(),
             admission=_valid_agent_admission_payload(),
             now_ms=1_000,
-            commit=False,
         )
 
     assert conn.statements == []
@@ -1141,19 +1102,19 @@ def test_update_item_agent_admission_requires_formal_admission_without_alias_or_
 
 def test_news_repository_write_counts_require_cursor_rowcount() -> None:
     conn = RowcountConnection(omit_rowcount=True)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
-        repo.mark_news_items_for_reprocessing(news_item_ids=["news-1"], now_ms=1_000, commit=False)
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
+        repo.mark_news_items_for_reprocessing(news_item_ids=["news-1"], now_ms=1_000)
 
 
 @pytest.mark.parametrize("rowcount", ["bad", True, -1])
 def test_news_repository_write_counts_reject_invalid_cursor_rowcount(rowcount: object) -> None:
     conn = RowcountConnection(rowcount=rowcount)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
-        repo.mark_news_items_for_reprocessing(news_item_ids=["news-1"], now_ms=1_000, commit=False)
+        repo.mark_news_items_for_reprocessing(news_item_ids=["news-1"], now_ms=1_000)
 
 
 def test_upsert_source_returning_row_requires_cursor_rowcount() -> None:
@@ -1162,9 +1123,9 @@ def test_upsert_source_returning_row_requires_cursor_rowcount() -> None:
         row={"source_id": "source-1", "provider_type": "rss"},
         omit_rowcount=True,
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_source(repo)
 
     assert len(conn.statements) == 2
@@ -1178,7 +1139,7 @@ def test_upsert_source_returning_row_rejects_invalid_or_mismatched_rowcount(rowc
         row={"source_id": "source-1", "provider_type": "rss"},
         rowcount=rowcount,
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_source(repo)
@@ -1189,7 +1150,7 @@ def test_upsert_source_returning_row_rejects_invalid_or_mismatched_rowcount(rowc
 
 def test_upsert_source_returning_row_rejects_missing_required_row() -> None:
     conn = UpsertSourceConnection(existing=None, row=None, rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_source(repo)
@@ -1204,7 +1165,7 @@ def test_upsert_source_returning_row_accepts_matching_required_row() -> None:
         row={"source_id": "source-1", "provider_type": "rss"},
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     row = _upsert_source(repo)
 
@@ -1212,6 +1173,102 @@ def test_upsert_source_returning_row_accepts_matching_required_row() -> None:
     assert row["status"] == "inserted"
     assert len(conn.statements) == 2
     assert "INSERT INTO news_sources" in conn.statements[1][0]
+
+
+def test_news_source_config_payload_hash_is_stable_and_changes_with_config() -> None:
+    source = {
+        "source_id": "source-1",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/feed.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+        "authority_scope": {"markets": ["crypto"], "region": "global"},
+    }
+
+    first = news_source_config_payload_hash(source)
+    reordered = news_source_config_payload_hash(
+        {**source, "authority_scope": {"region": "global", "markets": ["crypto"]}}
+    )
+    changed = news_source_config_payload_hash({**source, "refresh_interval_seconds": 301})
+
+    assert first == reordered
+    assert first.startswith("sha256:")
+    assert len(first) == 71
+    assert changed != first
+
+
+def test_upsert_source_preserves_terminal_disable_for_same_hash_and_clears_it_for_changed_hash() -> None:
+    source = {
+        "source_id": "source-1",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/feed.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+    }
+    terminal_hash = news_source_config_payload_hash(source)
+    existing = {
+        "source_id": "source-1",
+        "provider_type": "rss",
+        "feed_url": "https://example.com/feed.xml",
+        "source_domain": "example.com",
+        "source_name": "Example",
+        "source_role": "observed_source",
+        "trust_tier": "standard",
+        "managed_by_config": True,
+        "enabled": False,
+        "refresh_interval_seconds": 300,
+        "coverage_tags_json": [],
+        "asset_universe_json": [],
+        "authority_scope_json": {},
+        "fetch_policy_json": {},
+        "cost_policy_json": {},
+        "config_payload_hash": terminal_hash,
+        "terminal_config_payload_hash": terminal_hash,
+    }
+    changed_hash = news_source_config_payload_hash({**source, "refresh_interval_seconds": 301})
+    conn = UpsertSourceConnection(
+        existing=existing,
+        row={**existing, "config_payload_hash": changed_hash, "terminal_config_payload_hash": None},
+    )
+    repo = NewsSourceRepository(conn)
+
+    row = repo.upsert_source(**source, refresh_interval_seconds=301, now_ms=2_000)
+
+    sql, params = conn.statements[1]
+    assert row["status"] == "updated"
+    assert "news_sources.terminal_config_payload_hash = EXCLUDED.config_payload_hash" in sql
+    assert "news_sources.terminal_config_payload_hash IS DISTINCT FROM EXCLUDED.config_payload_hash" in sql
+    assert changed_hash in params
+
+
+def test_disable_source_persists_terminal_hash_from_current_config() -> None:
+    config_hash = news_source_config_payload_hash(
+        {
+            "source_id": "source-1",
+            "provider_type": "rss",
+            "feed_url": "https://example.com/feed.xml",
+            "source_domain": "example.com",
+            "source_name": "Example",
+        }
+    )
+    conn = SingleReturningConnection(
+        row={
+            "source_id": "source-1",
+            "enabled": False,
+            "config_payload_hash": config_hash,
+            "terminal_config_payload_hash": config_hash,
+        }
+    )
+    repo = NewsSourceRepository(conn)
+
+    row = repo.disable_source(
+        source_id="source-1",
+        error="news_provider_http_402",
+        now_ms=2_000,
+    )
+
+    assert row["terminal_config_payload_hash"] == config_hash
+    assert "terminal_config_payload_hash = config_payload_hash" in conn.statements[0][0]
 
 
 @pytest.mark.parametrize(
@@ -1231,7 +1288,7 @@ def test_upsert_source_rejects_malformed_policy_mappings_before_sql(
         existing=None,
         row={"source_id": "source-1", "provider_type": "rss"},
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     kwargs = {field_name: bad_value}
     with pytest.raises(ValueError, match=error):
@@ -1242,7 +1299,6 @@ def test_upsert_source_rejects_malformed_policy_mappings_before_sql(
             source_domain="example.com",
             source_name="Example",
             now_ms=1_000,
-            commit=False,
             **kwargs,
         )
 
@@ -1255,9 +1311,9 @@ def test_upsert_provider_item_returning_row_requires_cursor_rowcount() -> None:
         row={"provider_item_id": "provider-item-1"},
         omit_rowcount=True,
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_provider_item(repo)
 
     assert len(conn.statements) == 3
@@ -1273,7 +1329,7 @@ def test_upsert_provider_item_returning_row_rejects_invalid_or_mismatched_rowcou
         row={"provider_item_id": "provider-item-1"},
         rowcount=rowcount,
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_provider_item(repo)
@@ -1284,7 +1340,7 @@ def test_upsert_provider_item_returning_row_rejects_invalid_or_mismatched_rowcou
 
 def test_upsert_provider_item_returning_row_rejects_missing_required_row() -> None:
     conn = UpsertProviderItemConnection(existing=None, row=None, rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_provider_item(repo)
@@ -1299,7 +1355,7 @@ def test_upsert_provider_item_returning_row_accepts_matching_required_row() -> N
         row={"provider_item_id": "provider-item-1", "source_id": "source-1"},
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     row = _upsert_provider_item(repo)
 
@@ -1315,9 +1371,9 @@ def test_upsert_canonical_news_item_returning_row_requires_cursor_rowcount() -> 
         row={"news_item_id": "news-1"},
         omit_rowcount=True,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_canonical_news_item(repo)
 
     assert "INSERT INTO news_items" in conn.insert_news_items_sql
@@ -1331,7 +1387,7 @@ def test_upsert_canonical_news_item_returning_row_rejects_invalid_or_mismatched_
         row={"news_item_id": "news-1"},
         rowcount=rowcount,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_canonical_news_item(repo)
@@ -1341,7 +1397,7 @@ def test_upsert_canonical_news_item_returning_row_rejects_invalid_or_mismatched_
 
 def test_upsert_canonical_news_item_returning_row_rejects_missing_required_row() -> None:
     conn = UpsertCanonicalNewsItemConnection(row=None, rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_canonical_news_item(repo)
@@ -1354,7 +1410,7 @@ def test_upsert_canonical_news_item_returning_row_accepts_matching_required_row(
         row={"news_item_id": "news-1", "canonical_item_key": "url:https://example.com/news/1"},
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     row = _upsert_canonical_news_item(repo)
 
@@ -1369,9 +1425,9 @@ def test_upsert_canonical_news_item_observation_edge_requires_cursor_rowcount() 
         row={"news_item_id": "news-1", "canonical_item_key": "url:https://example.com/news/1"},
         edge_omit_rowcount=True,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_canonical_news_item(repo)
 
     assert "INSERT INTO news_item_observation_edges" in conn.insert_observation_edge_sql
@@ -1385,7 +1441,7 @@ def test_upsert_canonical_news_item_observation_edge_rejects_invalid_rowcount(
         row={"news_item_id": "news-1", "canonical_item_key": "url:https://example.com/news/1"},
         edge_rowcount=rowcount,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _upsert_canonical_news_item(repo)
@@ -1398,7 +1454,7 @@ def test_upsert_canonical_news_item_observation_edge_accepts_required_rowcount()
         row={"news_item_id": "news-1", "canonical_item_key": "url:https://example.com/news/1"},
         edge_rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     row = _upsert_canonical_news_item(repo)
 
@@ -1412,9 +1468,9 @@ def test_refresh_news_item_observation_summary_requires_cursor_rowcount() -> Non
         row={"news_item_id": "news-1"},
         omit_rowcount=True,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._refresh_news_item_observation_summary(news_item_id="news-1", now_ms=1_000)
 
     assert "UPDATE news_items AS items" in conn.summary_sql
@@ -1428,7 +1484,7 @@ def test_refresh_news_item_observation_summary_rejects_invalid_or_mismatched_row
         row={"news_item_id": "news-1"},
         rowcount=rowcount,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._refresh_news_item_observation_summary(news_item_id="news-1", now_ms=1_000)
@@ -1442,7 +1498,7 @@ def test_refresh_news_item_observation_summary_rejects_missing_required_row_with
         rowcount=1,
         fallback_row={"news_item_id": "news-1"},
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._refresh_news_item_observation_summary(news_item_id="news-1", now_ms=1_000)
@@ -1455,7 +1511,7 @@ def test_refresh_news_item_observation_summary_accepts_matching_required_row() -
         row={"news_item_id": "news-1", "duplicate_observation_count": 2},
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     row = repo._refresh_news_item_observation_summary(news_item_id="news-1", now_ms=1_000)
 
@@ -1470,7 +1526,7 @@ def test_refresh_news_item_observation_summary_allows_optional_no_row_without_fa
         rowcount=0,
         fallback_row={"news_item_id": "news-old"},
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     row = repo._refresh_news_item_observation_summary(
         news_item_id="news-old",
@@ -1513,9 +1569,9 @@ def test_reselect_news_item_representative_returning_requires_cursor_rowcount() 
         row={"news_item_id": "news-old"},
         omit_rowcount=True,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._reselect_news_item_representative_from_edges(news_item_id="news-old", now_ms=1_000)
 
     assert "WITH representative_edge AS" in conn.reselect_sql
@@ -1530,7 +1586,7 @@ def test_reselect_news_item_representative_returning_rejects_invalid_or_mismatch
         row={"news_item_id": "news-old"},
         rowcount=rowcount,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._reselect_news_item_representative_from_edges(news_item_id="news-old", now_ms=1_000)
@@ -1540,7 +1596,7 @@ def test_reselect_news_item_representative_returning_rejects_invalid_or_mismatch
 
 def test_reselect_news_item_representative_returning_rejects_missing_row_for_updated_rowcount() -> None:
     conn = ReselectRepresentativeReturningConnection(row=None, rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._reselect_news_item_representative_from_edges(news_item_id="news-old", now_ms=1_000)
@@ -1550,7 +1606,7 @@ def test_reselect_news_item_representative_returning_rejects_missing_row_for_upd
 
 def test_reselect_news_item_representative_returning_accepts_zero_row_noop() -> None:
     conn = ReselectRepresentativeReturningConnection(row=None, rowcount=0)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     row = repo._reselect_news_item_representative_from_edges(news_item_id="news-old", now_ms=1_000)
 
@@ -1563,7 +1619,7 @@ def test_reselect_news_item_representative_returning_accepts_matching_optional_r
         row={"news_item_id": "news-old", "provider_item_id": "provider-2"},
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     row = repo._reselect_news_item_representative_from_edges(news_item_id="news-old", now_ms=1_000)
 
@@ -1577,9 +1633,9 @@ def test_provider_article_edge_remap_returning_counts_require_cursor_rowcount() 
         rows=[{"old_news_item_id": "news-old"}],
         omit_rowcount=True,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._remap_provider_article_edges_to_news_item(
             provider_article_key="rss:article-1",
             news_item_id="news-1",
@@ -1597,7 +1653,7 @@ def test_provider_article_edge_remap_returning_counts_reject_invalid_or_mismatch
         rows=[{"old_news_item_id": "news-old"}],
         rowcount=rowcount,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._remap_provider_article_edges_to_news_item(
@@ -1611,7 +1667,7 @@ def test_provider_article_edge_remap_returning_counts_reject_invalid_or_mismatch
 
 def test_provider_article_edge_remap_returning_counts_accept_zero_row_noop() -> None:
     conn = RemapEdgesReturningConnection(rows=[], rowcount=0)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     old_item_ids = repo._remap_provider_article_edges_to_news_item(
         provider_article_key="rss:article-1",
@@ -1628,7 +1684,7 @@ def test_provider_article_edge_remap_returning_counts_accept_matching_rows() -> 
         rows=[{"old_news_item_id": "news-old"}],
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     old_item_ids = repo._remap_provider_article_edges_to_news_item(
         provider_article_key="rss:article-1",
@@ -1646,9 +1702,9 @@ def test_material_duplicate_edge_remap_returning_counts_require_cursor_rowcount(
         omit_rowcount=True,
         candidate_rows=[_material_duplicate_candidate_row()],
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _remap_material_duplicate_edges(repo)
 
     assert "UPDATE news_item_observation_edges AS edges" in conn.remap_sql
@@ -1663,7 +1719,7 @@ def test_material_duplicate_edge_remap_returning_counts_reject_invalid_or_mismat
         rowcount=rowcount,
         candidate_rows=[_material_duplicate_candidate_row()],
     )
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _remap_material_duplicate_edges(repo)
@@ -1690,7 +1746,7 @@ def test_news_dedup_diagnostics_rejects_malformed_summary_row(
     row = _valid_news_dedup_diagnostics_row()
     row[field_name] = bad_value
     conn = DedupDiagnosticsConnection(summary_row=row)
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     with pytest.raises(ValueError, match=f"news_dedup_diagnostics_{field_name}_required"):
         repo.news_dedup_diagnostics(window_ms=1_000, now_ms=1_779_000_000_000)
@@ -1698,7 +1754,7 @@ def test_news_dedup_diagnostics_rejects_malformed_summary_row(
 
 def test_news_dedup_diagnostics_uses_explicit_positive_window() -> None:
     conn = DedupDiagnosticsConnection(summary_row=_valid_news_dedup_diagnostics_row())
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     result = repo.news_dedup_diagnostics(window_ms=1_000, now_ms=1_779_000_000_000)
 
@@ -1715,7 +1771,7 @@ def test_news_dedup_diagnostics_uses_explicit_positive_window() -> None:
 @pytest.mark.parametrize("window_ms", [0, -1, True, "1000"])
 def test_news_dedup_diagnostics_rejects_malformed_window_before_sql(window_ms: object) -> None:
     conn = DedupDiagnosticsConnection(summary_row=_valid_news_dedup_diagnostics_row())
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     with pytest.raises(ValueError, match="news_dedup_diagnostics_window_ms_required"):
         repo.news_dedup_diagnostics(window_ms=window_ms, now_ms=1_779_000_000_000)  # type: ignore[arg-type]
@@ -1807,13 +1863,12 @@ def test_disable_unconfigured_sources_returning_counts_require_cursor_rowcount()
         rows=[{"source_id": "stale-source"}],
         omit_rowcount=True,
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo.disable_unconfigured_sources(
             configured_source_ids=["active-source"],
             now_ms=1_000,
-            commit=False,
         )
 
 
@@ -1825,13 +1880,12 @@ def test_disable_unconfigured_sources_returning_counts_reject_invalid_or_mismatc
         rows=[{"source_id": "stale-source"}],
         rowcount=rowcount,
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo.disable_unconfigured_sources(
             configured_source_ids=["active-source"],
             now_ms=1_000,
-            commit=False,
         )
 
 
@@ -1840,14 +1894,13 @@ def test_claim_due_sources_returning_counts_require_cursor_rowcount() -> None:
         rows=[{"source_id": "source-1"}],
         omit_rowcount=True,
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo.claim_due_sources(
             now_ms=1_000,
             limit=1,
             claim_lease_ms=60_000,
-            commit=False,
         )
 
 
@@ -1859,26 +1912,24 @@ def test_claim_due_sources_returning_counts_reject_invalid_or_mismatched_rowcoun
         rows=[{"source_id": "source-1"}],
         rowcount=rowcount,
     )
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo.claim_due_sources(
             now_ms=1_000,
             limit=1,
             claim_lease_ms=60_000,
-            commit=False,
         )
 
 
 def test_claim_due_sources_returning_counts_accept_zero_row_noop() -> None:
     conn = ClaimDueSourcesConnection(rows=[], rowcount=0)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     rows = repo.claim_due_sources(
         now_ms=1_000,
         limit=1,
         claim_lease_ms=60_000,
-        commit=False,
     )
 
     assert rows == []
@@ -1886,13 +1937,12 @@ def test_claim_due_sources_returning_counts_accept_zero_row_noop() -> None:
 
 def test_claim_due_sources_returning_counts_accept_matching_claim_rows() -> None:
     conn = ClaimDueSourcesConnection(rows=[{"source_id": "source-1"}], rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     rows = repo.claim_due_sources(
         now_ms=1_000,
         limit=1,
         claim_lease_ms=60_000,
-        commit=False,
     )
 
     assert rows == [{"source_id": "source-1"}]
@@ -1915,12 +1965,11 @@ def test_claim_due_sources_rejects_malformed_parameters_before_sql(
     error: str,
 ) -> None:
     conn = ClaimDueSourcesConnection(rows=[], rowcount=0)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
     params: dict[str, object] = {
         "now_ms": 1_000,
         "limit": 1,
         "claim_lease_ms": 60_000,
-        "commit": False,
     }
     params.update(overrides)
 
@@ -1932,9 +1981,9 @@ def test_claim_due_sources_rejects_malformed_parameters_before_sql(
 
 def test_start_fetch_run_requires_fetch_run_insert_rowcount_before_source_update() -> None:
     conn = StartFetchRunConnection(insert_omit_rowcount=True, source_rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _start_fetch_run(repo)
 
     assert len(conn.statements) == 1
@@ -1944,7 +1993,7 @@ def test_start_fetch_run_requires_fetch_run_insert_rowcount_before_source_update
 @pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
 def test_start_fetch_run_rejects_invalid_fetch_run_insert_rowcount(rowcount: object) -> None:
     conn = StartFetchRunConnection(insert_rowcount=rowcount, source_rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _start_fetch_run(repo)
@@ -1955,9 +2004,9 @@ def test_start_fetch_run_rejects_invalid_fetch_run_insert_rowcount(rowcount: obj
 
 def test_start_fetch_run_requires_source_update_rowcount_before_returning_run_id() -> None:
     conn = StartFetchRunConnection(insert_rowcount=1, source_omit_rowcount=True)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _start_fetch_run(repo)
 
     assert len(conn.statements) == 2
@@ -1967,7 +2016,7 @@ def test_start_fetch_run_requires_source_update_rowcount_before_returning_run_id
 @pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
 def test_start_fetch_run_rejects_invalid_source_update_rowcount(rowcount: object) -> None:
     conn = StartFetchRunConnection(insert_rowcount=1, source_rowcount=rowcount)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _start_fetch_run(repo)
@@ -1978,7 +2027,7 @@ def test_start_fetch_run_rejects_invalid_source_update_rowcount(rowcount: object
 
 def test_start_fetch_run_accepts_matching_insert_and_source_update_rowcounts() -> None:
     conn = StartFetchRunConnection(insert_rowcount=1, source_rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     fetch_run_id = _start_fetch_run(repo)
 
@@ -1990,9 +2039,9 @@ def test_start_fetch_run_accepts_matching_insert_and_source_update_rowcounts() -
 
 def test_finish_fetch_run_returning_row_requires_cursor_rowcount() -> None:
     conn = FinishFetchRunConnection(row={"fetch_run_id": "run-1"}, omit_rowcount=True)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _finish_fetch_run(repo)
 
     assert len(conn.statements) == 1
@@ -2003,7 +2052,7 @@ def test_finish_fetch_run_returning_row_rejects_invalid_or_mismatched_rowcount(
     rowcount: object,
 ) -> None:
     conn = FinishFetchRunConnection(row={"fetch_run_id": "run-1"}, rowcount=rowcount)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _finish_fetch_run(repo)
@@ -2014,7 +2063,7 @@ def test_finish_fetch_run_returning_row_rejects_invalid_or_mismatched_rowcount(
 @pytest.mark.parametrize("rowcount", [0, 1])
 def test_finish_fetch_run_returning_row_rejects_missing_required_row(rowcount: object) -> None:
     conn = FinishFetchRunConnection(row=None, rowcount=rowcount)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         _finish_fetch_run(repo)
@@ -2024,7 +2073,7 @@ def test_finish_fetch_run_returning_row_rejects_missing_required_row(rowcount: o
 
 def test_finish_fetch_run_returning_row_accepts_matching_required_row() -> None:
     conn = FinishFetchRunConnection(row={"fetch_run_id": "run-1", "status": "success"}, rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     row = _finish_fetch_run(repo)
 
@@ -2041,8 +2090,8 @@ def test_finish_fetch_run_requires_source_status_update_rowcount_before_returnin
         source_omit_rowcount=True,
     )
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
-        _finish_fetch_run(NewsRepository(conn))
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
+        _finish_fetch_run(NewsSourceRepository(conn))
 
     assert len(conn.statements) == 2
     assert "UPDATE news_sources" in conn.statements[1][0]
@@ -2057,7 +2106,7 @@ def test_finish_fetch_run_rejects_invalid_source_status_update_rowcount(rowcount
     )
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
-        _finish_fetch_run(NewsRepository(conn))
+        _finish_fetch_run(NewsSourceRepository(conn))
 
     assert len(conn.statements) == 2
     assert "UPDATE news_sources" in conn.statements[1][0]
@@ -2081,7 +2130,7 @@ def test_finish_fetch_run_requires_explicit_nonnegative_counts(
     kwargs: dict[str, object],
 ) -> None:
     conn = FinishFetchRunConnection(row={"fetch_run_id": "run-1", "status": "success"}, rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     payload: dict[str, object] = {
         "fetch_run_id": "run-1",
@@ -2092,7 +2141,6 @@ def test_finish_fetch_run_requires_explicit_nonnegative_counts(
         "inserted_count": 1,
         "updated_count": 0,
         "duplicate_count": 0,
-        "commit": False,
     }
     payload.update(kwargs)
 
@@ -2124,7 +2172,7 @@ def test_finish_fetch_run_requires_explicit_completion_scalar_contract(
     kwargs: dict[str, object],
 ) -> None:
     conn = FinishFetchRunConnection(row={"fetch_run_id": "run-1", "status": "success"}, rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsSourceRepository(conn)
 
     payload: dict[str, object] = {
         "fetch_run_id": "run-1",
@@ -2137,7 +2185,6 @@ def test_finish_fetch_run_requires_explicit_completion_scalar_contract(
         "duplicate_count": 0,
         "http_status": 200,
         "extra_json": {"provider": "opennews"},
-        "commit": False,
     }
     payload.update(kwargs)
 
@@ -2149,27 +2196,24 @@ def test_finish_fetch_run_requires_explicit_completion_scalar_contract(
 
 def test_news_current_fact_writes_reject_reflective_payload_objects_before_insert() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(ValueError, match="news entity payload"):
         repo.replace_item_entities(
             news_item_id="news-1",
             entities=[SimpleNamespace(entity_id="entity-1", news_item_id="news-1")],
-            commit=False,
         )
 
     with pytest.raises(ValueError, match="news token mention payload"):
         repo.replace_token_mentions(
             news_item_id="news-1",
             mentions=[SimpleNamespace(mention_id="mention-1", news_item_id="news-1")],
-            commit=False,
         )
 
     with pytest.raises(ValueError, match="news fact candidate payload"):
         repo.replace_fact_candidates(
             news_item_id="news-1",
             candidates=[SimpleNamespace(fact_candidate_id="fact-1", news_item_id="news-1")],
-            commit=False,
         )
 
     assert not any("INSERT INTO news_item_entities" in sql for sql, _params in conn.statements)
@@ -2220,7 +2264,7 @@ def test_update_item_market_scope_and_story_identity_rejects_blank_required_fiel
     match: str,
 ) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(ValueError, match=match):
         repo.update_item_market_scope_and_story_identity(
@@ -2228,7 +2272,6 @@ def test_update_item_market_scope_and_story_identity_rejects_blank_required_fiel
             market_scope=market_scope,
             story_identity=story_identity,
             now_ms=1_000,
-            commit=False,
         )
 
     assert conn.statements == []
@@ -2302,7 +2345,7 @@ def test_update_item_market_scope_and_story_identity_rejects_invalid_nested_fiel
     match: str,
 ) -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(ValueError, match=match):
         repo.update_item_market_scope_and_story_identity(
@@ -2310,7 +2353,6 @@ def test_update_item_market_scope_and_story_identity_rejects_invalid_nested_fiel
             market_scope=market_scope,
             story_identity=story_identity,
             now_ms=1_000,
-            commit=False,
         )
 
     assert conn.statements == []
@@ -2318,14 +2360,13 @@ def test_update_item_market_scope_and_story_identity_rejects_invalid_nested_fiel
 
 def test_update_item_market_scope_and_story_identity_writes_current_fields_only() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     repo.update_item_market_scope_and_story_identity(
         news_item_id="news-1",
         market_scope=_valid_market_scope(),
         story_identity=_valid_story_identity(),
         now_ms=1_000,
-        commit=False,
     )
 
     assert "market_scope_json = %s" in conn.sql
@@ -2342,7 +2383,7 @@ def test_update_item_market_scope_and_story_identity_writes_current_fields_only(
 
 def test_update_item_market_scope_and_agent_admission_writes_current_fields_only() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     repo.update_item_market_scope_and_agent_admission(
         news_item_id="news-1",
@@ -2350,7 +2391,6 @@ def test_update_item_market_scope_and_agent_admission_writes_current_fields_only
         story_identity=_valid_story_identity(),
         admission=_valid_agent_admission(),
         now_ms=1_000,
-        commit=False,
     )
 
     assert "market_scope_json = %s" in conn.sql
@@ -2368,7 +2408,7 @@ def test_update_item_market_scope_and_agent_admission_writes_current_fields_only
 
 def test_material_duplicate_lock_covers_candidate_window_without_symbol_partition() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     repo._lock_material_duplicate_candidate_window(
         source_id="opennews-news",
@@ -2405,7 +2445,7 @@ def test_material_duplicate_lock_covers_candidate_window_without_symbol_partitio
 
 def test_edge_remap_cleanup_locks_old_news_item_row_before_delete() -> None:
     conn = CapturingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     assert repo._lock_news_item_for_edge_remap_cleanup(news_item_id="news-old") is True
 
@@ -2415,31 +2455,31 @@ def test_edge_remap_cleanup_locks_old_news_item_row_before_delete() -> None:
     assert conn.params == ("news-old",)
 
 
-def test_edge_remap_agent_output_guard_includes_story_agent_outputs() -> None:
+def test_edge_remap_agent_output_guard_uses_story_agent_outputs_only() -> None:
     conn = SourceSyncCursorConnection(row={"has_agent_outputs": False})
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     assert repo._news_item_has_agent_outputs(news_item_id="news-old") is False
 
-    assert "news_item_agent_runs" in conn.sql
-    assert "news_item_agent_briefs" in conn.sql
+    assert "news_item_agent_runs" not in conn.sql
+    assert "news_item_agent_briefs" not in conn.sql
     assert "news_story_agent_runs" in conn.sql
     assert "news_story_agent_briefs" in conn.sql
-    assert conn.params == ("news-old", "news-old", "news-old", "news-old")
+    assert conn.params == ("news-old", "news-old")
 
 
 def test_delete_zero_edge_news_item_returning_requires_cursor_rowcount() -> None:
     conn = DeleteReturningConnection(rows=[{"news_item_id": "news-old"}], omit_rowcount=True)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._delete_zero_edge_news_item(news_item_id="news-old")
 
 
 @pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
 def test_delete_zero_edge_news_item_returning_rejects_invalid_or_mismatched_rowcount(rowcount: object) -> None:
     conn = DeleteReturningConnection(rows=[{"news_item_id": "news-old"}], rowcount=rowcount)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._delete_zero_edge_news_item(news_item_id="news-old")
@@ -2447,7 +2487,7 @@ def test_delete_zero_edge_news_item_returning_rejects_invalid_or_mismatched_rowc
 
 def test_delete_zero_edge_news_item_returning_rejects_missing_returned_row_for_deleted_rowcount() -> None:
     conn = DeleteReturningConnection(rows=[], rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
         repo._delete_zero_edge_news_item(news_item_id="news-old")
@@ -2455,179 +2495,37 @@ def test_delete_zero_edge_news_item_returning_rejects_missing_returned_row_for_d
 
 def test_news_page_row_returning_write_requires_cursor_rowcount() -> None:
     conn = PageRowReturningConnection(returned_row={"inserted": True}, omit_rowcount=True)
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[_valid_news_page_row()], commit=False)
+    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[_valid_news_page_row()])
 
 
 @pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
 def test_news_page_row_returning_write_rejects_invalid_or_mismatched_rowcount(rowcount: object) -> None:
     conn = PageRowReturningConnection(returned_row={"inserted": True}, rowcount=rowcount)
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
     with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
-        repo.replace_page_rows_for_items(news_item_ids=[], rows=[_valid_news_page_row()], commit=False)
+        repo.replace_page_rows_for_items(news_item_ids=[], rows=[_valid_news_page_row()])
 
 
 def test_news_page_row_returning_write_accepts_zero_row_unchanged() -> None:
     conn = PageRowReturningConnection(returned_row=None, rowcount=0)
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
-    result = repo.replace_page_rows_for_items(news_item_ids=[], rows=[_valid_news_page_row()], commit=False)
+    result = repo.replace_page_rows_for_items(news_item_ids=[], rows=[_valid_news_page_row()])
 
     assert result == {"inserted": 0, "updated": 0, "unchanged": 1, "deleted": 0}
 
 
 def test_news_page_row_returning_write_counts_insert_after_rowcount_match() -> None:
     conn = PageRowReturningConnection(returned_row={"inserted": True}, rowcount=1)
-    repo = NewsRepository(conn)
+    repo = NewsPageRepository(conn)
 
-    result = repo.replace_page_rows_for_items(news_item_ids=[], rows=[_valid_news_page_row()], commit=False)
+    result = repo.replace_page_rows_for_items(news_item_ids=[], rows=[_valid_news_page_row()])
 
     assert result == {"inserted": 1, "updated": 0, "unchanged": 0, "deleted": 0}
-
-
-def test_insert_news_item_agent_run_returning_row_requires_cursor_rowcount() -> None:
-    conn = AgentReturningConnection(
-        row={"run_id": "run-1", "news_item_id": "news-1"},
-        omit_rowcount=True,
-    )
-    repo = NewsRepository(conn)
-
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
-        _insert_news_item_agent_run(repo)
-
-    assert "INSERT INTO news_item_agent_runs" in conn.write_sql
-
-
-@pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
-def test_insert_news_item_agent_run_returning_row_rejects_invalid_or_mismatched_rowcount(
-    rowcount: object,
-) -> None:
-    conn = AgentReturningConnection(
-        row={"run_id": "run-1", "news_item_id": "news-1"},
-        rowcount=rowcount,
-    )
-    repo = NewsRepository(conn)
-
-    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
-        _insert_news_item_agent_run(repo)
-
-    assert "INSERT INTO news_item_agent_runs" in conn.write_sql
-
-
-def test_insert_news_item_agent_run_returning_row_rejects_missing_required_row() -> None:
-    conn = AgentReturningConnection(row=None, rowcount=1)
-    repo = NewsRepository(conn)
-
-    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
-        _insert_news_item_agent_run(repo)
-
-    assert "INSERT INTO news_item_agent_runs" in conn.write_sql
-
-
-def test_insert_news_item_agent_run_returning_row_accepts_matching_required_row() -> None:
-    conn = AgentReturningConnection(
-        row={"run_id": "run-1", "news_item_id": "news-1", "status": "completed"},
-        rowcount=1,
-    )
-    repo = NewsRepository(conn)
-
-    row = _insert_news_item_agent_run(repo)
-
-    assert row["run_id"] == "run-1"
-    assert row["news_item_id"] == "news-1"
-    assert "INSERT INTO news_item_agent_runs" in conn.write_sql
-
-
-@pytest.mark.parametrize(
-    ("field_name", "error"),
-    [
-        ("backend", "unsupported news item agent run payload shape: blank backend"),
-        ("latency_ms", "unsupported news item agent run payload shape: missing latency_ms"),
-    ],
-)
-def test_insert_news_item_agent_run_requires_explicit_audit_scalar_fields(
-    field_name: str,
-    error: str,
-) -> None:
-    conn = AgentReturningConnection(
-        row={"run_id": "run-1", "news_item_id": "news-1"},
-        rowcount=1,
-    )
-    repo = NewsRepository(conn)
-    payload = _news_item_agent_run_payload()
-    payload.pop(field_name)
-
-    with pytest.raises(ValueError, match=error):
-        repo.insert_news_item_agent_run(**payload)
-
-    assert conn.write_sql == ""
-
-
-def test_upsert_news_item_agent_brief_returning_row_requires_cursor_rowcount() -> None:
-    conn = AgentReturningConnection(
-        row={"news_item_id": "news-1", "agent_run_id": "run-1"},
-        omit_rowcount=True,
-    )
-    repo = NewsRepository(conn)
-
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
-        _upsert_news_item_agent_brief(repo)
-
-    assert "INSERT INTO news_item_agent_briefs" in conn.write_sql
-
-
-@pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
-def test_upsert_news_item_agent_brief_returning_row_rejects_invalid_or_mismatched_rowcount(
-    rowcount: object,
-) -> None:
-    conn = AgentReturningConnection(
-        row={"news_item_id": "news-1", "agent_run_id": "run-1"},
-        rowcount=rowcount,
-    )
-    repo = NewsRepository(conn)
-
-    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
-        _upsert_news_item_agent_brief(repo)
-
-    assert "INSERT INTO news_item_agent_briefs" in conn.write_sql
-
-
-def test_upsert_news_item_agent_brief_returning_row_rejects_missing_required_row() -> None:
-    conn = AgentReturningConnection(row=None, rowcount=1)
-    repo = NewsRepository(conn)
-
-    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
-        _upsert_news_item_agent_brief(repo)
-
-    assert "INSERT INTO news_item_agent_briefs" in conn.write_sql
-
-
-def test_upsert_news_item_agent_brief_returning_row_accepts_matching_required_row() -> None:
-    conn = AgentReturningConnection(
-        row={"news_item_id": "news-1", "agent_run_id": "run-1", "status": "ready"},
-        rowcount=1,
-    )
-    repo = NewsRepository(conn)
-
-    row = _upsert_news_item_agent_brief(repo)
-
-    assert row["news_item_id"] == "news-1"
-    assert row["agent_run_id"] == "run-1"
-    assert "INSERT INTO news_item_agent_briefs" in conn.write_sql
-
-
-def test_upsert_news_item_agent_brief_ready_payload_requires_summary_without_market_read_fallback() -> None:
-    conn = AgentReturningConnection(row={"news_item_id": "news-1", "agent_run_id": "run-1"}, rowcount=1)
-    repo = NewsRepository(conn)
-    payload = _news_item_agent_brief_payload(brief_json={"market_read_zh": "Legacy market read is not publishable."})
-
-    with pytest.raises(ValueError, match="ready news item agent brief requires publishable summary"):
-        repo.upsert_news_item_agent_brief(**payload)
-
-    assert conn.write_sql == ""
 
 
 def test_insert_news_story_agent_run_requires_explicit_audit_json_fields() -> None:
@@ -2635,36 +2533,40 @@ def test_insert_news_story_agent_run_requires_explicit_audit_json_fields() -> No
         row={"run_id": "story-run-1", "story_brief_key": "story-brief-1"},
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsStoryAgentRepository(conn)
     payload = _news_story_agent_run_payload()
     payload.pop("request_json")
 
-    with pytest.raises(ValueError, match="unsupported news story agent run payload shape: missing request_json"):
+    with pytest.raises(TypeError, match="missing 1 required keyword-only argument: 'request_json'"):
         repo.insert_news_story_agent_run(**payload)
 
     assert conn.write_sql == ""
 
 
-@pytest.mark.parametrize(
-    ("field_name", "error"),
-    [
-        ("backend", "unsupported news story agent run payload shape: blank backend"),
-        ("latency_ms", "unsupported news story agent run payload shape: missing latency_ms"),
-    ],
-)
-def test_insert_news_story_agent_run_requires_explicit_audit_scalar_fields(
-    field_name: str,
-    error: str,
-) -> None:
+def test_insert_news_story_agent_run_rejects_blank_backend() -> None:
     conn = AgentReturningConnection(
         row={"run_id": "story-run-1", "story_brief_key": "story-brief-1"},
         rowcount=1,
     )
-    repo = NewsRepository(conn)
-    payload = _news_story_agent_run_payload()
-    payload.pop(field_name)
+    repo = NewsStoryAgentRepository(conn)
+    payload = _news_story_agent_run_payload(backend="")
 
-    with pytest.raises(ValueError, match=error):
+    with pytest.raises(ValueError, match="unsupported news story agent run payload shape: blank backend"):
+        repo.insert_news_story_agent_run(**payload)
+
+    assert conn.write_sql == ""
+
+
+def test_insert_news_story_agent_run_requires_latency() -> None:
+    conn = AgentReturningConnection(
+        row={"run_id": "story-run-1", "story_brief_key": "story-brief-1"},
+        rowcount=1,
+    )
+    repo = NewsStoryAgentRepository(conn)
+    payload = _news_story_agent_run_payload()
+    payload.pop("latency_ms")
+
+    with pytest.raises(TypeError, match="missing 1 required keyword-only argument: 'latency_ms'"):
         repo.insert_news_story_agent_run(**payload)
 
     assert conn.write_sql == ""
@@ -2675,7 +2577,7 @@ def test_insert_news_story_agent_run_requires_non_empty_member_ids() -> None:
         row={"run_id": "story-run-1", "story_brief_key": "story-brief-1"},
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsStoryAgentRepository(conn)
     payload = _news_story_agent_run_payload(member_news_item_ids_json=[])
 
     with pytest.raises(
@@ -2692,11 +2594,11 @@ def test_upsert_news_story_agent_brief_requires_explicit_brief_json() -> None:
         row={"story_brief_key": "story-brief-1", "agent_run_id": "story-run-1"},
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsStoryAgentRepository(conn)
     payload = _news_story_agent_brief_payload()
     payload.pop("brief_json")
 
-    with pytest.raises(ValueError, match="unsupported news story agent brief payload shape: missing brief_json"):
+    with pytest.raises(TypeError, match="missing 1 required keyword-only argument: 'brief_json'"):
         repo.upsert_news_story_agent_brief(**payload)
 
     assert conn.write_sql == ""
@@ -2707,7 +2609,7 @@ def test_upsert_news_story_agent_brief_ready_payload_requires_summary_without_ma
         row={"story_brief_key": "story-brief-1", "agent_run_id": "story-run-1"},
         rowcount=1,
     )
-    repo = NewsRepository(conn)
+    repo = NewsStoryAgentRepository(conn)
     payload = _news_story_agent_brief_payload(brief_json={"market_read_zh": "Legacy market read is not publishable."})
 
     with pytest.raises(ValueError, match="ready news story agent brief requires publishable summary"):
@@ -2716,109 +2618,9 @@ def test_upsert_news_story_agent_brief_ready_payload_requires_summary_without_ma
     assert conn.write_sql == ""
 
 
-def test_list_current_brief_ids_outside_schema_uses_explicit_limit() -> None:
-    conn = CapturingConnection()
-    repo = NewsRepository(conn)
-
-    rows = repo.list_current_brief_ids_outside_schema(required_schema_version="v2", limit=25)
-
-    assert rows == []
-    assert "FROM news_item_agent_briefs" in conn.sql
-    assert conn.params == ("v2", 25)
-
-
-@pytest.mark.parametrize("limit", [0, -1, True, "25"])
-def test_list_current_brief_ids_outside_schema_rejects_malformed_limit_before_sql(limit: object) -> None:
-    conn = CapturingConnection()
-    repo = NewsRepository(conn)
-
-    with pytest.raises(ValueError, match="news_current_brief_schema_limit_required"):
-        repo.list_current_brief_ids_outside_schema(limit=limit)  # type: ignore[arg-type]
-
-    assert conn.statements == []
-
-
-@pytest.mark.parametrize("window_ms", [0, -1, True, "60000"])
-def test_source_quality_inputs_rejects_malformed_window_before_sql(window_ms: object) -> None:
-    conn = CapturingConnection()
-    repo = NewsRepository(conn)
-
-    with pytest.raises(ValueError, match="news_source_quality_window_ms_required"):
-        repo._list_source_quality_inputs_for_source_ids(
-            source_ids=["source-1"],
-            window_ms=window_ms,  # type: ignore[arg-type]
-            now_ms=1_000,
-        )
-
-    assert conn.statements == []
-
-
-def test_clear_current_briefs_outside_schema_returning_rows_require_cursor_rowcount() -> None:
-    conn = DeleteReturningConnection(rows=[{"news_item_id": "news-1"}], omit_rowcount=True)
-    repo = NewsRepository(conn)
-
-    with pytest.raises(TypeError, match="news_repository_rowcount_required"):
-        repo.clear_current_briefs_outside_schema(
-            required_schema_version="v2",
-            news_item_ids=["news-1"],
-            commit=False,
-        )
-
-    sql, params = conn.statements[0]
-    assert "DELETE FROM news_item_agent_briefs" in sql
-    assert "RETURNING news_item_id" in sql
-    assert params == ("v2", ["news-1"])
-
-
-@pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 0, 2])
-def test_clear_current_briefs_outside_schema_returning_rows_reject_invalid_or_mismatched_rowcount(
-    rowcount: object,
-) -> None:
-    conn = DeleteReturningConnection(rows=[{"news_item_id": "news-1"}], rowcount=rowcount)
-    repo = NewsRepository(conn)
-
-    with pytest.raises(TypeError, match="news_repository_rowcount_invalid"):
-        repo.clear_current_briefs_outside_schema(
-            required_schema_version="v2",
-            news_item_ids=["news-1"],
-            commit=False,
-        )
-
-    assert "RETURNING news_item_id" in conn.statements[0][0]
-
-
-def test_clear_current_briefs_outside_schema_returning_rows_accept_zero_row_noop() -> None:
-    conn = DeleteReturningConnection(rows=[], rowcount=0)
-    repo = NewsRepository(conn)
-
-    rows = repo.clear_current_briefs_outside_schema(
-        required_schema_version="v2",
-        news_item_ids=["news-1"],
-        commit=False,
-    )
-
-    assert rows == []
-
-
-def test_clear_current_briefs_outside_schema_returning_rows_accept_matching_deleted_rows() -> None:
-    conn = DeleteReturningConnection(
-        rows=[{"news_item_id": "news-1"}, {"news_item_id": "news-2"}],
-        rowcount=2,
-    )
-    repo = NewsRepository(conn)
-
-    rows = repo.clear_current_briefs_outside_schema(
-        required_schema_version="v2",
-        news_item_ids=["news-1", "news-2"],
-        commit=False,
-    )
-
-    assert rows == ["news-1", "news-2"]
-
-
-def test_upsert_canonical_news_item_default_commit_enters_repository_transaction_before_sql() -> None:
+def test_upsert_canonical_news_item_does_not_open_an_implicit_transaction() -> None:
     conn = TransactionRecordingConnection()
-    repo = NewsRepository(conn)
+    repo = NewsItemRepository(conn)
 
     with pytest.raises(RuntimeError, match="stop after transaction entry"):
         repo.upsert_canonical_news_item(
@@ -2829,10 +2631,9 @@ def test_upsert_canonical_news_item_default_commit_enters_repository_transaction
             content_hash="content-1",
             title_fingerprint="headline",
             now_ms=2,
-            commit=True,
         )
 
-    assert conn.events == ["begin", "execute", "rollback"]
+    assert conn.events == ["execute"]
 
 
 class CapturingConnection:
@@ -3058,6 +2859,17 @@ class UpsertSourceCursor:
 
     def fetchone(self) -> dict[str, object] | None:
         return self._row
+
+
+class SingleReturningConnection:
+    def __init__(self, *, row: dict[str, object], rowcount: object = 1) -> None:
+        self.row = row
+        self.rowcount = rowcount
+        self.statements: list[tuple[str, object]] = []
+
+    def execute(self, sql: str, params: object = None) -> UpsertSourceCursor:
+        self.statements.append((sql, params))
+        return UpsertSourceCursor(row=self.row, rowcount=self.rowcount)
 
 
 class UpsertProviderItemConnection:
@@ -3630,15 +3442,14 @@ class CapturingConnectionTransaction:
         self.events.append("rollback" if exc_type else "commit")
 
 
-def _start_fetch_run(repo: NewsRepository) -> str:
+def _start_fetch_run(repo: NewsSourceRepository) -> str:
     return repo.start_fetch_run(
         source_id="source-1",
         started_at_ms=1_000,
-        commit=False,
     )
 
 
-def _upsert_source(repo: NewsRepository) -> dict[str, Any]:
+def _upsert_source(repo: NewsSourceRepository) -> dict[str, Any]:
     return repo.upsert_source(
         source_id="source-1",
         provider_type="rss",
@@ -3646,11 +3457,10 @@ def _upsert_source(repo: NewsRepository) -> dict[str, Any]:
         source_domain="example.com",
         source_name="Example",
         now_ms=1_000,
-        commit=False,
     )
 
 
-def _upsert_provider_item(repo: NewsRepository) -> dict[str, Any]:
+def _upsert_provider_item(repo: NewsSourceRepository) -> dict[str, Any]:
     return repo.upsert_provider_item(
         source_id="source-1",
         fetch_run_id="run-1",
@@ -3659,11 +3469,10 @@ def _upsert_provider_item(repo: NewsRepository) -> dict[str, Any]:
         payload_hash="payload-1",
         raw_payload={"id": "article-1", "provider_signal": {"status": "ready"}},
         fetched_at_ms=1_000,
-        commit=False,
     )
 
 
-def _upsert_canonical_news_item(repo: NewsRepository) -> dict[str, Any]:
+def _upsert_canonical_news_item(repo: NewsItemRepository) -> dict[str, Any]:
     def refresh_summary(*, news_item_id: str, now_ms: int) -> dict[str, Any]:
         return {
             "news_item_id": news_item_id,
@@ -3683,7 +3492,6 @@ def _upsert_canonical_news_item(repo: NewsRepository) -> dict[str, Any]:
         title_fingerprint="example headline",
         now_ms=1_100,
         provider_payload_status="ready",
-        commit=False,
     )
 
 
@@ -3725,7 +3533,7 @@ def _valid_news_item_aggregate_row(**overrides: Any) -> dict[str, Any]:
     return row
 
 
-def _remap_material_duplicate_edges(repo: NewsRepository) -> list[str]:
+def _remap_material_duplicate_edges(repo: NewsItemRepository) -> list[str]:
     return repo._remap_material_duplicate_edges_to_news_item(
         source_id="opennews-news",
         news_item_id="news-1",
@@ -3735,72 +3543,6 @@ def _remap_material_duplicate_edges(repo: NewsRepository) -> list[str]:
         provider_token_impacts=[{"symbol": "BTC"}],
         now_ms=1_300_000,
     )
-
-
-def _insert_news_item_agent_run(repo: NewsRepository) -> dict[str, Any]:
-    return repo.insert_news_item_agent_run(**_news_item_agent_run_payload())
-
-
-def _news_item_agent_run_payload(**overrides: Any) -> dict[str, Any]:
-    payload = {
-        "run_id": "run-1",
-        "news_item_id": "news-1",
-        "provider": "openai",
-        "model": "gpt-test",
-        "backend": "litellm_sdk",
-        "execution_trace_id": "trace-1",
-        "workflow_name": "news_item_brief",
-        "agent_name": "news_item_brief",
-        "lane": "news.item_brief",
-        "artifact_version_hash": "artifact-1",
-        "prompt_version": "prompt-v1",
-        "schema_version": "schema-v1",
-        "validator_version": "validator-v1",
-        "guardrail_version": "guardrail-v1",
-        "input_hash": "input-1",
-        "output_hash": "output-1",
-        "execution_started": True,
-        "status": "completed",
-        "outcome": "ready",
-        "request_json": {"messages": []},
-        "response_json": {"summary_zh": "摘要"},
-        "validation_errors_json": [],
-        "trace_metadata_json": {},
-        "usage_json": {},
-        "latency_ms": 12,
-        "started_at_ms": 1_000,
-        "finished_at_ms": 1_100,
-        "created_at_ms": 1_100,
-        "commit": False,
-    }
-    payload.update(overrides)
-    return payload
-
-
-def _upsert_news_item_agent_brief(repo: NewsRepository) -> dict[str, Any]:
-    return repo.upsert_news_item_agent_brief(**_news_item_agent_brief_payload())
-
-
-def _news_item_agent_brief_payload(**overrides: Any) -> dict[str, Any]:
-    payload: dict[str, Any] = {
-        "news_item_id": "news-1",
-        "agent_run_id": "run-1",
-        "status": "ready",
-        "direction": "bullish",
-        "decision_class": "high_signal",
-        "brief_json": {"summary_zh": "这是一条可发布摘要"},
-        "input_hash": "input-1",
-        "artifact_version_hash": "artifact-1",
-        "prompt_version": "prompt-v1",
-        "schema_version": "schema-v1",
-        "validator_version": "validator-v1",
-        "computed_at_ms": 1_100,
-        "created_at_ms": 1_100,
-        "updated_at_ms": 1_100,
-        "commit": False,
-    }
-    payload.update(overrides)
-    return payload
 
 
 def _news_story_agent_run_payload(**overrides: Any) -> dict[str, Any]:
@@ -3837,7 +3579,6 @@ def _news_story_agent_run_payload(**overrides: Any) -> dict[str, Any]:
         "started_at_ms": 1_000,
         "finished_at_ms": 1_100,
         "created_at_ms": 1_100,
-        "commit": False,
     }
     payload.update(overrides)
     return payload
@@ -3863,13 +3604,12 @@ def _news_story_agent_brief_payload(**overrides: Any) -> dict[str, Any]:
         "computed_at_ms": 1_100,
         "created_at_ms": 1_100,
         "updated_at_ms": 1_100,
-        "commit": False,
     }
     payload.update(overrides)
     return payload
 
 
-def _finish_fetch_run(repo: NewsRepository) -> dict[str, Any]:
+def _finish_fetch_run(repo: NewsSourceRepository) -> dict[str, Any]:
     return repo.finish_fetch_run(
         fetch_run_id="run-1",
         source_id="source-1",
@@ -3879,7 +3619,6 @@ def _finish_fetch_run(repo: NewsRepository) -> dict[str, Any]:
         inserted_count=1,
         updated_count=0,
         duplicate_count=0,
-        commit=False,
     )
 
 
@@ -4085,18 +3824,6 @@ def _valid_page_projection_loader_row() -> dict[str, object]:
     }
 
 
-def _valid_brief_target_loader_row() -> dict[str, object]:
-    return {
-        "item": _valid_news_item_detail_base_row()["item"],
-        "entities": [],
-        "token_mentions": [],
-        "fact_candidates": [],
-        "current_brief": None,
-        "latest_run": None,
-        "source_updated_at_ms": 1_779_000_000_500,
-    }
-
-
 def _valid_agent_admission_context_loader_row() -> dict[str, object]:
     return {
         "item": _valid_news_item_detail_base_row()["item"],
@@ -4147,7 +3874,6 @@ def _valid_news_dedup_diagnostics_row() -> dict[str, object]:
         "material_title_duplicate_groups": {"groups": 0, "rows": 0, "duplicate_rows": 0, "top_groups": []},
         "case_insensitive_url_duplicate_groups": {"groups": 0, "rows": 0, "duplicate_rows": 0, "top_groups": []},
         "preview_or_generic_url_rows": {"rows": 0},
-        "brief_input_risk": {"rows": 0, "stale_rows": 0},
         "source_sync_diagnostics": [],
     }
 

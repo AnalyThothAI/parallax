@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from decimal import Decimal
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from psycopg import pq
 
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
@@ -134,7 +136,6 @@ def test_publish_current_generation_upserts_current_rows_and_marks_ready_publica
         published_at_ms=1_778_000_000_000,
         source_frontier_ms=1_778_000_030_000,
         rows=[row],
-        commit=False,
     )
 
     joined_sql = "\n".join(conn.sqls)
@@ -176,7 +177,7 @@ def test_publish_current_generation_upserts_current_rows_and_marks_ready_publica
     assert conn.publication_state_params["latest_attempt_status"] == "ready"
 
 
-def test_token_radar_repository_mutations_require_connection_transaction_before_sql_when_committing():
+def test_token_radar_repository_mutations_require_explicit_transaction_before_sql():
     write_cases = (
         (
             "publish_current_generation",
@@ -189,7 +190,6 @@ def test_token_radar_repository_mutations_require_connection_transaction_before_
                 published_at_ms=1_778_000_000_000,
                 source_frontier_ms=1_778_000_030_000,
                 rows=[_valid_factor_row()],
-                commit=True,
             ),
         ),
         (
@@ -200,7 +200,6 @@ def test_token_radar_repository_mutations_require_connection_transaction_before_
                 scope="all",
                 row=_valid_factor_row(),
                 computed_at_ms=1_778_000_000_000,
-                commit=True,
             ),
         ),
         (
@@ -212,7 +211,6 @@ def test_token_radar_repository_mutations_require_connection_transaction_before_
                 lane="resolved",
                 target_type_key="Asset",
                 identity_id="asset-1",
-                commit=True,
             ),
         ),
         (
@@ -223,7 +221,6 @@ def test_token_radar_repository_mutations_require_connection_transaction_before_
                 scope="all",
                 latest_event_before_ms=1_778_000_000_000,
                 limit=100,
-                commit=True,
             ),
         ),
         (
@@ -235,7 +232,6 @@ def test_token_radar_repository_mutations_require_connection_transaction_before_
                 venue=TOKEN_RADAR_DEFAULT_VENUE,
                 rows=[_valid_factor_row()],
                 computed_at_ms=1_778_000_000_000,
-                commit=True,
             ),
         ),
         (
@@ -246,32 +242,31 @@ def test_token_radar_repository_mutations_require_connection_transaction_before_
                 scope="all",
                 venue=TOKEN_RADAR_DEFAULT_VENUE,
                 generation_id="gen-failed",
-                commit=True,
             ),
         ),
     )
 
     for name, write in write_cases:
         conn = NoTransactionConn()
-        with pytest.raises(RuntimeError, match="token_radar_repository_transaction_required"):
+        with pytest.raises(RuntimeError, match="requires_explicit_transaction"):
             write(TokenRadarRepository(conn))
         assert conn.sqls == [], name
 
 
-def test_token_radar_repository_commit_owned_publication_uses_connection_transaction_without_manual_commit():
+def test_token_radar_repository_publication_runs_inside_caller_owned_transaction():
     conn = TransactionalFakePublishConn()
 
-    result = TokenRadarRepository(conn).publish_current_generation(
-        projection_version="token-radar-v13-social-attention",
-        window="1h",
-        scope="all",
-        venue=TOKEN_RADAR_DEFAULT_VENUE,
-        generation_id="gen-1h-1778",
-        published_at_ms=1_778_000_000_000,
-        source_frontier_ms=1_778_000_030_000,
-        rows=[_valid_factor_row()],
-        commit=True,
-    )
+    with conn.transaction():
+        result = TokenRadarRepository(conn).publish_current_generation(
+            projection_version="token-radar-v13-social-attention",
+            window="1h",
+            scope="all",
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            generation_id="gen-1h-1778",
+            published_at_ms=1_778_000_000_000,
+            source_frontier_ms=1_778_000_030_000,
+            rows=[_valid_factor_row()],
+        )
 
     assert result["status"] == "published"
     assert conn.transaction_entries == 1
@@ -449,7 +444,6 @@ def test_token_radar_serving_identity_requires_formal_current_key_without_target
             scope="all",
             row=row,
             computed_at_ms=1_778_000_000_000,
-            commit=False,
         )
     assert conn.calls == 0
 
@@ -501,7 +495,6 @@ def test_publish_current_generation_rewrites_when_only_row_quality_changes():
         published_at_ms=1_778_000_060_000,
         source_frontier_ms=1_778_000_030_000,
         rows=[degraded],
-        commit=False,
     )
 
     joined_sql = "\n".join(conn.sqls)
@@ -543,7 +536,6 @@ def test_publish_current_generation_unchanged_does_not_delete_insert_or_emit_cur
         source_frontier_ms=1_778_000_030_000,
         rows=[row],
         on_current_changes=lambda **kwargs: current_changes.append(kwargs),
-        commit=False,
     )
 
     joined_sql = "\n".join(conn.sqls)
@@ -595,7 +587,6 @@ def test_publish_current_generation_upserts_rows_without_payload_hash_retry_path
         published_at_ms=1_778_000_060_000,
         source_frontier_ms=1_778_000_060_000,
         rows=[row],
-        commit=False,
     )
 
     assert result == {"status": "published", "generation_id": "gen-next", "rows_written": 1}
@@ -609,7 +600,7 @@ def test_publish_current_generation_upserts_rows_without_payload_hash_retry_path
 def test_publish_current_generation_requires_real_cursor_rowcount_for_current_row_upsert():
     conn = FakePublishConn(omit_current_rowcount=True)
 
-    with pytest.raises(TypeError, match="token_radar_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="token_radar_repository_rowcount_invalid"):
         TokenRadarRepository(conn).publish_current_generation(
             projection_version="token-radar-v13-social-attention",
             window="1h",
@@ -619,7 +610,6 @@ def test_publish_current_generation_requires_real_cursor_rowcount_for_current_ro
             published_at_ms=1_778_000_060_000,
             source_frontier_ms=1_778_000_060_000,
             rows=[_valid_factor_row()],
-            commit=False,
         )
 
 
@@ -637,7 +627,6 @@ def test_publish_current_generation_rejects_invalid_current_row_upsert_rowcount(
             published_at_ms=1_778_000_060_000,
             source_frontier_ms=1_778_000_060_000,
             rows=[_valid_factor_row()],
-            commit=False,
         )
 
 
@@ -656,7 +645,6 @@ def test_publish_rows_requires_factor_snapshot_json_before_insert():
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
             rows=[row],
-            commit=False,
         )
 
     assert conn.current_insert_params == {}
@@ -677,7 +665,6 @@ def test_publish_rows_rejects_empty_factor_snapshot_json_before_insert():
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
             rows=[row],
-            commit=False,
         )
 
     assert conn.current_insert_params == {}
@@ -698,7 +685,6 @@ def test_publish_rows_requires_factor_version_before_insert():
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
             rows=[row],
-            commit=False,
         )
 
     assert conn.current_insert_params == {}
@@ -719,7 +705,6 @@ def test_publish_rows_rejects_hard_gates_before_insert():
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
             rows=[row],
-            commit=False,
         )
 
     assert conn.current_insert_params == {}
@@ -740,7 +725,6 @@ def test_publish_rows_rejects_missing_v3_factor_family_before_insert():
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
             rows=[row],
-            commit=False,
         )
 
     assert conn.current_insert_params == {}
@@ -770,7 +754,6 @@ def test_upsert_target_feature_requires_factor_snapshot_core_score_decision_fiel
             scope="all",
             row=row,
             computed_at_ms=1_778_000_000_000,
-            commit=False,
         )
 
     assert conn.calls == 0
@@ -791,7 +774,6 @@ def test_publish_rows_rejects_factor_snapshot_version_mismatch_before_insert():
             published_at_ms=1_778_000_000_000,
             source_frontier_ms=1_778_000_000_000,
             rows=[row],
-            commit=False,
         )
 
     assert conn.current_insert_params == {}
@@ -878,7 +860,6 @@ def test_upsert_target_feature_writes_compact_projection_row():
         scope="all",
         row=row,
         computed_at_ms=1_778_000_000_000,
-        commit=False,
     )
 
     assert count == 1
@@ -969,7 +950,6 @@ def test_upsert_target_feature_requires_formal_projection_payload_fields_without
             scope="all",
             row=row,
             computed_at_ms=1_778_000_000_000,
-            commit=False,
         )
 
     assert conn.calls == 0
@@ -985,7 +965,6 @@ def test_upsert_target_feature_returns_actual_rowcount_for_unchanged_payload():
         scope="all",
         row=row,
         computed_at_ms=1_778_000_060_000,
-        commit=False,
     )
 
     assert count == 0
@@ -994,7 +973,7 @@ def test_upsert_target_feature_returns_actual_rowcount_for_unchanged_payload():
 @pytest.mark.parametrize(
     ("rowcount", "omit_rowcount", "error"),
     (
-        (1, True, "token_radar_repository_rowcount_required"),
+        (1, True, "token_radar_repository_rowcount_invalid"),
         ("bad", False, "token_radar_repository_rowcount_invalid"),
         ("1", False, "token_radar_repository_rowcount_invalid"),
     ),
@@ -1009,7 +988,6 @@ def test_upsert_target_feature_requires_real_cursor_rowcount(rowcount: Any, omit
             scope="all",
             row=_valid_factor_row(),
             computed_at_ms=1_778_000_060_000,
-            commit=False,
         )
 
 
@@ -1023,7 +1001,6 @@ def test_delete_target_feature_uses_projection_identity_key():
         lane="resolved",
         target_type_key="Asset",
         identity_id="asset-1",
-        commit=False,
     )
 
     assert "DELETE FROM token_radar_target_features" in conn.sql
@@ -1040,7 +1017,6 @@ def test_prune_target_features_deletes_only_projection_window_scope_before_cutof
         scope="matched",
         latest_event_before_ms=1_777_800_000_000,
         limit=25,
-        commit=False,
     )
 
     assert deleted == 7
@@ -1071,7 +1047,6 @@ def test_prune_target_features_rejects_malformed_limit_before_sql(limit: object)
             scope="matched",
             latest_event_before_ms=1_777_800_000_000,
             limit=limit,  # type: ignore[arg-type]
-            commit=False,
         )
 
     assert conn.calls == 0
@@ -1190,7 +1165,6 @@ def test_publish_current_generation_rejects_stale_projection_writer():
         published_at_ms=1_700_000_000_000,
         source_frontier_ms=1_700_000_000_000,
         rows=[],
-        commit=False,
     )
 
     assert result == {"status": "stale_skipped", "generation_id": "gen-old", "rows_written": 0}
@@ -1209,7 +1183,6 @@ def test_publish_current_generation_rejects_stale_writer_after_newer_zero_row_pu
         published_at_ms=1_700_000_000_000,
         source_frontier_ms=1_700_000_000_000,
         rows=[_valid_factor_row()],
-        commit=False,
     )
 
     assert result == {"status": "stale_skipped", "generation_id": "gen-old", "rows_written": 0}
@@ -1232,7 +1205,6 @@ def test_mark_publication_failed_records_failed_attempt_without_replacing_curren
         started_at_ms=1_778_000_000_000,
         finished_at_ms=1_778_000_060_000,
         error="payload_hash changed during selected-row hydration",
-        commit=False,
     )
 
     assert "INSERT INTO token_radar_publication_state" in conn.sql
@@ -1285,6 +1257,7 @@ class FakeConn:
         self.params = ()
         self.calls = 0
         self.rows = rows or []
+        self.info = SimpleNamespace(transaction_status=pq.TransactionStatus.INTRANS)
         if not omit_rowcount:
             self.rowcount = rowcount
 
@@ -1311,6 +1284,7 @@ class FakePublishConn:
         publication_state: dict[str, Any] | None = None,
         current_rowcount: Any = 1,
         omit_current_rowcount: bool = False,
+        active_transaction: bool = True,
     ) -> None:
         self.sqls: list[str] = []
         self.existing_current = existing_current
@@ -1325,6 +1299,9 @@ class FakePublishConn:
         self._omit_current_rowcount = omit_current_rowcount
         if not self._omit_current_rowcount:
             self.rowcount = self._current_rowcount
+        self.info = SimpleNamespace(
+            transaction_status=(pq.TransactionStatus.INTRANS if active_transaction else pq.TransactionStatus.IDLE)
+        )
 
     def execute(self, sql, params=None):
         text = str(sql)
@@ -1359,6 +1336,7 @@ class FakePublishConn:
 class NoTransactionConn:
     def __init__(self) -> None:
         self.sqls: list[str] = []
+        self.info = SimpleNamespace(transaction_status=pq.TransactionStatus.IDLE)
 
     def execute(self, sql, params=None):
         self.sqls.append(str(sql))
@@ -1371,15 +1349,17 @@ class FakeTransaction:
 
     def __enter__(self):
         self.conn.transaction_entries += 1
+        self.conn.info.transaction_status = pq.TransactionStatus.INTRANS
         return self
 
     def __exit__(self, exc_type, exc, tb):
+        self.conn.info.transaction_status = pq.TransactionStatus.IDLE
         return False
 
 
 class TransactionalFakePublishConn(FakePublishConn):
     def __init__(self) -> None:
-        super().__init__()
+        super().__init__(active_transaction=False)
         self.transaction_entries = 0
 
     def transaction(self):
@@ -1393,6 +1373,7 @@ class FakeStalePublishConn:
     def __init__(self, *, existing_computed_at_ms: int):
         self.existing_computed_at_ms = existing_computed_at_ms
         self.sqls: list[str] = []
+        self.info = SimpleNamespace(transaction_status=pq.TransactionStatus.INTRANS)
 
     def execute(self, sql, params=None):
         self.sqls.append(str(sql))

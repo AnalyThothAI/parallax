@@ -3,16 +3,11 @@ from __future__ import annotations
 import time
 from typing import Any
 
-from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker, unavailable_worker
-from parallax.app.runtime.worker_manifest import manifest_names_for_factory, require_worker_manifest
+from parallax.app.runtime.worker_manifest import require_worker_manifest
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
-from parallax.domains.news_intel.runtime.news_item_brief_worker import NewsItemBriefWorker
 from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
-from parallax.domains.news_intel.runtime.news_source_quality_projection_worker import (
-    NewsSourceQualityProjectionWorker,
-)
 from parallax.domains.news_intel.runtime.news_story_brief_worker import NewsStoryBriefWorker
 from parallax.domains.token_intel.interfaces import TokenIdentityLookupResult
 from parallax.domains.token_intel.services.deterministic_token_resolver import (
@@ -20,8 +15,7 @@ from parallax.domains.token_intel.services.deterministic_token_resolver import (
     DeterministicTokenResolver,
     MentionKeys,
 )
-
-WORKER_KEYS = manifest_names_for_factory("news_intel.py")
+from parallax.platform.runtime.worker_base import WorkerBase
 
 
 def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
@@ -32,17 +26,14 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             for name in (
                 "news_fetch",
                 "news_item_process",
-                "news_item_brief",
                 "news_story_brief",
                 "news_page_projection",
-                "news_source_quality_projection",
             )
-            if getattr(workers, name).enabled
         }
 
     constructed: dict[str, WorkerBase] = {}
-    news_providers = ctx.providers.news_intel
-    feed_client = news_providers.feed_client
+    news_providers = ctx.news_intel
+    feed_client = news_providers.feed_client if news_providers is not None else None
     if workers.news_fetch.enabled:
         if feed_client is not None:
             constructed["news_fetch"] = NewsFetchWorker(
@@ -56,6 +47,8 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             )
         else:
             constructed["news_fetch"] = unavailable_worker(ctx, "news_fetch", "missing_news_intel_feed_client")
+    else:
+        constructed["news_fetch"] = disabled_worker(ctx, "news_fetch")
 
     if workers.news_item_process.enabled:
         worker_name = "news_item_process"
@@ -71,39 +64,28 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             wake_emitter=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
+    else:
+        constructed["news_item_process"] = disabled_worker(ctx, "news_item_process")
 
-    brief_provider = news_providers.brief_provider
-    if workers.news_item_brief.enabled:
-        worker_name = "news_item_brief"
-        if not ctx.settings.llm_configured:
-            constructed[worker_name] = disabled_worker(ctx, worker_name)
-        elif brief_provider is not None:
-            constructed[worker_name] = NewsItemBriefWorker(
-                name=worker_name,
-                settings=workers.news_item_brief,
-                db=ctx.db,
-                telemetry=ctx.telemetry,
-                provider=brief_provider,
-            )
-        else:
-            constructed[worker_name] = unavailable_worker(ctx, worker_name, "missing_news_item_brief_provider")
-
+    story_brief_provider = news_providers.story_brief_provider if news_providers is not None else None
     if workers.news_story_brief.enabled:
         worker_name = "news_story_brief"
         if not ctx.settings.llm_configured:
             constructed[worker_name] = disabled_worker(ctx, worker_name)
-        elif brief_provider is not None:
+        elif story_brief_provider is not None:
             constructed[worker_name] = NewsStoryBriefWorker(
                 name=worker_name,
                 settings=workers.news_story_brief,
                 db=ctx.db,
                 telemetry=ctx.telemetry,
-                provider=brief_provider,
+                provider=story_brief_provider,
                 wake_emitter=ctx.wake_bus,
                 wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
             )
         else:
             constructed[worker_name] = unavailable_worker(ctx, worker_name, "missing_news_story_brief_provider")
+    else:
+        constructed["news_story_brief"] = disabled_worker(ctx, "news_story_brief")
 
     if workers.news_page_projection.enabled:
         worker_name = "news_page_projection"
@@ -114,17 +96,9 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             telemetry=ctx.telemetry,
             wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
         )
+    else:
+        constructed["news_page_projection"] = disabled_worker(ctx, "news_page_projection")
 
-    if workers.news_source_quality_projection.enabled:
-        worker_name = "news_source_quality_projection"
-        constructed["news_source_quality_projection"] = NewsSourceQualityProjectionWorker(
-            name=worker_name,
-            settings=workers.news_source_quality_projection,
-            db=ctx.db,
-            telemetry=ctx.telemetry,
-            wake_emitter=ctx.wake_bus,
-            wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
-        )
     return constructed
 
 
@@ -211,4 +185,4 @@ def _resolver_chain_id(chain_id: str | None) -> str | None:
     return normalized
 
 
-__all__ = ["WORKER_KEYS", "construct_news_intel_workers"]
+__all__ = ["construct_news_intel_workers"]

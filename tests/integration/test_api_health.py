@@ -6,10 +6,10 @@ from types import SimpleNamespace
 import pytest
 from fastapi.testclient import TestClient
 
-import parallax.app.runtime.app as app_module
 import parallax.app.runtime.bootstrap as bootstrap_module
-from parallax.app.runtime.app import _readiness_payload, create_app
+import parallax.app.surfaces.api.app as app_module
 from parallax.app.runtime.bootstrap import Runtime, bootstrap
+from parallax.app.surfaces.api.app import _readiness_payload, _status_payload, create_app
 from parallax.platform.config.settings import Settings
 from parallax.platform.db.postgres_client import postgres_health_check
 from parallax.platform.db.postgres_migrations import latest_migration_version
@@ -83,7 +83,6 @@ class FakeDB:
     def __init__(self) -> None:
         self.api_pool = FakePool()
         self.worker_pool = FakePool()
-        self.tool_pool = FakePool()
         self.lock_pool = FakePool()
         self.wake_pool = FakePool()
         self.notification_delivery_running_timeout_ms = 120_000
@@ -107,7 +106,7 @@ class FakeDB:
         return SimpleNamespace(release=lambda: None)
 
     async def aclose(self) -> None:
-        for pool in (self.api_pool, self.worker_pool, self.lock_pool, self.tool_pool, self.wake_pool):
+        for pool in (self.api_pool, self.worker_pool, self.lock_pool, self.wake_pool):
             pool.close()
 
 
@@ -145,7 +144,6 @@ class FakeProviderWrapper:
 class FakeWiredProviders(SimpleNamespace):
     def __init__(self, **kwargs) -> None:
         kwargs["asset_market"] = _complete_fake_asset_market(kwargs.get("asset_market"))
-        kwargs.setdefault("cex_market_intel", SimpleNamespace(oi_market=None, coinglass_derivatives=None))
         super().__init__(**kwargs)
 
     async def aclose(self) -> None:
@@ -259,8 +257,7 @@ def fake_wired_providers(
             stream_dex_market=None,
             discovery_chain_ids=(),
         ),
-        narrative_intel=SimpleNamespace(narrative_provider=None),
-        news_intel=news_intel or SimpleNamespace(feed_client=None, brief_provider=None),
+        news_intel=news_intel or SimpleNamespace(feed_client=None, story_brief_provider=None),
         agent_execution_gateway=agent_execution_gateway,
     )
 
@@ -305,14 +302,14 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
     )
     patch_runtime_dependencies(
         monkeypatch,
-        news_intel=SimpleNamespace(feed_client=FakeClosableProvider(), brief_provider=None),
+        news_intel=SimpleNamespace(feed_client=FakeClosableProvider(), story_brief_provider=None),
     )
     monkeypatch.setattr(
         app_module,
-        "postgres_health_check",
+        "postgres_liveness_check",
         lambda *_, **__: {"ok": True, "probe": "postgres_liveness"},
     )
-    settings = make_settings(tmp_path, workers={"cex_oi_radar_board": {"enabled": False}})
+    settings = make_settings(tmp_path)
     app = create_app(settings=settings, start_collector=False)
 
     with TestClient(app) as client:
@@ -325,14 +322,14 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
     api_status_payload = api_status.json()["data"]
     assert health.status_code == 200
     assert health.text == "ok\n"
-    assert ready.status_code == 503
+    assert ready.status_code == 200
     assert api_status.status_code == 200
-    assert api_status_payload["workers"] == payload["workers"]
-    assert api_status_payload["worker_lanes"] == payload["worker_lanes"]
-    assert api_status_payload["reasons"] == payload["reasons"]
     assert payload["store"] == "postgresql"
     assert payload["db"]["ok"] is True
     assert payload["db"]["probe"] == "postgres_liveness"
+    assert payload["composition"] == {"ok": True}
+    assert "workers" not in payload
+    assert "worker_lanes" not in payload
     legacy_worker_sections = {
         "collector",
         "enrichment",
@@ -348,34 +345,39 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         "token_resolution",
         "provider_status",
     }
-    assert not (legacy_worker_sections & set(payload))
-    assert set(payload["workers"]) >= {
+    assert not (legacy_worker_sections & set(api_status_payload))
+    assert set(api_status_payload["workers"]) >= {
         "collector",
         "token_radar_projection",
         "event_anchor_backfill",
     }
-    assert payload["workers"]["collector"]["enabled"] is False
-    assert payload["workers"]["collector"]["effective_status"] == "intentionally_not_started"
-    assert payload["workers"]["collector"]["unavailable_reason"] is None
-    assert payload["workers"]["collector"]["last_result"] is None
-    assert payload["workers"]["market_tick_stream"]["effective_status"] == "unavailable"
-    assert payload["workers"]["market_tick_stream"]["unavailable_reason"] == "missing_asset_market_stream_provider"
-    assert payload["workers"]["market_tick_poll"]["effective_status"] == "unavailable"
-    assert payload["workers"]["market_tick_poll"]["unavailable_reason"] == "missing_asset_market_quote_provider"
-    assert "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider" in payload["reasons"]
-    assert "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider" in payload["reasons"]
-    worker_unavailable_reasons = sorted(reason for reason in payload["reasons"] if ":unavailable:" in reason)
+    assert api_status_payload["workers"]["collector"]["enabled"] is False
+    assert api_status_payload["workers"]["collector"]["effective_status"] == "intentionally_not_started"
+    assert api_status_payload["workers"]["collector"]["unavailable_reason"] is None
+    assert api_status_payload["workers"]["collector"]["last_result"] is None
+    assert api_status_payload["workers"]["market_tick_stream"]["effective_status"] == "unavailable"
+    assert (
+        api_status_payload["workers"]["market_tick_stream"]["unavailable_reason"]
+        == "missing_asset_market_stream_provider"
+    )
+    assert api_status_payload["workers"]["market_tick_poll"]["effective_status"] == "unavailable"
+    assert (
+        api_status_payload["workers"]["market_tick_poll"]["unavailable_reason"] == "missing_asset_market_quote_provider"
+    )
+    assert "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider" in api_status_payload["reasons"]
+    assert "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider" in api_status_payload["reasons"]
+    worker_unavailable_reasons = sorted(reason for reason in api_status_payload["reasons"] if ":unavailable:" in reason)
     assert worker_unavailable_reasons == [
         "worker:asset_profile_refresh:unavailable:missing_asset_profile_provider",
         "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider",
         "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider",
         "worker:resolution_refresh:unavailable:missing_asset_discovery_provider",
     ]
-    assert not any("factory_not_constructed" in reason for reason in payload["reasons"])
-    assert "event_anchor_backfill" in payload["workers"]
-    assert payload["workers"]["event_anchor_backfill"]["enabled"] is True
-    assert set(payload["worker_lanes"]) >= {"ingest", "projection", "agent"}
-    for lane in payload["worker_lanes"].values():
+    assert not any("factory_not_constructed" in reason for reason in api_status_payload["reasons"])
+    assert "event_anchor_backfill" in api_status_payload["workers"]
+    assert api_status_payload["workers"]["event_anchor_backfill"]["enabled"] is True
+    assert set(api_status_payload["worker_lanes"]) >= {"ingest", "projection", "agent"}
+    for lane in api_status_payload["worker_lanes"].values():
         assert set(lane) >= {
             "disabled_workers",
             "intentionally_not_started_workers",
@@ -385,101 +387,13 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
             "stopped_workers",
             "failed_workers",
         }
-    assert payload["worker_lanes"]["ingest"]["intentionally_not_started_workers"] >= 1
-    assert payload["worker_lanes"]["ingest"]["unavailable_workers"] >= 1
-    assert payload["worker_lanes"]["projection"]["enabled_workers"] >= 1
-    assert payload["worker_lanes"]["agent"]["failed_workers"] == 0
+    assert api_status_payload["worker_lanes"]["ingest"]["intentionally_not_started_workers"] >= 1
+    assert api_status_payload["worker_lanes"]["ingest"]["unavailable_workers"] >= 1
+    assert api_status_payload["worker_lanes"]["projection"]["enabled_workers"] >= 1
+    assert api_status_payload["worker_lanes"]["agent"]["failed_workers"] == 0
     assert metrics.status_code == 200
     assert metrics.headers["content-type"].startswith("text/plain")
     assert "gmgn_db_pool_wait_ms" in metrics.text
-
-    runtime = SimpleNamespace(
-        scheduler=NoopScheduler(),
-        collector=SimpleNamespace(
-            status=SimpleNamespace(to_dict=lambda: {"snapshot_gate_outcomes": {}}),
-            upstream_client=None,
-        ),
-        db=FakeDB(),
-        settings=SimpleNamespace(handles=("toly",), news_intel=SimpleNamespace(sources=())),
-        providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
-        agent_execution_gateway=None,
-    )
-    monkeypatch.setattr(app_module, "postgres_health_check", lambda *_, **__: {"ok": True})
-
-    calls = 0
-
-    def backlog_workers_status_payload(_runtime):
-        nonlocal calls
-        calls += 1
-        return {
-            "workers": {
-                "token_radar_projection": {
-                    "queue_health": {
-                        "status": "blocked",
-                        "reason": "blocked_work_present",
-                        "table_count": 1,
-                        "unavailable_table_count": 0,
-                        "queue_depth": 3,
-                        "due_count": 2,
-                        "running_count": 0,
-                        "failed_count": 0,
-                        "blocked_count": 1,
-                        "terminal_count": 1,
-                        "unresolved_terminal_count": 1,
-                        "tables": {
-                            "token_radar_dirty_targets": {
-                                "available": True,
-                                "error_code": None,
-                                "queue_depth": 3,
-                                "unresolved_terminal_count": 1,
-                            }
-                        },
-                    }
-                }
-            },
-            "worker_lanes": {"projection": {"queue_health": {"status": "blocked"}}},
-        }
-
-    monkeypatch.setattr(app_module, "workers_status_payload", backlog_workers_status_payload)
-    readiness_payload, readiness_status = _readiness_payload(runtime)
-    assert calls == 1
-    assert readiness_status == 200
-    assert readiness_payload["ok"] is True
-    assert readiness_payload["reasons"] == []
-
-    def contract_failure_workers_status_payload(_runtime):
-        return {
-            "workers": {
-                "token_radar_projection": {
-                    "queue_health": {
-                        "status": "unavailable",
-                        "reason": "queue_table_unavailable",
-                        "table_count": 1,
-                        "unavailable_table_count": 1,
-                        "queue_depth": None,
-                        "due_count": 0,
-                        "running_count": 0,
-                        "failed_count": 0,
-                        "blocked_count": 0,
-                        "terminal_count": 0,
-                        "unresolved_terminal_count": 0,
-                        "tables": {
-                            "token_radar_dirty_targets": {
-                                "available": False,
-                                "error_code": "adapter_query_failure",
-                            }
-                        },
-                    }
-                }
-            },
-            "worker_lanes": {"projection": {"queue_health": {"status": "unavailable"}}},
-        }
-
-    monkeypatch.setattr(app_module, "workers_status_payload", contract_failure_workers_status_payload)
-    readiness_payload, readiness_status = _readiness_payload(runtime)
-    assert readiness_status == 503
-    assert readiness_payload["ok"] is False
-    assert "queue_health_adapter_query_failure" in readiness_payload["reasons"]
 
 
 def test_runtime_aclose_closes_wired_providers_even_when_scheduler_stop_fails(monkeypatch, tmp_path):
@@ -587,7 +501,6 @@ def test_bootstrap_failure_after_provider_wiring_closes_providers(monkeypatch, t
     assert async_provider.closed == 1
     assert db.api_pool.closed is True
     assert db.worker_pool.closed is True
-    assert db.tool_pool.closed is True
     assert db.wake_pool.closed is True
 
 
@@ -635,6 +548,30 @@ def test_readiness_marks_database_probe_failure_unhealthy(tmp_path):
     assert "database_unhealthy" in payload["reasons"]
 
 
+def test_readiness_does_not_query_worker_provider_or_business_freshness(monkeypatch):
+    class ForbiddenDependency:
+        def __getattr__(self, name: str) -> object:
+            raise AssertionError(f"readiness queried non-core dependency: {name}")
+
+    runtime = SimpleNamespace(
+        settings=Settings(ws_token="secret", notifications={"enabled": False}),
+        db=FakeDB(),
+        scheduler=ForbiddenDependency(),
+        collector=ForbiddenDependency(),
+        providers=ForbiddenDependency(),
+        agent_execution_gateway=ForbiddenDependency(),
+        repositories=lambda: None,
+    )
+    monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
+
+    payload, status_code = _readiness_payload(runtime)
+
+    assert status_code == 200
+    assert payload["ok"] is True
+    assert payload["reasons"] == []
+    assert payload["db"] == {"ok": True, "probe": "fake"}
+
+
 def test_disabled_workers_are_present_but_not_started(monkeypatch, tmp_path):
     settings = Settings(
         ws_token="secret",
@@ -650,7 +587,7 @@ def test_disabled_workers_are_present_but_not_started(monkeypatch, tmp_path):
     runtime = bootstrap(settings, start_collector=False)
 
     try:
-        assert runtime.workers["token_radar_projection"].status_payload()["enabled"] is False
+        assert runtime.scheduler.workers["token_radar_projection"].status_payload()["enabled"] is False
         asyncio.run(runtime.scheduler.start())
         assert "token_radar_projection" not in runtime.scheduler.tasks
     finally:
@@ -694,11 +631,10 @@ def test_disabled_collector_does_not_create_upstream_client(monkeypatch, tmp_pat
     runtime = bootstrap(settings, start_collector=True)
 
     try:
-        assert runtime.start_collector is False
         assert runtime.collector.upstream_client is None
         assert created_upstream_clients == []
-        assert runtime.workers["collector"].status_payload()["enabled"] is False
-        assert runtime.workers["live_price_gateway"].status_payload()["enabled"] is False
+        assert runtime.scheduler.workers["collector"].status_payload()["enabled"] is False
+        assert runtime.scheduler.workers["live_price_gateway"].status_payload()["enabled"] is False
         assert runtime.providers.asset_market.stream_dex_market is asset_market.stream_dex_market
     finally:
         close_runtime(runtime)
@@ -734,7 +670,7 @@ def test_start_collector_false_only_disables_collector(monkeypatch, tmp_path):
     runtime = bootstrap(settings, start_collector=False)
 
     try:
-        assert runtime.workers["collector"].status_payload()["enabled"] is False
+        assert runtime.scheduler.workers["collector"].status_payload()["enabled"] is False
         for name in (
             "market_tick_stream",
             "market_tick_poll",
@@ -743,7 +679,7 @@ def test_start_collector_false_only_disables_collector(monkeypatch, tmp_path):
             "resolution_refresh",
             "live_price_gateway",
         ):
-            assert runtime.workers[name].status_payload()["enabled"] is True
+            assert runtime.scheduler.workers[name].status_payload()["enabled"] is True
     finally:
         close_runtime(runtime)
 
@@ -770,8 +706,8 @@ def test_notification_delivery_starts_when_rule_worker_disabled(monkeypatch, tmp
     runtime = bootstrap(settings, start_collector=False)
 
     try:
-        assert runtime.workers["notification_rule"].status_payload()["enabled"] is False
-        assert runtime.workers["notification_delivery"].status_payload()["enabled"] is True
+        assert runtime.scheduler.workers["notification_rule"].status_payload()["enabled"] is False
+        assert runtime.scheduler.workers["notification_delivery"].status_payload()["enabled"] is True
     finally:
         close_runtime(runtime)
 
@@ -781,7 +717,7 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
         "global_max_concurrency": 4,
         "global_in_flight": 0,
         "lanes": {
-            "news.item_brief": {
+            "news.story_brief": {
                 "max_concurrency": 1,
                 "in_flight": 0,
                 "circuit_state": "closed",
@@ -796,9 +732,10 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
         collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
         agent_execution_gateway=SimpleNamespace(status_snapshot=lambda: agent_execution),
+        news_provider_contract={"ok": True},
         scheduler=SimpleNamespace(
             status_payload=lambda: {
-                "news_item_brief": {
+                "news_story_brief": {
                     "enabled": True,
                     "running": True,
                     "last_started_at_ms": 1_000,
@@ -806,7 +743,6 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
                     "last_result": {"processed": 1},
                     "last_error": None,
                     "iteration_duration_p99_ms": None,
-                    "queue_depth": None,
                     "pool_wait_ms_p99": None,
                 }
             },
@@ -820,11 +756,11 @@ def test_readiness_uses_scheduler_workers_payload(monkeypatch):
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
     monkeypatch.setattr(app_module, "workers_status_payload", lambda _: worker_status)
 
-    payload, status_code = _readiness_payload(runtime)
+    payload, status_code = _status_payload(runtime)
 
     assert status_code == 200
-    assert payload["workers"]["news_item_brief"]["running"] is True
-    assert payload["workers"]["news_item_brief"]["last_result"] == {"processed": 1}
+    assert payload["workers"]["news_story_brief"]["running"] is True
+    assert payload["workers"]["news_story_brief"]["last_result"] == {"processed": 1}
     assert payload["agent_execution"] == agent_execution
 
 
@@ -843,17 +779,13 @@ def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
             "unavailable_reason": "missing_profile_source",
         },
         "token_radar_projection": {"enabled": True, "running": True, "effective_status": "degraded"},
-        "narrative_admission": {"enabled": True, "running": True, "effective_status": "running"},
-        "news_page_projection": {"enabled": True, "running": False, "effective_status": "stopped"},
-        "news_source_quality_projection": {
+        "news_page_projection": {
             "enabled": True,
             "running": False,
             "effective_status": "failed",
             "last_error": "projection failed",
         },
-        "cex_oi_radar_board": {"enabled": True, "running": False, "effective_status": "stopped"},
         "macro_view_projection": {"enabled": False, "running": False, "effective_status": "disabled"},
-        "macro_daily_brief_projection": {"enabled": False, "running": False, "effective_status": "disabled"},
     }
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
@@ -869,15 +801,15 @@ def test_readiness_worker_lanes_count_each_effective_status(monkeypatch):
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
     monkeypatch.setattr(app_module, "_news_provider_contract_payload", lambda _: {"ok": True})
 
-    payload, _status_code = _readiness_payload(runtime)
+    payload, _status_code = _status_payload(runtime)
 
     projection = payload["worker_lanes"]["projection"]
-    assert projection["disabled_workers"] == 3
+    assert projection["disabled_workers"] == 2
     assert projection["intentionally_not_started_workers"] == 1
     assert projection["unavailable_workers"] == 1
     assert projection["degraded_workers"] == 1
-    assert projection["running_workers"] == 1
-    assert projection["stopped_workers"] == 2
+    assert projection["running_workers"] == 0
+    assert projection["stopped_workers"] == 0
     assert projection["failed_workers"] == 1
 
 
@@ -904,7 +836,7 @@ def test_readiness_reports_result_derived_failed_worker(monkeypatch):
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
     monkeypatch.setattr(app_module, "_news_provider_contract_payload", lambda _: {"ok": True})
 
-    payload, status_code = _readiness_payload(runtime)
+    payload, status_code = _status_payload(runtime)
 
     assert status_code == 503
     assert payload["ok"] is False
@@ -929,6 +861,7 @@ def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):
             )
         ),
         agent_execution_gateway=None,
+        news_provider_contract={"ok": True},
         scheduler=SimpleNamespace(
             status_payload=lambda: {},
             unhealthy_reasons=lambda: [],
@@ -937,7 +870,7 @@ def test_readiness_reports_okx_circuit_open_without_failing_app(monkeypatch):
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
     monkeypatch.setattr(app_module, "workers_status_payload", lambda _: {"workers": {}, "worker_lanes": {}})
 
-    payload, status_code = _readiness_payload(runtime)
+    payload, status_code = _status_payload(runtime)
 
     assert status_code == 200
     assert payload["ok"] is True

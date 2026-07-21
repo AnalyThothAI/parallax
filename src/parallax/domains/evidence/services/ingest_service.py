@@ -3,7 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Sequence
+from collections.abc import Callable, Sequence
+from contextlib import AbstractContextManager
 from dataclasses import dataclass, replace
 from typing import Any
 
@@ -42,7 +43,7 @@ from parallax.domains.token_intel.interfaces import (
     TokenIntentRepository,
     TokenIntentResolutionDecision,
     TokenIntentResolver,
-    TokenRadarSourceDirtyEventRepository,
+    TokenRadarDirtyTargetRepository,
     build_token_evidence,
     build_token_intents,
     token_intent_resolution_id,
@@ -82,7 +83,8 @@ class IngestService:
         market_tick_current_dirty_targets: MarketTickCurrentDirtyTargetRepository,
         enriched_events: EnrichedEventRepository,
         event_anchor_jobs: EventAnchorBackfillJobRepository,
-        token_radar_source_dirty_events: TokenRadarSourceDirtyEventRepository,
+        token_radar_dirty_targets: TokenRadarDirtyTargetRepository,
+        transaction: Callable[[], AbstractContextManager[None]],
         event_anchor_active_window_ms: int,
     ) -> None:
         self.conn = evidence.conn
@@ -100,22 +102,23 @@ class IngestService:
         self.market_tick_current_dirty_targets = market_tick_current_dirty_targets
         self.enriched_events = enriched_events
         self.event_anchor_jobs = event_anchor_jobs
-        self.token_radar_source_dirty_events = token_radar_source_dirty_events
+        self.token_radar_dirty_targets = token_radar_dirty_targets
+        self.transaction = transaction
         self.event_anchor_active_window_ms = require_event_anchor_active_window_ms(event_anchor_active_window_ms)
 
     def require_transaction(self, *, operation: str) -> None:
         self.evidence.require_transaction(operation=operation)
 
     def insert_raw_frame(self, **kwargs: Any) -> bool:
-        result: bool = self.evidence.insert_raw_frame(**kwargs)
-        return result
+        with self.transaction():
+            result: bool = self.evidence.insert_raw_frame(**kwargs)
+            return result
 
     def ingest_event(self, event: TwitterEvent, *, is_watched: bool) -> IngestedEvent:
         prepared = self.prepare_event(event, is_watched=is_watched)
-        # Registry preparation participates in the same unit of work as the
-        # material event facts.  Otherwise an autocommit connection can leave
-        # orphan registry assets when a later event write fails.
-        with self.evidence.unit_of_work():
+        # Registry preparation participates in the same application transaction
+        # as the material event facts, so a later failure cannot leave orphan assets.
+        with self.transaction():
             if self.event_already_exists(prepared):
                 return self.duplicate_result(prepared)
             self.prepare_registry_for_resolution(prepared)
@@ -200,70 +203,66 @@ class IngestService:
         captures: Sequence[IngestCaptureInput],
     ) -> IngestedEvent:
         capture_results = [_require_capture_result(item) for item in captures]
-        with self.evidence.unit_of_work():
-            inserted = self.evidence.insert_event_without_commit(prepared.event_row)
-            if not inserted:
-                return self.duplicate_result(prepared)
-            self.entities.insert_event_entities(
-                prepared.raw_event,
-                prepared.entities,
-                is_watched=prepared.is_watched,
-                commit=False,
+        self.require_transaction(operation="commit_prepared_event")
+        inserted = self.evidence.insert_event_row(prepared.event_row)
+        if not inserted:
+            return self.duplicate_result(prepared)
+        self.entities.insert_event_entities(
+            prepared.raw_event,
+            prepared.entities,
+            is_watched=prepared.is_watched,
+        )
+        self.token_evidence.insert_many(prepared.evidence_inputs)
+        token_intents = self.token_intents.insert_many(prepared.intents)
+        self._upsert_gmgn_payload_registry(prepared.raw_event)
+        self._upsert_chain_intent_registry(prepared.raw_event, prepared.intents)
+        for decision in resolutions:
+            _require_resolution_decision(decision)
+            self.intent_resolutions.insert_resolution(decision)
+            decision_intent_id = decision.intent_id
+            intent = _token_intent_by_id(prepared.intents, decision_intent_id)
+            self.token_intent_lookup.replace_lookup_keys(
+                intent_id=decision_intent_id,
+                event_id=decision.event_id,
+                keys=decision.lookup_keys,
+                source_evidence_id=intent.primary_evidence_id,
+                created_at_ms=prepared.event_ms,
             )
-            self.token_evidence.insert_many(prepared.evidence_inputs, commit=False)
-            token_intents = self.token_intents.insert_many(prepared.intents, commit=False)
-            self._upsert_gmgn_payload_registry(prepared.raw_event)
-            self._upsert_chain_intent_registry(prepared.raw_event, prepared.intents)
-            for decision in resolutions:
-                _require_resolution_decision(decision)
-                self.intent_resolutions.insert_resolution(decision, commit=False)
-                decision_intent_id = decision.intent_id
-                intent = _token_intent_by_id(prepared.intents, decision_intent_id)
-                self.token_intent_lookup.replace_lookup_keys(
-                    intent_id=decision_intent_id,
-                    event_id=decision.event_id,
-                    keys=decision.lookup_keys,
-                    source_evidence_id=intent.primary_evidence_id,
-                    created_at_ms=prepared.event_ms,
-                    commit=False,
-                )
-            discovery_lookup_keys = _discovery_lookup_keys_for_resolutions(resolutions)
-            if discovery_lookup_keys:
-                self.discovery.enqueue_lookup_keys(
-                    discovery_lookup_keys,
-                    reason="intent_resolution_unresolved",
-                    now_ms=prepared.event_ms,
-                    commit=False,
-                )
-            source_dirty_events = _source_dirty_events_for_resolutions(resolutions)
-            if source_dirty_events:
-                self.token_radar_source_dirty_events.enqueue_events(
-                    source_dirty_events,
-                    reason="ingest_resolution",
-                    now_ms=prepared.event_ms,
-                    commit=False,
-                )
-            capture_ticks = [item.tick for item in capture_results if item.tick is not None]
-            if capture_ticks:
-                MarketTickPersistenceService(self).insert_ticks_and_enqueue_current_dirty(
-                    capture_ticks,
-                    reason="event_capture_tick_inserted",
-                    now_ms=prepared.event_ms,
-                )
-            for item in capture_results:
-                self.enriched_events.insert_capture(item.capture)
-                self.event_anchor_jobs.enqueue_for_capture(
-                    item.capture,
-                    active_window_ms=self.event_anchor_active_window_ms,
-                )
-            token_resolutions = self.intent_resolutions.resolutions_for_event(prepared.event_id)
-            alerts = self._insert_token_alerts(
-                prepared.raw_event,
-                resolutions,
-                resolutions=self.intent_resolutions,
-                intents_by_id={item.intent_id: item for item in prepared.intents},
-                is_watched=prepared.is_watched,
+        discovery_lookup_keys = _discovery_lookup_keys_for_resolutions(resolutions)
+        if discovery_lookup_keys:
+            self.discovery.enqueue_lookup_keys(
+                discovery_lookup_keys,
+                reason="intent_resolution_unresolved",
+                now_ms=prepared.event_ms,
             )
+        dirty_targets = _dirty_targets_for_resolutions(resolutions)
+        if dirty_targets:
+            self.token_radar_dirty_targets.enqueue_targets(
+                dirty_targets,
+                reason="ingest_resolution",
+                now_ms=prepared.event_ms,
+            )
+        capture_ticks = [item.tick for item in capture_results if item.tick is not None]
+        if capture_ticks:
+            MarketTickPersistenceService(self).insert_ticks_and_enqueue_current_dirty(
+                capture_ticks,
+                reason="event_capture_tick_inserted",
+                now_ms=prepared.event_ms,
+            )
+        for item in capture_results:
+            self.enriched_events.insert_capture(item.capture)
+            self.event_anchor_jobs.enqueue_for_capture(
+                item.capture,
+                active_window_ms=self.event_anchor_active_window_ms,
+            )
+        token_resolutions = self.intent_resolutions.resolutions_for_event(prepared.event_id)
+        alerts = self._insert_token_alerts(
+            prepared.raw_event,
+            resolutions,
+            resolutions=self.intent_resolutions,
+            intents_by_id={item.intent_id: item for item in prepared.intents},
+            is_watched=prepared.is_watched,
+        )
         return IngestedEvent(
             event=prepared.raw_event,
             entities=[_entity_payload(entity) for entity in prepared.entities],
@@ -342,12 +341,10 @@ class IngestService:
             source_event_id=event.event_id,
             raw_payload={**snapshot.raw, "payload_hash": _payload_hash(snapshot.raw)},
             observed_at_ms=event.received_at_ms,
-            commit=False,
         )
         self.identity_evidence.recompute_current_identity(
             str(asset["asset_id"]),
             now_ms=event.received_at_ms,
-            commit=False,
         )
         return asset
 
@@ -361,7 +358,6 @@ class IngestService:
             chain_id=snapshot.chain,
             address=snapshot.address,
             observed_at_ms=event.received_at_ms,
-            commit=False,
         )
         return asset
 
@@ -374,7 +370,6 @@ class IngestService:
                 chain_id=str(intent.chain_hint),
                 address=str(intent.address_hint),
                 observed_at_ms=event.received_at_ms,
-                commit=False,
             )
 
     def _intent_with_prepared_chain_hint(self, intent: TokenIntentInput) -> TokenIntentInput:
@@ -398,7 +393,6 @@ class IngestService:
                 chain_id=str(intent.chain_hint),
                 address=str(intent.address_hint),
                 observed_at_ms=event.received_at_ms,
-                commit=False,
             )
             self.identity_evidence.upsert_identity_evidence(
                 asset_id=str(asset["asset_id"]),
@@ -414,12 +408,10 @@ class IngestService:
                 source_event_id=event.event_id,
                 source_intent_id=intent.intent_id,
                 observed_at_ms=event.received_at_ms,
-                commit=False,
             )
             self.identity_evidence.recompute_current_identity(
                 str(asset["asset_id"]),
                 now_ms=event.received_at_ms,
-                commit=False,
             )
 
     def _insert_token_alerts(
@@ -456,7 +448,6 @@ class IngestService:
                 is_first_seen_global=not seen_global,
                 is_first_seen_by_author=not seen_author,
                 received_at_ms=event.received_at_ms,
-                commit=False,
             )
             if alert:
                 alerts.append(
@@ -564,24 +555,22 @@ def _require_capture_result(item: Any) -> CaptureResult:
     return item
 
 
-def _source_dirty_events_for_resolutions(
+def _dirty_targets_for_resolutions(
     resolutions: list[TokenIntentResolutionDecision],
 ) -> list[dict[str, Any]]:
-    dirty_events: list[dict[str, Any]] = []
+    dirty_targets: list[dict[str, Any]] = []
     for decision in resolutions:
         formal_decision = _require_resolution_decision(decision)
-        event_id = str(formal_decision.event_id or "")
         target_type = formal_decision.target_type
         target_id = formal_decision.target_id
-        if event_id and target_type in {"Asset", "CexToken"} and target_id:
-            dirty_events.append(
+        if target_type in {"Asset", "CexToken"} and target_id:
+            dirty_targets.append(
                 {
-                    "source_event_id": event_id,
                     "target_type_key": str(target_type),
                     "identity_id": str(target_id),
                 }
             )
-    return dirty_events
+    return dirty_targets
 
 
 def _discovery_lookup_keys_for_resolutions(

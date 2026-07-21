@@ -1,8 +1,10 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from psycopg import pq
 
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
@@ -82,7 +84,6 @@ def test_upsert_first_seen_batch_uses_identity_key_and_keeps_first_seen_stable()
         venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=rows,
         computed_at_ms=200,
-        commit=False,
     )
 
     assert count == 2
@@ -110,7 +111,6 @@ def test_upsert_first_seen_batch_returns_postgres_rowcount_not_candidate_count()
             {"row_id": "row-b", "target_type_key": "Intent", "identity_id": "intent-1"},
         ],
         computed_at_ms=200,
-        commit=False,
     )
 
     assert count == 0
@@ -119,7 +119,7 @@ def test_upsert_first_seen_batch_returns_postgres_rowcount_not_candidate_count()
 def test_upsert_first_seen_batch_requires_cursor_rowcount() -> None:
     conn = UpsertFirstSeenConn(omit_rowcount=True)
 
-    with pytest.raises(TypeError, match="token_radar_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="token_radar_repository_rowcount_invalid"):
         TokenRadarRepository(conn).upsert_first_seen_batch(
             projection_version="token-radar-v13-social-attention",
             window="1h",
@@ -127,7 +127,6 @@ def test_upsert_first_seen_batch_requires_cursor_rowcount() -> None:
             venue=TOKEN_RADAR_DEFAULT_VENUE,
             rows=[{"row_id": "row-a", "target_type_key": "Asset", "identity_id": "asset-1"}],
             computed_at_ms=200,
-            commit=False,
         )
 
 
@@ -143,7 +142,6 @@ def test_upsert_first_seen_batch_rejects_invalid_cursor_rowcount(rowcount: Any) 
             venue=TOKEN_RADAR_DEFAULT_VENUE,
             rows=[{"row_id": "row-a", "target_type_key": "Asset", "identity_id": "asset-1"}],
             computed_at_ms=200,
-            commit=False,
         )
 
 
@@ -160,7 +158,6 @@ def test_publish_current_generation_uses_compact_first_seen_before_insert_and_up
         published_at_ms=200,
         source_frontier_ms=200,
         rows=[row],
-        commit=False,
     )
 
     assert conn.insert_params["listed_at_ms"] == 100
@@ -193,6 +190,7 @@ class UpsertFirstSeenConn:
     def __init__(self, *, rowcount: Any = 2, omit_rowcount: bool = False) -> None:
         self.sql = ""
         self.records: list[dict[str, Any]] = []
+        self.info = SimpleNamespace(transaction_status=pq.TransactionStatus.INTRANS)
         if not omit_rowcount:
             self.rowcount = rowcount
 
@@ -228,6 +226,7 @@ class PublishFirstSeenConn:
         self.sqls: list[str] = []
         self._last_rows: list[dict[str, Any]] = []
         self.rowcount = 1
+        self.info = SimpleNamespace(transaction_status=pq.TransactionStatus.INTRANS)
 
     def execute(self, sql: str, params: Any = None) -> PublishFirstSeenConn:
         text = str(sql)

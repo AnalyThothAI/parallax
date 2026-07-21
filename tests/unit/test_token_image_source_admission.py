@@ -185,7 +185,6 @@ def test_admit_token_image_sources_enqueues_missing_sources_and_preserves_backof
         {
             "reason": "token_profile_current_source_admission",
             "now_ms": NOW_MS,
-            "commit": False,
         }
     ]
     assert result.counts == {
@@ -560,9 +559,8 @@ class _FakeDirtyTargets:
         *,
         reason: str,
         now_ms: int,
-        commit: bool = True,
     ) -> dict[str, int]:
-        self.enqueue_calls.append({"reason": reason, "now_ms": now_ms, "commit": commit})
+        self.enqueue_calls.append({"reason": reason, "now_ms": now_ms})
         self.enqueued.extend(dict(target) for target in targets)
         return {"targets": self.enqueue_result_targets if self.enqueue_result_targets is not None else len(targets)}
 

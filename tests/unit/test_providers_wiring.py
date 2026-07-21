@@ -5,7 +5,7 @@ from types import SimpleNamespace
 import httpx
 import pytest
 
-from parallax.app.runtime import providers_wiring
+from parallax.app.runtime import provider_wiring as providers_wiring
 from parallax.app.runtime.provider_wiring import asset_market as asset_market_wiring
 from parallax.app.runtime.provider_wiring import binance as binance_wiring
 from parallax.app.runtime.provider_wiring import gmgn as gmgn_wiring
@@ -23,6 +23,7 @@ from parallax.domains.asset_market.providers import (
     DexTokenQuote,
     DexTokenQuoteRequest,
 )
+from parallax.domains.news_intel.providers import NewsSourceProviderError
 from parallax.integrations.gmgn.openapi_client import GmgnOpenApiClient
 from parallax.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
 from parallax.integrations.okx.http_utils import OkxPaymentRequiredError
@@ -418,10 +419,10 @@ def test_okx_bundle_wiring_preserves_original_error_when_partial_cleanup_fails(m
 def test_litellm_news_provider_receives_agent_execution_gateway(monkeypatch) -> None:
     gateway = object()
 
-    def fake_news_item_brief_client(**kwargs):
+    def fake_news_story_brief_client(**kwargs):
         return SimpleNamespace(provider="litellm", _agent_gateway=kwargs["agent_gateway"])
 
-    monkeypatch.setattr(model_execution_wiring, "LiteLLMNewsItemBriefClient", fake_news_item_brief_client)
+    monkeypatch.setattr(model_execution_wiring, "LiteLLMNewsStoryBriefClient", fake_news_story_brief_client)
 
     providers = providers_wiring.wire_providers(
         _settings_with_news_llm_models(),
@@ -429,8 +430,8 @@ def test_litellm_news_provider_receives_agent_execution_gateway(monkeypatch) -> 
         agent_execution_gateway=gateway,
     )
 
-    assert providers.news_intel.brief_provider is not None
-    assert providers.news_intel.brief_provider._agent_gateway is gateway
+    assert providers.news_intel.story_brief_provider is not None
+    assert providers.news_intel.story_brief_provider._agent_gateway is gateway
 
 
 def test_litellm_provider_wiring_requires_agent_execution_gateway() -> None:
@@ -442,7 +443,7 @@ def test_litellm_provider_wiring_requires_agent_execution_gateway() -> None:
         )
 
 
-def test_news_item_brief_provider_wiring_requires_agent_execution_gateway_for_news_only_config() -> None:
+def test_news_story_brief_provider_wiring_requires_agent_execution_gateway_for_news_only_config() -> None:
     settings = Settings(
         ws_token="secret",
         llm={
@@ -450,7 +451,7 @@ def test_news_item_brief_provider_wiring_requires_agent_execution_gateway_for_ne
         },
         workers={
             "agent_runtime": {"defaults": {"model": "gpt-news"}},
-            "news_item_brief": {"enabled": True},
+            "news_story_brief": {"enabled": True},
         },
     )
 
@@ -478,6 +479,24 @@ def test_news_feed_client_returns_registry_backed_provider_and_closes_underlying
 
     assert rss_client.close_count == 1
     assert cryptopanic_client.close_count == 1
+
+
+def test_news_feed_provider_maps_deterministic_http_error_to_terminal_domain_error() -> None:
+    class RejectingRegistry:
+        def fetch(self, **_kwargs):
+            request = httpx.Request("POST", "https://provider.example/news")
+            response = httpx.Response(402, request=request)
+            raise httpx.HTTPStatusError("payment required", request=request, response=response)
+
+    provider = news_wiring.RegistryBackedNewsSourceProvider(registry=RejectingRegistry())
+    source = SimpleNamespace(provider_type="opennews", feed_url="opennews://subscribe", raw={})
+
+    with pytest.raises(NewsSourceProviderError) as exc_info:
+        provider.fetch(source)
+
+    assert exc_info.value.error_code == "news_provider_http_402"
+    assert exc_info.value.status_code == 402
+    assert exc_info.value.terminal is True
 
 
 def test_unknown_numeric_okx_dex_chain_indexes_round_trip_through_discovery_provider() -> None:
@@ -854,11 +873,10 @@ def _settings_with_news_llm_models() -> Settings:
             "agent_runtime": {
                 "defaults": {"model": "gpt-enrich"},
                 "lanes": {
-                    "news.item_brief": {"model": "gpt-news"},
                     "news.story_brief": {"model": "gpt-story"},
                 },
             },
-            "news_item_brief": {"enabled": True},
+            "news_story_brief": {"enabled": True},
         },
     )
 

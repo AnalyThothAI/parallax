@@ -1,25 +1,25 @@
 from __future__ import annotations
 
 import asyncio
-import math
 import time
 from collections.abc import Iterator
 from contextlib import contextmanager
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from loguru import logger
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.token_intel._constants import (
     TOKEN_RADAR_DEFAULT_VENUE,
     TOKEN_RADAR_PROJECTION_VERSION,
 )
+from parallax.domains.token_intel.services.token_radar_projector import TokenRadarProjector
+from parallax.domains.token_intel.services.token_radar_publisher import TokenRadarPublisher
+from parallax.platform.config.settings import TokenRadarProjectionWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
+from parallax.platform.validation import require_positive_int
 
 ADVISORY_LOCK_KEY = 2026051501
-
-if TYPE_CHECKING:
-    from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
 
 
 class TokenRadarProjectionWorker(WorkerBase):
@@ -29,15 +29,11 @@ class TokenRadarProjectionWorker(WorkerBase):
         self,
         *,
         name: str,
-        settings: Any,
+        settings: TokenRadarProjectionWorkerSettings,
         db: Any,
         telemetry: Any,
-        wake_emitter: Any | None = None,
         wake_waiter: Any | None = None,
-        enqueue_narrative_admission: bool = True,
     ) -> None:
-        if settings is None:
-            raise RuntimeError("token_radar_projection_settings_required")
         if db is None:
             raise RuntimeError("token_radar_projection_db_required")
         super().__init__(
@@ -52,37 +48,14 @@ class TokenRadarProjectionWorker(WorkerBase):
         self.venues = tuple(str(venue).strip().lower() for venue in settings.venues)
         hot_windows = tuple(str(window).strip().lower() for window in settings.hot_windows)
         self.hot_windows = tuple(window for window in hot_windows if window in self.windows)
-        self.limit = _required_positive_int(
-            settings.batch_size,
-            error_code="token_radar_projection_batch_size_required",
-        )
-        self.lease_ms = _required_positive_int(
-            settings.lease_ms,
-            error_code="token_radar_projection_lease_ms_required",
-        )
-        self.retry_ms = _required_positive_int(
-            settings.retry_ms,
-            error_code="token_radar_projection_retry_ms_required",
-        )
-        self.max_attempts = _required_positive_int(
-            settings.max_attempts,
-            error_code="token_radar_projection_max_attempts_required",
-        )
-        self.private_cache_retention_enabled = _required_bool(
-            settings.private_cache_retention_enabled,
-            error_code="token_radar_projection_private_cache_retention_enabled_required",
-        )
-        self.private_cache_retention_ms = _required_positive_int(
-            settings.private_cache_retention_ms,
-            error_code="token_radar_projection_private_cache_retention_ms_required",
-        )
+        self.limit = settings.batch_size
+        self.lease_ms = settings.lease_ms
+        self.retry_ms = settings.retry_ms
+        self.max_attempts = settings.max_attempts
+        self.private_cache_retention_enabled = settings.private_cache_retention_enabled
+        self.private_cache_retention_ms = settings.private_cache_retention_ms
         self.hot_interval_ms = int(self.interval_seconds * 1000)
-        self.cold_interval_ms = _required_nonnegative_seconds_ms(
-            settings.cold_interval_seconds,
-            error_code="token_radar_projection_cold_interval_seconds_required",
-        )
-        self.wake_emitter = wake_emitter
-        self.enqueue_narrative_admission = bool(enqueue_narrative_admission)
+        self.cold_interval_ms = int(settings.cold_interval_seconds * 1000)
         self._cursor = 0
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
@@ -130,7 +103,7 @@ class TokenRadarProjectionWorker(WorkerBase):
         if scopes is not None:
             self.scopes = tuple(scopes)
         if limit is not None:
-            self.limit = _required_positive_int(
+            self.limit = require_positive_int(
                 limit,
                 error_code="token_radar_projection_limit_required",
             )
@@ -155,21 +128,14 @@ class TokenRadarProjectionWorker(WorkerBase):
                     ),
                     computed_at_ms=computed_at_ms,
                 )[0]
-                target_claims = repos.token_radar_dirty_targets.claim_due(
-                    limit=self.limit,
-                    lease_ms=self.lease_ms,
-                    now_ms=computed_at_ms,
-                    lease_owner=self.name,
-                    commit=True,
-                )
-                source_claims = repos.token_radar_source_dirty_events.claim_due(
-                    limit=self.limit,
-                    lease_ms=self.lease_ms,
-                    now_ms=computed_at_ms,
-                    lease_owner=self.name,
-                    commit=True,
-                )
-            has_claims = bool(target_claims or source_claims)
+                with repos.transaction():
+                    target_claims = repos.token_radar_dirty_targets.claim_due(
+                        limit=self.limit,
+                        lease_ms=self.lease_ms,
+                        now_ms=computed_at_ms,
+                        lease_owner=self.name,
+                    )
+            has_claims = bool(target_claims)
             if publication_work_items or has_claims:
                 score_work_items = _dedupe_work_items(
                     _configured_work_items(windows=self.windows, scopes=self.scopes, venues=self.venues)
@@ -178,10 +144,8 @@ class TokenRadarProjectionWorker(WorkerBase):
                 )
                 publish_work_items = _dedupe_work_items(publication_work_items)
                 with self._worker_session() as repos:
-                    projection = _projection_class()(
-                        repos=repos,
-                        enqueue_narrative_admission=self.enqueue_narrative_admission,
-                    )
+                    projector = TokenRadarProjector(repos=repos)
+                    publisher = TokenRadarPublisher(repos=repos, projector=projector)
                     metadata_work_items = score_work_items or publish_work_items
                     rebuild_kwargs: dict[str, Any] = {
                         "windows": tuple(dict.fromkeys(window for window, _scope, _venue in metadata_work_items)),
@@ -195,14 +159,13 @@ class TokenRadarProjectionWorker(WorkerBase):
                         "max_attempts": self.max_attempts,
                         "lease_owner": self.name,
                         "claimed_targets": tuple(dict(claim) for claim in target_claims),
-                        "claimed_source_events": tuple(dict(claim) for claim in source_claims),
                     }
                     if has_claims:
                         rebuild_kwargs["score_work_items"] = _service_work_items(score_work_items)
                     venues = tuple(dict.fromkeys(venue for _window, _scope, venue in metadata_work_items))
                     if venues != (TOKEN_RADAR_DEFAULT_VENUE,):
                         rebuild_kwargs["venues"] = venues
-                    result = projection.rebuild_dirty_targets(**rebuild_kwargs)
+                    result = publisher.rebuild_dirty_targets(**rebuild_kwargs)
             else:
                 result = _idle_result(computed_at_ms=computed_at_ms)
         except Exception as exc:
@@ -225,12 +188,6 @@ class TokenRadarProjectionWorker(WorkerBase):
         if str(result.get("status") or "") == "failed":
             self.last_error = self.last_error or str(result.get("error") or "token radar projection failed")
 
-        for key, window_result in result["windows"].items():
-            if str(window_result.get("status") or "") != "ready" or self.wake_emitter is None:
-                continue
-            parts = str(key).split(":", 2)
-            window, scope = parts[0], parts[1]
-            self.wake_emitter.notify_token_radar_updated(window=window, scope=scope)
         return result
 
     def _finalize_result(self, *, result: dict[str, Any], computed_at_ms: int) -> dict[str, Any]:
@@ -267,10 +224,7 @@ class TokenRadarProjectionWorker(WorkerBase):
 
     def _prune_private_cache(self, *, computed_at_ms: int) -> dict[str, Any]:
         with self._worker_session() as repos:
-            projection = _projection_class()(
-                repos=repos,
-                enqueue_narrative_admission=self.enqueue_narrative_admission,
-            )
+            projector = TokenRadarProjector(repos=repos)
             retention_kwargs: dict[str, Any] = {
                 "windows": self.windows,
                 "scopes": self.scopes,
@@ -278,7 +232,7 @@ class TokenRadarProjectionWorker(WorkerBase):
                 "retention_ms": self.private_cache_retention_ms,
                 "limit": self.limit,
             }
-            return projection.prune_private_cache(**retention_kwargs)
+            return projector.prune_private_cache(**retention_kwargs)
 
     def _next_work_items(
         self,
@@ -467,10 +421,7 @@ def _publication_due(
 def _elapsed_due(*, computed_at_ms: int, since_ms: int | None, interval_ms: int) -> bool:
     if since_ms is None:
         return True
-    return computed_at_ms - int(since_ms) >= _required_nonnegative_int(
-        interval_ms,
-        error_code="token_radar_projection_interval_ms_required",
-    )
+    return computed_at_ms - int(since_ms) >= interval_ms
 
 
 def _state_ms(state: dict[str, Any], *keys: str) -> int | None:
@@ -479,33 +430,6 @@ def _state_ms(state: dict[str, Any], *keys: str) -> int | None:
         if value is not None:
             return int(value)
     return None
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_bool(value: Any, *, error_code: str) -> bool:
-    if not isinstance(value, bool):
-        raise ValueError(error_code)
-    return value
-
-
-def _required_nonnegative_seconds_ms(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int | float):
-        raise ValueError(error_code)
-    seconds = float(value)
-    if not math.isfinite(seconds) or seconds < 0:
-        raise ValueError(error_code)
-    return int(seconds * 1000)
 
 
 def _dedupe_work_items(items: list[tuple[str, str, str]]) -> list[tuple[str, str, str]]:
@@ -550,9 +474,3 @@ def _latest_publication_state_from_repos(
             venues=venues,
         ),
     )
-
-
-def _projection_class() -> type[TokenRadarProjection]:
-    from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
-
-    return TokenRadarProjection

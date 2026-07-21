@@ -7,16 +7,12 @@ from contextlib import AbstractContextManager
 from dataclasses import dataclass
 from typing import TYPE_CHECKING, Any, cast
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
-from parallax.domains.notifications.runtime.notification_runtime_settings import (
-    positive_int,
-    positive_worker_setting_int,
-)
 from parallax.domains.notifications.types import NotificationCandidate
+from parallax.platform.config.settings import NotificationRuleWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 if TYPE_CHECKING:
-    from parallax.app.runtime.repository_session import RepositorySession
     from parallax.domains.notifications.repositories.notification_repository import (
         NotificationInsertOutcome,
         NotificationRepository,
@@ -24,12 +20,15 @@ if TYPE_CHECKING:
     from parallax.platform.config.settings import NotificationChannelConfig
 
 SEVERITY_RANK = {"info": 0, "warning": 1, "high": 2, "critical": 3}
+_RETENTION_INTERVAL_MS = 60 * 60 * 1_000
+_MILLISECONDS_PER_DAY = 24 * 60 * 60 * 1_000
 
 
 @dataclass(frozen=True, slots=True)
 class NotificationProcessResult:
     created: list[dict[str, Any]]
     external_deliveries_enqueued: bool
+    retention_pruned: int
 
 
 class NotificationWorker(WorkerBase):
@@ -37,7 +36,7 @@ class NotificationWorker(WorkerBase):
         self,
         *,
         name: str,
-        settings: Any,
+        settings: NotificationRuleWorkerSettings,
         db: Any,
         telemetry: Any,
         rule_engine: Any = None,
@@ -45,10 +44,9 @@ class NotificationWorker(WorkerBase):
         delivery_channels: dict[str, NotificationChannelConfig] | None = None,
         rule_engine_factory: Callable[[Any], Any] | None = None,
         delivery_max_attempts: int,
+        retention_days: int,
         delivery_wake: Any | None = None,
     ) -> None:
-        if settings is None:
-            raise RuntimeError("notification_rule_settings_required")
         if db is None:
             raise RuntimeError("notification_rule_db_required")
         super().__init__(name=name, settings=settings, db=db, telemetry=telemetry)
@@ -56,12 +54,11 @@ class NotificationWorker(WorkerBase):
         self.rule_engine = rule_engine
         self.publisher = publisher
         self.delivery_channels = delivery_channels or {}
-        self.delivery_max_attempts = positive_int(
-            delivery_max_attempts,
-            error_code="notification_rule_delivery_max_attempts_required",
-        )
+        self.delivery_max_attempts = delivery_max_attempts
+        self.retention_ms = retention_days * _MILLISECONDS_PER_DAY
         self.delivery_wake = delivery_wake
-        self.batch_limit = positive_worker_setting_int(settings, "batch_size", worker_name=name)
+        self.batch_limit = settings.batch_size
+        self._next_retention_prune_at_ms = 0
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
         result = await self._process_once(now_ms=now_ms)
@@ -72,6 +69,7 @@ class NotificationWorker(WorkerBase):
             notes={
                 "created": created_count,
                 "external_deliveries_enqueued": result.external_deliveries_enqueued,
+                "retention_pruned": result.retention_pruned,
             },
         )
 
@@ -90,7 +88,14 @@ class NotificationWorker(WorkerBase):
         return result
 
     def _process_once_sync(self, *, now_ms: int) -> NotificationProcessResult:
-        with self._repository_session() as repos, repos.unit_of_work():
+        retention_due = now_ms >= self._next_retention_prune_at_ms
+        retention_pruned = 0
+        with self._repository_session() as repos, repos.transaction():
+            if retention_due:
+                retention_pruned = repos.notifications.prune_expired_notifications(
+                    cutoff_ms=max(0, now_ms - self.retention_ms),
+                    limit=self.batch_limit,
+                )
             rule_engine = self.rule_engine_factory(repos) if self.rule_engine_factory is not None else self.rule_engine
             candidates = list(rule_engine.evaluate(now_ms=now_ms))
             created: list[dict[str, Any]] = []
@@ -118,9 +123,12 @@ class NotificationWorker(WorkerBase):
                         )
                         or external_deliveries_enqueued
                     )
+        if retention_due:
+            self._next_retention_prune_at_ms = now_ms + _RETENTION_INTERVAL_MS
         return NotificationProcessResult(
             created=created,
             external_deliveries_enqueued=external_deliveries_enqueued,
+            retention_pruned=retention_pruned,
         )
 
     @staticmethod
@@ -145,7 +153,6 @@ class NotificationWorker(WorkerBase):
             occurrence_at_ms=candidate.occurrence_at_ms,
             payload=candidate.payload,
             channels=candidate.channels,
-            commit=False,
         )
 
     def _enqueue_external_deliveries_with_repository(
@@ -173,14 +180,13 @@ class NotificationWorker(WorkerBase):
                 channel_id=channel_id,
                 provider=channel.provider,
                 max_attempts=self.delivery_max_attempts,
-                commit=False,
             )
             enqueued = delivery is not None or enqueued
         return enqueued
 
-    def _repository_session(self) -> AbstractContextManager[RepositorySession]:
+    def _repository_session(self) -> AbstractContextManager[Any]:
         return cast(
-            "AbstractContextManager[RepositorySession]",
+            "AbstractContextManager[Any]",
             self.db.worker_session(
                 self.name,
                 statement_timeout_seconds=self.settings.statement_timeout_seconds,

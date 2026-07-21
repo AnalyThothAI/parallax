@@ -1,5 +1,3 @@
-import type { components } from "./openapi";
-
 export type ApiResponse<T> = {
   ok: boolean;
   data: T;
@@ -16,7 +14,6 @@ export type TokenPostRange = "current_window" | "since_ignition" | "all_history"
 export type TokenPostSortMode = "recent" | "quality" | "catalyst";
 export type TokenPostServerSort = "recent" | "catalyst";
 export type TokenDetailMode = "compact" | "replay";
-export type WatchlistTimelineScope = "signal" | "all";
 
 export type MacroSnapshotSummary = {
   projection_version: string;
@@ -498,25 +495,42 @@ export type RecentData = {
   items: LivePayload[];
 };
 
-export type WatchlistHandleRowOverview = components["schemas"]["WatchlistHandleRowOverview"];
-export type WatchlistHandlesOverviewData = components["schemas"]["WatchlistHandlesOverviewData"];
-export type WatchlistOverviewCluster = components["schemas"]["WatchlistOverviewCluster"];
-export type WatchlistHandleOverviewData = components["schemas"]["WatchlistHandleOverviewData"];
+export type WatchlistHandleRowOverview = {
+  handle: string;
+  last_source_event_at_ms?: number | null;
+  recent_source_event_count?: number;
+};
 
-export type WatchlistSocialEvent = {
-  event_type?: string | null;
-  source_action?: string | null;
-  subject?: string | null;
-  direction_hint?: string | null;
-  attention_mechanism?: string | null;
-  impact_hint?: number | null;
-  semantic_novelty_hint?: number | null;
-  confidence?: number | null;
-  is_signal_event?: boolean | null;
-  anchor_terms?: Array<Record<string, unknown>>;
-  token_candidates?: Array<Record<string, unknown>>;
-  semantic_risks?: string[];
-  summary_zh?: string | null;
+export type WatchlistHandlesOverviewData = {
+  window: string;
+  items: WatchlistHandleRowOverview[];
+};
+
+export type WatchlistOverviewCluster = {
+  label: string;
+  count?: number;
+  query: string;
+  kind: "resolved_token" | "candidate_mention" | "narrative";
+  source: string;
+  symbol?: string | null;
+  target_id?: string | null;
+  target_type?: string | null;
+};
+
+export type WatchlistHandleOverviewData = {
+  query: { handle: string; window: string };
+  metrics: {
+    source_event_count: number;
+    resolved_token_count: number;
+    candidate_mention_count: number;
+    narrative_count: number;
+    last_source_event_at_ms?: number | null;
+  };
+  resolved_token_clusters: WatchlistOverviewCluster[];
+  candidate_mention_clusters: WatchlistOverviewCluster[];
+  narrative_clusters: WatchlistOverviewCluster[];
+  clusters_truncated?: boolean;
+  risk_notes: string[];
 };
 
 export type WatchlistTimelineItem = {
@@ -531,13 +545,11 @@ export type WatchlistTimelineItem = {
   mentions?: string[];
   event?: EventRecord;
   token_resolutions?: TokenResolutionRecord[];
-  social_event?: WatchlistSocialEvent | null;
 };
 
 export type WatchlistHandleTimelineData = {
   query: {
     handle: string;
-    scope: WatchlistTimelineScope;
     limit: number;
   };
   items: WatchlistTimelineItem[];
@@ -697,45 +709,6 @@ export type LiveMarketSnapshot = MarketObservationSnapshot & {
   [key: string]: unknown;
 };
 
-export type CexLevelBand = {
-  kind?: string | null;
-  price?: number | null;
-  score?: number | null;
-  side?: string | null;
-  [key: string]: unknown;
-};
-
-export type CexDetailSnapshot = {
-  target_type?: "CexToken" | string | null;
-  target_id?: string | null;
-  exchange?: string | null;
-  native_market_id?: string | null;
-  base_symbol?: string | null;
-  quote_symbol?: string | null;
-  status?: string | null;
-  baseline_status?: string | null;
-  coinglass_status?: string | null;
-  price_usd?: number | null;
-  mark_price?: number | null;
-  funding_rate?: number | null;
-  volume_24h_usd?: number | null;
-  open_interest_usd?: number | null;
-  oi_change_pct_1h?: number | null;
-  oi_change_pct_4h?: number | null;
-  oi_change_pct_24h?: number | null;
-  cvd_delta_1h?: number | null;
-  cvd_delta_4h?: number | null;
-  cvd_delta_24h?: number | null;
-  long_short_ratio?: number | null;
-  top_trader_position_ratio?: number | null;
-  level_bands?: CexLevelBand[] | null;
-  degraded_reasons?: string[] | null;
-  source_refs?: Array<{ ref_id?: string | null; [key: string]: unknown }> | null;
-  observed_at_ms?: number | null;
-  computed_at_ms?: number | null;
-  [key: string]: unknown;
-};
-
 export type TokenCasePostsQuery = Omit<TokenPostsQuery, "scope"> & {
   scope: TokenCaseApiScope;
 };
@@ -759,7 +732,6 @@ export type TokenCaseDossier = {
   posts: TokenCasePostsData;
   narrative_admission: NarrativeAdmission;
   market_live: LiveMarketSnapshot;
-  cex_detail?: CexDetailSnapshot | null;
 };
 
 export type SearchTokenResult = TokenCaseDossier;
@@ -1616,31 +1588,6 @@ export type SourceEventDetail = {
 export type SourceEventsByIdsData = {
   events: SourceEventDetail[];
   not_found: string[];
-};
-
-export type AccountQualityItem = {
-  profile: {
-    handle: string;
-    first_seen_ms: number;
-    latest_seen_ms: number;
-    follower_max?: number | null;
-    watched_status: string;
-  } | null;
-  summary: {
-    status: "ready" | "insufficient_sample" | string;
-    sample_size: number;
-    precision_score?: number | null;
-    early_call_score?: number | null;
-    spam_risk_score?: number | null;
-    avg_realized_return?: number | null;
-  };
-  token_call_stats: Array<Record<string, unknown>>;
-  quality_snapshots: Array<Record<string, unknown>>;
-};
-
-export type AccountQualityData = {
-  query: { handles: string[] };
-  accounts: AccountQualityItem[];
 };
 
 export type EnrichmentJobsData = {

@@ -3,24 +3,25 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Mapping, Sequence
-from contextlib import AbstractContextManager
 from datetime import date
-from typing import Any, NotRequired, TypedDict, cast
+from typing import Any, NotRequired, TypedDict
 
 from psycopg.types.json import Jsonb
 
-from parallax.domains.macro_intel._constants import MACRO_EVENT_CONCEPTS, MACRO_VIEW_PROJECTION_VERSION
+from parallax.domains.macro_intel._constants import (
+    MACRO_EVENT_CONCEPTS,
+    MACRO_MODULE_IDS,
+    MACRO_VIEW_PROJECTION_VERSION,
+)
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
-    macro_series_current_row_payload_hash,
     normalize_macro_date,
 )
 from parallax.platform.current_read_model_payload_hash import (
     stable_current_payload_hash,
     stable_dirty_target_payload_hash,
 )
-from parallax.platform.db.json_safety import postgres_safe_json
 from parallax.platform.db.queue_terminal import terminalize_source_row
 
 
@@ -41,18 +42,8 @@ class MacroObservationUpsertOutcome(TypedDict):
 
 
 _POSTGRES_MAX_BIND_PARAMS = 65_535
-_MACRO_SERIES_INSERT_PARAM_COUNT = 16
+_MACRO_SERIES_INSERT_PARAM_COUNT = 10
 _MACRO_SERIES_INSERT_CHUNK_SIZE = min(4_000, _POSTGRES_MAX_BIND_PARAMS // _MACRO_SERIES_INSERT_PARAM_COUNT)
-_MACRO_VIEW_SNAPSHOT_MAPPING_FIELDS = (
-    "panels_json",
-    "indicators_json",
-    "source_coverage_json",
-    "features_json",
-    "chain_json",
-    "scenario_json",
-    "scorecard_json",
-)
-_MACRO_VIEW_SNAPSHOT_LIST_FIELDS = ("triggers_json", "data_gaps_json")
 
 
 class MacroIntelRepository:
@@ -162,53 +153,6 @@ class MacroIntelRepository:
             "observed_at": normalize_macro_date(outcome["observed_at"]),
             "fact_payload_hash": str(outcome["fact_payload_hash"]),
         }
-
-    def record_import_run(self, import_run: Mapping[str, Any]) -> None:
-        self.conn.execute(
-            """
-            INSERT INTO macro_import_runs(
-              run_id, source_name, bundle_name, asof_date, status, observations_count,
-              seen_observation_count, inserted_observation_count, changed_observation_count, noop_observation_count,
-              coverage_json, missing_series_json, series_errors_json, reason_codes_json,
-              started_at_ms, completed_at_ms
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(run_id) DO UPDATE SET
-              source_name = excluded.source_name,
-              bundle_name = excluded.bundle_name,
-              asof_date = excluded.asof_date,
-              status = excluded.status,
-              observations_count = excluded.observations_count,
-              seen_observation_count = excluded.seen_observation_count,
-              inserted_observation_count = excluded.inserted_observation_count,
-              changed_observation_count = excluded.changed_observation_count,
-              noop_observation_count = excluded.noop_observation_count,
-              coverage_json = excluded.coverage_json,
-              missing_series_json = excluded.missing_series_json,
-              series_errors_json = excluded.series_errors_json,
-              reason_codes_json = excluded.reason_codes_json,
-              started_at_ms = excluded.started_at_ms,
-              completed_at_ms = excluded.completed_at_ms
-            """,
-            (
-                str(import_run["run_id"]),
-                str(import_run["source_name"]),
-                str(import_run["bundle_name"]),
-                import_run.get("asof_date"),
-                str(import_run["status"]),
-                int(import_run.get("observations_count") or 0),
-                int(import_run.get("seen_observation_count") or 0),
-                int(import_run.get("inserted_observation_count") or 0),
-                int(import_run.get("changed_observation_count") or 0),
-                int(import_run.get("noop_observation_count") or 0),
-                Jsonb(dict(import_run.get("coverage_json") or {})),
-                Jsonb(list(import_run.get("missing_series_json") or [])),
-                Jsonb(list(import_run.get("series_errors_json") or [])),
-                Jsonb(list(import_run.get("reason_codes_json") or [])),
-                int(import_run["started_at_ms"]),
-                int(import_run["completed_at_ms"]),
-            ),
-        )
 
     def enqueue_macro_sync_window(
         self,
@@ -336,7 +280,7 @@ class MacroIntelRepository:
             ),
         )
         row = cursor.fetchone()
-        return str(_required_returning_row(cursor, row)["sync_window_id"])
+        return str(row["sync_window_id"])
 
     def claim_macro_sync_window(
         self,
@@ -401,7 +345,7 @@ class MacroIntelRepository:
             ),
         )
         row = cursor.fetchone()
-        return _optional_returning_row(cursor, row)
+        return dict(row) if row is not None else None
 
     def claim_macro_sync_window_by_id(
         self,
@@ -450,7 +394,7 @@ class MacroIntelRepository:
             ),
         )
         row = cursor.fetchone()
-        return _optional_returning_row(cursor, row)
+        return dict(row) if row is not None else None
 
     def record_macro_sync_run(self, run: Mapping[str, Any]) -> None:
         self.conn.execute(
@@ -463,7 +407,6 @@ class MacroIntelRepository:
               requested_start,
               requested_end,
               status,
-              import_run_id,
               asof_date,
               max_observed_at,
               observations_count,
@@ -490,7 +433,7 @@ class MacroIntelRepository:
             )
             VALUES (
               %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
-              %s, %s, %s, %s, %s, %s, %s
+              %s, %s, %s, %s, %s, %s
             )
             ON CONFLICT(sync_run_id) DO UPDATE SET
               sync_window_id = excluded.sync_window_id,
@@ -499,7 +442,6 @@ class MacroIntelRepository:
               requested_start = excluded.requested_start,
               requested_end = excluded.requested_end,
               status = excluded.status,
-              import_run_id = excluded.import_run_id,
               asof_date = excluded.asof_date,
               max_observed_at = excluded.max_observed_at,
               observations_count = excluded.observations_count,
@@ -532,7 +474,6 @@ class MacroIntelRepository:
                 run["requested_start"],
                 run["requested_end"],
                 str(run["status"]),
-                run.get("import_run_id"),
                 run.get("asof_date"),
                 run.get("max_observed_at"),
                 int(run.get("observations_count") or 0),
@@ -582,6 +523,7 @@ class MacroIntelRepository:
              WHERE sync_window_id = %s
                AND lease_owner = %s
                AND attempt_count = %s
+            RETURNING 1 AS changed
             """,
             (
                 str(sync_run_id),
@@ -592,7 +534,7 @@ class MacroIntelRepository:
                 int(attempt_count),
             ),
         )
-        return _single_rowcount(cursor) > 0
+        return cursor.fetchone() is not None
 
     def retry_macro_sync_window(
         self,
@@ -621,6 +563,7 @@ class MacroIntelRepository:
              WHERE sync_window_id = %s
                AND lease_owner = %s
                AND attempt_count = %s
+            RETURNING 1 AS changed
             """,
             (
                 str(error_code),
@@ -634,7 +577,7 @@ class MacroIntelRepository:
                 int(attempt_count),
             ),
         )
-        return _single_rowcount(cursor) > 0
+        return cursor.fetchone() is not None
 
     def fail_macro_sync_window(
         self,
@@ -661,6 +604,7 @@ class MacroIntelRepository:
              WHERE sync_window_id = %s
                AND lease_owner = %s
                AND attempt_count = %s
+            RETURNING 1 AS changed
             """,
             (
                 str(error_code),
@@ -673,18 +617,7 @@ class MacroIntelRepository:
                 int(attempt_count),
             ),
         )
-        return _single_rowcount(cursor) > 0
-
-    def latest_macro_sync_run(self) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            """
-            SELECT *
-            FROM macro_sync_runs
-            ORDER BY completed_at_ms DESC
-            LIMIT 1
-            """
-        ).fetchone()
-        return dict(row) if row is not None else None
+        return cursor.fetchone() is not None
 
     def macro_sync_queue_summary(self, *, now_ms: int) -> dict[str, Any]:
         row = self.conn.execute(
@@ -755,6 +688,7 @@ class MacroIntelRepository:
               updated_at_ms = EXCLUDED.updated_at_ms
             WHERE macro_sync_state.max_observed_at IS NULL
                OR EXCLUDED.max_observed_at > macro_sync_state.max_observed_at
+            RETURNING 1 AS changed
             """,
             (
                 str(source_name),
@@ -763,7 +697,7 @@ class MacroIntelRepository:
                 int(now_ms),
             ),
         )
-        return _single_rowcount(cursor)
+        return 1 if cursor.fetchone() is not None else 0
 
     def rebuild_macro_sync_state(self, *, source_name: str, bundle_name: str, now_ms: int) -> dict[str, Any]:
         row = self.conn.execute(
@@ -793,10 +727,11 @@ class MacroIntelRepository:
                 DELETE FROM macro_sync_state
                 WHERE source_name = %s
                   AND bundle_name = %s
+                RETURNING 1 AS deleted
                 """,
                 (str(source_name), str(bundle_name)),
             )
-            return {"max_observed_at": None, "rows_written": _single_rowcount(cursor)}
+            return {"max_observed_at": None, "rows_written": len(cursor.fetchall())}
 
         normalized_max_observed_at = normalize_macro_date(max_observed_at)
         cursor = self.conn.execute(
@@ -807,6 +742,7 @@ class MacroIntelRepository:
               max_observed_at = EXCLUDED.max_observed_at,
               updated_at_ms = EXCLUDED.updated_at_ms
             WHERE macro_sync_state.max_observed_at IS DISTINCT FROM EXCLUDED.max_observed_at
+            RETURNING 1 AS changed
             """,
             (
                 str(source_name),
@@ -817,7 +753,7 @@ class MacroIntelRepository:
         )
         return {
             "max_observed_at": normalized_max_observed_at,
-            "rows_written": _single_rowcount(cursor),
+            "rows_written": 1 if cursor.fetchone() is not None else 0,
         }
 
     def enqueue_macro_projection_dirty_target(
@@ -828,18 +764,7 @@ class MacroIntelRepository:
         now_ms: int,
         due_at_ms: int | None = None,
         reason: str,
-        commit: bool = True,
     ) -> int:
-        if commit:
-            with _macro_projection_dirty_target_transaction_context(self.conn):
-                return self.enqueue_macro_projection_dirty_target(
-                    projection_name=projection_name,
-                    projection_version=projection_version,
-                    now_ms=now_ms,
-                    due_at_ms=due_at_ms,
-                    reason=reason,
-                    commit=False,
-                )
         payload_hash = _macro_projection_dirty_payload_hash(
             projection_name=projection_name,
             projection_version=projection_version,
@@ -916,7 +841,7 @@ class MacroIntelRepository:
                 "now_ms": int(now_ms),
             },
         )
-        return _cursor_rowcount(cursor)
+        return 1 if cursor.fetchone() is not None else 0
 
     def enqueue_macro_projection_dirty_targets_for_changes(
         self,
@@ -927,7 +852,6 @@ class MacroIntelRepository:
         now_ms: int,
         due_at_ms: int | None = None,
         reason: str,
-        commit: bool = True,
     ) -> int:
         targets = _macro_projection_dirty_change_targets(
             changed_observations,
@@ -937,17 +861,6 @@ class MacroIntelRepository:
         )
         if not targets:
             return 0
-        if commit:
-            with _macro_projection_dirty_target_transaction_context(self.conn):
-                return self.enqueue_macro_projection_dirty_targets_for_changes(
-                    changed_observations=changed_observations,
-                    projection_name=projection_name,
-                    projection_version=projection_version,
-                    now_ms=now_ms,
-                    due_at_ms=due_at_ms,
-                    reason=reason,
-                    commit=False,
-                )
         params: dict[str, Any] = {
             "projection_names": [target["projection_name"] for target in targets],
             "projection_versions": [target["projection_version"] for target in targets],
@@ -1064,7 +977,7 @@ class MacroIntelRepository:
             """,
             params,
         )
-        return _cursor_rowcount(cursor)
+        return len(cursor.fetchall())
 
     def claim_macro_projection_dirty_targets(
         self,
@@ -1075,22 +988,7 @@ class MacroIntelRepository:
         lease_ms: int,
         lease_owner: str,
         now_ms: int,
-        commit: bool = True,
     ) -> list[dict[str, Any]]:
-        parsed_lease_ms = _required_positive_int(lease_ms, "macro_projection_dirty_target_claim_lease_ms_required")
-        parsed_limit = _required_nonnegative_int(limit, "macro_projection_dirty_target_claim_limit_required")
-        if commit:
-            with _macro_projection_dirty_target_transaction_context(self.conn):
-                return self.claim_macro_projection_dirty_targets(
-                    projection_name=projection_name,
-                    projection_version=projection_version,
-                    limit=parsed_limit,
-                    lease_ms=parsed_lease_ms,
-                    lease_owner=lease_owner,
-                    now_ms=now_ms,
-                    commit=False,
-                )
-
         cursor = self.conn.execute(
             """
             WITH due AS (
@@ -1121,13 +1019,12 @@ class MacroIntelRepository:
                 "projection_name": str(projection_name),
                 "projection_version": str(projection_version),
                 "now_ms": int(now_ms),
-                "leased_until_ms": int(now_ms) + parsed_lease_ms,
+                "leased_until_ms": int(now_ms) + int(lease_ms),
                 "lease_owner": str(lease_owner),
-                "limit": parsed_limit,
+                "limit": int(limit),
             },
         )
         rows = cursor.fetchall()
-        _returned_rowcount(cursor, rows)
         return [dict(row) for row in rows]
 
     def mark_macro_projection_dirty_targets_done(
@@ -1135,19 +1032,10 @@ class MacroIntelRepository:
         claimed: Sequence[Mapping[str, Any]],
         *,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
         records = _macro_projection_dirty_claims(claimed)
         if not records:
             return 0
-        if commit:
-            with _macro_projection_dirty_target_transaction_context(self.conn):
-                return self.mark_macro_projection_dirty_targets_done(
-                    claimed,
-                    now_ms=now_ms,
-                    commit=False,
-                )
-
         cursor = self.conn.execute(
             """
             DELETE FROM macro_projection_dirty_targets queue
@@ -1178,10 +1066,11 @@ class MacroIntelRepository:
               AND queue.payload_hash = done.payload_hash
               AND queue.lease_owner = done.lease_owner
               AND queue.attempt_count = done.attempt_count
+            RETURNING 1 AS deleted
             """,
             _macro_projection_dirty_claim_params(records),
         )
-        return _cursor_rowcount(cursor)
+        return len(cursor.fetchall())
 
     def mark_macro_projection_dirty_targets_error(
         self,
@@ -1192,32 +1081,16 @@ class MacroIntelRepository:
         max_attempts: int,
         worker_name: str,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
         records = _macro_projection_dirty_claims(claimed)
         if not records:
             return 0
-        parsed_max_attempts = _required_max_attempts(max_attempts)
-        parsed_retry_ms = _required_positive_int(retry_ms, "macro_projection_dirty_target_retry_ms_required")
-        parsed_worker_name = _required_text(worker_name, "worker_name")
-        if commit:
-            with _macro_projection_dirty_target_transaction_context(self.conn):
-                return self.mark_macro_projection_dirty_targets_error(
-                    claimed,
-                    error=error,
-                    retry_ms=retry_ms,
-                    max_attempts=parsed_max_attempts,
-                    worker_name=parsed_worker_name,
-                    now_ms=now_ms,
-                    commit=False,
-                )
-
-        retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
-        exhausted_records = [record for record in records if int(record["attempt_count"]) >= parsed_max_attempts]
+        retry_records = [record for record in records if int(record["attempt_count"]) < int(max_attempts)]
+        exhausted_records = [record for record in records if int(record["attempt_count"]) >= int(max_attempts)]
         retry_params = _macro_projection_dirty_claim_params(retry_records)
         retry_params.update(
             {
-                "due_at_ms": int(now_ms) + parsed_retry_ms,
+                "due_at_ms": int(now_ms) + int(retry_ms),
                 "now_ms": int(now_ms),
                 "last_error": str(error)[:2048],
             }
@@ -1259,17 +1132,18 @@ class MacroIntelRepository:
                   AND queue.payload_hash = failed.payload_hash
                   AND queue.lease_owner = failed.lease_owner
                   AND queue.attempt_count = failed.attempt_count
+                RETURNING 1 AS changed
                 """,
                 retry_params,
             )
-            changed += _cursor_rowcount(cursor)
+            changed += len(cursor.fetchall())
         if exhausted_records:
             deleted_rows, deleted_count = self._delete_macro_projection_dirty_claims_returning(exhausted_records)
             changed += deleted_count
             for row in deleted_rows:
                 terminalize_source_row(
                     self.conn,
-                    worker_name=parsed_worker_name,
+                    worker_name=worker_name,
                     source_table="macro_projection_dirty_targets",
                     target_key=_macro_projection_dirty_target_key(row),
                     source_row=row,
@@ -1277,10 +1151,7 @@ class MacroIntelRepository:
                     final_reason=_macro_projection_retry_budget_exhausted_reason(error),
                     now_ms=now_ms,
                     attempt_count=int(row["attempt_count"]),
-                    payload_hash=_required_text(row.get("payload_hash"), "payload_hash"),
-                    first_seen_at_ms=_optional_int(row.get("created_at_ms")),
                     last_attempted_at_ms=now_ms,
-                    commit=False,
                 )
         return changed
 
@@ -1324,43 +1195,7 @@ class MacroIntelRepository:
             _macro_projection_dirty_claim_params(records),
         )
         rows = cursor.fetchall()
-        deleted_count = _returned_rowcount(cursor, rows)
-        return [dict(row) for row in rows], deleted_count
-
-    def latest_observations(
-        self,
-        *,
-        limit: int = 250,
-        concept_keys: Sequence[str] | None = None,
-        projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
-    ) -> list[dict[str, Any]]:
-        bounded_limit = _required_positive_int(limit, "macro_latest_observations_limit_required")
-        if concept_keys:
-            rows = self.conn.execute(
-                """
-                SELECT rows.*
-                FROM macro_observation_series_rows AS rows
-                WHERE rows.projection_version = %s
-                  AND rows.concept_key = ANY(%s)
-                  AND rows.series_rank = 1
-                ORDER BY rows.concept_key ASC
-                LIMIT %s
-                """,
-                (projection_version, list(concept_keys), bounded_limit),
-            ).fetchall()
-        else:
-            rows = self.conn.execute(
-                """
-                SELECT rows.*
-                FROM macro_observation_series_rows AS rows
-                WHERE rows.projection_version = %s
-                  AND rows.series_rank = 1
-                ORDER BY rows.concept_key ASC
-                LIMIT %s
-                """,
-                (projection_version, bounded_limit),
-            ).fetchall()
-        return [dict(row) for row in rows]
+        return [dict(row) for row in rows], len(rows)
 
     def refresh_observation_series_rows_for_concepts(
         self,
@@ -1372,20 +1207,12 @@ class MacroIntelRepository:
         claimed_targets: Sequence[Mapping[str, Any]] = (),
         concept_keys: Sequence[str] = (),
     ) -> MacroSeriesRefreshResult:
-        bounded_lookback_days = _required_positive_int(
-            lookback_days,
-            "macro_observation_series_refresh_lookback_days_required",
-        )
-        bounded_limit_per_series = _required_positive_int(
-            limit_per_series,
-            "macro_observation_series_refresh_limit_per_series_required",
-        )
         target_concept_keys = _refresh_target_concept_keys(claimed_targets=claimed_targets, concept_keys=concept_keys)
         if not target_concept_keys:
             source_signature = _series_source_signature(
                 projection_version=projection_version,
-                lookback_days=bounded_lookback_days,
-                limit_per_series=bounded_limit_per_series,
+                lookback_days=lookback_days,
+                limit_per_series=limit_per_series,
                 rows=[],
             )
             return {
@@ -1397,15 +1224,14 @@ class MacroIntelRepository:
 
         selected_rows = self._select_observation_series_rows(
             projection_version=projection_version,
-            lookback_days=bounded_lookback_days,
-            limit_per_series=bounded_limit_per_series,
-            projected_at_ms=int(now_ms),
+            lookback_days=lookback_days,
+            limit_per_series=limit_per_series,
             concept_keys=target_concept_keys,
         )
         source_signature = _series_source_signature(
             projection_version=projection_version,
-            lookback_days=bounded_lookback_days,
-            limit_per_series=bounded_limit_per_series,
+            lookback_days=lookback_days,
+            limit_per_series=limit_per_series,
             rows=selected_rows,
         )
         existing_rows = self._current_observation_series_payload_rows(
@@ -1465,23 +1291,22 @@ class MacroIntelRepository:
         rows_to_insert = [
             row for row in selected_rows if str(row.get("concept_key") or "") in set(changed_concept_keys)
         ]
-        with _transaction_context(self.conn):
-            rows_written = self._delete_exited_observation_series_rows(
-                projection_version=projection_version,
-                concept_keys=changed_concept_keys,
-                current_rows=rows_to_insert,
-            )
-            rows_written += self._insert_observation_series_rows(rows_to_insert)
-            self._upsert_macro_series_publication_state(
-                projection_version=projection_version,
-                status="published",
-                source_signature=source_signature,
-                row_count=len(selected_rows),
-                started_at_ms=int(now_ms),
-                finished_at_ms=int(now_ms),
-                latest_attempt_error=None,
-                preserve_current=False,
-            )
+        rows_written = self._delete_exited_observation_series_rows(
+            projection_version=projection_version,
+            concept_keys=changed_concept_keys,
+            current_rows=rows_to_insert,
+        )
+        rows_written += self._insert_observation_series_rows(rows_to_insert)
+        self._upsert_macro_series_publication_state(
+            projection_version=projection_version,
+            status="published",
+            source_signature=source_signature,
+            row_count=len(selected_rows),
+            started_at_ms=int(now_ms),
+            finished_at_ms=int(now_ms),
+            latest_attempt_error=None,
+            preserve_current=False,
+        )
         return {
             "status": "published",
             "rows_written": rows_written,
@@ -1498,7 +1323,6 @@ class MacroIntelRepository:
         projection_version: str,
         lookback_days: int,
         limit_per_series: int,
-        projected_at_ms: int,
         concept_keys: Sequence[str] | None = None,
     ) -> list[dict[str, Any]]:
         bounded_concept_keys = _normalize_concept_keys(concept_keys or ())
@@ -1506,69 +1330,54 @@ class MacroIntelRepository:
             raise RuntimeError("macro_observation_series_refresh_requires_concepts")
         rows = self.conn.execute(
             """
-            WITH source_ranked AS (
-              SELECT
+            WITH requested AS (
+              SELECT unnest(%s::text[]) AS concept_key
+            )
+            SELECT
+              %s AS projection_version,
+              selected.concept_key,
+              selected.observed_at,
+              selected.value_numeric,
+              selected.source_name,
+              selected.series_key,
+              selected.unit,
+              selected.frequency,
+              selected.data_quality,
+              COALESCE(selected.raw_payload_json, '{}'::jsonb) AS raw_payload_json
+            FROM requested
+            CROSS JOIN LATERAL (
+              SELECT DISTINCT ON (observed_at)
                 concept_key,
                 observed_at,
                 value_numeric,
                 source_name,
                 series_key,
-                source_priority,
                 unit,
                 frequency,
                 data_quality,
-                source_ts,
-                raw_payload_json,
-                ingested_at_ms,
-                row_number() OVER (
-                  PARTITION BY concept_key, observed_at
-                  ORDER BY source_priority DESC, source_ts DESC NULLS LAST, ingested_at_ms DESC
-                ) AS dedupe_rank
+                raw_payload_json
               FROM macro_observations
-              WHERE concept_key = ANY(%s)
+              WHERE concept_key = requested.concept_key
                 AND observed_at >= CURRENT_DATE - %s::int
                 AND (value_numeric IS NOT NULL OR concept_key = ANY(%s))
-            ),
-            series_ranked AS (
-              SELECT
-                *,
-                row_number() OVER (
-                  PARTITION BY concept_key
-                  ORDER BY observed_at DESC
-                ) AS series_rank
-              FROM source_ranked
-              WHERE dedupe_rank = 1
-            )
-            SELECT
-              %s AS projection_version,
-              concept_key,
-              observed_at,
-              series_rank,
-              value_numeric,
-              source_name,
-              series_key,
-              source_priority,
-              unit,
-              frequency,
-              data_quality,
-              source_ts,
-              COALESCE(raw_payload_json, '{}'::jsonb) AS raw_payload_json,
-              ingested_at_ms,
-              %s AS projected_at_ms
-            FROM series_ranked
-            WHERE series_rank <= %s
-            ORDER BY concept_key ASC, observed_at DESC
+              ORDER BY
+                observed_at DESC,
+                source_priority DESC,
+                source_ts DESC NULLS LAST,
+                ingested_at_ms DESC
+              LIMIT %s
+            ) AS selected
+            ORDER BY selected.concept_key ASC, selected.observed_at DESC
             """,
             (
                 list(bounded_concept_keys),
+                projection_version,
                 int(lookback_days),
                 list(MACRO_EVENT_CONCEPTS),
-                projection_version,
-                int(projected_at_ms),
                 int(limit_per_series),
             ),
         ).fetchall()
-        return [dict(row) for row in rows]
+        return [_compact_series_row(row) for row in rows]
 
     def _current_observation_series_payload_rows(
         self,
@@ -1579,14 +1388,20 @@ class MacroIntelRepository:
         rows = self.conn.execute(
             """
             SELECT
+              rows.projection_version,
               rows.concept_key,
               rows.observed_at,
-              rows.series_rank,
-              rows.payload_hash
+              rows.value_numeric,
+              rows.source_name,
+              rows.series_key,
+              rows.unit,
+              rows.frequency,
+              rows.data_quality,
+              rows.event_metadata_json
             FROM macro_observation_series_rows AS rows
             WHERE rows.projection_version = %s
               AND rows.concept_key = ANY(%s)
-            ORDER BY rows.concept_key ASC, rows.observed_at DESC, rows.series_rank ASC
+            ORDER BY rows.concept_key ASC, rows.observed_at DESC
             """,
             (projection_version, list(concept_keys)),
         ).fetchall()
@@ -1617,6 +1432,7 @@ class MacroIntelRepository:
                     WHERE current_keys.concept_key = rows.concept_key
                       AND current_keys.observed_at = rows.observed_at
                   )
+                RETURNING 1 AS deleted
                 """,
                 (
                     concept_key_values,
@@ -1631,10 +1447,11 @@ class MacroIntelRepository:
                 DELETE FROM macro_observation_series_rows
                 WHERE projection_version = %s
                   AND concept_key = ANY(%s)
+                RETURNING 1 AS deleted
                 """,
                 (projection_version, list(concept_keys)),
             )
-        return _cursor_rowcount(cursor)
+        return len(cursor.fetchall())
 
     def _insert_observation_series_rows(self, rows: Sequence[Mapping[str, Any]]) -> int:
         if not rows:
@@ -1647,7 +1464,7 @@ class MacroIntelRepository:
         return rows_written
 
     def _insert_observation_series_rows_chunk(self, rows: Sequence[Mapping[str, Any]]) -> int:
-        values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows))
+        values_sql = ",".join(["(%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)"] * len(rows))
         params: list[Any] = []
         for row in rows:
             params.extend(
@@ -1655,19 +1472,13 @@ class MacroIntelRepository:
                     row["projection_version"],
                     row["concept_key"],
                     row["observed_at"],
-                    int(row["series_rank"]),
                     row["value_numeric"],
                     row["source_name"],
                     row["series_key"],
-                    int(row["source_priority"]),
                     row.get("unit"),
                     row.get("frequency"),
                     row.get("data_quality"),
-                    row.get("source_ts"),
-                    Jsonb(dict(row.get("raw_payload_json") or {})),
-                    int(row["ingested_at_ms"]),
-                    int(row["projected_at_ms"]),
-                    macro_series_current_row_payload_hash(row),
+                    Jsonb(dict(row.get("event_metadata_json") or {})),
                 ]
             )
         cursor = self.conn.execute(
@@ -1676,40 +1487,45 @@ class MacroIntelRepository:
               projection_version,
               concept_key,
               observed_at,
-              series_rank,
               value_numeric,
               source_name,
               series_key,
-              source_priority,
               unit,
               frequency,
               data_quality,
-              source_ts,
-              raw_payload_json,
-              ingested_at_ms,
-              projected_at_ms,
-              payload_hash
+              event_metadata_json
             )
             VALUES {values_sql}
             ON CONFLICT (projection_version, concept_key, observed_at) DO UPDATE SET
-              series_rank = excluded.series_rank,
               value_numeric = excluded.value_numeric,
               source_name = excluded.source_name,
               series_key = excluded.series_key,
-              source_priority = excluded.source_priority,
               unit = excluded.unit,
               frequency = excluded.frequency,
               data_quality = excluded.data_quality,
-              source_ts = excluded.source_ts,
-              raw_payload_json = excluded.raw_payload_json,
-              ingested_at_ms = excluded.ingested_at_ms,
-              projected_at_ms = excluded.projected_at_ms,
-              payload_hash = excluded.payload_hash
-            WHERE macro_observation_series_rows.payload_hash IS DISTINCT FROM excluded.payload_hash
+              event_metadata_json = excluded.event_metadata_json
+            WHERE (
+              macro_observation_series_rows.value_numeric,
+              macro_observation_series_rows.source_name,
+              macro_observation_series_rows.series_key,
+              macro_observation_series_rows.unit,
+              macro_observation_series_rows.frequency,
+              macro_observation_series_rows.data_quality,
+              macro_observation_series_rows.event_metadata_json
+            ) IS DISTINCT FROM (
+              excluded.value_numeric,
+              excluded.source_name,
+              excluded.series_key,
+              excluded.unit,
+              excluded.frequency,
+              excluded.data_quality,
+              excluded.event_metadata_json
+            )
+            RETURNING 1 AS changed
             """,
             tuple(params),
         )
-        return _cursor_rowcount(cursor)
+        return len(cursor.fetchall())
 
     def _macro_series_publication_state(self, projection_version: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -1784,25 +1600,33 @@ class MacroIntelRepository:
         limit_per_series: int,
         projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
-        bounded_lookback_days = _required_positive_int(
-            lookback_days,
-            "macro_observations_for_concepts_lookback_days_required",
-        )
-        bounded_limit_per_series = _required_positive_int(
-            limit_per_series,
-            "macro_observations_for_concepts_limit_per_series_required",
-        )
+        bounded_concept_keys = _normalize_concept_keys(concept_keys)
+        if not bounded_concept_keys:
+            return []
         rows = self.conn.execute(
             """
+            WITH requested AS (
+              SELECT unnest(%s::text[]) AS concept_key
+            )
             SELECT rows.*
-            FROM macro_observation_series_rows AS rows
-            WHERE rows.projection_version = %s
-              AND rows.concept_key = ANY(%s)
-              AND rows.observed_at >= CURRENT_DATE - %s::int
-              AND rows.series_rank <= %s
-            ORDER BY rows.concept_key ASC, rows.observed_at DESC, rows.series_rank ASC
+            FROM requested
+            CROSS JOIN LATERAL (
+              SELECT series.*
+              FROM macro_observation_series_rows AS series
+              WHERE series.projection_version = %s
+                AND series.concept_key = requested.concept_key
+                AND series.observed_at >= CURRENT_DATE - %s::int
+              ORDER BY series.observed_at DESC
+              LIMIT %s
+            ) AS rows
+            ORDER BY rows.concept_key ASC, rows.observed_at DESC
             """,
-            (projection_version, list(concept_keys), bounded_lookback_days, bounded_limit_per_series),
+            (
+                list(bounded_concept_keys),
+                projection_version,
+                int(lookback_days),
+                int(limit_per_series),
+            ),
         ).fetchall()
         return [dict(row) for row in rows]
 
@@ -1812,10 +1636,6 @@ class MacroIntelRepository:
         lookback_days: int,
         projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
-        bounded_lookback_days = _required_positive_int(
-            lookback_days,
-            "macro_concept_history_counts_lookback_days_required",
-        )
         rows = self.conn.execute(
             """
             WITH requested AS (
@@ -1846,21 +1666,22 @@ class MacroIntelRepository:
             LEFT JOIN aggregated ON aggregated.concept_key = requested.concept_key
             ORDER BY requested.concept_key ASC
             """,
-            (list(concept_keys), projection_version, bounded_lookback_days),
+            (list(concept_keys), projection_version, int(lookback_days)),
         ).fetchall()
         return [dict(row) for row in rows]
 
     def insert_snapshot(self, snapshot: Mapping[str, Any]) -> bool:
         payload = _macro_snapshot_payload(snapshot)
-        payload_hash = stable_current_payload_hash(payload)
+        payload_hash = stable_current_payload_hash(_macro_snapshot_hash_payload(payload))
         cursor = self.conn.execute(
             """
             INSERT INTO macro_view_snapshots(
               projection_version, asof_date, status, regime, overall_score, panels_json,
               indicators_json, triggers_json, data_gaps_json, source_coverage_json, features_json,
-              chain_json, scenario_json, scorecard_json, computed_at_ms, payload_hash
+              chain_json, scenario_json, scorecard_json, assets_brief_json, module_views_json,
+              computed_at_ms, payload_hash
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
             ON CONFLICT(projection_version) DO UPDATE SET
               asof_date = excluded.asof_date,
               status = excluded.status,
@@ -1875,6 +1696,8 @@ class MacroIntelRepository:
               chain_json = excluded.chain_json,
               scenario_json = excluded.scenario_json,
               scorecard_json = excluded.scorecard_json,
+              assets_brief_json = excluded.assets_brief_json,
+              module_views_json = excluded.module_views_json,
               computed_at_ms = excluded.computed_at_ms,
               payload_hash = excluded.payload_hash
             WHERE macro_view_snapshots.payload_hash IS DISTINCT FROM excluded.payload_hash
@@ -1895,12 +1718,14 @@ class MacroIntelRepository:
                 Jsonb(payload["chain_json"]),
                 Jsonb(payload["scenario_json"]),
                 Jsonb(payload["scorecard_json"]),
+                Jsonb(payload["assets_brief_json"]),
+                Jsonb(payload["module_views_json"]),
                 int(snapshot["computed_at_ms"]),
                 payload_hash,
             ),
         )
         row = cursor.fetchone()
-        return _single_returning_changed(cursor, row)
+        return row is not None
 
     def latest_snapshot(
         self,
@@ -1920,58 +1745,29 @@ class MacroIntelRepository:
         ).fetchone()
         return dict(row) if row is not None else None
 
-    def upsert_macro_daily_brief(self, brief: Mapping[str, Any], *, now_ms: int) -> bool:
-        payload_hash = _macro_daily_brief_payload_hash(brief)
-        brief_date = brief.get("brief_date")
-        asof_date = brief.get("asof_date")
-        cursor = self.conn.execute(
-            """
-            INSERT INTO macro_daily_briefs(
-              brief_key, projection_version, brief_date, asof_date, status, headline,
-              payload_json, computed_at_ms, updated_at_ms, payload_hash
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(brief_key) DO UPDATE SET
-              projection_version = excluded.projection_version,
-              brief_date = excluded.brief_date,
-              asof_date = excluded.asof_date,
-              status = excluded.status,
-              headline = excluded.headline,
-              payload_json = excluded.payload_json,
-              computed_at_ms = excluded.computed_at_ms,
-              updated_at_ms = excluded.updated_at_ms,
-              payload_hash = excluded.payload_hash
-            WHERE macro_daily_briefs.payload_hash IS DISTINCT FROM excluded.payload_hash
-            RETURNING true AS changed
-            """,
-            (
-                str(brief["brief_key"]),
-                str(brief["projection_version"]),
-                normalize_macro_date(brief_date) if brief_date is not None else None,
-                normalize_macro_date(asof_date) if asof_date is not None else None,
-                str(brief["status"]),
-                str(brief.get("headline") or ""),
-                Jsonb(postgres_safe_json(dict(brief))),
-                int(brief.get("computed_at_ms") or now_ms),
-                int(now_ms),
-                payload_hash,
-            ),
-        )
-        row = cursor.fetchone()
-        return _single_returning_changed(cursor, row)
-
-    def latest_macro_daily_brief(self, *, brief_key: str = "assets_today") -> dict[str, Any] | None:
+    def module_view(
+        self,
+        *,
+        module_id: str,
+        projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
+    ) -> dict[str, Any] | None:
         row = self.conn.execute(
             """
-            SELECT payload_json
-            FROM macro_daily_briefs
-            WHERE brief_key = %s
+            SELECT module_views_json -> %s AS module_view
+            FROM macro_view_snapshots
+            WHERE projection_version = %s
             LIMIT 1
             """,
-            (str(brief_key),),
+            (module_id, projection_version),
         ).fetchone()
-        payload = dict(row or {}).get("payload_json")
-        return dict(payload) if isinstance(payload, Mapping) else None
+        if row is None:
+            return None
+        module_view = dict(row).get("module_view")
+        if module_view is None:
+            return None
+        if not isinstance(module_view, Mapping):
+            raise RuntimeError(f"macro_module_view_payload_invalid:{module_id}")
+        return dict(module_view)
 
     def observations_count(self) -> int:
         row = self.conn.execute("SELECT COUNT(*) AS count FROM macro_observations").fetchone()
@@ -1980,17 +1776,6 @@ class MacroIntelRepository:
     def concept_count(self) -> int:
         row = self.conn.execute("SELECT COUNT(DISTINCT concept_key) AS count FROM macro_observations").fetchone()
         return _count(row)
-
-    def latest_import_run(self) -> dict[str, Any] | None:
-        row = self.conn.execute(
-            """
-            SELECT *
-            FROM macro_import_runs
-            ORDER BY completed_at_ms DESC
-            LIMIT 1
-            """
-        ).fetchone()
-        return dict(row) if row is not None else None
 
 
 def _series_source_signature(
@@ -2004,14 +1789,13 @@ def _series_source_signature(
         {
             "concept_key": str(row.get("concept_key") or ""),
             "observed_at": str(row.get("observed_at") or ""),
-            "value_numeric": str(row.get("value_numeric") or ""),
+            "value_numeric": None if row.get("value_numeric") is None else str(row.get("value_numeric")),
             "source_name": str(row.get("source_name") or ""),
             "series_key": str(row.get("series_key") or ""),
-            "source_priority": int(row.get("source_priority") or 0),
             "unit": row.get("unit"),
             "frequency": row.get("frequency"),
             "data_quality": str(row.get("data_quality") or ""),
-            "source_ts": str(row.get("source_ts") or ""),
+            "event_metadata_json": dict(row.get("event_metadata_json") or {}),
         }
         for row in rows
     ]
@@ -2053,8 +1837,8 @@ def _changed_series_concept_keys(
     selected_rows: Sequence[Mapping[str, Any]],
     existing_rows: Sequence[Mapping[str, Any]],
 ) -> list[str]:
-    selected_by_concept = _series_payload_hashes_by_concept(selected_rows, compute_hash=True)
-    existing_by_concept = _series_payload_hashes_by_concept(existing_rows, compute_hash=False)
+    selected_by_concept = _series_payload_signatures_by_concept(selected_rows)
+    existing_by_concept = _series_payload_signatures_by_concept(existing_rows)
     return [
         concept_key
         for concept_key in concept_keys
@@ -2068,8 +1852,8 @@ def _empty_current_refresh_concept_keys(
     selected_rows: Sequence[Mapping[str, Any]],
     existing_rows: Sequence[Mapping[str, Any]],
 ) -> list[str]:
-    selected_by_concept = _series_payload_hashes_by_concept(selected_rows, compute_hash=True)
-    existing_by_concept = _series_payload_hashes_by_concept(existing_rows, compute_hash=False)
+    selected_by_concept = _series_payload_signatures_by_concept(selected_rows)
+    existing_by_concept = _series_payload_signatures_by_concept(existing_rows)
     return [
         concept_key
         for concept_key in concept_keys
@@ -2077,23 +1861,18 @@ def _empty_current_refresh_concept_keys(
     ]
 
 
-def _series_payload_hashes_by_concept(
+def _series_payload_signatures_by_concept(
     rows: Sequence[Mapping[str, Any]],
-    *,
-    compute_hash: bool,
-) -> dict[str, list[tuple[str, int, str]]]:
-    grouped: dict[str, list[tuple[str, int, str]]] = {}
+) -> dict[str, list[tuple[str, str]]]:
+    grouped: dict[str, list[tuple[str, str]]] = {}
     for row in rows:
         concept_key = str(row.get("concept_key") or "").strip()
         if not concept_key:
             continue
-        payload_hash = (
-            macro_series_current_row_payload_hash(row) if compute_hash else _existing_series_payload_hash(row)
-        )
+        payload_hash = stable_current_payload_hash(_compact_series_payload(row))
         grouped.setdefault(concept_key, []).append(
             (
                 str(row.get("observed_at") or ""),
-                int(row.get("series_rank") or 0),
                 payload_hash,
             )
         )
@@ -2102,17 +1881,85 @@ def _series_payload_hashes_by_concept(
     return grouped
 
 
-def _existing_series_payload_hash(row: Mapping[str, Any]) -> str:
-    try:
-        value = row["payload_hash"]
-    except KeyError as exc:
-        raise RuntimeError("macro_series_current_existing_payload_hash_required") from exc
-    if value is None:
-        raise RuntimeError("macro_series_current_existing_payload_hash_required")
-    payload_hash = str(value).strip()
-    if not payload_hash:
-        raise RuntimeError("macro_series_current_existing_payload_hash_required")
-    return payload_hash
+def _compact_series_payload(row: Mapping[str, Any]) -> dict[str, Any]:
+    return {
+        "projection_version": row.get("projection_version"),
+        "concept_key": row.get("concept_key"),
+        "observed_at": normalize_macro_date(row.get("observed_at")),
+        "value_numeric": row.get("value_numeric"),
+        "source_name": row.get("source_name"),
+        "series_key": row.get("series_key"),
+        "unit": row.get("unit"),
+        "frequency": row.get("frequency"),
+        "data_quality": row.get("data_quality"),
+        "event_metadata_json": dict(row.get("event_metadata_json") or {}),
+    }
+
+
+def _compact_series_row(row: Mapping[str, Any]) -> dict[str, Any]:
+    compact = dict(row)
+    raw_payload = compact.pop("raw_payload_json", None)
+    compact["event_metadata_json"] = _event_metadata_json(
+        concept_key=str(compact.get("concept_key") or ""),
+        raw_payload=raw_payload,
+    )
+    return compact
+
+
+def _event_metadata_json(*, concept_key: str, raw_payload: object) -> dict[str, Any]:
+    if concept_key not in MACRO_EVENT_CONCEPTS or not isinstance(raw_payload, Mapping):
+        return {}
+    provenance = raw_payload.get("provenance")
+    first_provenance = (
+        provenance[0]
+        if isinstance(provenance, Sequence)
+        and not isinstance(provenance, str | bytes | bytearray)
+        and provenance
+        and isinstance(provenance[0], Mapping)
+        else {}
+    )
+    metadata: dict[str, Any] = {}
+    raw_value = raw_payload.get("value")
+    text_value = _first_non_empty_text(
+        raw_value if isinstance(raw_value, str) else None,
+        first_provenance.get("document_title"),
+    )
+    source_url = _first_non_empty_text(
+        first_provenance.get("source_url"),
+        raw_payload.get("source_url"),
+        raw_payload.get("url"),
+    )
+    event_code = _first_non_empty_text(raw_payload.get("series_key"))
+    if text_value is not None:
+        metadata["text_value"] = text_value
+    if source_url is not None:
+        metadata["source_url"] = source_url
+    if event_code is not None:
+        metadata["event_code"] = event_code
+    for field_name in (
+        "document_type",
+        "speaker",
+        "event_time",
+        "event_time_et",
+        "reference_period",
+        "cusip",
+        "announcement_date",
+        "settlement_date",
+    ):
+        value = _first_non_empty_text(first_provenance.get(field_name), raw_payload.get(field_name))
+        if value is not None:
+            metadata[field_name] = value
+    if bool(first_provenance.get("reopening") or raw_payload.get("reopening")):
+        metadata["reopening"] = True
+    return metadata
+
+
+def _first_non_empty_text(*values: object) -> str | None:
+    for value in values:
+        text = str(value or "").strip()
+        if text:
+            return text
+    return None
 
 
 def _macro_snapshot_payload(snapshot: Mapping[str, Any]) -> dict[str, Any]:
@@ -2131,8 +1978,43 @@ def _macro_snapshot_payload(snapshot: Mapping[str, Any]) -> dict[str, Any]:
         "chain_json": _required_snapshot_mapping(snapshot, "chain_json"),
         "scenario_json": _required_snapshot_mapping(snapshot, "scenario_json"),
         "scorecard_json": _required_snapshot_mapping(snapshot, "scorecard_json"),
+        "assets_brief_json": _required_snapshot_mapping(snapshot, "assets_brief_json"),
+        "module_views_json": _required_module_views(snapshot),
     }
     return payload
+
+
+def _macro_snapshot_hash_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
+    return _without_lifecycle_clocks(payload)
+
+
+def _required_module_views(snapshot: Mapping[str, Any]) -> dict[str, Any]:
+    module_views = _required_snapshot_mapping(snapshot, "module_views_json")
+    expected = set(MACRO_MODULE_IDS)
+    actual = set(module_views)
+    if actual != expected:
+        missing = ",".join(sorted(expected - actual))
+        extra = ",".join(sorted(actual - expected))
+        raise RuntimeError(f"macro_module_views_catalog_mismatch:missing={missing}:extra={extra}")
+    for module_id, module_view in module_views.items():
+        if not isinstance(module_view, Mapping):
+            raise RuntimeError(f"macro_module_view_payload_invalid:{module_id}")
+        header = module_view.get("snapshot")
+        if not isinstance(header, Mapping) or str(header.get("module_id") or "") != module_id:
+            raise RuntimeError(f"macro_module_view_snapshot_invalid:{module_id}")
+    return module_views
+
+
+def _without_lifecycle_clocks(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {
+            str(key): _without_lifecycle_clocks(item)
+            for key, item in value.items()
+            if str(key) not in {"computed_at_ms", "computed_at_label"}
+        }
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return [_without_lifecycle_clocks(item) for item in value]
+    return value
 
 
 def _required_snapshot_mapping(snapshot: Mapping[str, Any], field_name: str) -> dict[str, Any]:
@@ -2166,11 +2048,6 @@ def _required_observation_text(observation: Mapping[str, Any], field_name: str) 
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"macro_observation_{field_name}_required")
     return value.strip()
-
-
-def _macro_daily_brief_payload_hash(brief: Mapping[str, Any]) -> str:
-    payload = {key: value for key, value in dict(brief).items() if key not in {"computed_at_ms"}}
-    return stable_current_payload_hash(payload)
 
 
 def _macro_projection_dirty_payload_hash(
@@ -2287,45 +2164,9 @@ def _macro_projection_dirty_claim_params(records: Sequence[Mapping[str, Any]]) -
     }
 
 
-def _required_max_attempts(value: Any) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError("macro_projection_dirty_target_max_attempts_required")
-    return int(value)
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_text(value: Any, field_name: str) -> str:
-    text = str(value or "").strip()
-    if not text:
-        raise ValueError(f"macro_projection_dirty_target_{field_name}_required")
-    return text
-
-
-def _optional_int(value: Any) -> int | None:
-    if value is None or value == "":
-        return None
-    return int(value)
-
-
 def _macro_projection_dirty_target_key(row: Mapping[str, Any]) -> str:
     return ":".join(
-        [
-            _required_text(row.get("projection_name"), "projection_name"),
-            _required_text(row.get("projection_version"), "projection_version"),
-            _required_text(row.get("target_kind"), "target_kind"),
-            _required_text(row.get("target_id"), "target_id"),
-        ]
+        str(row[field_name]) for field_name in ("projection_name", "projection_version", "target_kind", "target_id")
     )
 
 
@@ -2370,75 +2211,6 @@ def _payload_hash(
         ]
     )
     return hashlib.sha256(identity.encode()).hexdigest()
-
-
-def _macro_projection_dirty_target_transaction_context(conn: Any) -> AbstractContextManager[Any]:
-    return _connection_transaction_context(conn, error_code="macro_projection_dirty_target_transaction_required")
-
-
-def _single_rowcount(cursor: Any) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount not in {0, 1}:
-        raise TypeError("macro_intel_repository_rowcount_invalid")
-    return rowcount
-
-
-def _single_returning_changed(cursor: Any, row: Any | None) -> bool:
-    count = _cursor_rowcount(cursor)
-    if count not in (0, 1):
-        raise TypeError("macro_intel_repository_rowcount_invalid")
-    if count != (1 if row is not None else 0):
-        raise TypeError("macro_intel_repository_rowcount_invalid")
-    return row is not None and bool(row.get("changed", True))
-
-
-def _optional_returning_row(cursor: Any, row: Any | None) -> dict[str, Any] | None:
-    count = _cursor_rowcount(cursor)
-    if count not in (0, 1):
-        raise TypeError("macro_intel_repository_rowcount_invalid")
-    if count != (1 if row is not None else 0):
-        raise TypeError("macro_intel_repository_rowcount_invalid")
-    return dict(row) if row is not None else None
-
-
-def _required_returning_row(cursor: Any, row: Any | None) -> dict[str, Any]:
-    row_dict = _optional_returning_row(cursor, row)
-    if row_dict is None:
-        raise TypeError("macro_intel_repository_rowcount_invalid")
-    return row_dict
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("macro_intel_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("macro_intel_repository_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("macro_intel_repository_rowcount_invalid")
-    return rowcount
-
-
-def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount != len(rows):
-        raise TypeError("macro_intel_repository_rowcount_invalid")
-    return rowcount
-
-
-def _transaction_context(conn: Any) -> AbstractContextManager[Any]:
-    return _connection_transaction_context(conn, error_code="macro_observation_series_refresh_transaction_required")
-
-
-def _connection_transaction_context(conn: Any, *, error_code: str) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError(error_code) from exc
-    if not callable(transaction):
-        raise RuntimeError(error_code)
-    return cast(AbstractContextManager[Any], transaction())
 
 
 def _count(row: Any) -> int:

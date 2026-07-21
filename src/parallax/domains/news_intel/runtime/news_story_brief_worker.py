@@ -6,8 +6,6 @@ import uuid
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any, cast
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.news_intel.runtime.news_projection_work import (
     STORY_BRIEF_INPUT,
     claim_story_brief_work,
@@ -18,12 +16,11 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     story_brief_story_keys,
 )
 from parallax.domains.news_intel.runtime.news_runtime_settings import (
-    positive_worker_setting_int,
     required_nonnegative_int,
     required_positive_int,
 )
-from parallax.domains.news_intel.services.news_item_brief_validation import validate_news_item_brief_output
 from parallax.domains.news_intel.services.news_story_brief_input import build_news_story_brief_input_packet
+from parallax.domains.news_intel.services.news_story_brief_validation import validate_news_story_brief_output
 from parallax.domains.news_intel.types.news_story_brief import (
     NEWS_STORY_BRIEF_LANE,
     NewsStoryBriefAgentConfig,
@@ -38,13 +35,20 @@ from parallax.platform.agent_execution import (
     AgentExecutionResultAudit,
 )
 from parallax.platform.agent_hashing import json_sha256
+from parallax.platform.config.settings import NewsStoryBriefWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
+
+_RETENTION_INTERVAL_MS = 60 * 60 * 1_000
+_STORY_AGENT_RUN_RETENTION_MS = 180 * 24 * 60 * 60 * 1_000
+_STORY_AGENT_RUN_RETENTION_LIMIT = 500
 
 
 class NewsStoryBriefWorker(WorkerBase):
     def __init__(
         self,
         *,
-        settings: Any,
+        settings: NewsStoryBriefWorkerSettings,
         db: Any,
         telemetry: Any,
         provider: Any,
@@ -54,8 +58,6 @@ class NewsStoryBriefWorker(WorkerBase):
         run_id_factory: Callable[[], str] | None = None,
         name: str = "news_story_brief",
     ) -> None:
-        if settings is None:
-            raise RuntimeError("news_story_brief_settings_required")
         if db is None:
             raise RuntimeError("news_story_brief_db_required")
         if provider is None:
@@ -71,20 +73,31 @@ class NewsStoryBriefWorker(WorkerBase):
         self.wake_emitter = wake_emitter
         self.clock_ms = clock_ms or _now_ms
         self.run_id_factory = run_id_factory or _default_run_id
+        self._next_retention_prune_at_ms = 0
 
     async def run_once(self) -> WorkerResult:
         now = self.clock_ms()
         provider = self.provider
         agent_config = default_news_story_brief_agent_config(
-            model=str(provider.story_model),
-            artifact_version_hash=str(provider.story_artifact_version_hash),
+            model=str(provider.model),
+            artifact_version_hash=str(provider.artifact_version_hash),
+        )
+        queue_depth_value, pruned_story_agent_runs = await asyncio.to_thread(
+            self._queue_state,
+            now_ms=now,
         )
         queue_depth = required_nonnegative_int(
-            await asyncio.to_thread(self._queue_depth, now_ms=now),
+            queue_depth_value,
             error_code="news_story_brief_queue_depth_required",
         )
         if queue_depth <= 0:
-            return WorkerResult(skipped=1, notes={"reason": "no_due_story_brief_targets"})
+            return WorkerResult(
+                skipped=1,
+                notes={
+                    "reason": "no_due_story_brief_targets",
+                    "pruned_story_agent_runs": pruned_story_agent_runs,
+                },
+            )
 
         rate_units = min(self._batch_size(), queue_depth)
         reservation = provider.try_reserve_execution(NEWS_STORY_BRIEF_LANE, rate_units=rate_units)
@@ -96,6 +109,7 @@ class NewsStoryBriefWorker(WorkerBase):
                     "claimed": 0,
                     "queue_depth": queue_depth,
                     "backpressure": 1,
+                    "pruned_story_agent_runs": pruned_story_agent_runs,
                     backpressure_outcome: 1,
                 },
             )
@@ -103,7 +117,14 @@ class NewsStoryBriefWorker(WorkerBase):
         try:
             claimed = await asyncio.to_thread(self._claim_targets, now_ms=now, limit=reservation.rate_units)
             if not claimed:
-                return WorkerResult(skipped=1, notes={"reason": "no_due_story_brief_targets", "claimed": 0})
+                return WorkerResult(
+                    skipped=1,
+                    notes={
+                        "reason": "no_due_story_brief_targets",
+                        "claimed": 0,
+                        "pruned_story_agent_runs": pruned_story_agent_runs,
+                    },
+                )
             try:
                 candidates = await asyncio.to_thread(self._load_candidates, claimed=claimed)
                 candidates_by_story_key = _candidates_by_story_key(candidates)
@@ -115,7 +136,14 @@ class NewsStoryBriefWorker(WorkerBase):
                     retry_ms=self._retry_ms(),
                     now_ms=now,
                 )
-                return WorkerResult(failed=len(claimed), notes={"claimed": len(claimed), "load_failed": 1})
+                return WorkerResult(
+                    failed=len(claimed),
+                    notes={
+                        "claimed": len(claimed),
+                        "load_failed": 1,
+                        "pruned_story_agent_runs": pruned_story_agent_runs,
+                    },
+                )
 
             notes = {
                 "claimed": len(claimed),
@@ -124,6 +152,7 @@ class NewsStoryBriefWorker(WorkerBase):
                 "failed": 0,
                 "backpressure": 0,
                 "missing_target": 0,
+                "pruned_story_agent_runs": pruned_story_agent_runs,
             }
             skipped = 0
             current_updates = 0
@@ -221,7 +250,7 @@ class NewsStoryBriefWorker(WorkerBase):
         run_id = self.run_id_factory()
         started_at_ms = self.clock_ms()
         try:
-            request_audit = self.provider.request_story_audit(run_id=run_id, packet=packet)
+            request_audit = self.provider.request_audit(run_id=run_id, packet=packet)
         except Exception as exc:
             raise RuntimeError("news_story_brief_request_audit_failed") from exc
 
@@ -246,7 +275,7 @@ class NewsStoryBriefWorker(WorkerBase):
             raise RuntimeError("news_story_brief_result_mapping_required")
         payload = result.get("payload")
         audit = _required_agent_run_audit(result.get("agent_run_audit"))
-        validation = validate_news_item_brief_output(payload=payload, packet=packet, audit=audit)
+        validation = validate_news_story_brief_output(payload=payload, packet=packet, audit=audit)
         finished_at_ms = self.clock_ms()
         if not validation.publishable:
             await asyncio.to_thread(
@@ -335,7 +364,7 @@ class NewsStoryBriefWorker(WorkerBase):
 
     def _claim_targets(self, *, now_ms: int, limit: int) -> list[dict[str, Any]]:
         claim_limit = required_positive_int(limit, error_code="news_story_brief_claim_limit_required")
-        with self._repository_session() as repos:
+        with self._repository_session() as repos, repos.transaction():
             return claim_story_brief_work(
                 repos,
                 limit=claim_limit,
@@ -344,17 +373,26 @@ class NewsStoryBriefWorker(WorkerBase):
                 lease_owner=_claim_owner(self.name),
             )
 
-    def _queue_depth(self, *, now_ms: int | None = None) -> int:
-        resolved_now_ms = self.clock_ms() if now_ms is None else int(now_ms)
-        with self._repository_session() as repos:
-            return queue_story_brief_depth(repos, now_ms=resolved_now_ms)
+    def _queue_state(self, *, now_ms: int) -> tuple[int, int]:
+        retention_due = now_ms >= self._next_retention_prune_at_ms
+        pruned_story_agent_runs = 0
+        with self._repository_session() as repos, repos.transaction():
+            if retention_due:
+                pruned_story_agent_runs = repos.news_story_agents.prune_unreferenced_story_agent_runs(
+                    cutoff_ms=max(0, now_ms - _STORY_AGENT_RUN_RETENTION_MS),
+                    limit=_STORY_AGENT_RUN_RETENTION_LIMIT,
+                )
+            queue_depth = queue_story_brief_depth(repos, now_ms=now_ms)
+        if retention_due:
+            self._next_retention_prune_at_ms = now_ms + _RETENTION_INTERVAL_MS
+        return queue_depth, pruned_story_agent_runs
 
     def _load_candidates(self, *, claimed: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         story_keys = story_brief_story_keys(claimed)
         if not story_keys:
             return []
         with self._repository_session() as repos:
-            return cast(list[dict[str, Any]], repos.news.load_story_brief_targets(story_keys=story_keys))
+            return cast(list[dict[str, Any]], repos.news_story_agents.load_story_brief_targets(story_keys=story_keys))
 
     def _restore_current_from_completed_run(
         self,
@@ -406,7 +444,7 @@ class NewsStoryBriefWorker(WorkerBase):
         source_watermark_ms: int,
     ) -> None:
         with self._repository_session() as repos, repos.transaction():
-            repos.news.upsert_news_story_agent_brief(
+            repos.news_story_agents.upsert_news_story_agent_brief(
                 story_brief_key=packet.story_brief_key,
                 story_key=packet.story_key,
                 story_identity_version=packet.story_identity_version,
@@ -425,7 +463,6 @@ class NewsStoryBriefWorker(WorkerBase):
                 computed_at_ms=int(computed_at_ms),
                 created_at_ms=int(computed_at_ms),
                 updated_at_ms=int(computed_at_ms),
-                commit=False,
             )
             enqueue_page_reprojection(
                 repos,
@@ -435,7 +472,6 @@ class NewsStoryBriefWorker(WorkerBase):
                 source_watermark_ms_by_news_item_id={
                     news_item_id: source_watermark_ms for news_item_id in packet.member_news_item_ids
                 },
-                commit=False,
             )
 
     def _insert_run(
@@ -457,8 +493,8 @@ class NewsStoryBriefWorker(WorkerBase):
         execution_started: bool,
         output_hash: str | None = None,
     ) -> None:
-        with self._repository_session() as repos:
-            repos.news.insert_news_story_agent_run(
+        with self._repository_session() as repos, repos.transaction():
+            repos.news_story_agents.insert_news_story_agent_run(
                 run_id=run_id,
                 story_brief_key=packet.story_brief_key,
                 story_key=packet.story_key,
@@ -496,7 +532,7 @@ class NewsStoryBriefWorker(WorkerBase):
             )
 
     def _mark_targets_done(self, targets: Iterable[Mapping[str, Any]], *, now_ms: int) -> None:
-        with self._repository_session() as repos:
+        with self._repository_session() as repos, repos.transaction():
             mark_work_done(repos, targets, now_ms=now_ms)
 
     def _mark_targets_error(
@@ -508,7 +544,7 @@ class NewsStoryBriefWorker(WorkerBase):
         now_ms: int,
         count_attempt: bool = True,
     ) -> None:
-        with self._repository_session() as repos:
+        with self._repository_session() as repos, repos.transaction():
             mark_work_error(
                 repos,
                 targets,
@@ -527,19 +563,19 @@ class NewsStoryBriefWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)
+        return self.settings.batch_size
 
     def _lease_ms(self) -> int:
-        return positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)
+        return self.settings.lease_ms
 
     def _retry_ms(self) -> int:
-        return positive_worker_setting_int(self.settings, "retry_ms", worker_name=self.name)
+        return self.settings.retry_ms
 
     def _max_attempts(self) -> int:
-        return positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)
+        return self.settings.max_attempts
 
     def _backpressure_cooldown_ms(self) -> int:
-        return positive_worker_setting_int(self.settings, "backpressure_cooldown_ms", worker_name=self.name)
+        return self.settings.backpressure_cooldown_ms
 
 
 class _NoStartBackpressure(Exception):

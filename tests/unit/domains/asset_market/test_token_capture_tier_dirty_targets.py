@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-from collections.abc import Callable
 from typing import Any
 
 import pytest
@@ -11,44 +10,6 @@ from parallax.domains.asset_market.repositories.token_capture_tier_dirty_target_
 )
 
 NOW_MS = 1_700_000_000_000
-
-
-@pytest.mark.parametrize(
-    "operation",
-    (
-        lambda repo: repo.enqueue_rank_set(
-            reason="token_radar_updated",
-            rows=[_rank_row()],
-            source_watermark_ms=NOW_MS,
-            now_ms=NOW_MS,
-        ),
-        lambda repo: repo.claim_due(
-            now_ms=NOW_MS,
-            limit=25,
-            lease_owner="token_capture_tier",
-            lease_ms=600_000,
-        ),
-        lambda repo: repo.mark_done([_claim()], now_ms=NOW_MS),
-        lambda repo: repo.mark_error(
-            [_claim()],
-            error="projection failed",
-            retry_ms=30_000,
-            max_attempts=3,
-            worker_name="token_capture_tier",
-            now_ms=NOW_MS,
-        ),
-    ),
-)
-def test_token_capture_tier_dirty_mutations_require_connection_transaction_before_sql_when_committing(
-    operation: Callable[[TokenCaptureTierDirtyTargetRepository], object],
-) -> None:
-    conn = _MissingTransactionConnection()
-
-    with pytest.raises(RuntimeError, match="token_capture_tier_dirty_target_transaction_required"):
-        operation(TokenCaptureTierDirtyTargetRepository(conn))
-
-    assert conn.sql == []
-    assert conn.commits == 0
 
 
 @pytest.mark.parametrize(
@@ -112,13 +73,12 @@ def test_token_capture_tier_dirty_write_counts_require_cursor_rowcount() -> None
     conn = _RowcountConnection(rowcount=None)
     repo = TokenCaptureTierDirtyTargetRepository(conn)
 
-    with pytest.raises(TypeError, match="token_capture_tier_dirty_target_rowcount_required"):
+    with pytest.raises(TypeError, match="token_capture_tier_dirty_target_rowcount_invalid"):
         repo.enqueue_rank_set(
             reason="token_radar_updated",
             rows=[_rank_row()],
             source_watermark_ms=NOW_MS,
             now_ms=NOW_MS,
-            commit=False,
         )
 
 
@@ -132,7 +92,6 @@ def test_token_capture_tier_dirty_error_releases_claim_below_retry_budget() -> N
         max_attempts=3,
         worker_name="token_capture_tier",
         now_ms=NOW_MS,
-        commit=False,
     )
 
     assert changed == 1
@@ -153,7 +112,6 @@ def test_token_capture_tier_dirty_error_requires_formal_attempt_budget(max_attem
             max_attempts=max_attempts,  # type: ignore[arg-type]
             worker_name="token_capture_tier",
             now_ms=NOW_MS,
-            commit=False,
         )
 
 
@@ -163,7 +121,7 @@ def test_token_capture_tier_dirty_write_counts_reject_invalid_cursor_rowcount(ro
     repo = TokenCaptureTierDirtyTargetRepository(conn)
 
     with pytest.raises(TypeError, match="token_capture_tier_dirty_target_rowcount_invalid"):
-        repo.mark_done([_claim()], now_ms=NOW_MS, commit=False)
+        repo.mark_done([_claim()], now_ms=NOW_MS)
 
 
 @pytest.mark.parametrize(
@@ -181,7 +139,6 @@ def test_token_capture_tier_dirty_enqueue_requires_formal_source_watermark_witho
             rows=[_rank_row()],
             source_watermark_ms=source_watermark_ms,  # type: ignore[arg-type]
             now_ms=NOW_MS,
-            commit=False,
         )
 
     assert conn.sql == ""
@@ -199,7 +156,6 @@ def test_token_capture_tier_dirty_completion_rejects_malformed_attempt_count(att
         TokenCaptureTierDirtyTargetRepository(conn).mark_done(
             [claim],
             now_ms=NOW_MS,
-            commit=False,
         )
 
     assert conn.sql == ""

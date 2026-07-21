@@ -34,33 +34,6 @@
         "title": "AccountAlertsData",
         "type": "object"
       },
-      "AccountQualityData": {
-        "additionalProperties": true,
-        "properties": {
-          "accounts": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Accounts",
-            "type": "array"
-          },
-          "query": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Query"
-          }
-        },
-        "title": "AccountQualityData",
-        "type": "object"
-      },
       "ApiEnvelope_AccountAlertsData_": {
         "additionalProperties": true,
         "properties": {
@@ -105,52 +78,6 @@
           "ok"
         ],
         "title": "ApiEnvelope[AccountAlertsData]",
-        "type": "object"
-      },
-      "ApiEnvelope_AccountQualityData_": {
-        "additionalProperties": true,
-        "properties": {
-          "data": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AccountQualityData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "field": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Field"
-          },
-          "ok": {
-            "title": "Ok",
-            "type": "boolean"
-          }
-        },
-        "required": [
-          "ok"
-        ],
-        "title": "ApiEnvelope[AccountQualityData]",
         "type": "object"
       },
       "ApiEnvelope_BootstrapData_": {
@@ -3929,6 +3856,51 @@
         "title": "OpsQueueData",
         "type": "object"
       },
+      "ReadinessData": {
+        "additionalProperties": true,
+        "properties": {
+          "composition": {
+            "additionalProperties": true,
+            "title": "Composition",
+            "type": "object"
+          },
+          "db": {
+            "additionalProperties": true,
+            "title": "Db",
+            "type": "object"
+          },
+          "handles": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Handles",
+            "type": "array"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          },
+          "reasons": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Reasons",
+            "type": "array"
+          },
+          "store": {
+            "title": "Store",
+            "type": "string"
+          }
+        },
+        "required": [
+          "ok",
+          "store",
+          "db",
+          "composition"
+        ],
+        "title": "ReadinessData",
+        "type": "object"
+      },
       "RecentData": {
         "additionalProperties": true,
         "properties": {
@@ -4527,18 +4499,6 @@
       "TokenCaseData": {
         "additionalProperties": true,
         "properties": {
-          "cex_detail": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Cex Detail"
-          },
           "market_live": {
             "additionalProperties": true,
             "title": "Market Live",
@@ -4753,19 +4713,9 @@
             ],
             "title": "Last Source Event At Ms"
           },
-          "recent_signal_event_count": {
-            "default": 0,
-            "title": "Recent Signal Event Count",
-            "type": "integer"
-          },
           "recent_source_event_count": {
             "default": 0,
             "title": "Recent Source Event Count",
-            "type": "integer"
-          },
-          "total_signal_event_count": {
-            "default": 0,
-            "title": "Total Signal Event Count",
             "type": "integer"
           }
         },
@@ -4936,11 +4886,6 @@
             "title": "Resolved Token Count",
             "type": "integer"
           },
-          "signal_event_count": {
-            "default": 0,
-            "title": "Signal Event Count",
-            "type": "integer"
-          },
           "source_event_count": {
             "default": 0,
             "title": "Source Event Count",
@@ -4957,14 +4902,6 @@
             "title": "Handle",
             "type": "string"
           },
-          "scope": {
-            "enum": [
-              "signal",
-              "all"
-            ],
-            "title": "Scope",
-            "type": "string"
-          },
           "window": {
             "title": "Window",
             "type": "string"
@@ -4972,7 +4909,6 @@
         },
         "required": [
           "handle",
-          "scope",
           "window"
         ],
         "title": "WatchlistOverviewQuery",
@@ -5037,30 +4973,9 @@
             ],
             "title": "Oldest Active Run Once Age Ms"
           },
-          "queue_depth": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Queue Depth"
-          },
-          "queue_health": {
-            "additionalProperties": true,
-            "title": "Queue Health",
-            "type": "object"
-          },
           "running_workers": {
             "default": 0,
             "title": "Running Workers",
-            "type": "integer"
-          },
-          "soft_timed_out_workers": {
-            "default": 0,
-            "title": "Soft Timed Out Workers",
             "type": "integer"
           },
           "stopped_workers": {
@@ -5109,17 +5024,6 @@
               }
             ],
             "title": "Active Run Once Hard Timed Out At Ms"
-          },
-          "active_run_once_soft_timed_out_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Active Run Once Soft Timed Out At Ms"
           },
           "active_run_once_started_at_ms": {
             "anyOf": [
@@ -5212,22 +5116,6 @@
               }
             ],
             "title": "Pool Wait Ms P99"
-          },
-          "queue_depth": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Queue Depth"
-          },
-          "queue_health": {
-            "additionalProperties": true,
-            "title": "Queue Health",
-            "type": "object"
           },
           "running": {
             "title": "Running",
@@ -5339,49 +5227,6 @@
         ]
       }
     },
-    "/api/account-quality": {
-      "get": {
-        "operationId": "account_quality_api_account_quality_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "handles",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Handles",
-              "type": "string"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_AccountQualityData_"
-                }
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Account Quality",
-        "tags": [
-          "api"
-        ]
-      }
-    },
     "/api/bootstrap": {
       "get": {
         "operationId": "bootstrap_api_bootstrap_get",
@@ -5398,136 +5243,6 @@
           }
         },
         "summary": "Bootstrap",
-        "tags": [
-          "api"
-        ]
-      }
-    },
-    "/api/cex/detail": {
-      "get": {
-        "operationId": "cex_detail_api_cex_detail_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "target_type",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Target Type"
-            }
-          },
-          {
-            "in": "query",
-            "name": "target_id",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Target Id"
-            }
-          },
-          {
-            "in": "query",
-            "name": "exchange",
-            "required": false,
-            "schema": {
-              "default": "binance",
-              "title": "Exchange",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "symbol",
-            "required": false,
-            "schema": {
-              "anyOf": [
-                {
-                  "type": "string"
-                },
-                {
-                  "type": "null"
-                }
-              ],
-              "title": "Symbol"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Cex Detail",
-        "tags": [
-          "api"
-        ]
-      }
-    },
-    "/api/cex/radar-board": {
-      "get": {
-        "operationId": "cex_radar_board_api_cex_radar_board_get",
-        "parameters": [
-          {
-            "in": "query",
-            "name": "limit",
-            "required": false,
-            "schema": {
-              "default": 50,
-              "title": "Limit",
-              "type": "integer"
-            }
-          }
-        ],
-        "responses": {
-          "200": {
-            "content": {
-              "application/json": {
-                "schema": {}
-              }
-            },
-            "description": "Successful Response"
-          },
-          "422": {
-            "content": {
-              "application/json": {
-                "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
-                }
-              }
-            },
-            "description": "Validation Error"
-          }
-        },
-        "summary": "Cex Radar Board",
         "tags": [
           "api"
         ]
@@ -6989,16 +6704,6 @@
               "title": "Handle",
               "type": "string"
             }
-          },
-          {
-            "in": "query",
-            "name": "scope",
-            "required": false,
-            "schema": {
-              "default": "signal",
-              "title": "Scope",
-              "type": "string"
-            }
           }
         ],
         "responses": {
@@ -7039,16 +6744,6 @@
             "required": true,
             "schema": {
               "title": "Handle",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "scope",
-            "required": false,
-            "schema": {
-              "default": "signal",
-              "title": "Scope",
               "type": "string"
             }
           },
@@ -7166,7 +6861,7 @@
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/StatusData"
+                  "$ref": "#/components/schemas/ReadinessData"
                 }
               }
             },

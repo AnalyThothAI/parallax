@@ -92,28 +92,28 @@ def test_wait_listens_on_configured_channels_and_returns_true_on_notify() -> Non
 
 def test_wait_requires_callable_commit_after_listen() -> None:
     conn = ConnWithoutCommit()
-    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+    waiter = WakeWaiter(FakePool(conn), channels=("resolution_updated",))
 
     with pytest.raises(RuntimeError, match="wake_waiter_commit_required"):
         waiter.wait(timeout=0.01)
 
-    assert conn.executed == [("LISTEN token_radar_updated", None)]
+    assert conn.executed == [("LISTEN resolution_updated", None)]
 
 
 def test_wait_requires_callable_notifies_source() -> None:
     conn = ConnWithoutNotifies()
-    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+    waiter = WakeWaiter(FakePool(conn), channels=("resolution_updated",))
 
     with pytest.raises(RuntimeError, match="wake_waiter_notifies_required"):
         waiter.wait(timeout=0.01)
 
-    assert conn.executed == [("LISTEN token_radar_updated", None)]
+    assert conn.executed == [("LISTEN resolution_updated", None)]
     assert conn.commits == 1
 
 
 def test_wait_returns_false_on_timeout_for_catch_up() -> None:
     conn = FakeConn(notifications=[])
-    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+    waiter = WakeWaiter(FakePool(conn), channels=("resolution_updated",))
 
     assert waiter.wait(timeout=0.01) is False
 
@@ -121,7 +121,7 @@ def test_wait_returns_false_on_timeout_for_catch_up() -> None:
 @pytest.mark.parametrize("timeout", [-1, True, "0.01"])
 def test_wait_rejects_malformed_timeout_without_runtime_repair(timeout: Any) -> None:
     conn = FakeConn(notifications=[])
-    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+    waiter = WakeWaiter(FakePool(conn), channels=("resolution_updated",))
 
     with pytest.raises(ValueError, match="wake_waiter_timeout_seconds_required"):
         waiter.wait(timeout=timeout)
@@ -131,17 +131,17 @@ def test_wait_reconnects_after_listen_failure_and_still_times_out() -> None:
     first = FakeConn(fail_listen=True)
     second = FakeConn(notifications=[])
     pool = FakePool(first, second)
-    waiter = WakeWaiter(pool, channels=("token_radar_updated",))
+    waiter = WakeWaiter(pool, channels=("resolution_updated",))
 
     assert waiter.wait(timeout=0.01) is False
 
     assert pool.checkout_count == 2
-    assert second.executed == [("LISTEN token_radar_updated", None)]
+    assert second.executed == [("LISTEN resolution_updated", None)]
 
 
 def test_wake_unblocks_next_wait_without_database_notify() -> None:
     conn = FakeConn(notifications=[])
-    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+    waiter = WakeWaiter(FakePool(conn), channels=("resolution_updated",))
 
     waiter.wake()
 
@@ -150,7 +150,7 @@ def test_wake_unblocks_next_wait_without_database_notify() -> None:
 
 def test_wake_interrupts_active_wait_between_notify_slices() -> None:
     conn = FakeConn(notifications=[], notify_sleep_seconds=0.05)
-    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+    waiter = WakeWaiter(FakePool(conn), channels=("resolution_updated",))
     result: list[bool] = []
     thread = threading.Thread(target=lambda: result.append(waiter.wait(timeout=5)))
 
@@ -166,14 +166,14 @@ def test_wake_interrupts_active_wait_between_notify_slices() -> None:
 
 def test_async_wait_wraps_blocking_wait() -> None:
     conn = FakeConn(notifications=[object()])
-    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+    waiter = WakeWaiter(FakePool(conn), channels=("resolution_updated",))
 
     assert asyncio.run(waiter.async_wait(timeout=1)) is True
 
 
 def test_async_wait_rejects_malformed_timeout_without_runtime_repair() -> None:
     conn = FakeConn(notifications=[])
-    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+    waiter = WakeWaiter(FakePool(conn), channels=("resolution_updated",))
 
     with pytest.raises(ValueError, match="wake_waiter_timeout_seconds_required"):
         asyncio.run(waiter.async_wait(timeout=True))
@@ -185,7 +185,7 @@ def test_async_wait_uses_dedicated_executor_not_default_threadpool(monkeypatch) 
 
     monkeypatch.setattr(asyncio, "to_thread", forbidden_to_thread)
     conn = FakeConn(notifications=[object()])
-    waiter = WakeWaiter(FakePool(conn), channels=("token_radar_updated",))
+    waiter = WakeWaiter(FakePool(conn), channels=("resolution_updated",))
 
     try:
         assert asyncio.run(waiter.async_wait(timeout=1)) is True

@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from parallax.app.runtime import providers_wiring
+from parallax.app.runtime import provider_wiring as providers_wiring
 from parallax.app.runtime.provider_wiring import asset_market as asset_market_wiring
 from parallax.app.runtime.provider_wiring import binance as binance_wiring
 from parallax.app.runtime.provider_wiring import gmgn as gmgn_wiring

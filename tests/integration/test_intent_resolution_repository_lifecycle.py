@@ -166,7 +166,8 @@ def _resolution(
 def _insert_event_and_intent(conn):
     from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 
-    EvidenceRepository(conn).insert_event(make_event(), is_watched=True)
+    with conn.transaction():
+        EvidenceRepository(conn).insert_event(make_event(), is_watched=True)
     conn.execute(
         """
         INSERT INTO token_intents(

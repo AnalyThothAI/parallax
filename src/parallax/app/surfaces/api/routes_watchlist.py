@@ -9,12 +9,11 @@ from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
 from parallax.app.surfaces.api.exceptions import ApiBadRequest
 from parallax.app.surfaces.api.responses import _json
-from parallax.app.surfaces.api.validators import _watchlist_timeline_scope
-from parallax.domains.watchlist_intel.services.watchlist_read_service import (
-    WatchlistHandleReadService,
-    WatchlistReadWindowConfig,
+from parallax.domains.evidence.read_models.watchlist_read_service import (
+    WatchlistReadConfig,
+    WatchlistReadService,
 )
-from parallax.domains.watchlist_intel.types import WatchlistTimelineCursorError, normalize_watchlist_handle
+from parallax.domains.evidence.types.watchlist import WatchlistTimelineCursorError, normalize_watchlist_handle
 
 router = APIRouter()
 
@@ -26,8 +25,8 @@ router = APIRouter()
 def watchlist_handles_overview(request: Request) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
-        data = WatchlistHandleReadService(
-            repository=repos.watchlist_intel,
+        data = WatchlistReadService(
+            query=repos.watchlist,
             config=_watchlist_read_config(runtime),
         ).handles_overview(
             configured_handles=tuple(runtime.settings.handles),
@@ -43,23 +42,20 @@ def watchlist_handles_overview(request: Request) -> JSONResponse:
 def watchlist_handle_overview(
     request: Request,
     handle: str,
-    scope: Annotated[str, Query()] = "signal",
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
     try:
         normalized_handle = normalize_watchlist_handle(handle)
     except ValueError:
         raise ApiBadRequest("invalid_handle", field="handle") from None
-    parsed_scope = _watchlist_timeline_scope(scope)
     try:
         with runtime.repositories() as repos:
-            data = WatchlistHandleReadService(
-                repository=repos.watchlist_intel,
+            data = WatchlistReadService(
+                query=repos.watchlist,
                 config=_watchlist_read_config(runtime),
             ).overview(
                 handle=normalized_handle,
                 configured_handles=tuple(runtime.settings.handles),
-                scope=parsed_scope,
                 now_ms=_now_ms(),
             )
     except LookupError:
@@ -74,7 +70,6 @@ def watchlist_handle_overview(
 def watchlist_handle_timeline(
     request: Request,
     handle: str,
-    scope: Annotated[str, Query()] = "signal",
     limit: Annotated[int, Query(ge=1, le=100)] = 30,
     cursor: Annotated[str, Query()] = "",
 ) -> JSONResponse:
@@ -83,16 +78,14 @@ def watchlist_handle_timeline(
         normalized_handle = normalize_watchlist_handle(handle)
     except ValueError:
         raise ApiBadRequest("invalid_handle", field="handle") from None
-    parsed_scope = _watchlist_timeline_scope(scope)
     try:
         with runtime.repositories() as repos:
-            data = WatchlistHandleReadService(
-                repository=repos.watchlist_intel,
+            data = WatchlistReadService(
+                query=repos.watchlist,
                 config=_watchlist_read_config(runtime),
             ).timeline(
                 handle=normalized_handle,
                 configured_handles=tuple(runtime.settings.handles),
-                scope=parsed_scope,
                 cursor=cursor or None,
                 limit=limit,
             )
@@ -103,8 +96,8 @@ def watchlist_handle_timeline(
     return _json({"ok": True, "data": data})
 
 
-def _watchlist_read_config(_runtime: object) -> WatchlistReadWindowConfig:
-    return WatchlistReadWindowConfig(
+def _watchlist_read_config(_runtime: object) -> WatchlistReadConfig:
+    return WatchlistReadConfig(
         window_days=3,
         overview_source_limit=500,
         overview_cluster_limit=500,

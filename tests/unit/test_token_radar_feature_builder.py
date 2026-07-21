@@ -77,21 +77,21 @@ def test_feature_builder_exposes_social_heat_and_propagation_inputs():
             received_at_ms=now_ms - 240_000,
             author="alice",
             followers=20_000,
-            gmgn_user_tags=["kol"],
+            author_tags=["kol"],
         ),
         row(
             "event-2",
             received_at_ms=now_ms - 180_000,
             author="bob",
             followers=20_000,
-            gmgn_user_tags=["kol"],
+            author_tags=["kol"],
         ),
         row(
             "event-3",
             received_at_ms=now_ms - 60_000,
             author="carol",
             followers=20_000,
-            gmgn_user_tags=["kol"],
+            author_tags=["kol"],
         ),
     ]
     previous_rows = [
@@ -210,7 +210,7 @@ def test_feature_builder_does_not_fallback_to_legacy_numeric_confidence():
         intent_confidence=1.0,
         confidence=1.0,
         followers=20_000,
-        gmgn_user_tags=["kol"],
+        author_tags=["kol"],
     )
 
     features = build_radar_features(
@@ -262,13 +262,8 @@ def row(
         "market_liquidity_usd": 250_000,
         "market_volume_24h_usd": market_volume_24h_usd,
         "market_open_interest_usd": market_open_interest_usd,
-        "ws_author_followers": kwargs.pop("ws_author_followers", followers),
-        "gmgn_platform_followers": kwargs.pop("gmgn_platform_followers", None),
-        "gmgn_user_tags": kwargs.pop("gmgn_user_tags", []),
-        "account_profile_first_seen_ms": kwargs.pop(
-            "account_profile_first_seen_ms",
-            received_at_ms - 365 * 86_400_000,
-        ),
+        "author_followers": kwargs.pop("author_followers", followers),
+        "author_tags_json": kwargs.pop("author_tags", []),
         "llm_direction_hint": kwargs.pop("llm_direction_hint", None),
         "llm_impact_hint": kwargs.pop("llm_impact_hint", None),
         "llm_semantic_novelty_hint": kwargs.pop("llm_semantic_novelty_hint", None),
@@ -277,7 +272,7 @@ def row(
     }
 
 
-def test_weighted_mentions_uses_quality_when_account_profiles_present():
+def test_weighted_mentions_uses_event_author_quality():
     from parallax.domains.token_intel.scoring.token_radar_feature_builder import build_radar_features
 
     now_ms = 1_700_000_000_000
@@ -286,10 +281,8 @@ def test_weighted_mentions_uses_quality_when_account_profiles_present():
         "received_at_ms": now_ms - 60_000,
         "author_handle": "kol_alice",
         "intent_confidence": 1.0,
-        "ws_author_followers": 100,
-        "gmgn_platform_followers": 20000,
-        "gmgn_user_tags": ["kol"],
-        "account_profile_first_seen_ms": now_ms - 365 * 86_400_000,
+        "author_followers": 20_000,
+        "author_tags_json": ["kol"],
         "is_watched": True,
         "text_clean": "alice talks about $TOKEN",
         "search_text": "alice talks about $TOKEN",
@@ -324,10 +317,8 @@ def test_weighted_mentions_lower_for_no_tag_account():
             "received_at_ms": now_ms - 60_000,
             "author_handle": handle,
             "intent_confidence": 1.0,
-            "ws_author_followers": None,
-            "gmgn_platform_followers": 20000,
-            "gmgn_user_tags": tags,
-            "account_profile_first_seen_ms": now_ms - 365 * 86_400_000,
+            "author_followers": 20_000,
+            "author_tags_json": tags,
             "is_watched": False,
             "text_clean": "talks about $TOKEN",
             "search_text": "talks about $TOKEN",
@@ -366,10 +357,8 @@ def test_quality_features_consume_llm_hints_when_present():
         "received_at_ms": now_ms - 60_000,
         "author_handle": "alice",
         "intent_confidence": 1.0,
-        "ws_author_followers": 5000,
-        "gmgn_platform_followers": None,
-        "gmgn_user_tags": [],
-        "account_profile_first_seen_ms": now_ms - 365 * 86_400_000,
+        "author_followers": 5_000,
+        "author_tags_json": [],
         "is_watched": False,
         "text_clean": "good things about $TOKEN",
         "search_text": "good things about $TOKEN",
@@ -392,21 +381,17 @@ def test_quality_features_consume_llm_hints_when_present():
     assert 0.0 <= features.quality["llm_semantic_utility"] <= 1.0
 
 
-def test_weighted_mentions_keeps_floor_signal_for_non_directory_account():
-    """Account not in account_profiles (NULL first_seen_ms) should still
-    contribute to weighted_mentions via the floor signal — NOT zero."""
+def test_weighted_mentions_keeps_floor_signal_without_author_tags():
     from parallax.domains.token_intel.scoring.token_radar_feature_builder import build_radar_features
 
     now_ms = 1_700_000_000_000
     row = {
         "event_id": "e1",
         "received_at_ms": now_ms - 60_000,
-        "author_handle": "non_directory_account",
+        "author_handle": "public_account",
         "intent_confidence": 1.0,
-        "ws_author_followers": 5000,  # has follower count but no directory profile
-        "gmgn_platform_followers": None,
-        "gmgn_user_tags": [],
-        "account_profile_first_seen_ms": None,  # KEY: not in account_profiles
+        "author_followers": 5_000,
+        "author_tags_json": [],
         "is_watched": False,
         "text_clean": "talks about $TOKEN",
         "search_text": "talks about $TOKEN",
@@ -424,6 +409,6 @@ def test_weighted_mentions_keeps_floor_signal_for_non_directory_account():
         window_ms=3_600_000,
         total_window_events=1,
     )
-    # Floor: log1p(5000)/log1p(100000) x 0.5 (no tag) x 1.0 (saturated age) ~= 0.37
+    # Floor: log1p(5000)/log1p(100000) x 0.5 (no tag).
     assert features.heat["weighted_mentions"] > 0.0
     assert features.heat["weighted_mentions"] < 0.5

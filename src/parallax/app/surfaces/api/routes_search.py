@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from typing import Annotated, Any
+from typing import Annotated
 
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
@@ -12,7 +12,6 @@ from parallax.app.surfaces.api.responses import _json
 from parallax.app.surfaces.api.validators import _limit, _positive_limit, _post_range, _scope, _target_type, _window
 from parallax.domains.asset_market.read_models.market_candles_service import MarketCandlesService
 from parallax.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
-from parallax.domains.narrative_intel.read_models.narrative_read_model import NarrativeReadModel
 from parallax.domains.token_intel.queries.search_events_query import SearchEventsQuery
 from parallax.domains.token_intel.read_models.search_inspect_service import SearchInspectService
 from parallax.domains.token_intel.read_models.search_service import SearchCursorError, SearchService
@@ -98,7 +97,6 @@ def search_inspect(
             targets=repos.token_targets,
             profiles=profiles,
             market_candles=_market_candles_service(),
-            cex_detail_snapshots=repos.cex_detail_snapshots,
         ).inspect(
             q,
             window=parsed_window,
@@ -108,11 +106,6 @@ def search_inspect(
         )
         if isinstance(data.get("token_result"), dict):
             data["token_result"].pop("agent_brief", None)
-            data["token_result"] = _narrative_read_model(repos).hydrate_token_case(
-                data["token_result"],
-                window=parsed_window,
-                scope=parsed_scope,
-            )
     return _json({"ok": True, "data": data})
 
 
@@ -139,10 +132,10 @@ def token_case(
     try:
         with runtime.repositories() as repos:
             data = TokenCaseService(
+                token_radar=repos.token_radar,
                 targets=repos.token_targets,
                 profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
                 market_candles=_market_candles_service(),
-                cex_detail_snapshots=repos.cex_detail_snapshots,
             ).dossier(
                 target_type=parsed_target_type,
                 target_id=target_id,
@@ -152,12 +145,6 @@ def token_case(
                 now_ms=_now_ms(),
             )
             data.pop("agent_brief", None)
-            _, response_scope = normalize_token_case_scope(scope)
-            data = _narrative_read_model(repos).hydrate_token_case(
-                data,
-                window=parsed_window,
-                scope=response_scope,
-            )
     except TokenCaseTargetNotFound:
         return _json({"ok": False, "error": "target_not_found"}, status_code=404)
     return _json({"ok": True, "data": data})
@@ -243,7 +230,3 @@ def target_social_timeline(
 
 def _market_candles_service() -> MarketCandlesService:
     return MarketCandlesService()
-
-
-def _narrative_read_model(repos: Any) -> Any:
-    return NarrativeReadModel(repository=repos.narratives)

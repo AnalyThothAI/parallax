@@ -4,7 +4,8 @@ from parallax.domains.token_intel.interfaces import (
     TOKEN_RADAR_DEFAULT_VENUE,
     TOKEN_RADAR_PROJECTION_VERSION,
 )
-from parallax.domains.token_intel.services.token_radar_projection import TokenRadarProjection
+from parallax.domains.token_intel.services.token_radar_projector import TokenRadarProjector
+from parallax.domains.token_intel.services.token_radar_publisher import TokenRadarPublisher
 from tests.factories_token_radar import (
     VERSA_BASE_CA,
     insert_base_versa_asset,
@@ -52,7 +53,12 @@ def test_unresolved_attention_never_projects_as_driver(tmp_path):
         for index in range(7)
     ]
 
-    TokenRadarProjection(repos=repos).rebuild(window="5m", scope="all", now_ms=1_777_800_060_000, limit=20)
+    _publisher(repos).publish_rank_set(
+        window="5m",
+        scope="all",
+        now_ms=1_777_800_060_000,
+        limit=20,
+    )
     rows = repos.token_radar.latest_current_rows(
         window="5m",
         scope="all",
@@ -134,7 +140,7 @@ def _rebuild_resolved_current_rows(repos, *, now_ms: int) -> None:
         limit=20,
         reason="golden_corpus_projection",
     )
-    TokenRadarProjection(repos=repos).rebuild_dirty_targets(
+    _publisher(repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,
         max_attempts=3,
@@ -145,3 +151,7 @@ def _rebuild_resolved_current_rows(repos, *, now_ms: int) -> None:
         rank_limit=20,
         lease_owner="golden_corpus_projection",
     )
+
+
+def _publisher(repos) -> TokenRadarPublisher:
+    return TokenRadarPublisher(repos=repos, projector=TokenRadarProjector(repos=repos))

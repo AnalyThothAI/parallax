@@ -2,7 +2,6 @@ import type { ReactNode } from "react";
 
 export type WatchlistMetrics = {
   source_event_count: number;
-  signal_event_count: number;
   resolved_token_count: number;
   candidate_mention_count: number;
   narrative_count: number;

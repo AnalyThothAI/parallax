@@ -3,15 +3,17 @@ from __future__ import annotations
 import hashlib
 import json
 from collections.abc import Callable, Mapping
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from typing import Any
 
 from psycopg.types.json import Jsonb
 
 from parallax.platform.db.json_safety import postgres_safe_json
+from parallax.platform.db.write_contract import mutation_count, returning_mutation_count
 
 TERMINAL_ACTIONS = frozenset(("retry", "archive", "quarantine"))
 TERMINAL_STATUSES = frozenset(("terminal", "active"))
+_RESOLVED_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000
+_RESOLVED_PRUNE_LIMIT = 500
 
 RetryTransitionMap = Mapping[tuple[str, str], Callable[..., dict[str, Any]]]
 
@@ -31,26 +33,7 @@ def terminalize_source_row(
     payload_hash: str | None = None,
     first_seen_at_ms: int | None = None,
     last_attempted_at_ms: int | None = None,
-    commit: bool = False,
 ) -> dict[str, Any]:
-    if commit:
-        with _transaction(conn):
-            return terminalize_source_row(
-                conn,
-                worker_name=worker_name,
-                source_table=source_table,
-                target_key=target_key,
-                source_row=source_row,
-                final_status=final_status,
-                final_reason=final_reason,
-                final_reason_bucket=final_reason_bucket,
-                now_ms=now_ms,
-                attempt_count=attempt_count,
-                payload_hash=payload_hash,
-                first_seen_at_ms=first_seen_at_ms,
-                last_attempted_at_ms=last_attempted_at_ms,
-                commit=False,
-            )
     normalized_row = _normalized_source_row(source_row, payload_hash=payload_hash)
     normalized_payload_hash = _payload_hash(normalized_row.get("payload_hash"))
     source_row_hash = _stable_json_hash(normalized_row)
@@ -163,7 +146,7 @@ def terminalize_source_row(
         params,
     )
     row = cursor.fetchone()
-    _single_returning_rowcount(cursor, row)
+    returning_mutation_count(cursor, row, error_code="queue_terminal_rowcount_invalid")
     return _row_dict(row)
 
 
@@ -280,35 +263,61 @@ def resolve_terminal_event(
     normalized_action = _action(action)
     normalized_reason = _required_text(reason, "reason")
     terminal_id = _required_text(terminal_id, "terminal_id")
-    with _transaction(conn):
-        current = _fetch_terminal_event(conn, terminal_id=terminal_id, for_update=True)
-        if current is None:
-            raise ValueError("terminal_event_not_found")
-        transition = None
-        if normalized_action == "retry":
-            transition = _retry_transition_for(current, retry_transitions)
-        cursor = conn.execute(
-            """
-            UPDATE worker_queue_terminal_events
-            SET operator_action = %(operator_action)s,
-                operator_reason = %(operator_reason)s,
-                operator_action_at_ms = %(operator_action_at_ms)s
-            WHERE terminal_id = %(terminal_id)s
-            RETURNING *
-            """,
-            {
-                "terminal_id": terminal_id,
-                "operator_action": normalized_action,
-                "operator_reason": normalized_reason,
-                "operator_action_at_ms": int(now_ms),
-            },
-        )
-        row = cursor.fetchone()
-        _single_returning_rowcount(cursor, row)
-        resolved = _row_dict(row)
-        if transition is not None:
-            resolved["transition"] = transition(dict(resolved), now_ms=int(now_ms), reason=normalized_reason)
+    current = _fetch_terminal_event(conn, terminal_id=terminal_id, for_update=True)
+    if current is None:
+        raise ValueError("terminal_event_not_found")
+    transition = None
+    if normalized_action == "retry":
+        transition = _retry_transition_for(current, retry_transitions)
+    cursor = conn.execute(
+        """
+        UPDATE worker_queue_terminal_events
+        SET operator_action = %(operator_action)s,
+            operator_reason = %(operator_reason)s,
+            operator_action_at_ms = %(operator_action_at_ms)s
+        WHERE terminal_id = %(terminal_id)s
+        RETURNING *
+        """,
+        {
+            "terminal_id": terminal_id,
+            "operator_action": normalized_action,
+            "operator_reason": normalized_reason,
+            "operator_action_at_ms": int(now_ms),
+        },
+    )
+    row = cursor.fetchone()
+    returning_mutation_count(cursor, row, error_code="queue_terminal_rowcount_invalid")
+    resolved = _row_dict(row)
+    if transition is not None:
+        resolved["transition"] = transition(dict(resolved), now_ms=int(now_ms), reason=normalized_reason)
+    _prune_resolved_terminal_events(conn, now_ms=int(now_ms))
     return resolved
+
+
+def _prune_resolved_terminal_events(conn: Any, *, now_ms: int) -> None:
+    cursor = conn.execute(
+        """
+        WITH resolved_to_prune AS (
+          SELECT terminal_id
+          FROM worker_queue_terminal_events
+          WHERE operator_action IS NOT NULL
+            AND COALESCE(operator_action_at_ms, terminalized_at_ms) < %(cutoff_ms)s
+          ORDER BY COALESCE(operator_action_at_ms, terminalized_at_ms) ASC, terminal_id ASC
+          LIMIT %(limit)s
+          FOR UPDATE SKIP LOCKED
+        )
+        DELETE FROM worker_queue_terminal_events AS terminal
+        USING resolved_to_prune AS expired
+        WHERE terminal.terminal_id = expired.terminal_id
+        """,
+        {
+            "cutoff_ms": max(0, int(now_ms) - _RESOLVED_RETENTION_MS),
+            "limit": _RESOLVED_PRUNE_LIMIT,
+        },
+    )
+    count = mutation_count(cursor, error_code="queue_terminal_rowcount_invalid")
+    if count > _RESOLVED_PRUNE_LIMIT:
+        raise TypeError("queue_terminal_rowcount_invalid")
 
 
 def _fetch_terminal_event(conn: Any, *, terminal_id: str, for_update: bool = False) -> dict[str, Any] | None:
@@ -417,16 +426,6 @@ def _next_terminal_generation(
     return _terminal_generation_from_row(row)
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("queue_terminal_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("queue_terminal_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
 def _jsonb(value: Mapping[str, Any]) -> Jsonb:
     return Jsonb(
         dict(value),
@@ -442,25 +441,6 @@ def _row_dict(row: Any) -> dict[str, Any]:
     if isinstance(source_row, Jsonb):
         out["source_row_json"] = source_row.obj
     return out
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("queue_terminal_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("queue_terminal_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("queue_terminal_rowcount_invalid")
-    return rowcount
-
-
-def _single_returning_rowcount(cursor: Any, row: Any | None) -> int:
-    count = _cursor_rowcount(cursor)
-    if count > 1 or count != int(row is not None):
-        raise TypeError("queue_terminal_rowcount_invalid")
-    return count
 
 
 def _payload_hash(value: Any) -> str:

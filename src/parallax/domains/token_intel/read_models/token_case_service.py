@@ -1,7 +1,18 @@
 from __future__ import annotations
 
-from typing import Any, cast
+from typing import Any
 
+from parallax.domains.token_intel.interfaces import (
+    TOKEN_RADAR_DEFAULT_VENUE,
+    TOKEN_RADAR_PROJECTION_VERSION,
+)
+
+from .token_radar_narrative_admission import (
+    SUPPORTED_WINDOW as NARRATIVE_ADMISSION_WINDOW,
+)
+from .token_radar_narrative_admission import (
+    narrative_admission_from_current_row,
+)
 from .token_target_posts_service import TokenTargetPostsService
 from .token_target_social_timeline_service import TokenTargetSocialTimelineService
 
@@ -26,15 +37,15 @@ class TokenCaseService:
     def __init__(
         self,
         *,
+        token_radar: Any,
         targets: Any,
         profiles: Any,
         market_candles: Any | None = None,
-        cex_detail_snapshots: Any | None = None,
     ) -> None:
+        self.token_radar = token_radar
         self.targets = targets
         self.profiles = profiles
         self.market_candles = market_candles
-        self.cex_detail_snapshots: Any = cex_detail_snapshots
 
     def dossier(
         self,
@@ -74,15 +85,41 @@ class TokenCaseService:
         timeline["query"]["scope"] = response_scope
         posts["query"]["scope"] = response_scope
         profile = self.profiles.profile_for_target(target_type=target_type, target_id=target_id)
+        narrative_admission = self._narrative_admission(
+            target_type=target_type,
+            target_id=target_id,
+            window=window,
+            scope=service_scope,
+        )
         market_live = self._market_live(target=target, now_ms=now_ms)
         return {
             "target": target,
             "profile": profile,
             "timeline": timeline,
             "posts": posts,
+            "narrative_admission": narrative_admission,
             "market_live": market_live,
-            "cex_detail": self._cex_detail(target=target),
         }
+
+    def _narrative_admission(
+        self,
+        *,
+        target_type: str,
+        target_id: str,
+        window: str,
+        scope: str,
+    ) -> dict[str, Any]:
+        current_row = None
+        if window == NARRATIVE_ADMISSION_WINDOW:
+            current_row = self.token_radar.current_row_for_target(
+                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
+                window=window,
+                scope=scope,
+                venue=TOKEN_RADAR_DEFAULT_VENUE,
+                target_type=target_type,
+                target_id=target_id,
+            )
+        return narrative_admission_from_current_row(current_row, window=window)
 
     def _market_live(self, *, target: dict[str, Any], now_ms: int | None) -> dict[str, Any]:
         target_type = str(target.get("target_type") or "")
@@ -96,30 +133,6 @@ class TokenCaseService:
                 now_ms=now_ms,
             )
         return _market_snapshot(target_type=target_type, target_id=target_id, status="missing")
-
-    def _cex_detail(self, *, target: dict[str, Any]) -> dict[str, Any] | None:
-        target_type = str(target.get("target_type") or "")
-        if target_type != "CexToken":
-            return None
-        target_id = str(target.get("target_id") or "")
-        snapshot = self.cex_detail_snapshots.latest_snapshot(target_type=target_type, target_id=target_id)
-        if snapshot is not None:
-            return cast(dict[str, Any], snapshot)
-        native_market_id = str(target.get("native_market_id") or "").strip().upper()
-        return {
-            "target_type": target_type,
-            "target_id": target_id,
-            "exchange": None,
-            "native_market_id": native_market_id or None,
-            "base_symbol": target.get("symbol"),
-            "quote_symbol": target.get("quote_symbol"),
-            "status": "missing",
-            "baseline_status": "missing",
-            "coinglass_status": "unavailable",
-            "degraded_reasons": ["cex_detail_snapshot_missing"],
-            "level_bands": [],
-            "source_refs": [],
-        }
 
 
 def _latest_market_tick(targets: Any, *, target_type: str, target_id: str) -> dict[str, Any] | None:

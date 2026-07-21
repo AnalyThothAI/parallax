@@ -7,9 +7,9 @@ from typing import Any
 import pytest
 
 from parallax.app.runtime.telemetry import TelemetryRegistry
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.platform.cancellation import WORKER_HARD_TIMEOUT_CANCEL_REASON
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class FakeTelemetry:
@@ -105,7 +105,6 @@ def worker_settings(**overrides: Any) -> SimpleNamespace:
     values = {
         "enabled": True,
         "interval_seconds": 0.01,
-        "soft_timeout_seconds": 1.0,
         "hard_timeout_seconds": 0.0,
         "backoff": SimpleNamespace(base_ms=1, max_ms=5),
     }
@@ -136,12 +135,61 @@ class CountingWorker(WorkerBase):
         self.closed += 1
 
 
+def test_run_one_iteration_uses_worker_lifecycle_timeout_and_result_accounting() -> None:
+    telemetry = FakeTelemetry()
+    worker = CountingWorker(
+        name="once",
+        settings=worker_settings(),
+        db=FakeDB(),
+        telemetry=telemetry,
+    )
+
+    result = asyncio.run(worker.run_one_iteration())
+
+    assert result == WorkerResult(processed=2, failed=1, dead=1, skipped=1)
+    assert (worker.started, worker.calls, worker.stopped) == (1, 1, 1)
+    assert worker.running is False
+    assert worker.last_result == result
+    assert worker.last_error is None
+    assert telemetry.last_runs == ["once"]
+
+
+def test_run_one_iteration_owns_and_releases_single_writer_lock() -> None:
+    lock = FakeAdvisoryLock()
+    db = FakeDB([lock])
+    worker = CountingWorker(
+        name="locked-once",
+        settings=worker_settings(advisory_lock_key=2026072101),
+        db=db,
+        telemetry=FakeTelemetry(),
+    )
+
+    asyncio.run(worker.run_one_iteration())
+
+    assert db.acquire_calls == [("locked-once", 2026072101)]
+    assert lock.released is True
+
+
+def test_run_one_iteration_reports_advisory_lock_contention_without_running_business_work() -> None:
+    worker = CountingWorker(
+        name="contended-once",
+        settings=worker_settings(advisory_lock_key=2026072102),
+        db=FakeDB([RuntimeError("advisory_lock_unavailable")]),
+        telemetry=FakeTelemetry(),
+    )
+
+    result = asyncio.run(worker.run_one_iteration())
+
+    assert result == WorkerResult(skipped=1, notes={"reason": "advisory_lock_unavailable"})
+    assert worker.calls == 0
+    assert (worker.started, worker.stopped) == (1, 1)
+
+
 def test_worker_base_requires_formal_settings_fields_without_runtime_defaults() -> None:
     worker = CountingWorker(
         name="missing_enabled",
         settings=SimpleNamespace(
             interval_seconds=0.01,
-            soft_timeout_seconds=1.0,
             hard_timeout_seconds=0.0,
             backoff=SimpleNamespace(base_ms=1, max_ms=5),
         ),
@@ -155,7 +203,6 @@ def test_worker_base_requires_formal_settings_fields_without_runtime_defaults() 
         name="missing_interval",
         settings=SimpleNamespace(
             enabled=True,
-            soft_timeout_seconds=1.0,
             hard_timeout_seconds=0.0,
             backoff=SimpleNamespace(base_ms=1, max_ms=5),
         ),
@@ -170,7 +217,6 @@ def test_worker_base_requires_formal_settings_fields_without_runtime_defaults() 
         settings=SimpleNamespace(
             enabled=True,
             interval_seconds=0.01,
-            soft_timeout_seconds=1.0,
             hard_timeout_seconds=0.0,
         ),
         db=FakeDB(),
@@ -184,7 +230,6 @@ def test_worker_base_requires_formal_settings_fields_without_runtime_defaults() 
         settings=SimpleNamespace(
             enabled=True,
             interval_seconds=0.01,
-            soft_timeout_seconds=1.0,
             hard_timeout_seconds=0.0,
             backoff=SimpleNamespace(max_ms=5),
         ),
@@ -201,9 +246,6 @@ def test_worker_base_requires_formal_settings_fields_without_runtime_defaults() 
         ("interval_seconds", "interval_seconds", -0.1, "worker_interval_seconds_required"),
         ("interval_seconds", "interval_seconds", True, "worker_interval_seconds_required"),
         ("interval_seconds", "interval_seconds", "0.01", "worker_interval_seconds_required"),
-        ("soft_timeout_seconds", "soft_timeout_seconds", -0.1, "worker_soft_timeout_seconds_required"),
-        ("soft_timeout_seconds", "soft_timeout_seconds", True, "worker_soft_timeout_seconds_required"),
-        ("soft_timeout_seconds", "soft_timeout_seconds", "1.0", "worker_soft_timeout_seconds_required"),
         ("hard_timeout_seconds", "hard_timeout_seconds", -0.1, "worker_hard_timeout_seconds_required"),
         ("hard_timeout_seconds", "hard_timeout_seconds", True, "worker_hard_timeout_seconds_required"),
         ("hard_timeout_seconds", "hard_timeout_seconds", "0.0", "worker_hard_timeout_seconds_required"),
@@ -297,7 +339,7 @@ def test_worker_base_run_calls_hooks_updates_status_and_metrics() -> None:
         }
         assert payload["last_error"] is None
         assert payload["iteration_duration_p99_ms"] >= 0
-        assert payload["queue_depth"] is None
+        assert "queue_depth" not in payload
         assert payload["pool_wait_ms_p99"] == 12.5
 
     asyncio.run(scenario())
@@ -380,7 +422,7 @@ def test_worker_base_rejects_concurrent_run_on_same_instance() -> None:
     asyncio.run(scenario())
 
 
-def test_worker_base_timeout_and_exception_record_error_backoff_and_continue_until_stopped() -> None:
+def test_worker_base_exception_records_error_without_synthetic_timeout_state() -> None:
     class FlakyWorker(WorkerBase):
         def __init__(self, **kwargs: Any) -> None:
             super().__init__(**kwargs)
@@ -398,7 +440,7 @@ def test_worker_base_timeout_and_exception_record_error_backoff_and_continue_unt
         waiter = FakeWakeWaiter()
         worker = FlakyWorker(
             name="flaky",
-            settings=worker_settings(soft_timeout_seconds=0.001),
+            settings=worker_settings(),
             db=FakeDB(),
             telemetry=telemetry,
             wake_waiter=waiter,
@@ -409,7 +451,7 @@ def test_worker_base_timeout_and_exception_record_error_backoff_and_continue_unt
         assert worker.calls == 1
         assert "boom" in (worker.last_error or "")
         assert ("flaky", "failed", 1) in telemetry.jobs
-        assert waiter.waits[0] == 0.001
+        assert waiter.waits == []
 
     asyncio.run(scenario())
 
@@ -785,7 +827,7 @@ def test_worker_base_aclose_requires_sync_wake_waiter_close_contract_without_awa
     asyncio.run(scenario())
 
 
-def test_worker_base_soft_timeout_marks_overrun_once_without_resetting_started_at() -> None:
+def test_worker_base_long_iteration_records_one_success_without_synthetic_failure() -> None:
     class SlowThenStopWorker(WorkerBase):
         def __init__(self, **kwargs: Any) -> None:
             super().__init__(**kwargs)
@@ -804,7 +846,7 @@ def test_worker_base_soft_timeout_marks_overrun_once_without_resetting_started_a
         waiter = FakeWakeWaiter()
         worker = SlowThenStopWorker(
             name="slow_status",
-            settings=worker_settings(soft_timeout_seconds=0.001, interval_seconds=0.001),
+            settings=worker_settings(interval_seconds=0.001),
             db=FakeDB(),
             telemetry=telemetry,
             wake_waiter=waiter,
@@ -814,8 +856,9 @@ def test_worker_base_soft_timeout_marks_overrun_once_without_resetting_started_a
 
         assert worker.calls == 1
         assert worker.last_started_at_ms == worker.first_started_at_ms_seen
-        assert telemetry.jobs.count(("slow_status", "failed", 1)) == 1
-        assert len(waiter.waits) == 1
+        assert telemetry.jobs.count(("slow_status", "failed", 1)) == 0
+        assert telemetry.jobs.count(("slow_status", "success", 1)) == 1
+        assert waiter.waits == []
         assert worker.last_result == WorkerResult(processed=1)
         assert worker.status_payload()["active_run_once_age_ms"] is None
 
@@ -850,7 +893,6 @@ def test_worker_base_hard_timeout_cancels_in_flight_task_and_discards_it() -> No
         worker = HardTimedWorker(
             name="hard_timeout",
             settings=worker_settings(
-                soft_timeout_seconds=0.001,
                 hard_timeout_seconds=0.005,
                 interval_seconds=0.001,
             ),
@@ -875,7 +917,7 @@ def test_worker_base_hard_timeout_cancels_in_flight_task_and_discards_it() -> No
     asyncio.run(scenario())
 
 
-def test_worker_base_status_payload_includes_active_task_age_and_timeout_state() -> None:
+def test_worker_base_status_payload_includes_active_task_age_without_soft_timeout_state() -> None:
     class SlowStatusWorker(WorkerBase):
         def __init__(self, **kwargs: Any) -> None:
             super().__init__(**kwargs)
@@ -890,7 +932,6 @@ def test_worker_base_status_payload_includes_active_task_age_and_timeout_state()
         worker = SlowStatusWorker(
             name="active_status",
             settings=worker_settings(
-                soft_timeout_seconds=0.001,
                 hard_timeout_seconds=0.0,
                 interval_seconds=0.001,
             ),
@@ -903,14 +944,14 @@ def test_worker_base_status_payload_includes_active_task_age_and_timeout_state()
             await worker.started.wait()
             for _ in range(100):
                 payload = worker.status_payload()
-                if payload["active_run_once_soft_timed_out_at_ms"] is not None:
+                if (payload["active_run_once_age_ms"] or 0) > 0:
                     break
                 await asyncio.sleep(0.001)
             payload = worker.status_payload()
 
             assert payload["active_run_once_started_at_ms"] is not None
             assert payload["active_run_once_age_ms"] > 0
-            assert payload["active_run_once_soft_timed_out_at_ms"] is not None
+            assert "active_run_once_soft_timed_out_at_ms" not in payload
             assert payload["active_run_once_count"] == 1
         finally:
             run_task.cancel()
@@ -940,7 +981,7 @@ def test_worker_base_cancelled_run_cancels_shielded_timed_out_run_once_task() ->
     async def scenario() -> None:
         worker = StubbornWorker(
             name="stubborn_timeout",
-            settings=worker_settings(soft_timeout_seconds=0.001, interval_seconds=0.001),
+            settings=worker_settings(interval_seconds=0.001),
             db=FakeDB(),
             telemetry=FakeTelemetry(),
             wake_waiter=FakeWakeWaiter(),
@@ -980,7 +1021,7 @@ def test_worker_base_aclose_cancels_single_in_flight_task_after_rejected_concurr
     async def scenario() -> None:
         worker = ConcurrentStubbornWorker(
             name="concurrent_stubborn",
-            settings=worker_settings(soft_timeout_seconds=0.001, interval_seconds=0.001),
+            settings=worker_settings(interval_seconds=0.001),
             db=FakeDB(),
             telemetry=FakeTelemetry(),
             wake_waiter=FakeWakeWaiter(),

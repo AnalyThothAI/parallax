@@ -150,9 +150,7 @@ def _price_series_by_asset(
         if value is None or value <= 0:
             continue
         key = (concept_key, observed_at)
-        previous = by_key_date.get(key)
-        if previous is None or _source_rank(concept_key, observation) > _source_rank(concept_key, previous):
-            by_key_date[key] = observation
+        by_key_date.setdefault(key, observation)
 
     grouped: dict[str, list[dict[str, Any]]] = {concept_key: [] for concept_key in assets}
     for (concept_key, observed_at), observation in by_key_date.items():
@@ -164,8 +162,6 @@ def _price_series_by_asset(
                 "observed_at": observed_at,
                 "value": value,
                 "source_name": _required_observation_text(concept_key, observation, "source_name"),
-                "source_priority": _required_int_metadata(concept_key, observation, "source_priority"),
-                "ingested_at_ms": _required_int_metadata(concept_key, observation, "ingested_at_ms"),
             }
         )
     for points in grouped.values():
@@ -287,13 +283,6 @@ def _minimum_sample_size(window_days: int) -> int:
     return min(window_days, max(10, min(30, window_days // 2)))
 
 
-def _source_rank(concept_key: str, observation: Mapping[str, Any]) -> tuple[int, int]:
-    return (
-        _required_int_metadata(concept_key, observation, "source_priority"),
-        _required_int_metadata(concept_key, observation, "ingested_at_ms"),
-    )
-
-
 def _required_asset_title(concept_key: str) -> str:
     title = ASSET_CORRELATION_TITLES.get(concept_key)
     if not isinstance(title, str) or not title.strip():
@@ -338,13 +327,6 @@ def _required_observation_text(concept_key: str, observation: Mapping[str, Any],
     if not isinstance(value, str) or not value.strip():
         raise ValueError(f"macro_asset_correlation_{field_name}_required:{concept_key}")
     return value.strip()
-
-
-def _required_int_metadata(concept_key: str, observation: Mapping[str, Any], field_name: str) -> int:
-    value = observation.get(field_name)
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(f"macro_asset_correlation_{field_name}_required:{concept_key}")
-    return value
 
 
 def _date_text(value: Any) -> str | None:

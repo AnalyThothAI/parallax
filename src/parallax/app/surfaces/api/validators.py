@@ -7,7 +7,6 @@ SCOPES = {"all", "matched"}
 TOKEN_RADAR_VENUES = {"all", "sol", "eth", "base", "bsc", "cex"}
 ALERT_TYPES = {"account_token", "token"}
 DELIVERY_STATUSES = {"pending", "running", "failed", "dead", "delivered"}
-WATCHLIST_TIMELINE_SCOPES = {"signal", "all"}
 
 
 def _limit(value: int, *, maximum: int = 1000, field: str = "limit") -> int:
@@ -47,12 +46,6 @@ def _token_radar_venue(value: str) -> str:
     if value in TOKEN_RADAR_VENUES:
         return value
     raise ApiBadRequest("invalid_venue", field="venue")
-
-
-def _watchlist_timeline_scope(value: str) -> str:
-    if value in WATCHLIST_TIMELINE_SCOPES:
-        return value
-    raise ApiBadRequest("invalid_scope", field="scope")
 
 
 def _window(value: str) -> str:

@@ -9,7 +9,6 @@ from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime
 from parallax.app.surfaces.api.responses import _json
 from parallax.app.surfaces.api.validators import _handle_set, _limit, _scope
-from parallax.domains.account_quality.read_models.account_quality_service import AccountQualityService
 
 router = APIRouter()
 
@@ -68,14 +67,11 @@ def events_by_ids(
         )
     with runtime.repositories() as repos:
         records = repos.evidence.events_by_ids(raw)
-        handles = sorted(
-            {
-                str(event.get("author_handle") or "").lstrip("@").lower()
-                for event in records.values()
-                if event.get("author_handle")
-            }
-        )
-        watched = _watched_handle_set(repos, handles)
+        watched = {
+            str(handle).strip().lstrip("@").lower()
+            for handle in runtime.settings.handles
+            if str(handle).strip().lstrip("@").lower()
+        }
         events_payload = [_source_event_detail(records[event_id], watched) for event_id in raw if event_id in records]
         not_found = [event_id for event_id in raw if event_id not in records]
     return _json({"ok": True, "data": {"events": events_payload, "not_found": not_found}})
@@ -98,12 +94,6 @@ def _payloads_for_events(repos: Any, events: list[dict[str, Any]]) -> list[dict[
         }
         for event in events
     ]
-
-
-def _watched_handle_set(repos: Any, handles: list[str]) -> set[str]:
-    if not handles:
-        return set()
-    return AccountQualityService.from_conn(repos.conn).watched_handles(handles)
 
 
 def _source_event_detail(event: dict[str, Any], watched: set[str]) -> dict[str, Any]:

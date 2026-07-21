@@ -1,17 +1,15 @@
 from __future__ import annotations
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_factories import WorkerFactoryContext
-from parallax.app.runtime.worker_manifest import manifest_names_for_factory, require_worker_manifest
+from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker
+from parallax.app.runtime.worker_manifest import require_worker_manifest
 from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
-
-WORKER_KEYS = manifest_names_for_factory("token_intel.py")
+from parallax.platform.runtime.worker_base import WorkerBase
 
 
 def construct_token_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
     workers = ctx.settings.workers
     if not workers.token_radar_projection.enabled:
-        return {}
+        return {"token_radar_projection": disabled_worker(ctx, "token_radar_projection")}
     worker_name = "token_radar_projection"
     return {
         worker_name: TokenRadarProjectionWorker(
@@ -19,8 +17,6 @@ def construct_token_intel_workers(ctx: WorkerFactoryContext) -> dict[str, Worker
             settings=workers.token_radar_projection,
             db=ctx.db,
             telemetry=ctx.telemetry,
-            wake_emitter=ctx.wake_bus,
             wake_waiter=ctx.db.wake_listener(worker_name, require_worker_manifest(worker_name).wakes_on),
-            enqueue_narrative_admission=bool(workers.narrative_admission.enabled),
         )
     }

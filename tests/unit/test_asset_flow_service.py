@@ -36,6 +36,15 @@ def test_asset_flow_returns_market_context_and_no_legacy_market_fields():
     assert btc["market"]["decision_latest"]["price_usd"] == 70_000.0
     assert btc["market"]["readiness"]["anchor_status"] == "ready"
     assert btc["score"]["rank_score"] == 55
+    assert btc["narrative_admission"] == {
+        "status": "admitted",
+        "reason": "hot_rank",
+        "is_current": True,
+        "computed_at_ms": 1_700_000_060_000,
+        "currentness": {"display_status": "current", "reason": "hot_rank"},
+        "coverage": {"source_mentions": 1, "independent_authors": 1},
+        "data_gaps": [],
+    }
     assert btc["quality"] == {"status": "ready", "degraded_reasons": []}
     assert _legacy_market_key("anchor", "price") not in btc
     assert "live_market" not in btc
@@ -473,7 +482,11 @@ def factor_snapshot_json(
     }
     families = {
         "social_heat": family("social_heat", {"mentions_1h": 1}, weight=0.35),
-        "social_propagation": family("social_propagation", {"mentions": 1}, weight=0.30),
+        "social_propagation": family(
+            "social_propagation",
+            {"mentions": 1, "independent_authors": 1},
+            weight=0.30,
+        ),
         "semantic_catalyst": family("semantic_catalyst", {"direction_counts": {}}, weight=0.25),
         "timing_risk": family(
             "timing_risk",

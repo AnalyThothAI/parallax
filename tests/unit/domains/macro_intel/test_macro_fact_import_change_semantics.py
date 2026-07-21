@@ -29,7 +29,7 @@ def test_import_same_payload_second_time_is_noop_not_imported_change() -> None:
     assert second["noop_observation_count"] == 1
     assert second["imported_observation_count"] == 0
     assert second["changed_observations"] == []
-    assert repos.macro_intel.import_runs[-1]["imported_observation_count"] == 0
+    assert repos.macro_intel.sync_runs[-1]["imported_observation_count"] == 0
 
 
 def test_import_changed_payload_counts_changed_and_surfaces_dirty_concept() -> None:

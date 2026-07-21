@@ -8,8 +8,8 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from parallax.app.runtime.app import create_app
-from parallax.app.runtime.providers_wiring import AssetMarketProviders
+from parallax.app.runtime.provider_wiring.types import AssetMarketProviders
+from parallax.app.surfaces.api.app import create_app
 from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
 from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from tests.postgres_test_utils import connect_postgres_test, prepare_postgres_database

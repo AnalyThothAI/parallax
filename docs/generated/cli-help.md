@@ -6,10 +6,10 @@
 
 ```
 usage: parallax [-h]
-                {serve,init,config,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops} ...
+                {serve,init,config,db,macro,recent,search,asset-flow,account-alerts,notification-deliveries,ops} ...
 
 positional arguments:
-  {serve,init,config,db,macro,recent,search,asset-flow,account-alerts,account-quality,notification-deliveries,ops}
+  {serve,init,config,db,macro,recent,search,asset-flow,account-alerts,notification-deliveries,ops}
     serve               run the collector service
     init                create ~/.parallax/config.yaml
     config              print effective runtime configuration
@@ -20,7 +20,6 @@ positional arguments:
     asset-flow          rank resolved assets and unresolved attention
                         candidates
     account-alerts      print watched-account token alerts
-    account-quality     print account quality profiles
     notification-deliveries
                         inspect notification external delivery audit rows
     ops                 maintenance commands
@@ -51,20 +50,16 @@ options:
 
 ```
 usage: parallax ops [-h]
-                    {backfill-account-quality,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics} ...
+                    {enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics} ...
 
 positional arguments:
-  {backfill-account-quality,enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,worker-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,sync-gmgn-directory,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics}
-    backfill-account-quality
-                        backfill account token-call stats and quality
-                        snapshots
+  {enqueue-token-radar-dirty-targets,enqueue-token-capture-tier-rank-set,projection-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,rebuild-news-canonical-items,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,audit-token-radar,factor-diagnostics}
     enqueue-token-radar-dirty-targets
                         enqueue Token Radar dirty targets from persisted facts
     enqueue-token-capture-tier-rank-set
                         enqueue Token Capture Tier repair from current Token
                         Radar rank set
-    projection-status   print projection offsets and latest runs
-    worker-status       print canonical worker runtime status
+    projection-status   print Token Radar publication state
     queue-inspect       inspect worker queue terminal evidence
     queue-resolve       resolve worker queue terminal evidence
     queue-resolve-bucket
@@ -91,9 +86,6 @@ positional arguments:
                         sync Binance CEX token profiles
     sync-us-equity-symbols
                         sync Nasdaq Trader US equity symbols
-    sync-gmgn-directory
-                        one-shot sync of GMGN twitter directory into
-                        account_profiles
     run-resolution-refresh
                         refresh due token resolution lookups and reprocess
                         recent intents

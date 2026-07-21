@@ -486,10 +486,11 @@ def _insert_event_intent_and_evidence(
 ):
     from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 
-    EvidenceRepository(conn).insert_event(
-        make_event(event_id, text=f"${symbol}", received_at_ms=received_at_ms),
-        is_watched=True,
-    )
+    with conn.transaction():
+        EvidenceRepository(conn).insert_event(
+            make_event(event_id, text=f"${symbol}", received_at_ms=received_at_ms),
+            is_watched=True,
+        )
     conn.execute(
         """
         INSERT INTO token_evidence(

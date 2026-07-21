@@ -3,18 +3,18 @@ from __future__ import annotations
 from typing import Any
 
 from parallax.integrations.model_execution.execution_gateway import AgentExecutionGateway
-from parallax.integrations.model_execution.news_item_brief_agent_client import (
-    LiteLLMNewsItemBriefClient,
+from parallax.integrations.model_execution.news_story_brief_agent_client import (
+    LiteLLMNewsStoryBriefClient,
 )
 from parallax.platform.agent_execution import AgentRuntimePolicy
 from parallax.platform.config.settings import Settings
 
 
-def litellm_news_item_brief_provider(
+def litellm_news_story_brief_provider(
     *,
     agent_gateway: AgentExecutionGateway,
-) -> LiteLLMNewsItemBriefClient:
-    return LiteLLMNewsItemBriefClient(
+) -> LiteLLMNewsStoryBriefClient:
+    return LiteLLMNewsStoryBriefClient(
         agent_gateway=agent_gateway,
     )
 
@@ -45,5 +45,5 @@ def _require_llm_gateway(llm_gateway: object | None) -> object:
 
 __all__ = [
     "build_agent_execution_gateway",
-    "litellm_news_item_brief_provider",
+    "litellm_news_story_brief_provider",
 ]

@@ -8,8 +8,8 @@ from parallax.domains.asset_market.services.cex_token_profile_sync import sync_c
 def test_sync_cex_token_profiles_writes_source_cache_for_existing_cex_tokens_only():
     profiles = _CexTokenProfiles(existing_symbols={"BTC"})
     result = sync_cex_token_profiles(
-        cex_token_profiles=profiles,
-        profile_source=_ProfileSource(),
+        repos=_Repos(profiles),
+        profiles=_profiles(),
         observed_at_ms=1_778_000_000_000,
     )
 
@@ -30,7 +30,6 @@ def test_sync_cex_token_profiles_writes_source_cache_for_existing_cex_tokens_onl
             "source_ref": "binance_marketing_symbol_list:BTC",
             "raw_payload": {"rank": 1},
             "observed_at_ms": 1_778_000_000_000,
-            "commit": False,
         }
     ]
     assert profiles.conn.events == ["enter", "exit"]
@@ -40,10 +39,10 @@ def test_sync_cex_token_profiles_writes_source_cache_for_existing_cex_tokens_onl
 def test_sync_cex_token_profiles_requires_transaction_before_writes():
     profiles = _CexTokenProfiles(existing_symbols={"BTC"}, conn=object())
 
-    with pytest.raises(RuntimeError, match="cex_token_profile_sync_transaction_required"):
+    with pytest.raises(AttributeError, match="transaction"):
         sync_cex_token_profiles(
-            cex_token_profiles=profiles,
-            profile_source=_ProfileSource(),
+            repos=_Repos(profiles),
+            profiles=_profiles(),
             observed_at_ms=1_778_000_000_000,
         )
 
@@ -55,8 +54,8 @@ def test_sync_cex_token_profiles_rejects_object_profile_compatibility_before_tra
 
     with pytest.raises(TypeError, match="cex_token_profile_sync_profile_mapping_required"):
         sync_cex_token_profiles(
-            cex_token_profiles=profiles,
-            profile_source=_ObjectProfileSource(),
+            repos=_Repos(profiles),
+            profiles=[_ObjectProfile()],  # type: ignore[list-item]
             observed_at_ms=1_778_000_000_000,
         )
 
@@ -156,8 +155,8 @@ def test_sync_cex_token_profiles_requires_formal_provider_profile_before_transac
 
     with pytest.raises((TypeError, ValueError), match=error):
         sync_cex_token_profiles(
-            cex_token_profiles=profiles,
-            profile_source=_ProfileSource([profile]),
+            repos=_Repos(profiles),
+            profiles=[profile],
             observed_at_ms=1_778_000_000_000,
         )
 
@@ -165,31 +164,27 @@ def test_sync_cex_token_profiles_requires_formal_provider_profile_before_transac
     assert profiles.conn.events == []
 
 
-class _ProfileSource:
-    def __init__(self, profiles=None) -> None:
-        self.profiles = profiles or [
-            {
-                "base_symbol": "BTC",
-                "provider": "binance_cex_profile",
-                "symbol": "BTC",
-                "name": "Bitcoin",
-                "logo_url": "https://bin.bnbstatic.com/btc.png",
-                "source_ref": "binance_marketing_symbol_list:BTC",
-                "raw_payload": {"rank": 1},
-            },
-            {
-                "base_symbol": "NOTROUTED",
-                "provider": "binance_cex_profile",
-                "symbol": "NOTROUTED",
-                "name": "Missing",
-                "logo_url": "https://bin.bnbstatic.com/notrouted.png",
-                "source_ref": "binance_marketing_symbol_list:NOTROUTED",
-                "raw_payload": {"rank": 2},
-            },
-        ]
-
-    def token_profiles(self):
-        return list(self.profiles)
+def _profiles() -> list[dict[str, object]]:
+    return [
+        {
+            "base_symbol": "BTC",
+            "provider": "binance_cex_profile",
+            "symbol": "BTC",
+            "name": "Bitcoin",
+            "logo_url": "https://bin.bnbstatic.com/btc.png",
+            "source_ref": "binance_marketing_symbol_list:BTC",
+            "raw_payload": {"rank": 1},
+        },
+        {
+            "base_symbol": "NOTROUTED",
+            "provider": "binance_cex_profile",
+            "symbol": "NOTROUTED",
+            "name": "Missing",
+            "logo_url": "https://bin.bnbstatic.com/notrouted.png",
+            "source_ref": "binance_marketing_symbol_list:NOTROUTED",
+            "raw_payload": {"rank": 2},
+        },
+    ]
 
 
 class _ObjectProfile:
@@ -201,11 +196,6 @@ class _ObjectProfile:
         self.logo_url = "https://bin.bnbstatic.com/btc.png"
         self.source_ref = "binance_marketing_symbol_list:BTC"
         self.raw_payload = {"rank": 1}
-
-
-class _ObjectProfileSource:
-    def token_profiles(self):
-        return [_ObjectProfile()]
 
 
 class _CexTokenProfiles:
@@ -222,6 +212,14 @@ class _CexTokenProfiles:
         return {"cex_token_id": f"cex_token:{kwargs['base_symbol']}"}
 
 
+class _Repos:
+    def __init__(self, cex_token_profiles) -> None:
+        self.cex_token_profiles = cex_token_profiles
+
+    def transaction(self):
+        return self.cex_token_profiles.conn.transaction()
+
+
 class _Conn:
     def __init__(self) -> None:
         self.commits = 0
@@ -233,7 +231,7 @@ class _Conn:
 
     def commit(self) -> None:
         self.commits += 1
-        raise AssertionError("sync_cex_token_profiles must use conn.transaction(), not conn.commit()")
+        raise AssertionError("sync_cex_token_profiles must use repos.transaction(), not conn.commit()")
 
 
 class _Transaction:

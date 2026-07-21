@@ -210,15 +210,6 @@ def test_rebuild_news_canonical_items_rejects_malformed_limit_before_repo(limit:
         )
 
 
-def test_removed_cleanup_news_item_brief_schema_hard_cut_command_is_not_registered() -> None:
-    parser = build_parser()
-
-    with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut", "--dry-run"])
-    with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "cleanup-news-item-brief-schema-hard-cut", "--execute"])
-
-
 def test_removed_repair_news_market_signal_command_is_not_registered() -> None:
     parser = build_parser()
 

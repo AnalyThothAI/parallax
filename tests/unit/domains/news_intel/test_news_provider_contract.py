@@ -5,8 +5,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from parallax.app.runtime.app import _news_provider_contract_payload, _unhealthy_reasons
-from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.app.runtime.bootstrap import _load_news_provider_contract
+from parallax.app.surfaces.api.app import _news_provider_contract_payload, _unhealthy_reasons
+from parallax.domains.news_intel.repositories.news_source_repository import NewsSourceRepository
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.services.news_provider_contract import (
     NewsProviderContractError,
@@ -89,7 +90,7 @@ def test_repository_constraint_parser_reads_0105_provider_values_from_news_sourc
         "'twitter_thread_context'::text, 'reddit'::text, 'hackernews'::text, "
         "'github'::text, 'ossinsight'::text, 'manual_api'::text, 'opennews'::text]))"
     )
-    repo = NewsRepository(FakeConstraintConn(constraint_def))
+    repo = NewsSourceRepository(FakeConstraintConn(constraint_def))
 
     values = repo.news_source_provider_constraint_values()
 
@@ -134,54 +135,42 @@ def test_news_fetch_worker_returns_contract_error_without_provider_capability_pr
     assert repo.claim_due_calls == 0
 
 
-def test_runtime_status_news_provider_contract_uses_static_provider_types_without_provider_probe() -> None:
+def test_bootstrap_snapshots_news_provider_contract_once() -> None:
     source = _source(provider_type="opennews")
-    runtime = SimpleNamespace(
-        settings=SimpleNamespace(news_intel=SimpleNamespace(sources=(source,))),
-        providers=SimpleNamespace(news_intel=SimpleNamespace(feed_client=FakeCapabilityProbeProvider())),
-        repositories=lambda: FakeRuntimeRepositoryContext(FakeNewsRepository(schema_provider_types=PROVIDER_SCHEMA)),
-    )
+    db = FakeRuntimeDB(FakeNewsRepository(schema_provider_types=PROVIDER_SCHEMA))
 
-    payload = _news_provider_contract_payload(runtime)
+    payload = _load_news_provider_contract(
+        SimpleNamespace(news_intel=SimpleNamespace(sources=(source,))),
+        db,
+    )
 
     assert payload["ok"] is True
     assert payload["configured_provider_types"] == ["opennews"]
     assert payload["supported_provider_types"] == list(RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES)
+    assert db.api_session_calls == 1
 
 
-def test_runtime_status_news_provider_contract_requires_news_intel_settings_contract() -> None:
-    runtime = SimpleNamespace(
-        settings=SimpleNamespace(),
-        repositories=lambda: FakeRuntimeRepositoryContext(FakeNewsRepository(schema_provider_types=PROVIDER_SCHEMA)),
-    )
-
-    with pytest.raises(AttributeError, match="news_intel"):
-        _news_provider_contract_payload(runtime)
-
-
-def test_runtime_status_news_provider_contract_rejects_mapping_sources_from_settings() -> None:
-    runtime = SimpleNamespace(
-        settings=SimpleNamespace(
-            news_intel=SimpleNamespace(
-                sources=(
-                    {
-                        "source_id": "opennews-source",
-                        "provider_type": "opennews",
-                        "feed_url": "opennews://feed",
-                        "source_domain": "example.test",
-                        "source_name": "Example",
-                    },
-                )
-            )
-        ),
-        repositories=lambda: FakeRuntimeRepositoryContext(FakeNewsRepository(schema_provider_types=PROVIDER_SCHEMA)),
-    )
+def test_runtime_status_returns_defensive_copy_of_bootstrap_snapshot() -> None:
+    runtime = SimpleNamespace(news_provider_contract={"ok": True, "configured_provider_types": ["opennews"]})
 
     payload = _news_provider_contract_payload(runtime)
+    payload["ok"] = False
+
+    assert runtime.news_provider_contract["ok"] is True
+
+
+def test_bootstrap_marks_news_provider_contract_unavailable_when_schema_query_fails() -> None:
+    source = _source(provider_type="opennews")
+
+    payload = _load_news_provider_contract(
+        SimpleNamespace(news_intel=SimpleNamespace(sources=(source,))),
+        FailingRuntimeDB(),
+    )
 
     assert payload["ok"] is False
-    assert payload["reason"] == "news_provider_settings_contract_required"
-    assert payload["configured_provider_types"] == []
+    assert payload["reason"] == "news_provider_contract_unavailable"
+    assert payload["error"] == "OSError"
+    assert payload["configured_provider_types"] == ["opennews"]
 
 
 def test_readiness_marks_news_provider_settings_contract_error_unhealthy() -> None:
@@ -190,7 +179,6 @@ def test_readiness_marks_news_provider_settings_contract_error_unhealthy() -> No
     reasons = _unhealthy_reasons(
         runtime,
         db_status={"ok": True},
-        worker_status={"workers": {}},
         news_provider_contract={"ok": False, "reason": "news_provider_settings_contract_required"},
     )
 
@@ -280,11 +268,11 @@ class FakeNewsRepository:
     def news_source_provider_constraint_values(self) -> tuple[str, ...]:
         return self.schema_provider_types
 
-    def reconcile_configured_sources(self, sources, *, now_ms: int, commit: bool = True):
+    def reconcile_configured_sources(self, sources, *, now_ms: int):
         self.reconcile_calls += 1
         return []
 
-    def claim_due_sources(self, *, now_ms: int, limit: int, claim_lease_ms: int, commit: bool = True):
+    def claim_due_sources(self, *, now_ms: int, limit: int, claim_lease_ms: int):
         del claim_lease_ms
         self.claim_due_calls += 1
         return []
@@ -295,11 +283,11 @@ class FakeNewsRepositoryWithoutSchemaIntrospection:
         self.reconcile_calls = 0
         self.claim_due_calls = 0
 
-    def reconcile_configured_sources(self, sources, *, now_ms: int, commit: bool = True):
+    def reconcile_configured_sources(self, sources, *, now_ms: int):
         self.reconcile_calls += 1
         return []
 
-    def claim_due_sources(self, *, now_ms: int, limit: int, claim_lease_ms: int, commit: bool = True):
+    def claim_due_sources(self, *, now_ms: int, limit: int, claim_lease_ms: int):
         del claim_lease_ms
         self.claim_due_calls += 1
         return []
@@ -314,18 +302,30 @@ class FakeDB:
     def worker_session(self, name: str, statement_timeout_seconds: float | None = None):
         assert name == "news_fetch"
         assert statement_timeout_seconds == 30
-        yield SimpleNamespace(news=self.repo, conn=self.conn, transaction=self.conn.transaction)
+        yield SimpleNamespace(
+            news_sources=self.repo,
+            news_items=self.repo,
+            conn=self.conn,
+            transaction=self.conn.transaction,
+        )
 
 
-class FakeRuntimeRepositoryContext:
+class FakeRuntimeDB:
     def __init__(self, repo: FakeNewsRepository) -> None:
         self.repo = repo
+        self.api_session_calls = 0
 
-    def __enter__(self):
-        return SimpleNamespace(news=self.repo)
+    @contextmanager
+    def api_session(self):
+        self.api_session_calls += 1
+        yield SimpleNamespace(news_sources=self.repo)
 
-    def __exit__(self, exc_type, exc, tb):
-        return False
+
+class FailingRuntimeDB:
+    @contextmanager
+    def api_session(self):
+        raise OSError("schema unavailable")
+        yield  # pragma: no cover
 
 
 class FakeConn:

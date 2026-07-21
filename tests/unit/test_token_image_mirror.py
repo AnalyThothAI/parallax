@@ -306,7 +306,6 @@ class _FakeTokenImageAssetRepository:
         byte_size: int,
         storage_path: str,
         now_ms: int,
-        commit: bool = True,
     ) -> dict[str, object]:
         row = {
             "source_url": source_url,
@@ -320,7 +319,7 @@ class _FakeTokenImageAssetRepository:
         self.ready_rows.append(row)
         return {"status": "ready", **row}
 
-    def mark_error(self, source_url: str, error: str, now_ms: int, retry_ms: int, commit: bool = True) -> None:
+    def mark_error(self, source_url: str, error: str, now_ms: int, retry_ms: int) -> None:
         self.error_rows.append(
             {
                 "source_url": source_url,
@@ -330,7 +329,7 @@ class _FakeTokenImageAssetRepository:
             }
         )
 
-    def mark_unsupported(self, source_url: str, error: str, now_ms: int, commit: bool = True) -> None:
+    def mark_unsupported(self, source_url: str, error: str, now_ms: int) -> None:
         self.unsupported_rows.append(
             {
                 "source_url": source_url,

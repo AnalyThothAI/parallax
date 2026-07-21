@@ -12,6 +12,7 @@ from parallax.app.runtime.wake_bus import WakeBus
 from parallax.app.runtime.wake_waiter import WakeWaiter
 from parallax.app.runtime.worker_manifest import all_worker_manifests
 from parallax.platform.db.postgres_client import create_pool, with_password_from_file
+from parallax.platform.validation import require_nonnegative_float
 
 _API_STATEMENT_TIMEOUT_SECONDS = 5.0
 _WORKER_STATEMENT_TIMEOUT_SECONDS = 30.0
@@ -32,7 +33,6 @@ class DBPoolBundle:
     wake_pool: Any
     notification_delivery_running_timeout_ms: int
     notification_delivery_stale_running_terminalization_batch_size: int
-    tool_pool: Any | None = None
     lock_pool: Any | None = None
     wake_pool_max_size: int = 0
     enabled_wake_listener_concurrency: int = 0
@@ -73,15 +73,6 @@ class DBPoolBundle:
                 keepalives_interval=_WAKE_KEEPALIVES_INTERVAL_SECONDS,
                 keepalives_count=_WAKE_KEEPALIVES_COUNT,
             )
-            tool_pool = create_pool(
-                dsn,
-                min_size=0,
-                max_size=3,
-                connect_timeout_seconds=settings.postgres_connect_timeout_seconds,
-                application_name="gmgn_agent_tools",
-                statement_timeout_seconds=_API_STATEMENT_TIMEOUT_SECONDS,
-                read_only=True,
-            )
             computed_wake_listener_concurrency = enabled_wake_listener_concurrency(settings)
             computed_wake_pool_max_size = wake_pool_max_size(settings)
             wake_pool = create_pool(
@@ -102,7 +93,6 @@ class DBPoolBundle:
                 locals().get("api_pool"),
                 locals().get("worker_pool"),
                 locals().get("lock_pool"),
-                locals().get("tool_pool"),
                 locals().get("wake_pool"),
             )
             raise
@@ -114,7 +104,6 @@ class DBPoolBundle:
             notification_delivery_stale_running_terminalization_batch_size=int(
                 settings.workers.notification_delivery.stale_running_terminalization_batch_size
             ),
-            tool_pool=tool_pool,
             lock_pool=lock_pool,
             wake_pool_max_size=computed_wake_pool_max_size,
             enabled_wake_listener_concurrency=computed_wake_listener_concurrency,
@@ -172,18 +161,6 @@ class DBPoolBundle:
                 _discard_connection(self.worker_pool, conn)
             raise
 
-    @contextmanager
-    def worker_transaction(
-        self,
-        name: str,
-        statement_timeout_seconds: float | None = None,
-    ) -> Iterator[RepositorySession]:
-        with (
-            self.worker_session(name, statement_timeout_seconds=statement_timeout_seconds) as repos,
-            repos.unit_of_work(),
-        ):
-            yield repos
-
     def wake_emitter(self) -> WakeBus:
         return WakeBus(self.wake_pool.connection)
 
@@ -195,7 +172,7 @@ class DBPoolBundle:
 
     async def aclose(self) -> None:
         errors: list[Exception] = []
-        for pool in (self.api_pool, self.worker_pool, self.lock_pool, self.tool_pool, self.wake_pool):
+        for pool in (self.api_pool, self.worker_pool, self.lock_pool, self.wake_pool):
             if pool is None:
                 continue
             try:
@@ -302,14 +279,11 @@ def _normalize_worker_name(name: str) -> str:
 
 
 def _statement_timeout_value(seconds: float) -> str:
-    timeout_seconds = _nonnegative_timeout_seconds(seconds)
+    timeout_seconds = require_nonnegative_float(
+        seconds,
+        error_code="db_statement_timeout_seconds_required",
+    )
     return f"{int(timeout_seconds * 1000)}ms"
-
-
-def _nonnegative_timeout_seconds(value: Any) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
-        raise ValueError("db_statement_timeout_seconds_required")
-    return float(value)
 
 
 def wake_pool_max_size(settings: Any) -> int:

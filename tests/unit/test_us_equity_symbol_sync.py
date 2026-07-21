@@ -102,18 +102,16 @@ def test_parse_nasdaq_trader_symbols_reads_nasdaq_and_other_listed_files():
 def test_sync_us_equity_symbols_upserts_and_deactivates_missing_symbols():
     registry = _Registry()
     result = sync_us_equity_symbols(
-        registry=registry,
-        client=_Client(
-            [
-                NasdaqTraderSymbol(
-                    symbol="AAOI",
-                    exchange="NASDAQ",
-                    security_name="Applied Optoelectronics, Inc. Common Stock",
-                    instrument_type="equity",
-                    raw_payload={"Symbol": "AAOI"},
-                )
-            ]
-        ),
+        repos=_Repos(registry),
+        symbols=[
+            NasdaqTraderSymbol(
+                symbol="AAOI",
+                exchange="NASDAQ",
+                security_name="Applied Optoelectronics, Inc. Common Stock",
+                instrument_type="equity",
+                raw_payload={"Symbol": "AAOI"},
+            )
+        ],
         observed_at_ms=1_778_000_000_000,
     )
 
@@ -134,14 +132,12 @@ def test_sync_us_equity_symbols_upserts_and_deactivates_missing_symbols():
             "source_updated_at_ms": 1_778_000_000_000,
             "raw_payload": {"Symbol": "AAOI"},
             "observed_at_ms": 1_778_000_000_000,
-            "commit": False,
         }
     ]
     assert registry.deactivate_call == {
         "source": "nasdaq_trader",
         "active_symbols": {"AAOI"},
         "observed_at_ms": 1_778_000_000_000,
-        "commit": False,
     }
     assert registry.conn.events == ["enter", "exit"]
     assert registry.conn.commits == 0
@@ -150,33 +146,23 @@ def test_sync_us_equity_symbols_upserts_and_deactivates_missing_symbols():
 def test_sync_us_equity_symbols_requires_transaction_before_writes():
     registry = _Registry(conn=object())
 
-    with pytest.raises(RuntimeError, match="us_equity_symbol_sync_transaction_required"):
+    with pytest.raises(AttributeError, match="transaction"):
         sync_us_equity_symbols(
-            registry=registry,
-            client=_Client(
-                [
-                    NasdaqTraderSymbol(
-                        symbol="AAOI",
-                        exchange="NASDAQ",
-                        security_name="Applied Optoelectronics, Inc. Common Stock",
-                        instrument_type="equity",
-                        raw_payload={"Symbol": "AAOI"},
-                    )
-                ]
-            ),
+            repos=_Repos(registry),
+            symbols=[
+                NasdaqTraderSymbol(
+                    symbol="AAOI",
+                    exchange="NASDAQ",
+                    security_name="Applied Optoelectronics, Inc. Common Stock",
+                    instrument_type="equity",
+                    raw_payload={"Symbol": "AAOI"},
+                )
+            ],
             observed_at_ms=1_778_000_000_000,
         )
 
     assert registry.upserts == []
     assert registry.deactivate_call is None
-
-
-class _Client:
-    def __init__(self, rows):
-        self.rows = rows
-
-    def symbols(self):
-        return list(self.rows)
 
 
 class _Registry:
@@ -196,6 +182,14 @@ class _Registry:
         return 2
 
 
+class _Repos:
+    def __init__(self, registry) -> None:
+        self.registry = registry
+
+    def transaction(self):
+        return self.registry.conn.transaction()
+
+
 class _Conn:
     def __init__(self) -> None:
         self.commits = 0
@@ -207,7 +201,7 @@ class _Conn:
 
     def commit(self) -> None:
         self.commits += 1
-        raise AssertionError("sync_us_equity_symbols must use conn.transaction(), not conn.commit()")
+        raise AssertionError("sync_us_equity_symbols must use repos.transaction(), not conn.commit()")
 
 
 class _Transaction:

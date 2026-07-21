@@ -1,7 +1,6 @@
 import type {
   WatchlistHandleOverviewData,
   WatchlistHandleRowOverview,
-  WatchlistTimelineScope,
 } from "@lib/types";
 import * as PageState from "@shared/ui/PageState";
 import { useEffect, useMemo } from "react";
@@ -43,16 +42,13 @@ export function WatchlistPage({
   );
   const routeState = useWatchlistRouteState(normalizedHandles[0] ?? null);
   const selectedHandle = routeState.selectedHandle;
-  const timelineScope = routeState.timelineScope;
   const handlesOverviewQuery = useWatchlistHandlesOverviewQuery({ token });
   const overviewQuery = useHandleOverviewQuery({
     handle: selectedHandle,
-    scope: timelineScope,
     token,
   });
   const timelineQuery = useHandleTimelineQuery({
     handle: selectedHandle,
-    scope: timelineScope,
     token,
   });
   const overview = overviewQuery.data?.data ?? null;
@@ -96,7 +92,6 @@ export function WatchlistPage({
             overviewWindow={handlesOverviewQuery.data?.data.window ?? null}
             rows={sourceRows}
             selectedHandle={selectedHandle}
-            timelineScope={timelineScope}
             updating={handlesOverviewQuery.isFetching}
           />
           <div className="watchlist-dossier">
@@ -118,13 +113,9 @@ export function WatchlistPage({
                 <div className="watchlist-section-head">
                   <span>source timeline</span>
                   <h3 id="watchlist-evidence-title">Handle intelligence</h3>
-                  <p>{timelineLeadCopy(timelineScope, overview)}</p>
+                  <p>{timelineLeadCopy(overview)}</p>
                 </div>
-                <HandleTimeline
-                  query={timelineQuery}
-                  scope={timelineScope}
-                  onScopeChange={routeState.updateTimelineScope}
-                />
+                <HandleTimeline query={timelineQuery} />
               </section>
 
               <WatchlistInsightRail
@@ -141,15 +132,12 @@ export function WatchlistPage({
   );
 }
 
-function timelineLeadCopy(
-  scope: WatchlistTimelineScope,
-  overview: WatchlistHandleOverviewData | null,
-): string {
+function timelineLeadCopy(overview: WatchlistHandleOverviewData | null): string {
   const count = overview?.metrics.source_event_count ?? 0;
   if (count > 0) {
-    return scope === "signal" ? `${count} structured signals` : `${count} source events`;
+    return `${count} source events`;
   }
-  return scope === "signal" ? "Structured social-event output." : "Raw source stream.";
+  return "Raw source stream.";
 }
 
 function mergeConfiguredHandleRows(

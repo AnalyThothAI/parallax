@@ -5,6 +5,9 @@ from typing import Any, cast
 
 from psycopg.types.json import Jsonb
 
+from parallax.platform.db.write_contract import mutation_count, returning_mutation_count
+from parallax.platform.validation import require_nonnegative_int
+
 
 class TokenCaptureTierRepository:
     def __init__(self, conn: Any) -> None:
@@ -69,7 +72,7 @@ class TokenCaptureTierRepository:
     ) -> list[dict[str, Any]]:
         params: dict[str, Any] = {
             "tier": tier,
-            "limit": _required_nonnegative_int(limit, "token_capture_tier_repository_limit_required"),
+            "limit": require_nonnegative_int(limit, error_code="token_capture_tier_repository_limit_required"),
         }
         exclude_filter = ""
         if exclude_keys:
@@ -165,10 +168,10 @@ class TokenCaptureTierRepository:
             """,
             {"active_keys": Jsonb(list(active_keys)), "updated_at_ms": int(updated_at_ms)},
         )
-        return _cursor_rowcount(cursor)
+        return mutation_count(cursor, error_code="token_capture_tier_repository_rowcount_invalid")
 
     def live_target_rows(self, *, limit: int) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(limit, "token_capture_tier_repository_limit_required")
+        parsed_limit = require_nonnegative_int(limit, error_code="token_capture_tier_repository_limit_required")
         rows = self._conn.execute(
             """
             SELECT
@@ -206,30 +209,6 @@ class TokenCaptureTierRepository:
         return [dict(row) for row in rows]
 
 
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("token_capture_tier_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("token_capture_tier_repository_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("token_capture_tier_repository_rowcount_invalid")
-    return rowcount
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
 def _single_returning_changed(cursor: Any, row: Any | None) -> bool:
-    count = _cursor_rowcount(cursor)
-    if count not in (0, 1):
-        raise TypeError("token_capture_tier_repository_rowcount_invalid")
-    if count != (1 if row is not None else 0):
-        raise TypeError("token_capture_tier_repository_rowcount_invalid")
+    returning_mutation_count(cursor, row, error_code="token_capture_tier_repository_rowcount_invalid")
     return row is not None and bool(row.get("changed", True))

@@ -3,16 +3,14 @@ from __future__ import annotations
 import asyncio
 from typing import Any
 
-from parallax.app.runtime.worker_base import WorkerBase
 from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled_worker
-from parallax.app.runtime.worker_manifest import manifest_names_for_factory
-from parallax.domains.account_quality.read_models.account_alert_service import AccountAlertService
 from parallax.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from parallax.domains.notifications.runtime.notification_worker import NotificationWorker
+from parallax.domains.notifications.services.account_alert_service import AccountAlertService
 from parallax.domains.notifications.services.notification_rules import NotificationRuleEngine
 from parallax.platform.config.settings import Settings
-
-WORKER_KEYS = manifest_names_for_factory("notifications.py")
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.validation import require_nonnegative_float
 
 
 def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerBase]:
@@ -26,14 +24,12 @@ def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
     )
 
     if not notifications_enabled:
-        disabled: dict[str, WorkerBase] = {}
-        if workers.notification_rule.enabled:
-            disabled["notification_rule"] = disabled_worker(ctx, "notification_rule")
-        if workers.notification_delivery.enabled:
-            disabled["notification_delivery"] = disabled_worker(ctx, "notification_delivery")
-        return disabled
+        return {
+            "notification_rule": disabled_worker(ctx, "notification_rule"),
+            "notification_delivery": disabled_worker(ctx, "notification_delivery"),
+        }
 
-    if workers.notification_rule.enabled:
+    if workers.notification_rule.enabled and ctx.hub is not None:
         constructed["notification_rule"] = NotificationWorker(
             name="notification_rule",
             settings=workers.notification_rule,
@@ -43,8 +39,13 @@ def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
             publisher=ctx.hub,
             delivery_channels=ctx.settings.notifications.channels,
             delivery_max_attempts=workers.notification_delivery.max_attempts,
+            retention_days=ctx.settings.notifications.retention_days,
             delivery_wake=delivery_wake,
         )
+    elif workers.notification_rule.enabled:
+        constructed["notification_rule"] = disabled_worker(ctx, "notification_rule")
+    else:
+        constructed["notification_rule"] = disabled_worker(ctx, "notification_rule")
     if workers.notification_delivery.enabled and delivery_channels_enabled:
         constructed["notification_delivery"] = NotificationDeliveryWorker(
             name="notification_delivery",
@@ -56,6 +57,8 @@ def construct_notification_workers(ctx: WorkerFactoryContext) -> dict[str, Worke
         )
     elif workers.notification_delivery.enabled:
         constructed["notification_delivery"] = disabled_worker(ctx, "notification_delivery")
+    else:
+        constructed["notification_delivery"] = disabled_worker(ctx, "notification_delivery")
 
     return constructed
 
@@ -65,7 +68,7 @@ def _notification_rule_engine(settings: Settings, repos: Any) -> NotificationRul
         settings=settings,
         evidence=repos.evidence,
         account_alerts=AccountAlertService(repos.signals),
-        news=repos.news,
+        news=repos.news_pages,
     )
 
 
@@ -77,7 +80,10 @@ class _LocalWakeWaiter:
         self._event.set()
 
     async def async_wait(self, timeout: float) -> bool:  # noqa: ASYNC109 - mirrors WakeWaiter.async_wait(timeout).
-        timeout_seconds = _nonnegative_timeout_seconds(timeout)
+        timeout_seconds = require_nonnegative_float(
+            timeout,
+            error_code="wake_waiter_timeout_seconds_required",
+        )
         try:
             await asyncio.wait_for(self._event.wait(), timeout=timeout_seconds)
         except TimeoutError:
@@ -87,9 +93,3 @@ class _LocalWakeWaiter:
 
     def close(self) -> None:
         self._event.set()
-
-
-def _nonnegative_timeout_seconds(value: Any) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
-        raise ValueError("wake_waiter_timeout_seconds_required")
-    return float(value)

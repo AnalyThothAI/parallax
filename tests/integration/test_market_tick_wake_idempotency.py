@@ -89,18 +89,17 @@ def test_market_tick_current_dirty_claim_token_protects_reenqueued_work(tmp_path
     try:
         migrate(conn)
         repo = MarketTickCurrentDirtyTargetRepository(conn)
-        repo.enqueue_targets([target], reason="market_tick_written", now_ms=NOW_MS, commit=True)
+        repo.enqueue_targets([target], reason="market_tick_written", now_ms=NOW_MS)
 
         old_claim = repo.claim_due(
             limit=1,
             now_ms=NOW_MS + 1,
             lease_ms=60_000,
             lease_owner="worker-a",
-            commit=True,
         )[0]
-        repo.enqueue_targets([target], reason="market_tick_written", now_ms=NOW_MS + 2, commit=True)
+        repo.enqueue_targets([target], reason="market_tick_written", now_ms=NOW_MS + 2)
 
-        assert repo.mark_done([old_claim], now_ms=NOW_MS + 3, commit=True) == 0
+        assert repo.mark_done([old_claim], now_ms=NOW_MS + 3) == 0
         assert (
             repo.mark_error(
                 [old_claim],
@@ -109,7 +108,6 @@ def test_market_tick_current_dirty_claim_token_protects_reenqueued_work(tmp_path
                 max_attempts=3,
                 worker_name="market_tick_current_projection",
                 now_ms=NOW_MS + 4,
-                commit=True,
             )
             == 0
         )
@@ -119,7 +117,6 @@ def test_market_tick_current_dirty_claim_token_protects_reenqueued_work(tmp_path
             now_ms=NOW_MS + 5,
             lease_ms=60_000,
             lease_owner="worker-b",
-            commit=True,
         )[0]
         assert successor_claim["attempt_count"] == old_claim["attempt_count"] + 1
         assert (
@@ -130,7 +127,6 @@ def test_market_tick_current_dirty_claim_token_protects_reenqueued_work(tmp_path
                 max_attempts=3,
                 worker_name="market_tick_current_projection",
                 now_ms=NOW_MS + 6,
-                commit=True,
             )
             == 1
         )
@@ -140,7 +136,6 @@ def test_market_tick_current_dirty_claim_token_protects_reenqueued_work(tmp_path
                 now_ms=NOW_MS + 7,
                 lease_ms=60_000,
                 lease_owner="worker-c",
-                commit=True,
             )
             == []
         )
@@ -149,7 +144,6 @@ def test_market_tick_current_dirty_claim_token_protects_reenqueued_work(tmp_path
             now_ms=NOW_MS + 30_006,
             lease_ms=60_000,
             lease_owner="worker-c",
-            commit=True,
         )
     finally:
         conn.execute(
@@ -172,15 +166,6 @@ class _DB:
             notification_delivery_stale_running_terminalization_batch_size=100,
         )
 
-    @contextmanager
-    def worker_transaction(self, name: str, **_: Any):
-        with self.conn.transaction():
-            yield repositories_for_connection(
-                self.conn,
-                notification_delivery_running_timeout_ms=300_000,
-                notification_delivery_stale_running_terminalization_batch_size=100,
-            )
-
 
 class _RecordingWakeEmitter:
     def __init__(self) -> None:
@@ -194,7 +179,6 @@ def _poll_settings() -> SimpleNamespace:
     return SimpleNamespace(
         enabled=True,
         interval_seconds=5.0,
-        soft_timeout_seconds=120.0,
         hard_timeout_seconds=180.0,
         batch_size=100,
         concurrency=4,
@@ -205,7 +189,6 @@ def _stream_settings() -> SimpleNamespace:
     return SimpleNamespace(
         enabled=True,
         interval_seconds=5.0,
-        soft_timeout_seconds=120.0,
         hard_timeout_seconds=180.0,
         subscription_limit=100,
         stream_cycle_seconds=1.0,

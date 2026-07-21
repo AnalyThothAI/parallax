@@ -17,10 +17,10 @@ def test_rebuild_recent_token_intents_uses_current_builder_policy():
             text="You’ll own $NOTHING and be happy.",
             reference_text="Could be something, but you will own solana:F7pB3ZdfBnyFw2LRHydWEn9BmhEa5XihXLjhySFRpump",
         )
-        EvidenceRepository(conn).insert_event_without_commit(
-            event_to_row(event, is_watched=False, now_ms=event.received_at_ms)
-        )
-        conn.commit()
+        with conn.transaction():
+            EvidenceRepository(conn).insert_event_row(
+                event_to_row(event, is_watched=False, now_ms=event.received_at_ms)
+            )
 
         result = rebuild_recent_token_intents(
             repos=repositories_for_connection(

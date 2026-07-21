@@ -865,10 +865,11 @@ def _insert_registry_asset(conn) -> None:
 
 
 def _insert_token_intent(conn, *, intent_id: str, event_id: str) -> None:
-    EvidenceRepository(conn).insert_event(
-        make_event(event_id, text="$BOV", received_at_ms=1_778_000_000_000),
-        is_watched=True,
-    )
+    with conn.transaction():
+        EvidenceRepository(conn).insert_event(
+            make_event(event_id, text="$BOV", received_at_ms=1_778_000_000_000),
+            is_watched=True,
+        )
     conn.execute(
         """
         INSERT INTO token_intents(

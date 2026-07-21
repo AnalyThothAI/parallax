@@ -6,6 +6,7 @@ from typing import Any
 
 from parallax.domains.evidence.interfaces import decode_event_row
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
+from parallax.platform.validation import require_nonnegative_int
 
 _MIN_TRIGRAM_QUERY_LEN = 4
 _TRIGRAM_THRESHOLD = 0.18
@@ -112,7 +113,7 @@ class SearchEventsQuery:
         route_limit: int,
         since_ms: int,
     ) -> list[dict[str, Any]]:
-        limit = _required_nonnegative_int(route_limit, "search_events_route_limit_required")
+        limit = require_nonnegative_int(route_limit, error_code="search_events_route_limit_required")
         if limit <= 0:
             return []
         hits: list[dict[str, Any]] = []
@@ -145,7 +146,7 @@ class SearchEventsQuery:
         after: dict[str, Any] | None = None,
         since_ms: int,
     ) -> list[dict[str, Any]]:
-        row_limit = _required_nonnegative_int(limit, "search_events_target_page_limit_required")
+        row_limit = require_nonnegative_int(limit, error_code="search_events_target_page_limit_required")
         if row_limit <= 0:
             return []
         resolved_targets = [
@@ -244,7 +245,7 @@ class SearchEventsQuery:
         limit: int,
         since_ms: int,
     ) -> list[dict[str, Any]]:
-        row_limit = _required_nonnegative_int(limit, "search_events_target_limit_required")
+        row_limit = require_nonnegative_int(limit, error_code="search_events_target_limit_required")
         if row_limit <= 0:
             return []
         values_sql = ",".join("(%s, %s, %s)" for _ in target_candidates)
@@ -308,7 +309,7 @@ class SearchEventsQuery:
         after: dict[str, Any] | None,
         since_ms: int,
     ) -> list[dict[str, Any]]:
-        row_limit = _required_nonnegative_int(limit, "search_events_target_page_limit_required")
+        row_limit = require_nonnegative_int(limit, error_code="search_events_target_page_limit_required")
         if row_limit <= 0:
             return []
         values_sql = ",".join("(%s, %s, %s)" for _ in target_candidates)
@@ -404,7 +405,7 @@ class SearchEventsQuery:
         return [_hit(row) for row in rows]
 
     def _handle_hits(self, handle: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
-        row_limit = _required_nonnegative_int(limit, "search_events_route_limit_required")
+        row_limit = require_nonnegative_int(limit, error_code="search_events_route_limit_required")
         if row_limit <= 0:
             return []
         rows = self.conn.execute(
@@ -430,7 +431,7 @@ class SearchEventsQuery:
         return [_hit(row) for row in rows]
 
     def _lexical_hits(self, query: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
-        row_limit = _required_nonnegative_int(limit, "search_events_route_limit_required")
+        row_limit = require_nonnegative_int(limit, error_code="search_events_route_limit_required")
         if row_limit <= 0:
             return []
         rows = self.conn.execute(
@@ -472,7 +473,7 @@ class SearchEventsQuery:
         return [_hit(row) for row in rows]
 
     def _trigram_hits(self, query: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
-        row_limit = _required_nonnegative_int(limit, "search_events_route_limit_required")
+        row_limit = require_nonnegative_int(limit, error_code="search_events_route_limit_required")
         if row_limit <= 0:
             return []
         rows = self.conn.execute(
@@ -501,7 +502,7 @@ class SearchEventsQuery:
         return [_hit(row) for row in rows]
 
     def _substring_hits(self, query: str, *, watched_only: bool, limit: int, since_ms: int) -> list[dict[str, Any]]:
-        row_limit = _required_nonnegative_int(limit, "search_events_route_limit_required")
+        row_limit = require_nonnegative_int(limit, error_code="search_events_route_limit_required")
         if row_limit <= 0:
             return []
         rows = self.conn.execute(
@@ -594,14 +595,6 @@ def _safe_substring_query(query: str) -> bool:
 def _substring_pattern(query: str) -> str:
     escaped = query.strip().replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_")
     return f"%{escaped}%"
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _safe_trigram_query(query: str) -> bool:

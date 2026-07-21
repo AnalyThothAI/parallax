@@ -12,46 +12,6 @@ SOURCE_URL = "https://gmgn.ai/external-res/token-alpha.png"
 SHA256_HEX = "a" * 64
 
 
-@pytest.mark.parametrize(
-    "operation",
-    [
-        pytest.param(
-            lambda repo: repo.upsert_pending_sources([_source_row()], now_ms=NOW_MS),
-            id="upsert_pending_sources",
-        ),
-        pytest.param(
-            lambda repo: repo.mark_ready(
-                SOURCE_URL,
-                media_type="image/png",
-                file_extension=".png",
-                content_sha256=SHA256_HEX,
-                byte_size=123,
-                storage_path="token-alpha.png",
-                now_ms=NOW_MS,
-            ),
-            id="mark_ready",
-        ),
-        pytest.param(
-            lambda repo: repo.mark_error(SOURCE_URL, error="fetch failed", now_ms=NOW_MS, retry_ms=30_000),
-            id="mark_error",
-        ),
-        pytest.param(
-            lambda repo: repo.mark_unsupported(SOURCE_URL, error="unsupported svg", now_ms=NOW_MS),
-            id="mark_unsupported",
-        ),
-    ],
-)
-def test_token_image_asset_mutations_require_connection_transaction_before_sql_when_committing(
-    operation: Callable[[TokenImageAssetRepository], object],
-) -> None:
-    conn = _NoTransactionConnection(results=[])
-
-    with pytest.raises(RuntimeError, match="token_image_asset_repository_transaction_required"):
-        operation(TokenImageAssetRepository(conn))
-
-    assert conn.sql == []
-
-
 @pytest.mark.parametrize("retry_ms", [0, -1, True, "30000"])
 def test_token_image_asset_mark_error_rejects_malformed_retry_before_transaction(retry_ms: object) -> None:
     conn = _NoTransactionConnection(results=[])
@@ -87,54 +47,11 @@ def test_token_image_asset_mark_error_rejects_malformed_retry_before_transaction
             id="mark_ready",
         ),
         pytest.param(
-            lambda repo: repo.mark_error(SOURCE_URL, error="fetch failed", now_ms=NOW_MS, retry_ms=30_000),
-            id="mark_error",
-        ),
-        pytest.param(
-            lambda repo: repo.mark_unsupported(SOURCE_URL, error="unsupported svg", now_ms=NOW_MS),
-            id="mark_unsupported",
-        ),
-    ],
-)
-def test_token_image_asset_commit_owned_writes_use_connection_transaction_without_manual_commit(
-    operation: Callable[[TokenImageAssetRepository], object],
-) -> None:
-    conn = _ScriptedConnection(results=[{"image_id": "image-1", "status": "ready", "source_url": SOURCE_URL}])
-
-    operation(TokenImageAssetRepository(conn))
-
-    assert conn.transaction_commits == 1
-    assert conn.manual_commits == 0
-    assert conn.sql_depths == [1]
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        pytest.param(
-            lambda repo: repo.upsert_pending_sources([_source_row()], now_ms=NOW_MS, commit=False),
-            id="upsert_pending_sources",
-        ),
-        pytest.param(
-            lambda repo: repo.mark_ready(
-                SOURCE_URL,
-                media_type="image/png",
-                file_extension=".png",
-                content_sha256=SHA256_HEX,
-                byte_size=123,
-                storage_path="token-alpha.png",
-                now_ms=NOW_MS,
-                commit=False,
-            ),
-            id="mark_ready",
-        ),
-        pytest.param(
             lambda repo: repo.mark_error(
                 SOURCE_URL,
                 error="fetch failed",
                 now_ms=NOW_MS,
                 retry_ms=30_000,
-                commit=False,
             ),
             id="mark_error",
         ),
@@ -143,7 +60,6 @@ def test_token_image_asset_commit_owned_writes_use_connection_transaction_withou
                 SOURCE_URL,
                 error="unsupported svg",
                 now_ms=NOW_MS,
-                commit=False,
             ),
             id="mark_unsupported",
         ),
@@ -157,7 +73,7 @@ def test_token_image_asset_lifecycle_writes_require_cursor_rowcount(
         omit_rowcount=True,
     )
 
-    with pytest.raises(TypeError, match="token_image_asset_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="token_image_asset_repository_rowcount_invalid"):
         operation(TokenImageAssetRepository(conn))
 
 
@@ -166,7 +82,7 @@ def test_token_image_asset_lifecycle_writes_require_cursor_rowcount(
     "operation",
     [
         pytest.param(
-            lambda repo: repo.upsert_pending_sources([_source_row()], now_ms=NOW_MS, commit=False),
+            lambda repo: repo.upsert_pending_sources([_source_row()], now_ms=NOW_MS),
             id="upsert_pending_sources",
         ),
         pytest.param(
@@ -178,7 +94,6 @@ def test_token_image_asset_lifecycle_writes_require_cursor_rowcount(
                 byte_size=123,
                 storage_path="token-alpha.png",
                 now_ms=NOW_MS,
-                commit=False,
             ),
             id="mark_ready",
         ),
@@ -188,7 +103,6 @@ def test_token_image_asset_lifecycle_writes_require_cursor_rowcount(
                 error="fetch failed",
                 now_ms=NOW_MS,
                 retry_ms=30_000,
-                commit=False,
             ),
             id="mark_error",
         ),
@@ -197,7 +111,6 @@ def test_token_image_asset_lifecycle_writes_require_cursor_rowcount(
                 SOURCE_URL,
                 error="unsupported svg",
                 now_ms=NOW_MS,
-                commit=False,
             ),
             id="mark_unsupported",
         ),
@@ -230,7 +143,7 @@ def test_upsert_pending_sources_returning_count_must_match_returned_row(
     conn = _ScriptedConnection(results=[result], rowcount=rowcount)
 
     with pytest.raises(TypeError, match="token_image_asset_repository_rowcount_invalid"):
-        TokenImageAssetRepository(conn).upsert_pending_sources([_source_row()], now_ms=NOW_MS, commit=False)
+        TokenImageAssetRepository(conn).upsert_pending_sources([_source_row()], now_ms=NOW_MS)
 
 
 def _source_row() -> dict[str, Any]:

@@ -3,10 +3,8 @@ from __future__ import annotations
 import hashlib
 import json
 import time
-from collections.abc import Callable
-from contextlib import AbstractContextManager
 from dataclasses import asdict
-from typing import Any, cast
+from typing import Any
 
 from psycopg.types.json import Jsonb
 
@@ -14,15 +12,14 @@ from parallax.domains.evidence.types.entity import EVM_QUERY_CHAINS, normalize_c
 from parallax.domains.evidence.types.tweet_identity import canonical_tweet_url, logical_dedup_key
 from parallax.domains.evidence.types.tweet_text import build_text_projection
 from parallax.domains.evidence.types.twitter_event import TwitterEvent
-from parallax.platform.db.postgres_client import require_transaction, transaction
+from parallax.platform.db.postgres_client import require_transaction
+from parallax.platform.db.write_contract import mutation_count
+from parallax.platform.validation import require_nonnegative_int, require_positive_int
 
 
 class EvidenceRepository:
     def __init__(self, conn: Any) -> None:
         self.conn = conn
-
-    def unit_of_work(self) -> AbstractContextManager[None]:
-        return transaction(self.conn)
 
     def require_transaction(self, *, operation: str) -> None:
         require_transaction(self.conn, operation=operation)
@@ -34,33 +31,34 @@ class EvidenceRepository:
         channel: str,
         received_at_ms: int,
         raw_payload_json: str,
-        commit: bool = True,
     ) -> bool:
-        def _write() -> bool:
-            sanitized_payload = _sanitize_postgres_value(raw_payload_json)
-            payload_hash = hashlib.sha256(sanitized_payload.encode("utf-8")).hexdigest()
-            frame_id = f"{source}:{channel}:{payload_hash}"
-            cursor = self.conn.execute(
-                """
-                INSERT INTO raw_frames(
-                  frame_id, source, channel, received_at_ms, payload_hash, raw_payload_json, created_at_ms
-                )
-                VALUES (%s, %s, %s, %s, %s, %s, %s)
-                ON CONFLICT(frame_id) DO NOTHING
-                """,
-                (frame_id, source, channel, received_at_ms, payload_hash, sanitized_payload, _now_ms()),
+        require_transaction(self.conn, operation="insert_raw_frame")
+        sanitized_payload = _sanitize_postgres_value(raw_payload_json)
+        payload_hash = hashlib.sha256(sanitized_payload.encode("utf-8")).hexdigest()
+        frame_id = f"{source}:{channel}:{payload_hash}"
+        cursor = self.conn.execute(
+            """
+            INSERT INTO raw_frames(
+              frame_id, source, channel, received_at_ms, payload_hash, raw_payload_json, created_at_ms
             )
-            return _single_rowcount(cursor) == 1
-
-        return _run_repository_write(self.conn, commit, _write)
+            VALUES (%s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(frame_id) DO NOTHING
+            """,
+            (frame_id, source, channel, received_at_ms, payload_hash, sanitized_payload, _now_ms()),
+        )
+        rowcount = mutation_count(cursor, error_code="evidence_repository_rowcount_invalid")
+        if rowcount not in (0, 1):
+            raise TypeError("evidence_repository_rowcount_invalid")
+        return rowcount == 1
 
     def insert_event(self, event: TwitterEvent, *, is_watched: bool) -> bool:
+        require_transaction(self.conn, operation="insert_event")
         now_ms = _now_ms()
         row = event_to_row(event, is_watched=is_watched, now_ms=now_ms)
-        with transaction(self.conn):
-            return self.insert_event_without_commit(row)
+        return self.insert_event_row(row)
 
-    def insert_event_without_commit(self, row: dict[str, Any]) -> bool:
+    def insert_event_row(self, row: dict[str, Any]) -> bool:
+        require_transaction(self.conn, operation="insert_event_row")
         cursor = self.conn.execute(
             """
             INSERT INTO events(
@@ -85,7 +83,10 @@ class EvidenceRepository:
             """,
             row,
         )
-        return _single_rowcount(cursor) == 1
+        rowcount = mutation_count(cursor, error_code="evidence_repository_rowcount_invalid")
+        if rowcount not in (0, 1):
+            raise TypeError("evidence_repository_rowcount_invalid")
+        return rowcount == 1
 
     def event_exists(self, *, event_id: str, logical_dedup_key: str) -> bool:
         row = self.conn.execute(
@@ -110,7 +111,7 @@ class EvidenceRepository:
         since_ms: int | None = None,
         watched_only: bool = True,
     ) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(limit, "evidence_recent_events_limit_required")
+        parsed_limit = require_nonnegative_int(limit, error_code="evidence_recent_events_limit_required")
         if parsed_limit == 0:
             return []
         clauses: list[str] = []
@@ -159,10 +160,10 @@ class EvidenceRepository:
         since_ms: int | None = None,
         watched_only: bool = True,
     ) -> list[dict[str, Any]]:
-        parsed_limit = _required_positive_int(limit, "evidence_token_filter_limit_required")
-        parsed_per_filter_limit = _required_positive_int(
+        parsed_limit = require_positive_int(limit, error_code="evidence_token_filter_limit_required")
+        parsed_per_filter_limit = require_positive_int(
             per_filter_limit,
-            "evidence_token_filter_per_filter_limit_required",
+            error_code="evidence_token_filter_per_filter_limit_required",
         )
 
         filter_kinds, filter_chains, filter_values = _token_filter_keysets(cas=cas, symbols=symbols)
@@ -388,48 +389,3 @@ def _json_loads(value: Any, default: Any) -> Any:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _single_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("evidence_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("evidence_repository_rowcount_invalid")
-    if rowcount not in (0, 1):
-        raise TypeError("evidence_repository_rowcount_invalid")
-    return rowcount
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction_context = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("evidence_repository_transaction_required") from exc
-    if not callable(transaction_context):
-        raise RuntimeError("evidence_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction_context())
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()

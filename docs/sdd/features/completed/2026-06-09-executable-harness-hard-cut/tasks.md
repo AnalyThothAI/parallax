@@ -1,7 +1,7 @@
 # Tasks — Executable Harness Hard Cut
 
 **Status**: Superseded
-**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
+**Superseded by**: `docs/sdd/features/completed/2026-06-11-executable-harness-followup/`
 **Owning plan**: `docs/sdd/features/completed/2026-06-09-executable-harness-hard-cut/plan.md`
 **Worktree**: `.worktrees/agent-factory-eval-harness`
 **Branch**: `codex/agent-factory-eval-harness`

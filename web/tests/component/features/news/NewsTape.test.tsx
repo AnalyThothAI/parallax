@@ -158,14 +158,14 @@ const rowWithReadyWatchAgentPushBlocked: NewsRow = {
   signal: newsSignalEnvelope(
     {
       source: "agent",
-      provider: "news_item_brief",
+      provider: "news_story_brief",
       status: "ready",
       direction: "bullish",
       label_zh: "利好",
       signal: "long",
       title_zh: "Provider title",
       summary_zh: "Agent summary remains visible.",
-      method: "news_item_brief",
+      method: "news_story_brief",
     },
     {
       alert_eligibility: {

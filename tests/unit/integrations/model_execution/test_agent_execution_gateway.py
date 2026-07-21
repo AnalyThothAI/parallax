@@ -145,18 +145,6 @@ def _policy(*, timeout_seconds: float = 10, failure_threshold: int = 5) -> Agent
     )
 
 
-def _parent_child_policy() -> AgentRuntimePolicy:
-    return AgentRuntimePolicy(
-        defaults=AgentRuntimeDefaultsPolicy(model="local-json-object-model"),
-        global_max_concurrency=2,
-        global_rpm_limit=1000,
-        lanes={
-            "test.parent": AgentLanePolicy(max_concurrency=2, timeout_seconds=10),
-            "test.child": AgentLanePolicy(max_concurrency=1, timeout_seconds=10),
-        },
-    )
-
-
 def _lane_rpm_policy() -> AgentRuntimePolicy:
     return AgentRuntimePolicy(
         defaults=AgentRuntimeDefaultsPolicy(model="local-json-object-model"),
@@ -326,69 +314,6 @@ def test_execute_uses_caller_reservation_without_double_acquiring_lane_capacity(
         snapshot_after_release = gateway.status_snapshot()
         assert snapshot_after_release["global_in_flight"] == 0
         assert snapshot_after_release["lanes"]["test.lane"]["in_flight"] == 0
-
-    asyncio.run(scenario())
-
-
-def test_parent_pipeline_reservation_reuses_global_slot_for_child_stage() -> None:
-    async def scenario() -> None:
-        llm_gateway = FakeLLMGateway()
-        gateway = _gateway(llm_gateway=llm_gateway, policy=_parent_child_policy())
-        parent = gateway.try_reserve(
-            "test.parent",
-            child_lanes=("test.child",),
-            scope="parent",
-        )
-
-        try:
-            assert parent.acquired is True
-            result = await gateway.execute(
-                _spec("test.child"),
-                parent_reservation=parent,
-            )
-            assert result.audit.status == AgentExecutionStatus.DONE
-            assert gateway.status_snapshot()["global_in_flight"] == 1
-        finally:
-            await parent.release()
-
-        snapshot = gateway.status_snapshot()
-        assert snapshot["global_in_flight"] == 0
-        assert snapshot["lanes"]["test.parent"]["in_flight"] == 0
-        assert snapshot["lanes"]["test.child"]["in_flight"] == 0
-        assert len(llm_gateway.completions.calls) == 1
-
-    asyncio.run(scenario())
-
-
-def test_parent_pipeline_reservation_reserves_child_lane_capacity_before_claim() -> None:
-    async def scenario() -> None:
-        gateway = _gateway(policy=_parent_child_policy())
-        first = gateway.try_reserve(
-            "test.parent",
-            child_lanes=("test.child",),
-            scope="parent",
-        )
-        try:
-            second = gateway.try_reserve(
-                "test.parent",
-                child_lanes=("test.child",),
-                scope="parent",
-            )
-
-            assert first.acquired is True
-            assert second.acquired is False
-            assert second.reason is AgentExecutionErrorClass.CAPACITY_DENIED
-            snapshot = gateway.status_snapshot()
-            assert snapshot["global_in_flight"] == 1
-            assert snapshot["lanes"]["test.parent"]["in_flight"] == 1
-            assert snapshot["lanes"]["test.child"]["in_flight"] == 1
-        finally:
-            await first.release()
-
-        snapshot = gateway.status_snapshot()
-        assert snapshot["global_in_flight"] == 0
-        assert snapshot["lanes"]["test.parent"]["in_flight"] == 0
-        assert snapshot["lanes"]["test.child"]["in_flight"] == 0
 
     asyncio.run(scenario())
 

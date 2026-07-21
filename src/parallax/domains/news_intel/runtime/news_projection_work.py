@@ -1,13 +1,10 @@
 from __future__ import annotations
 
-from collections.abc import Iterable, Mapping, Sequence
+from collections.abc import Iterable, Mapping
 from typing import Any
 
 PAGE_PROJECTION = "page"
-ITEM_BRIEF_INPUT = "brief_input"
 STORY_BRIEF_INPUT = "story_brief"
-SOURCE_QUALITY = "source_quality"
-SOURCE_QUALITY_REFRESH_WINDOW = "_refresh"
 
 
 def enqueue_page_reprojection(
@@ -17,14 +14,13 @@ def enqueue_page_reprojection(
     reason: str,
     now_ms: int,
     source_watermark_ms_by_news_item_id: Mapping[str, int] | None = None,
-    commit: bool = True,
 ) -> int:
     watermarks = dict(source_watermark_ms_by_news_item_id or {})
     valid_news_item_ids = _servable_news_item_ids(repos, news_item_ids)
     targets = [
         _news_item_target(PAGE_PROJECTION, news_item_id, watermarks=watermarks) for news_item_id in valid_news_item_ids
     ]
-    return _enqueue(repos, targets, reason=reason, now_ms=now_ms, commit=commit)
+    return _enqueue(repos, targets, reason=reason, now_ms=now_ms)
 
 
 def enqueue_story_brief_work(
@@ -35,7 +31,6 @@ def enqueue_story_brief_work(
     now_ms: int,
     priority_by_story_key: Mapping[str, int] | None = None,
     source_watermark_ms_by_story_key: Mapping[str, int] | None = None,
-    commit: bool = True,
 ) -> int:
     priorities = dict(priority_by_story_key or {})
     watermarks = dict(source_watermark_ms_by_story_key or {})
@@ -50,109 +45,23 @@ def enqueue_story_brief_work(
         if story_key in priorities:
             target["priority"] = _priority_for_key(priorities, story_key)
         targets.append(target)
-    return _enqueue(repos, targets, reason=reason, now_ms=now_ms, commit=commit)
-
-
-def enqueue_source_quality_refresh(
-    repos: Any,
-    *,
-    source_ids: Iterable[str],
-    reason: str,
-    now_ms: int,
-    due_at_ms: int | None = None,
-    commit: bool = True,
-) -> int:
-    due_at = _optional_due_at_ms(due_at_ms)
-    targets = [
-        {
-            "projection_name": SOURCE_QUALITY,
-            "target_kind": "source",
-            "target_id": source_id,
-            "window": SOURCE_QUALITY_REFRESH_WINDOW,
-        }
-        for source_id in _unique(source_ids)
-    ]
-    if not targets:
-        return 0
-    kwargs: dict[str, Any] = {}
-    if due_at is not None:
-        kwargs["due_at_ms"] = due_at
-    return int(
-        repos.news_projection_dirty_targets.enqueue_targets(
-            targets,
-            reason=reason,
-            now_ms=now_ms,
-            commit=commit,
-            **kwargs,
-        )
-    )
-
-
-def enqueue_source_quality_window_work(
-    repos: Any,
-    *,
-    source_windows: Iterable[tuple[str, str]],
-    reason: str,
-    now_ms: int,
-    due_at_ms: int | None = None,
-    source_watermark_ms_by_source_window: Mapping[tuple[str, str], int] | None = None,
-    commit: bool = True,
-) -> int:
-    due_at = _optional_due_at_ms(due_at_ms)
-    watermarks = dict(source_watermark_ms_by_source_window or {})
-    targets = [
-        {
-            "projection_name": SOURCE_QUALITY,
-            "target_kind": "source",
-            "target_id": source_id,
-            "window": window,
-            "source_watermark_ms": _watermark_for_key(watermarks, (source_id, window)),
-            **({"due_at_ms": due_at} if due_at is not None else {}),
-        }
-        for source_id, window in _unique_pairs(source_windows)
-    ]
-    if not targets:
-        return 0
-    kwargs: dict[str, Any] = {}
-    if due_at is not None:
-        kwargs["due_at_ms"] = due_at
-    return int(
-        repos.news_projection_dirty_targets.enqueue_targets(
-            targets,
-            reason=reason,
-            now_ms=now_ms,
-            commit=commit,
-            **kwargs,
-        )
-    )
+    return _enqueue(repos, targets, reason=reason, now_ms=now_ms)
 
 
 def claim_page_projection_work(repos: Any, **kwargs: Any) -> list[dict[str, Any]]:
     return _claim(repos, projection_name=PAGE_PROJECTION, **kwargs)
 
 
-def claim_item_brief_work(repos: Any, **kwargs: Any) -> list[dict[str, Any]]:
-    return _claim(repos, projection_name=ITEM_BRIEF_INPUT, **kwargs)
-
-
 def claim_story_brief_work(repos: Any, **kwargs: Any) -> list[dict[str, Any]]:
     return _claim(repos, projection_name=STORY_BRIEF_INPUT, **kwargs)
-
-
-def claim_source_quality_work(repos: Any, **kwargs: Any) -> list[dict[str, Any]]:
-    return _claim(repos, projection_name=SOURCE_QUALITY, **kwargs)
-
-
-def queue_item_brief_depth(repos: Any, *, now_ms: int) -> int:
-    return int(repos.news_projection_dirty_targets.queue_depth(now_ms=now_ms, projection_name=ITEM_BRIEF_INPUT))
 
 
 def queue_story_brief_depth(repos: Any, *, now_ms: int) -> int:
     return int(repos.news_projection_dirty_targets.queue_depth(now_ms=now_ms, projection_name=STORY_BRIEF_INPUT))
 
 
-def mark_work_done(repos: Any, targets: Iterable[Mapping[str, Any]], *, now_ms: int, commit: bool = True) -> int:
-    return int(repos.news_projection_dirty_targets.mark_done(targets, now_ms=now_ms, commit=commit))
+def mark_work_done(repos: Any, targets: Iterable[Mapping[str, Any]], *, now_ms: int) -> int:
+    return int(repos.news_projection_dirty_targets.mark_done(targets, now_ms=now_ms))
 
 
 def mark_work_error(
@@ -165,28 +74,10 @@ def mark_work_error(
     max_attempts: int,
     worker_name: str,
     count_attempt: bool = True,
-    commit: bool = True,
 ) -> int:
     target_rows = [dict(target) for target in targets]
     if not target_rows:
         return 0
-    if commit:
-        with repos.transaction():
-            return mark_work_error(
-                repos,
-                target_rows,
-                error=error,
-                retry_ms=retry_ms,
-                now_ms=now_ms,
-                max_attempts=max_attempts,
-                worker_name=worker_name,
-                count_attempt=count_attempt,
-                commit=False,
-            )
-    parsed_max_attempts = _required_positive_int(
-        max_attempts,
-        error_name="news_projection_dirty_target_max_attempts_required",
-    )
     parsed_worker_name = _required_worker_name(worker_name)
     if not count_attempt:
         return int(
@@ -196,11 +87,10 @@ def mark_work_error(
                 retry_ms=retry_ms,
                 now_ms=now_ms,
                 count_attempt=False,
-                commit=False,
             )
         )
-    retry_targets = [target for target in target_rows if _completion_attempt_count(target) < parsed_max_attempts]
-    exhausted_targets = [target for target in target_rows if _completion_attempt_count(target) >= parsed_max_attempts]
+    retry_targets = [target for target in target_rows if _completion_attempt_count(target) < max_attempts]
+    exhausted_targets = [target for target in target_rows if _completion_attempt_count(target) >= max_attempts]
     changed = 0
     if retry_targets:
         changed += int(
@@ -210,7 +100,6 @@ def mark_work_error(
                 retry_ms=retry_ms,
                 now_ms=now_ms,
                 count_attempt=True,
-                commit=False,
             )
         )
     if exhausted_targets:
@@ -221,20 +110,9 @@ def mark_work_error(
                 final_reason=_retry_budget_exhausted_reason(error),
                 final_reason_bucket="retry_budget_exhausted",
                 now_ms=now_ms,
-                commit=False,
             )
         )
     return changed
-
-
-def item_brief_news_item_ids(rows: Iterable[Mapping[str, Any]]) -> list[str]:
-    return _target_ids(
-        rows,
-        projection_name=ITEM_BRIEF_INPUT,
-        target_kind="news_item",
-        require_empty_window=True,
-        error_prefix="news_item_brief_claim",
-    )
 
 
 def story_brief_story_keys(rows: Iterable[Mapping[str, Any]]) -> list[str]:
@@ -247,47 +125,11 @@ def story_brief_story_keys(rows: Iterable[Mapping[str, Any]]) -> list[str]:
     )
 
 
-def source_quality_claim_windows(
-    rows: Iterable[Mapping[str, Any]],
-    *,
-    configured_windows: Sequence[str],
-) -> list[tuple[str, str]]:
-    configured = tuple(_unique(str(window).strip().lower() for window in configured_windows if str(window).strip()))
-    result: list[tuple[str, str]] = []
-    seen: set[tuple[str, str]] = set()
-    for row in rows:
-        _require_claim_text(
-            row,
-            field="projection_name",
-            expected=SOURCE_QUALITY,
-            error_prefix="news_source_quality_projection_claim",
-        )
-        _require_claim_text(
-            row,
-            field="target_kind",
-            expected="source",
-            error_prefix="news_source_quality_projection_claim",
-        )
-        source_id = _require_claim_text(
-            row,
-            field="target_id",
-            error_prefix="news_source_quality_projection_claim",
-        )
-        window = _require_source_quality_claim_window(row)
-        windows = configured if window == SOURCE_QUALITY_REFRESH_WINDOW else (window,)
-        for resolved_window in windows:
-            key = (source_id, resolved_window)
-            if key not in seen:
-                seen.add(key)
-                result.append(key)
-    return result
-
-
 def _claim(repos: Any, *, projection_name: str, **kwargs: Any) -> list[dict[str, Any]]:
     return list(repos.news_projection_dirty_targets.claim_due(projection_name=projection_name, **kwargs))
 
 
-def _enqueue(repos: Any, targets: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool) -> int:
+def _enqueue(repos: Any, targets: list[dict[str, Any]], *, reason: str, now_ms: int) -> int:
     if not targets:
         return 0
     return int(
@@ -295,7 +137,6 @@ def _enqueue(repos: Any, targets: list[dict[str, Any]], *, reason: str, now_ms: 
             targets,
             reason=reason,
             now_ms=now_ms,
-            commit=commit,
         )
     )
 
@@ -305,7 +146,7 @@ def _servable_news_item_ids(repos: Any, news_item_ids: Iterable[str]) -> list[st
     if not item_ids:
         return []
     try:
-        return list(repos.news.servable_news_item_ids(item_ids))
+        return list(repos.news_items.servable_news_item_ids(item_ids))
     except AttributeError as exc:
         raise ValueError("news repository must expose servable_news_item_ids for projection dirty targets") from exc
 
@@ -341,22 +182,6 @@ def _priority_for_key(priorities: Mapping[str, int], key: str) -> int:
     if not isinstance(value, int) or isinstance(value, bool):
         raise ValueError("news_projection_dirty_target_priority_required")
     return value
-
-
-def _optional_due_at_ms(value: int | None) -> int | None:
-    if value is None:
-        return None
-    if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
-        raise ValueError("news_projection_dirty_target_due_at_ms_required")
-    return value
-
-
-def _required_positive_int(value: Any, *, error_name: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_name)
-    if value <= 0:
-        raise ValueError(error_name)
-    return int(value)
 
 
 def _required_worker_name(value: str) -> str:
@@ -431,17 +256,6 @@ def _require_claim_empty_window(row: Mapping[str, Any], *, error_prefix: str) ->
         raise ValueError(f"{error_prefix}_window_empty_required")
 
 
-def _require_source_quality_claim_window(row: Mapping[str, Any]) -> str:
-    window = _require_claim_text(
-        row,
-        field="window",
-        error_prefix="news_source_quality_projection_claim",
-    ).lower()
-    if not window:
-        raise ValueError("news_source_quality_projection_claim_window_required")
-    return window
-
-
 def _unique(values: Iterable[str]) -> list[str]:
     seen: set[str] = set()
     result: list[str] = []
@@ -451,16 +265,4 @@ def _unique(values: Iterable[str]) -> list[str]:
             continue
         seen.add(item)
         result.append(item)
-    return result
-
-
-def _unique_pairs(values: Iterable[tuple[str, str]]) -> list[tuple[str, str]]:
-    seen: set[tuple[str, str]] = set()
-    result: list[tuple[str, str]] = []
-    for source_id, window in values:
-        key = (str(source_id or ""), str(window or "").strip().lower())
-        if not key[0] or not key[1] or key in seen:
-            continue
-        seen.add(key)
-        result.append(key)
     return result

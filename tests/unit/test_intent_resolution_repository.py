@@ -1,5 +1,9 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
+
+from psycopg import pq
+
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
 from parallax.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
 from parallax.domains.token_intel.services.deterministic_token_resolver import DeterministicResolution
@@ -24,7 +28,6 @@ def test_insert_resolution_serializes_current_row_by_intent_before_superseding()
             decision_time_ms=2_000,
             created_at_ms=2_000,
         ),
-        commit=False,
     )
 
     assert "pg_advisory_xact_lock(hashtextextended(%s, 0))" in conn.statements[0][0]
@@ -46,6 +49,7 @@ class RecordingConn:
             "intent_id": "intent-1",
             "decision_time_ms": 2_000,
         }
+        self.info = SimpleNamespace(transaction_status=pq.TransactionStatus.INTRANS)
 
     def execute(self, sql: str, params: tuple[object, ...] | None = None) -> RecordingResult:
         self.statements.append((sql, params))
@@ -56,9 +60,6 @@ class RecordingConn:
         if "INSERT INTO token_intent_resolutions" in sql:
             return RecordingResult(self.inserted_row, rowcount=1)
         return RecordingResult(None, rowcount=0)
-
-    def commit(self) -> None:
-        raise AssertionError("commit should not be called when commit=False")
 
 
 class RecordingResult:

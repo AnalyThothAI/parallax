@@ -5,7 +5,7 @@ from typing import Any
 
 import pytest
 
-from parallax.app.runtime.worker_result import WorkerResult
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 def test_worker_result_defaults_to_zero_counts_and_empty_notes() -> None:

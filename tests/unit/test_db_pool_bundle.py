@@ -194,7 +194,6 @@ def test_create_builds_distinct_pool_roles(monkeypatch) -> None:
         "gmgn_api",
         "gmgn_worker",
         "gmgn_worker_lock",
-        "gmgn_agent_tools",
         "gmgn_wake",
     ]
     assert created[0]["statement_timeout_seconds"] == 5.0
@@ -203,15 +202,12 @@ def test_create_builds_distinct_pool_roles(monkeypatch) -> None:
     assert created[2]["min_size"] == 0
     assert created[2]["max_size"] == 10
     assert created[2]["statement_timeout_seconds"] == 5.0
-    assert created[3]["statement_timeout_seconds"] == 5.0
-    assert created[3]["read_only"] is True
+    assert created[3]["statement_timeout_seconds"] is None
+    assert created[3]["keepalives"] is True
+    assert created[3]["keepalives_idle"] > 0
+    assert created[3]["keepalives_interval"] > 0
+    assert created[3]["keepalives_count"] > 0
     assert created[3]["max_size"] == 3
-    assert created[4]["statement_timeout_seconds"] is None
-    assert created[4]["keepalives"] is True
-    assert created[4]["keepalives_idle"] > 0
-    assert created[4]["keepalives_interval"] > 0
-    assert created[4]["keepalives_count"] > 0
-    assert created[4]["max_size"] == 3
 
 
 def test_create_sizes_wake_pool_for_configured_wake_listeners(monkeypatch) -> None:
@@ -237,10 +233,6 @@ def test_create_sizes_wake_pool_for_configured_wake_listeners(monkeypatch) -> No
                 enabled=True,
                 concurrency=2,
             ),
-            narrative_admission=SimpleNamespace(
-                enabled=False,
-                concurrency=1,
-            ),
         )
     )
 
@@ -250,8 +242,8 @@ def test_create_sizes_wake_pool_for_configured_wake_listeners(monkeypatch) -> No
     assert wake_pool_max_size(settings) >= 4 + 2
     assert bundle.enabled_wake_listener_concurrency == 4
     assert bundle.wake_pool_max_size == 6
-    assert created[4]["application_name"] == "gmgn_wake"
-    assert created[4]["max_size"] == 6
+    assert created[3]["application_name"] == "gmgn_wake"
+    assert created[3]["max_size"] == 6
 
 
 def test_enabled_wake_listener_concurrency_requires_workers_settings_contract() -> None:
@@ -506,10 +498,10 @@ def test_wake_emitter_uses_wake_pool_connection() -> None:
     conn = FakeConn()
     bundle = _db_bundle(api_pool=FakePool(), worker_pool=FakePool(), wake_pool=FakePool(conn))
 
-    bundle.wake_emitter().notify_token_radar_updated(window="5m", scope="all")
+    bundle.wake_emitter().notify_resolution_updated(lookup_keys=["asset:solana:token"])
 
     assert conn.executed[0][0] == "SELECT pg_notify(%s, %s)"
-    assert conn.executed[0][1][0] == "token_radar_updated"
+    assert conn.executed[0][1][0] == "resolution_updated"
     assert conn.commits == 1
 
 
@@ -518,7 +510,7 @@ def test_wake_emitter_requires_callable_commit_before_notify_completion() -> Non
     bundle = _db_bundle(api_pool=FakePool(), worker_pool=FakePool(), wake_pool=FakePool(conn))
 
     with pytest.raises(RuntimeError, match="wake_bus_commit_required"):
-        bundle.wake_emitter().notify_token_radar_updated(window="5m", scope="all")
+        bundle.wake_emitter().notify_resolution_updated(lookup_keys=["asset:solana:token"])
 
     assert conn.executed[0][0] == "SELECT pg_notify(%s, %s)"
 
@@ -528,7 +520,7 @@ def test_wake_bus_requires_connection_context_without_raw_connection_fallback() 
     bus = WakeBus(lambda: conn)
 
     with pytest.raises(RuntimeError, match="wake_bus_connection_context_required"):
-        bus.notify_token_radar_updated(window="5m", scope="all")
+        bus.notify_resolution_updated(lookup_keys=["asset:solana:token"])
 
     assert conn.executed == []
     assert conn.commits == 0
@@ -538,31 +530,29 @@ def test_wake_listener_uses_wake_pool_and_configured_channels() -> None:
     conn = FakeConn()
     bundle = _db_bundle(api_pool=FakePool(), worker_pool=FakePool(), wake_pool=FakePool(conn))
 
-    waiter = bundle.wake_listener("token_radar_projection", channels=("token_radar_updated",))
+    waiter = bundle.wake_listener("token_radar_projection", channels=("resolution_updated",))
 
     assert isinstance(waiter, WakeWaiter)
     assert waiter.wait(timeout=0.01) is False
-    assert conn.executed == [("LISTEN token_radar_updated", None)]
+    assert conn.executed == [("LISTEN resolution_updated", None)]
 
 
 def test_wake_listener_rejects_empty_channels_before_allocating_waiter() -> None:
     bundle = _db_bundle(api_pool=FakePool(), worker_pool=FakePool(), wake_pool=FakePool())
 
-    with pytest.raises(ValueError, match="wake_listener_channels_required:news_item_brief"):
-        bundle.wake_listener("news_item_brief", channels=())
+    with pytest.raises(ValueError, match="wake_listener_channels_required:news_story_brief"):
+        bundle.wake_listener("news_story_brief", channels=())
 
 
 def test_db_pool_bundle_aclose_closes_all_pool_roles_once() -> None:
     api_pool = FakePool()
     worker_pool = FakePool()
     lock_pool = FakePool()
-    tool_pool = FakePool()
     wake_pool = FakePool()
     bundle = _db_bundle(
         api_pool=api_pool,
         worker_pool=worker_pool,
         lock_pool=lock_pool,
-        tool_pool=tool_pool,
         wake_pool=wake_pool,
     )
 
@@ -571,7 +561,6 @@ def test_db_pool_bundle_aclose_closes_all_pool_roles_once() -> None:
     assert api_pool.close_calls == 1
     assert worker_pool.close_calls == 1
     assert lock_pool.close_calls == 1
-    assert tool_pool.close_calls == 1
     assert wake_pool.close_calls == 1
 
 

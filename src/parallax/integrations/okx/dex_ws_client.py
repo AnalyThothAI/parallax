@@ -14,6 +14,7 @@ import websockets
 from loguru import logger
 
 from parallax.integrations.okx.dex_client import EVM_ADDRESS_RE
+from parallax.platform.validation import require_positive_int
 
 
 class OkxDexWsClientError(RuntimeError):
@@ -80,7 +81,7 @@ class OkxDexWebSocketMarketProvider:
         self.api_key = api_key
         self.secret_key = secret_key
         self.passphrase = passphrase
-        self.subscription_limit = _required_positive_int(
+        self.subscription_limit = require_positive_int(
             subscription_limit,
             error_code="okx_dex_ws_subscription_limit_required",
         )
@@ -387,7 +388,7 @@ class OkxDexWebSocketMarketProvider:
 
 
 def _subscription_args(targets: list[dict[str, str]], *, limit: int) -> list[dict[str, str]]:
-    parsed_limit = _required_positive_int(
+    parsed_limit = require_positive_int(
         limit,
         error_code="okx_dex_ws_subscription_limit_required",
     )
@@ -415,16 +416,10 @@ def _subscription_args(targets: list[dict[str, str]], *, limit: int) -> list[dic
 
 
 def _circuit_failure_limit() -> int:
-    return _required_positive_int(
+    return require_positive_int(
         OKX_DEX_WS_CIRCUIT_FAILURES,
         error_code="okx_dex_ws_circuit_failures_required",
     )
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _arg_key(arg: dict[str, str]) -> tuple[str, str]:

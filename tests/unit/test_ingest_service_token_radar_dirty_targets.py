@@ -2,12 +2,12 @@ from __future__ import annotations
 
 import pytest
 
-from parallax.domains.evidence.services.ingest_service import _source_dirty_events_for_resolutions
+from parallax.domains.evidence.services.ingest_service import _dirty_targets_for_resolutions
 from parallax.domains.token_intel.services.deterministic_token_resolver import DeterministicResolution
 
 
-def test_source_dirty_events_for_resolutions_uses_event_target_edge() -> None:
-    rows = _source_dirty_events_for_resolutions(
+def test_dirty_targets_for_resolutions_uses_formal_target_identity() -> None:
+    rows = _dirty_targets_for_resolutions(
         [
             _decision(
                 event_id="event-1",
@@ -20,15 +20,14 @@ def test_source_dirty_events_for_resolutions_uses_event_target_edge() -> None:
 
     assert rows == [
         {
-            "source_event_id": "event-1",
             "target_type_key": "Asset",
             "identity_id": "asset-1",
         }
     ]
 
 
-def test_source_dirty_events_for_resolutions_skips_unresolved_intent_identity() -> None:
-    rows = _source_dirty_events_for_resolutions(
+def test_dirty_targets_for_resolutions_skips_unresolved_intent_identity() -> None:
+    rows = _dirty_targets_for_resolutions(
         [
             _decision(
                 event_id="event-1",
@@ -43,7 +42,7 @@ def test_source_dirty_events_for_resolutions_skips_unresolved_intent_identity() 
     assert rows == []
 
 
-def test_source_dirty_events_for_resolutions_requires_formal_resolution_decision() -> None:
+def test_dirty_targets_for_resolutions_requires_formal_resolution_decision() -> None:
     class LooseDecision:
         def __init__(self) -> None:
             self.event_id = "event-1"
@@ -52,7 +51,7 @@ def test_source_dirty_events_for_resolutions_requires_formal_resolution_decision
             self.target_id = "asset-1"
 
     with pytest.raises(RuntimeError, match="ingest_resolution_decision_contract_required"):
-        _source_dirty_events_for_resolutions([LooseDecision()])  # type: ignore[list-item]
+        _dirty_targets_for_resolutions([LooseDecision()])  # type: ignore[list-item]
 
 
 def _decision(

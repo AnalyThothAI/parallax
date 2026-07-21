@@ -42,8 +42,8 @@ def test_rebuild_recent_token_intents_uses_session_transaction(monkeypatch) -> N
     assert repos.required_operations == ["token_intent_rebuild"]
     assert repos.token_intents.deleted_event_ids == ["event-1"]
     assert repos.token_evidence.deleted_event_ids == ["event-1"]
-    assert repos.token_intents.insert_commits == [False]
-    assert repos.token_evidence.insert_commits == [False]
+    assert repos.token_intents.insert_calls == 1
+    assert repos.token_evidence.insert_calls == 1
     assert repos.token_intent_lookup.replacements == [
         {
             "intent_id": "intent-1",
@@ -51,7 +51,6 @@ def test_rebuild_recent_token_intents_uses_session_transaction(monkeypatch) -> N
             "keys": ["address:solana:asset-1"],
             "source_evidence_id": "evidence-1",
             "created_at_ms": now_ms - 1_000,
-            "commit": False,
         }
     ]
 
@@ -142,13 +141,13 @@ class FakeTransaction:
 class FakeIntentWrites:
     def __init__(self):
         self.deleted_event_ids: list[str] = []
-        self.insert_commits: list[bool] = []
+        self.insert_calls = 0
 
     def delete_by_event_id(self, event_id):
         self.deleted_event_ids.append(event_id)
 
-    def insert_many(self, intents, *, commit):
-        self.insert_commits.append(commit)
+    def insert_many(self, intents):
+        self.insert_calls += 1
         return list(intents)
 
 

@@ -2,10 +2,9 @@ from __future__ import annotations
 
 from typing import Any
 
-from parallax.app.surfaces.cli.dependencies import repositories
-from parallax.domains.account_quality.read_models.account_alert_service import AccountAlertService
-from parallax.domains.account_quality.read_models.account_quality_service import AccountQualityService
+from parallax.app.runtime.repository_session import repositories
 from parallax.domains.asset_market.read_models.token_profile_read_model import TokenProfileReadModel
+from parallax.domains.notifications.services.account_alert_service import AccountAlertService
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_DEFAULT_VENUE
 from parallax.domains.token_intel.queries.search_events_query import SearchEventsQuery
 from parallax.domains.token_intel.read_models.asset_flow_service import AssetFlowService
@@ -18,7 +17,6 @@ READ_MODEL_COMMANDS = frozenset(
         "search",
         "asset-flow",
         "account-alerts",
-        "account-quality",
         "notification-deliveries",
     }
 )
@@ -91,11 +89,6 @@ def handle_read_model(args: object) -> tuple[int, dict[str, Any]]:
                 alert_type=args.alert_type,
             )
             return 0, {"ok": True, "data": {"window": args.window, "items": items}}
-
-        if command == "account-quality":
-            handles = sorted(_handle_set(args.handles))
-            data = AccountQualityService.from_conn(signals.conn).account_quality_for_handles(handles)
-            return 0, {"ok": True, "data": data}
 
         if command == "notification-deliveries":
             return (

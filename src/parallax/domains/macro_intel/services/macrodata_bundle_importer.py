@@ -5,7 +5,7 @@ import math
 from collections.abc import Mapping, Sequence
 from datetime import date
 from decimal import Decimal
-from typing import TYPE_CHECKING, Any, cast
+from typing import Any, cast
 
 from parallax.domains.macro_intel._constants import (
     MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT,
@@ -14,9 +14,6 @@ from parallax.domains.macro_intel._constants import (
 )
 from parallax.domains.macro_intel.observation_identity import normalize_macro_date
 from parallax.domains.macro_intel.services.macro_sync_types import MacrodataBundleImport
-
-if TYPE_CHECKING:
-    from parallax.app.runtime.repository_session import RepositorySession
 
 
 def parse_macrodata_bundle(envelope: Mapping[str, Any], *, now_ms: int) -> MacrodataBundleImport:
@@ -30,31 +27,20 @@ def parse_macrodata_bundle(envelope: Mapping[str, Any], *, now_ms: int) -> Macro
     reason_codes = list(_json_sequence(snapshot.get("reason_codes")))
     data_quality = _required_snapshot_text(snapshot, "data_quality")
     normalized_observations = _observations(observations, now_ms=now_ms)
+    min_observed_at = _min_observed_at(normalized_observations)
     max_observed_at = _max_observed_at(normalized_observations)
 
-    run_id = _run_id(
+    sync_run_id = _sync_run_id(
         bundle_name=bundle_name,
         asof=asof,
         now_ms=now_ms,
         observations_count=len(normalized_observations),
     )
-    import_run = {
-        "run_id": run_id,
-        "source_name": "macrodata-cli",
-        "bundle_name": bundle_name,
-        "asof_date": asof,
-        "status": data_quality,
-        "observations_count": len(normalized_observations),
-        "coverage_json": coverage,
-        "missing_series_json": missing_series,
-        "series_errors_json": series_errors,
-        "reason_codes_json": reason_codes,
-        "started_at_ms": int(now_ms),
-        "completed_at_ms": int(now_ms),
-    }
 
     return MacrodataBundleImport(
-        import_run=import_run,
+        sync_run_id=sync_run_id,
+        started_at_ms=int(now_ms),
+        completed_at_ms=int(now_ms),
         observations=normalized_observations,
         bundle_name=bundle_name,
         asof=asof,
@@ -63,6 +49,7 @@ def parse_macrodata_bundle(envelope: Mapping[str, Any], *, now_ms: int) -> Macro
         missing_series=missing_series,
         series_errors=series_errors,
         reason_codes=reason_codes,
+        min_observed_at=min_observed_at,
         max_observed_at=max_observed_at,
     )
 
@@ -70,7 +57,7 @@ def parse_macrodata_bundle(envelope: Mapping[str, Any], *, now_ms: int) -> Macro
 def write_macrodata_bundle_import(
     parsed: MacrodataBundleImport,
     *,
-    repos: RepositorySession,
+    repos: Any,
 ) -> dict[str, Any]:
     repos.require_transaction(operation="macrodata_bundle_import")
     observation_outcomes = [
@@ -87,17 +74,6 @@ def write_macrodata_bundle_import(
     max_seen_observed_at = _max_observed_at(observation_outcomes)
     min_changed_observed_at = _min_observed_at(changed_observations)
     max_changed_observed_at = _max_observed_at(changed_observations)
-    import_run = dict(parsed.import_run)
-    import_run.update(
-        {
-            "seen_observation_count": len(observation_outcomes),
-            "inserted_observation_count": inserted_observation_count,
-            "changed_observation_count": changed_observation_count,
-            "noop_observation_count": noop_observation_count,
-            "imported_observation_count": imported_observation_count,
-        }
-    )
-    repos.macro_intel.record_import_run(import_run)
     dirty_targets_enqueued = 0
     if imported_observation_count > 0:
         dirty_targets_enqueued = int(
@@ -105,10 +81,9 @@ def write_macrodata_bundle_import(
                 changed_observations=changed_observations,
                 projection_name="macro_view",
                 projection_version=MACRO_VIEW_PROJECTION_VERSION,
-                now_ms=int(import_run["completed_at_ms"]),
-                due_at_ms=int(import_run["completed_at_ms"]),
+                now_ms=int(parsed.completed_at_ms),
+                due_at_ms=int(parsed.completed_at_ms),
                 reason="macro_observations_changed",
-                commit=False,
             )
         )
 
@@ -130,8 +105,6 @@ def write_macrodata_bundle_import(
         "changed_observations": changed_observations,
         "changed_concept_keys": changed_concept_keys,
         "dirty_targets_enqueued": dirty_targets_enqueued,
-        "run_id": import_run["run_id"],
-        "import_run_id": import_run["run_id"],
         "status": parsed.status,
         "data_quality": parsed.status,
         "coverage": dict(parsed.coverage),
@@ -141,10 +114,17 @@ def write_macrodata_bundle_import(
     }
 
 
-def import_macrodata_bundle(envelope: Mapping[str, Any], *, repos: RepositorySession, now_ms: int) -> dict[str, Any]:
+def import_macrodata_bundle(envelope: Mapping[str, Any], *, repos: Any, now_ms: int) -> dict[str, Any]:
     parsed = parse_macrodata_bundle(envelope, now_ms=now_ms)
-    with repos.unit_of_work():
-        return write_macrodata_bundle_import(parsed, repos=repos)
+    with repos.transaction():
+        summary = write_macrodata_bundle_import(parsed, repos=repos)
+        run_payload = _offline_sync_run_payload(parsed, summary=summary)
+        repos.macro_intel.record_macro_sync_run(run_payload)
+        return {
+            **summary,
+            "sync_run_id": parsed.sync_run_id,
+            "status": run_payload["status"],
+        }
 
 
 def _snapshot(envelope: Mapping[str, Any]) -> Mapping[str, Any]:
@@ -253,10 +233,66 @@ def _required_observation_text(raw_observation: Mapping[str, Any], field_name: s
     return value.strip()
 
 
-def _run_id(*, bundle_name: str, asof: object, now_ms: int, observations_count: int) -> str:
+def _sync_run_id(*, bundle_name: str, asof: object, now_ms: int, observations_count: int) -> str:
     identity = "|".join(["macrodata-cli", bundle_name, str(asof or ""), str(int(now_ms)), str(observations_count)])
     digest = hashlib.sha256(identity.encode()).hexdigest()[:32]
-    return f"macro-import:{digest}"
+    return f"macro-sync:offline:{digest}"
+
+
+def _offline_sync_run_payload(
+    parsed: MacrodataBundleImport,
+    *,
+    summary: Mapping[str, Any],
+) -> dict[str, Any]:
+    requested_start = _optional_date(parsed.min_observed_at) or _optional_date(parsed.asof)
+    requested_end = _optional_date(parsed.max_observed_at) or _optional_date(parsed.asof)
+    return {
+        "sync_run_id": parsed.sync_run_id,
+        "sync_window_id": None,
+        "source_name": "macrodata-cli",
+        "bundle_name": parsed.bundle_name,
+        "requested_start": requested_start,
+        "requested_end": requested_end,
+        "status": _sync_attempt_status(parsed.status),
+        "asof_date": _optional_date(parsed.asof),
+        "max_observed_at": _optional_date(parsed.max_observed_at),
+        "observations_count": int(summary["observations_count"]),
+        "imported_observation_count": int(summary["imported_observation_count"]),
+        "seen_observation_count": int(summary["seen_observation_count"]),
+        "inserted_observation_count": int(summary["inserted_observation_count"]),
+        "changed_observation_count": int(summary["changed_observation_count"]),
+        "noop_observation_count": int(summary["noop_observation_count"]),
+        "max_seen_observed_at": _optional_date(summary.get("max_seen_observed_at")),
+        "min_changed_observed_at": _optional_date(summary.get("min_changed_observed_at")),
+        "max_changed_observed_at": _optional_date(summary.get("max_changed_observed_at")),
+        "coverage_json": dict(parsed.coverage),
+        "missing_series_json": list(parsed.missing_series),
+        "series_errors_json": list(parsed.series_errors),
+        "reason_codes_json": list(parsed.reason_codes),
+        "diagnostics_json": {},
+        "fred_api_key_env": None,
+        "fred_api_key_configured": False,
+        "error_code": None,
+        "error_message": None,
+        "started_at_ms": int(parsed.started_at_ms),
+        "completed_at_ms": int(parsed.completed_at_ms),
+        "duration_ms": max(0, int(parsed.completed_at_ms) - int(parsed.started_at_ms)),
+    }
+
+
+def _sync_attempt_status(data_quality: str) -> str:
+    normalized = str(data_quality).strip().lower()
+    if normalized == "ok":
+        return "ok"
+    if normalized in {"stale", "partial", "unavailable"}:
+        return "partial"
+    raise ValueError(f"unsupported macrodata data_quality: {data_quality}")
+
+
+def _optional_date(value: object) -> date | None:
+    if value is None:
+        return None
+    return normalize_macro_date(value)
 
 
 def _mapping(value: object) -> dict[str, Any]:

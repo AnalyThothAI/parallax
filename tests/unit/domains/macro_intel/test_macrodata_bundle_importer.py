@@ -79,25 +79,26 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
             "ingested_at_ms": NOW_MS,
         }
     ]
-    assert len(repos.macro_intel.import_runs) == 1
-    import_run = repos.macro_intel.import_runs[0]
-    assert import_run["source_name"] == "macrodata-cli"
-    assert import_run["bundle_name"] == "macro-core"
-    assert import_run["asof_date"] == "2026-05-21"
-    assert import_run["status"] == "partial"
-    assert import_run["observations_count"] == 1
-    assert import_run["seen_observation_count"] == 1
-    assert import_run["inserted_observation_count"] == 1
-    assert import_run["changed_observation_count"] == 0
-    assert import_run["noop_observation_count"] == 0
-    assert import_run["coverage_json"] == {"requested": 20, "available": 1}
-    assert import_run["missing_series_json"] == ["fred:WALCL"]
-    assert import_run["series_errors_json"] == [
+    assert len(repos.macro_intel.sync_runs) == 1
+    sync_run = repos.macro_intel.sync_runs[0]
+    assert sync_run["source_name"] == "macrodata-cli"
+    assert sync_run["bundle_name"] == "macro-core"
+    assert sync_run["sync_window_id"] is None
+    assert sync_run["asof_date"] == date(2026, 5, 21)
+    assert sync_run["status"] == "partial"
+    assert sync_run["observations_count"] == 1
+    assert sync_run["seen_observation_count"] == 1
+    assert sync_run["inserted_observation_count"] == 1
+    assert sync_run["changed_observation_count"] == 0
+    assert sync_run["noop_observation_count"] == 0
+    assert sync_run["coverage_json"] == {"requested": 20, "available": 1}
+    assert sync_run["missing_series_json"] == ["fred:WALCL"]
+    assert sync_run["series_errors_json"] == [
         {"series_key": "fred:WALCL", "provider": "fred", "code": "missing_api_key"}
     ]
-    assert import_run["reason_codes_json"] == ["missing_series", "missing_api_key"]
-    assert import_run["started_at_ms"] == NOW_MS
-    assert import_run["completed_at_ms"] == NOW_MS
+    assert sync_run["reason_codes_json"] == ["missing_series", "missing_api_key"]
+    assert sync_run["started_at_ms"] == NOW_MS
+    assert sync_run["completed_at_ms"] == NOW_MS
     assert summary["bundle_name"] == "macro-core"
     assert summary["asof"] == "2026-05-21"
     assert summary["max_observed_at"] == date(2026, 5, 19)
@@ -108,8 +109,7 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
     assert summary["noop_observation_count"] == 0
     assert summary["imported_observation_count"] == 1
     assert summary["imported_observation_ids"] == [macro_observation_id(repos.macro_intel.observations[0])]
-    assert summary["run_id"] == import_run["run_id"]
-    assert summary["import_run_id"] == import_run["run_id"]
+    assert summary["sync_run_id"] == sync_run["sync_run_id"]
     assert summary["status"] == "partial"
     assert summary["data_quality"] == "partial"
     assert summary["coverage"] == {"requested": 20, "available": 1}
@@ -133,7 +133,6 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
             "now_ms": NOW_MS,
             "due_at_ms": NOW_MS,
             "reason": "macro_observations_changed",
-            "commit": False,
         }
     ]
 
@@ -148,7 +147,7 @@ def test_import_macrodata_bundle_validates_all_observations_before_writing() -> 
 
     assert repos.transaction_events == []
     assert repos.macro_intel.observations == []
-    assert repos.macro_intel.import_runs == []
+    assert repos.macro_intel.sync_runs == []
 
 
 def test_parse_macrodata_bundle_validates_all_observations_before_write() -> None:
@@ -195,14 +194,14 @@ def test_write_macrodata_bundle_import_does_not_open_its_own_transaction() -> No
     repos = FakeRepositorySession()
     parsed = parse_macrodata_bundle(ENVELOPE, now_ms=NOW_MS)
 
-    with repos.unit_of_work():
+    with repos.transaction():
         summary = write_macrodata_bundle_import(parsed, repos=repos)
 
     assert repos.transaction_events == ["commit"]
     assert repos.conn.commits == 0
     assert summary["max_observed_at"] == date(2026, 5, 19)
     assert summary["asof"] == "2026-05-21"
-    assert summary["import_run_id"] == repos.macro_intel.import_runs[0]["run_id"]
+    assert repos.macro_intel.sync_runs == []
     assert summary["imported_observation_count"] == 1
     assert summary["dirty_targets_enqueued"] == 1
 
@@ -215,18 +214,18 @@ def test_write_macrodata_bundle_import_requires_external_transaction() -> None:
         write_macrodata_bundle_import(parsed, repos=repos)
 
     assert repos.macro_intel.observations == []
-    assert repos.macro_intel.import_runs == []
+    assert repos.macro_intel.sync_runs == []
 
 
-def test_import_macrodata_bundle_requires_repository_session_unit_of_work() -> None:
+def test_import_macrodata_bundle_requires_repository_session_transaction() -> None:
     repos = MissingUnitOfWorkRepositorySession()
 
-    with pytest.raises(AttributeError, match="unit_of_work"):
+    with pytest.raises(AttributeError, match="transaction"):
         import_macrodata_bundle(ENVELOPE, repos=repos, now_ms=NOW_MS)
 
     assert repos.conn.transaction_events == []
     assert repos.macro_intel.observations == []
-    assert repos.macro_intel.import_runs == []
+    assert repos.macro_intel.sync_runs == []
 
 
 def test_write_macrodata_bundle_import_requires_session_transaction_contract() -> None:
@@ -237,7 +236,7 @@ def test_write_macrodata_bundle_import_requires_session_transaction_contract() -
         write_macrodata_bundle_import(parsed, repos=repos)
 
     assert repos.macro_intel.observations == []
-    assert repos.macro_intel.import_runs == []
+    assert repos.macro_intel.sync_runs == []
 
 
 def test_import_macrodata_bundle_rejects_unknown_macro_core_series_before_writing() -> None:
@@ -250,7 +249,7 @@ def test_import_macrodata_bundle_rejects_unknown_macro_core_series_before_writin
 
     assert repos.transaction_events == []
     assert repos.macro_intel.observations == []
-    assert repos.macro_intel.import_runs == []
+    assert repos.macro_intel.sync_runs == []
 
 
 def test_import_macrodata_bundle_accepts_event_bundles_without_expanding_numeric_macro_core() -> None:
@@ -351,7 +350,7 @@ def test_import_macrodata_bundle_accepts_event_bundles_without_expanding_numeric
     assert repos.macro_intel.observations[0]["source_name"] == "official_calendar"
     assert repos.macro_intel.observations[1]["source_name"] == "treasury_auction"
     assert repos.macro_intel.observations[2]["source_name"] == "treasury_auction"
-    assert repos.macro_intel.import_runs[0]["bundle_name"] == "macro-calendar-core"
+    assert repos.macro_intel.sync_runs[0]["bundle_name"] == "macro-calendar-core"
     assert summary["imported_observation_count"] == 3
     assert summary["dirty_targets_enqueued"] == 1
     assert [item["concept_key"] for item in repos.macro_intel.enqueued_dirty_targets[0]["changed_observations"]] == [
@@ -605,8 +604,8 @@ def test_import_macrodata_bundle_accepts_crypto_derivatives_core_without_page_sh
     assert [row["source_name"] for row in repos.macro_intel.observations[6:]] == ["deribit"] * 8
     assert {row["frequency"] for row in repos.macro_intel.observations} == {"intraday"}
     assert set(expected_concept_keys).issubset(MACRO_OPTIONAL_HISTORY_CONCEPTS)
-    assert repos.macro_intel.import_runs[0]["bundle_name"] == "crypto-derivatives-core"
-    assert repos.macro_intel.import_runs[0]["observations_count"] == 14
+    assert repos.macro_intel.sync_runs[0]["bundle_name"] == "crypto-derivatives-core"
+    assert repos.macro_intel.sync_runs[0]["observations_count"] == 14
     assert summary["imported_observation_count"] == 14
     assert summary["dirty_targets_enqueued"] == 1
 
@@ -620,7 +619,7 @@ def test_import_macrodata_bundle_rolls_back_observations_when_import_run_fails()
     assert repos.conn.commits == 0
     assert repos.transaction_events == ["rollback"]
     assert repos.macro_intel.observations == []
-    assert repos.macro_intel.import_runs == []
+    assert repos.macro_intel.sync_runs == []
 
 
 @pytest.mark.parametrize("raw_value", ["n/a", True])
@@ -694,7 +693,7 @@ class FakeRepositorySession:
         self.transaction_depth = 0
         self.macro_intel = FakeMacroIntelRepository(fail_record_run=fail_record_run)
 
-    def unit_of_work(self):
+    def transaction(self):
         return FakeTransaction(self)
 
     def require_transaction(self, *, operation: str) -> None:
@@ -706,14 +705,14 @@ class FakeTransaction:
     def __init__(self, repos: FakeRepositorySession) -> None:
         self.repos = repos
         self.observations: list[dict[str, object]] = []
-        self.import_runs: list[dict[str, object]] = []
+        self.sync_runs: list[dict[str, object]] = []
         self.enqueued_dirty_targets: list[dict[str, object]] = []
 
     def __enter__(self):
         self.repos.transaction_depth += 1
         self.observations = list(self.repos.macro_intel.observations)
         self.observation_index = dict(self.repos.macro_intel._observation_index)
-        self.import_runs = list(self.repos.macro_intel.import_runs)
+        self.sync_runs = list(self.repos.macro_intel.sync_runs)
         self.enqueued_dirty_targets = list(self.repos.macro_intel.enqueued_dirty_targets)
         return self
 
@@ -721,7 +720,7 @@ class FakeTransaction:
         if exc_type is not None:
             self.repos.macro_intel.observations = self.observations
             self.repos.macro_intel._observation_index = self.observation_index
-            self.repos.macro_intel.import_runs = self.import_runs
+            self.repos.macro_intel.sync_runs = self.sync_runs
             self.repos.macro_intel.enqueued_dirty_targets = self.enqueued_dirty_targets
             self.repos.transaction_events.append("rollback")
         else:
@@ -781,7 +780,7 @@ class FakeMacroIntelRepository:
     def __init__(self, *, fail_record_run: bool = False) -> None:
         self.observations: list[dict[str, object]] = []
         self._observation_index: dict[str, int] = {}
-        self.import_runs: list[dict[str, object]] = []
+        self.sync_runs: list[dict[str, object]] = []
         self.enqueued_dirty_targets: list[dict[str, object]] = []
         self.fail_record_run = fail_record_run
 
@@ -809,10 +808,10 @@ class FakeMacroIntelRepository:
             "fact_payload_hash": fact_payload_hash,
         }
 
-    def record_import_run(self, import_run: dict[str, object]) -> None:
+    def record_macro_sync_run(self, sync_run: dict[str, object]) -> None:
         if self.fail_record_run:
             raise RuntimeError("record_run_failed")
-        self.import_runs.append(import_run)
+        self.sync_runs.append(sync_run)
 
     def enqueue_macro_projection_dirty_targets_for_changes(self, **kwargs: object) -> int:
         self.enqueued_dirty_targets.append(dict(kwargs))

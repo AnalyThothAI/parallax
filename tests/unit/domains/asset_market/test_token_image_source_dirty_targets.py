@@ -44,34 +44,6 @@ def test_existing_by_source_targets_loads_exact_dirty_target_keys() -> None:
 
 
 @pytest.mark.parametrize(
-    "operation",
-    [
-        lambda repo: repo.enqueue_targets([_target()], reason="token_profile_current_source_admission", now_ms=NOW_MS),
-        lambda repo: repo.claim_due(now_ms=NOW_MS, limit=25, lease_owner="token_image_mirror", lease_ms=600_000),
-        lambda repo: repo.mark_done([_dirty_claim()], now_ms=NOW_MS),
-        lambda repo: repo.mark_error(
-            [_dirty_claim()],
-            error="mirror failed",
-            retry_ms=300_000,
-            max_attempts=3,
-            worker_name="token_image_mirror",
-            now_ms=NOW_MS,
-        ),
-    ],
-)
-def test_token_image_source_dirty_mutations_require_connection_transaction_before_sql_when_committing(
-    operation: Callable[[TokenImageSourceDirtyTargetRepository], object],
-) -> None:
-    conn = _MissingTransactionConnection()
-
-    with pytest.raises(RuntimeError, match="token_image_source_dirty_target_transaction_required"):
-        operation(TokenImageSourceDirtyTargetRepository(conn))
-
-    assert conn.sql == []
-    assert conn.commits == 0
-
-
-@pytest.mark.parametrize(
     ("overrides", "error"),
     [
         pytest.param({"limit": -1}, "token_image_source_dirty_target_claim_limit_required", id="negative-limit"),
@@ -109,7 +81,7 @@ def test_token_image_source_dirty_claim_due_rejects_malformed_parameters_before_
 @pytest.mark.parametrize(
     "operation",
     [
-        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=NOW_MS, commit=False), id="done"),
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=NOW_MS), id="done"),
         pytest.param(
             lambda repo, claim: repo.mark_error(
                 [claim],
@@ -118,7 +90,6 @@ def test_token_image_source_dirty_claim_due_rejects_malformed_parameters_before_
                 max_attempts=3,
                 worker_name="token_image_mirror",
                 now_ms=NOW_MS,
-                commit=False,
             ),
             id="error",
         ),
@@ -153,7 +124,6 @@ def test_token_image_source_dirty_completion_rejects_malformed_attempt_count(att
         TokenImageSourceDirtyTargetRepository(conn).mark_done(
             [claim],
             now_ms=NOW_MS,
-            commit=False,
         )
 
     assert conn.sql == ""
@@ -162,7 +132,7 @@ def test_token_image_source_dirty_completion_rejects_malformed_attempt_count(att
 @pytest.mark.parametrize(
     "operation",
     [
-        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=NOW_MS, commit=False), id="done"),
+        pytest.param(lambda repo, claim: repo.mark_done([claim], now_ms=NOW_MS), id="done"),
         pytest.param(
             lambda repo, claim: repo.mark_error(
                 [claim],
@@ -171,7 +141,6 @@ def test_token_image_source_dirty_completion_rejects_malformed_attempt_count(att
                 max_attempts=3,
                 worker_name="token_image_mirror",
                 now_ms=NOW_MS,
-                commit=False,
             ),
             id="error",
         ),
@@ -238,8 +207,8 @@ def test_token_image_source_dirty_completion_counts_require_cursor_rowcount() ->
     conn = _RowcountConnection(rowcount=None)
     repo = TokenImageSourceDirtyTargetRepository(conn)
 
-    with pytest.raises(TypeError, match="token_image_source_dirty_target_rowcount_required"):
-        repo.mark_done([_dirty_claim()], now_ms=NOW_MS, commit=False)
+    with pytest.raises(TypeError, match="token_image_source_dirty_target_rowcount_invalid"):
+        repo.mark_done([_dirty_claim()], now_ms=NOW_MS)
 
 
 @pytest.mark.parametrize("rowcount", [True, False, "1", -1])
@@ -255,7 +224,6 @@ def test_token_image_source_dirty_completion_counts_reject_invalid_cursor_rowcou
             max_attempts=3,
             worker_name="token_image_mirror",
             now_ms=NOW_MS,
-            commit=False,
         )
 
 
@@ -271,7 +239,6 @@ def test_token_image_source_dirty_error_terminalizes_exhausted_claim() -> None:
         max_attempts=1,
         worker_name="token_image_mirror",
         now_ms=NOW_MS,
-        commit=False,
     )
 
     assert changed == 1
@@ -331,7 +298,6 @@ def test_token_image_source_dirty_enqueue_requires_formal_source_watermark_witho
             [target],
             reason="token_profile_current_source_admission",
             now_ms=NOW_MS,
-            commit=False,
         )
 
     assert conn.sql == ""

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import uvicorn
 
-from parallax.app.runtime.app import create_app
+from parallax.app.surfaces.api.app import create_app
 from parallax.platform.config.settings import load_settings
 from parallax.platform.logging.setup import setup_logging
 

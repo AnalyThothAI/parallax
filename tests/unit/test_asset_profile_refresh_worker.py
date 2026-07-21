@@ -77,7 +77,6 @@ def test_asset_profile_refresh_worker_run_once_records_result_and_uses_session_a
             "limit": 7,
             "lease_owner": "asset_profile_refresh",
             "lease_ms": 120_000,
-            "commit": True,
         }
     ]
     assert db.refresh_targets.rescheduled[0]["reason"] == "profile_ready_written"
@@ -196,21 +195,18 @@ def test_asset_profile_refresh_worker_uses_formal_ready_missing_and_error_refres
             "due_at_ms": now_ms + 1_000,
             "now_ms": now_ms,
             "reason": "profile_ready_written",
-            "commit": False,
         },
         {
             "claims": [missing_row],
             "due_at_ms": now_ms + 2_000,
             "now_ms": now_ms,
             "reason": "profile_missing_written",
-            "commit": False,
         },
         {
             "claims": [error_row],
             "due_at_ms": now_ms + 3_000,
             "now_ms": now_ms,
             "reason": "profile_error_written",
-            "commit": False,
         },
     ]
 
@@ -245,7 +241,6 @@ def test_asset_profile_refresh_worker_reports_provider_block_without_writing_tok
             "due_at_ms": 1_700_000_300_000,
             "now_ms": 1_700_000_000_000,
             "reason": "provider_blocked",
-            "commit": False,
         }
     ]
 
@@ -279,144 +274,8 @@ def test_asset_profile_refresh_worker_empty_queue_does_not_run_read_model_discov
             "limit": 7,
             "lease_owner": "asset_profile_refresh",
             "lease_ms": 120_000,
-            "commit": True,
         }
     ]
-
-
-def test_asset_profile_refresh_worker_requires_formal_statement_timeout_settings_contract(monkeypatch):
-    def fake_fetch_asset_profile(**kwargs):
-        raise AssertionError("fetch should not run before settings contract fails")
-
-    monkeypatch.setattr(module, "fetch_asset_profile", fake_fetch_asset_profile)
-    settings = worker_settings()
-    delattr(settings, "statement_timeout_seconds")
-    db = FakeDB(claims_by_provider={"gmgn_dex_profile": [claim_row("gmgn_dex_profile")]})
-    worker = module.AssetProfileRefreshWorker(
-        name="asset_profile_refresh",
-        settings=settings,
-        db=db,
-        telemetry=object(),
-        dex_profile_sources=(DexProfileSource(provider="gmgn_dex_profile", market=object()),),
-    )
-
-    with pytest.raises(AttributeError, match="statement_timeout_seconds"):
-        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
-
-    assert db.session_names == []
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"batch_size": 0}, "asset_profile_refresh_batch_size_required", id="batch-zero"),
-        pytest.param({"batch_size": True}, "asset_profile_refresh_batch_size_required", id="batch-bool"),
-        pytest.param({"batch_size": "50"}, "asset_profile_refresh_batch_size_required", id="batch-string"),
-        pytest.param({"lease_ms": 0}, "asset_profile_refresh_lease_ms_required", id="lease-zero"),
-        pytest.param({"lease_ms": True}, "asset_profile_refresh_lease_ms_required", id="lease-bool"),
-        pytest.param({"lease_ms": "120000"}, "asset_profile_refresh_lease_ms_required", id="lease-string"),
-    ],
-)
-def test_asset_profile_refresh_worker_rejects_malformed_claim_settings_before_claim(
-    overrides,
-    error_code,
-) -> None:
-    db = FakeDB(claims_by_provider={"gmgn_dex_profile": [claim_row("gmgn_dex_profile")]})
-    worker = module.AssetProfileRefreshWorker(
-        name="asset_profile_refresh",
-        settings=worker_settings(**overrides),
-        db=db,
-        telemetry=object(),
-        dex_profile_sources=(DexProfileSource(provider="gmgn_dex_profile", market=object()),),
-    )
-
-    with pytest.raises(ValueError, match=error_code):
-        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
-
-    assert db.refresh_targets.claim_calls == []
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param(
-            {"ready_refresh_ms": 0},
-            "asset_profile_refresh_ready_refresh_ms_required",
-            id="ready-zero",
-        ),
-        pytest.param(
-            {"ready_refresh_ms": True},
-            "asset_profile_refresh_ready_refresh_ms_required",
-            id="ready-bool",
-        ),
-        pytest.param(
-            {"missing_refresh_ms": 0},
-            "asset_profile_refresh_missing_refresh_ms_required",
-            id="missing-zero",
-        ),
-        pytest.param(
-            {"missing_refresh_ms": "900000"},
-            "asset_profile_refresh_missing_refresh_ms_required",
-            id="missing-string",
-        ),
-        pytest.param(
-            {"error_refresh_ms": 0},
-            "asset_profile_refresh_error_refresh_ms_required",
-            id="error-zero",
-        ),
-        pytest.param(
-            {"error_refresh_ms": True},
-            "asset_profile_refresh_error_refresh_ms_required",
-            id="error-bool",
-        ),
-    ],
-)
-def test_asset_profile_refresh_worker_rejects_malformed_refresh_policy_before_provider_fetch(
-    monkeypatch,
-    overrides,
-    error_code,
-) -> None:
-    fetch_calls: list[dict] = []
-    monkeypatch.setattr(module, "fetch_asset_profile", lambda **kwargs: fetch_calls.append(kwargs))
-    db = FakeDB(claims_by_provider={"gmgn_dex_profile": [claim_row("gmgn_dex_profile")]})
-    worker = module.AssetProfileRefreshWorker(
-        name="asset_profile_refresh",
-        settings=worker_settings(**overrides),
-        db=db,
-        telemetry=object(),
-        dex_profile_sources=(DexProfileSource(provider="gmgn_dex_profile", market=object()),),
-    )
-
-    with pytest.raises(ValueError, match=error_code):
-        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
-
-    assert fetch_calls == []
-    assert db.refresh_targets.rescheduled == []
-
-
-@pytest.mark.parametrize("provider_retry_ms", [0, True, "300000"])
-def test_asset_profile_refresh_worker_rejects_malformed_provider_retry_before_reschedule(
-    monkeypatch,
-    provider_retry_ms,
-) -> None:
-    monkeypatch.setattr(
-        module,
-        "fetch_asset_profile",
-        lambda **_: (_ for _ in ()).throw(DexProviderTemporarilyUnavailable("blocked")),
-    )
-    db = FakeDB(claims_by_provider={"gmgn_dex_profile": [claim_row("gmgn_dex_profile")]})
-    worker = module.AssetProfileRefreshWorker(
-        name="asset_profile_refresh",
-        settings=worker_settings(provider_retry_ms=provider_retry_ms),
-        db=db,
-        telemetry=object(),
-        dex_profile_sources=(DexProfileSource(provider="gmgn_dex_profile", market=object()),),
-    )
-
-    with pytest.raises(ValueError, match="asset_profile_refresh_provider_retry_ms_required"):
-        asyncio.run(worker.run_once(now_ms=1_700_000_000_000))
-
-    assert db.refresh_targets.rescheduled == []
 
 
 def test_asset_profile_refresh_worker_close_does_not_close_shared_profile_provider():
@@ -558,21 +417,20 @@ class FakeRefreshTargets:
     def queue_depth(self, **kwargs):
         return 0
 
-    def reschedule(self, claims, *, due_at_ms, now_ms, reason=None, commit=True):
+    def reschedule(self, claims, *, due_at_ms, now_ms, reason=None):
         self.rescheduled.append(
             {
                 "claims": list(claims),
                 "due_at_ms": due_at_ms,
                 "now_ms": now_ms,
                 "reason": reason,
-                "commit": commit,
             }
         )
         return len(claims)
 
 
 class FakeProfileDirtyTargets:
-    def enqueue_targets(self, targets, *, reason, now_ms, commit):
+    def enqueue_targets(self, targets, *, reason, now_ms):
         return {"targets": len(list(targets))}
 
 

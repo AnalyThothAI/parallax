@@ -122,31 +122,6 @@ def test_build_macro_asset_correlation_requires_source_name_without_empty_source
         build_macro_asset_correlation(observations, assets=("asset:spy",), window="20d")
 
 
-@pytest.mark.parametrize(
-    ("field_name", "message"),
-    (
-        ("source_priority", "macro_asset_correlation_source_priority_required:asset:spy"),
-        ("ingested_at_ms", "macro_asset_correlation_ingested_at_ms_required:asset:spy"),
-    ),
-)
-@pytest.mark.parametrize("field_value", (None, " "))
-def test_build_macro_asset_correlation_requires_ranking_metadata_without_zero_fallback(
-    field_name: str,
-    message: str,
-    field_value: object | None,
-) -> None:
-    dates = _dates(24)
-    observations = _price_samples("asset:spy", dates, _prices_from_returns(([0.004, -0.002, 0.007] * 8)[:-1]))
-    for observation in observations:
-        if field_value is None:
-            del observation[field_name]
-        else:
-            observation[field_name] = field_value
-
-    with pytest.raises(ValueError, match=message):
-        build_macro_asset_correlation(observations, assets=("asset:spy",), window="20d")
-
-
 def test_build_macro_asset_correlation_requires_title_metadata_without_concept_key_fallback() -> None:
     dates = _dates(24)
     observations = _price_samples(
@@ -159,19 +134,17 @@ def test_build_macro_asset_correlation_requires_title_metadata_without_concept_k
         build_macro_asset_correlation(observations, assets=("asset:unknown",), window="20d")
 
 
-def test_build_macro_asset_correlation_dedupes_by_source_priority() -> None:
+def test_build_macro_asset_correlation_keeps_projected_row_for_duplicate_date() -> None:
     dates = _dates(24)
     returns = ([0.004, 0.009, -0.003, 0.014, 0.002, -0.005] * 4)[:-1]
     observations = [
-        *_price_samples("asset:spy", dates, _prices_from_returns(returns), source="yahoo", priority=100),
-        *_price_samples("asset:qqq", dates, _prices_from_returns(returns), source="yahoo", priority=100),
+        *_price_samples("asset:spy", dates, _prices_from_returns(returns), source="yahoo"),
+        *_price_samples("asset:qqq", dates, _prices_from_returns(returns), source="yahoo"),
         _observation(
             "asset:spy",
             dates[-2],
             10_000.0,
             source="stale_vendor",
-            priority=1,
-            ingested_at_ms=9_999_999,
         ),
     ]
 
@@ -194,8 +167,6 @@ def test_build_macro_asset_correlation_rejects_malformed_observed_at_without_sil
             "2026-05-21T00:00:00Z",
             999.0,
             source="timestamp_vendor",
-            priority=200,
-            ingested_at_ms=1_779_000_100_000,
         )
     )
 
@@ -254,7 +225,6 @@ def _price_samples(
     values: list[float],
     *,
     source: str = "yahoo",
-    priority: int = 100,
 ) -> list[dict[str, object]]:
     return [
         _observation(
@@ -262,10 +232,8 @@ def _price_samples(
             observed_at,
             value,
             source=source,
-            priority=priority,
-            ingested_at_ms=1_779_000_000_000 + index,
         )
-        for index, (observed_at, value) in enumerate(zip(dates, values, strict=True))
+        for observed_at, value in zip(dates, values, strict=True)
     ]
 
 
@@ -275,16 +243,15 @@ def _observation(
     value: float,
     *,
     source: str,
-    priority: int,
-    ingested_at_ms: int,
 ) -> dict[str, object]:
     return {
         "concept_key": concept_key,
         "series_key": f"series:{concept_key}",
         "source_name": source,
-        "source_priority": priority,
         "observed_at": observed_at,
         "value_numeric": value,
         "unit": "price",
-        "ingested_at_ms": ingested_at_ms,
+        "frequency": "daily",
+        "data_quality": "ok",
+        "event_metadata_json": {},
     }

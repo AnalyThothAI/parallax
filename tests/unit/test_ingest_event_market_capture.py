@@ -9,7 +9,7 @@ import pytest
 
 from parallax.app.runtime import bootstrap as bootstrap_module
 from parallax.app.runtime.bootstrap import _ingest_service_for_repos, _PooledIngestStore
-from parallax.app.runtime.providers_wiring import AssetMarketProviders
+from parallax.app.runtime.provider_wiring.types import AssetMarketProviders
 from parallax.domains.asset_market.providers import DexTokenQuote
 from parallax.domains.evidence.services.ingest_service import IngestService, PreparedIngest
 from parallax.domains.ingestion.interfaces import IngestedEvent
@@ -65,8 +65,8 @@ def test_pooled_ingest_duplicate_event_skips_inline_provider(monkeypatch) -> Non
     assert db.session_names == ["collector"]
 
 
-def test_direct_ingest_keeps_registry_resolution_and_event_commit_in_one_unit_of_work(monkeypatch) -> None:
-    evidence = _FakeEvidenceUnitOfWork()
+def test_direct_ingest_keeps_registry_resolution_and_event_commit_in_one_transaction(monkeypatch) -> None:
+    evidence = _FakeEvidenceTransaction()
     dependency = object()
     ingest = IngestService(
         evidence=evidence,
@@ -83,7 +83,8 @@ def test_direct_ingest_keeps_registry_resolution_and_event_commit_in_one_unit_of
         market_tick_current_dirty_targets=dependency,
         enriched_events=dependency,
         event_anchor_jobs=dependency,
-        token_radar_source_dirty_events=dependency,
+        token_radar_dirty_targets=dependency,
+        transaction=evidence.transaction,
         event_anchor_active_window_ms=300_000,
     )
     event = make_event("event-direct-atomic")
@@ -188,14 +189,14 @@ class _FakeState:
     in_session: bool = False
 
 
-class _FakeEvidenceUnitOfWork:
+class _FakeEvidenceTransaction:
     def __init__(self) -> None:
         self.conn = object()
         self.depth = 0
         self.entries = 0
 
     @contextmanager
-    def unit_of_work(self) -> Iterator[None]:
+    def transaction(self) -> Iterator[None]:
         self.entries += 1
         self.depth += 1
         try:
@@ -204,7 +205,7 @@ class _FakeEvidenceUnitOfWork:
             self.depth -= 1
 
 
-def _assert_depth(evidence: _FakeEvidenceUnitOfWork, result: Any = None) -> Any:
+def _assert_depth(evidence: _FakeEvidenceTransaction, result: Any = None) -> Any:
     assert evidence.depth == 1
     return result
 
@@ -253,7 +254,6 @@ class _FakeRepos:
         self.market_tick_current_dirty_targets = self
         self.event_anchor_jobs = self
         self.token_radar_dirty_targets = self
-        self.token_radar_source_dirty_events = self
         self.transaction_depth = 0
 
     @contextmanager

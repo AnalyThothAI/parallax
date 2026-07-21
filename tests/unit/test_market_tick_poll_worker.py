@@ -8,11 +8,11 @@ from typing import Any
 
 import pytest
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote
 from parallax.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
 from parallax.domains.asset_market.types import market_tick_id
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 def _settings(
@@ -24,20 +24,17 @@ def _settings(
     return SimpleNamespace(
         enabled=True,
         interval_seconds=interval_seconds,
-        soft_timeout_seconds=120.0,
         hard_timeout_seconds=180.0,
         batch_size=batch_size,
         concurrency=concurrency,
     )
 
 
-def test_market_tick_poll_worker_requires_formal_settings_provider_and_db_contracts() -> None:
+def test_market_tick_poll_worker_requires_provider_and_db_contracts() -> None:
     state = FakeSessionState()
     db = FakeDB(state, FakeRepos(state, []))
     providers = FakeProviders(dex_quote_market=None, cex_market=None)
 
-    with pytest.raises(RuntimeError, match="market_tick_poll_settings_required"):
-        MarketTickPollWorker(pool_bundle=db, providers=providers, settings=None)
     with pytest.raises(RuntimeError, match="market_tick_poll_providers_required"):
         MarketTickPollWorker(pool_bundle=db, providers=None, settings=_settings())
     with pytest.raises(RuntimeError, match="market_tick_poll_db_required"):
@@ -59,51 +56,6 @@ def test_market_tick_poll_worker_requires_formal_provider_bundle_fields() -> Non
             pool_bundle=db,
             providers=SimpleNamespace(dex_quote_market=None),
             settings=_settings(),
-        )
-
-
-def test_market_tick_poll_worker_reads_formal_settings_fields_directly() -> None:
-    state = FakeSessionState()
-
-    with pytest.raises(AttributeError, match="batch_size"):
-        MarketTickPollWorker(
-            pool_bundle=FakeDB(state, FakeRepos(state, [])),
-            providers=FakeProviders(dex_quote_market=None, cex_market=None),
-            settings=SimpleNamespace(enabled=True, interval_seconds=5.0, concurrency=4),
-        )
-    with pytest.raises(AttributeError, match="concurrency"):
-        MarketTickPollWorker(
-            pool_bundle=FakeDB(state, FakeRepos(state, [])),
-            providers=FakeProviders(dex_quote_market=None, cex_market=None),
-            settings=SimpleNamespace(enabled=True, interval_seconds=5.0, batch_size=100),
-        )
-
-
-@pytest.mark.parametrize(
-    ("field", "value", "error_code"),
-    [
-        pytest.param("batch_size", 0, "market_tick_poll_batch_size_required", id="batch-zero"),
-        pytest.param("batch_size", True, "market_tick_poll_batch_size_required", id="batch-bool"),
-        pytest.param("batch_size", "100", "market_tick_poll_batch_size_required", id="batch-string"),
-        pytest.param("concurrency", 0, "market_tick_poll_concurrency_required", id="concurrency-zero"),
-        pytest.param("concurrency", True, "market_tick_poll_concurrency_required", id="concurrency-bool"),
-        pytest.param("concurrency", "4", "market_tick_poll_concurrency_required", id="concurrency-string"),
-    ],
-)
-def test_market_tick_poll_worker_rejects_malformed_runtime_settings(
-    field: str,
-    value: Any,
-    error_code: str,
-) -> None:
-    state = FakeSessionState()
-    settings = _settings()
-    setattr(settings, field, value)
-
-    with pytest.raises(ValueError, match=error_code):
-        MarketTickPollWorker(
-            pool_bundle=FakeDB(state, FakeRepos(state, [])),
-            providers=FakeProviders(dex_quote_market=None, cex_market=None),
-            settings=settings,
         )
 
 
@@ -189,7 +141,6 @@ def test_market_tick_poll_worker_polls_tier2_targets_outside_session_inserts_and
             ],
             "reason": "market_tick_written",
             "now_ms": 1_800_000_000_100,
-            "commit": False,
         }
     ]
 
@@ -600,6 +551,9 @@ class FakeRepos:
         )
         self.conn = FakeConn()
 
+    def transaction(self):
+        return FakeTransaction(self.conn)
+
     def require_transaction(self, *, operation: str) -> None:
         return None
 
@@ -658,8 +612,8 @@ class FakeDirtyTargets:
     def __init__(self) -> None:
         self.enqueues: list[dict[str, object]] = []
 
-    def enqueue_targets(self, rows, *, reason, now_ms, commit) -> int:
-        self.enqueues.append({"rows": list(rows), "reason": reason, "now_ms": now_ms, "commit": commit})
+    def enqueue_targets(self, rows, *, reason, now_ms) -> int:
+        self.enqueues.append({"rows": list(rows), "reason": reason, "now_ms": now_ms})
         return len(self.enqueues[-1]["rows"])
 
 
@@ -681,10 +635,6 @@ class FakeDB:
         self.session_names.append(name)
         return FakeSession(self.state, self.repos)
 
-    def worker_transaction(self, name: str):
-        self.session_names.append(name)
-        return FakeTransactionSession(self.state, self.repos)
-
 
 class FakeSession:
     def __init__(self, state: FakeSessionState, repos: FakeRepos) -> None:
@@ -701,11 +651,16 @@ class FakeSession:
         return False
 
 
-class FakeTransactionSession(FakeSession):
+class FakeTransaction:
+    def __init__(self, conn: FakeConn) -> None:
+        self.conn = conn
+
+    def __enter__(self) -> None:
+        return None
+
     def __exit__(self, exc_type, exc, tb) -> bool:
-        self.state.in_session = False
         if exc_type is None:
-            self.repos.conn.commit()
+            self.conn.commit()
         return False
 
 

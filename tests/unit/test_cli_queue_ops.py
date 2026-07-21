@@ -171,7 +171,11 @@ def test_queue_resolve_retry_uses_registered_transition(monkeypatch) -> None:
             },
         )
     ]
-    repos = SimpleNamespace(signals=SimpleNamespace(conn=conn), discovery=_FakeDiscoveryRetryRepository())
+    repos = SimpleNamespace(
+        signals=SimpleNamespace(conn=conn),
+        transaction=conn.transaction,
+        discovery=_FakeDiscoveryRetryRepository(),
+    )
 
     @contextmanager
     def fake_repositories(_settings: object):
@@ -217,7 +221,6 @@ def test_queue_resolve_retry_uses_registered_transition(monkeypatch) -> None:
             "due_at_ms": 1_700_000_100_000,
             "latest_seen_ms": 1_700_000_000_000,
             "intent_count": 7,
-            "commit": False,
         }
     ]
 
@@ -249,6 +252,7 @@ def test_queue_resolve_retry_requeues_token_image_source_terminal(monkeypatch) -
     ]
     repos = SimpleNamespace(
         signals=SimpleNamespace(conn=conn),
+        transaction=conn.transaction,
         token_image_source_dirty_targets=_FakeTokenImageSourceRetryRepository(),
     )
 
@@ -293,7 +297,6 @@ def test_queue_resolve_retry_requeues_token_image_source_terminal(monkeypatch) -
             "reason": "terminal_retry:operator checked image source",
             "now_ms": 1_700_000_100_000,
             "due_at_ms": 1_700_000_100_000,
-            "commit": False,
         }
     ]
 
@@ -319,6 +322,7 @@ def test_queue_resolve_retry_requeues_token_radar_dirty_target_with_bounded_tran
     ]
     repos = SimpleNamespace(
         signals=SimpleNamespace(conn=conn),
+        transaction=conn.transaction,
         token_radar_dirty_targets=_FakeTokenRadarTargetRetryRepository(),
     )
 
@@ -357,76 +361,6 @@ def test_queue_resolve_retry_requeues_token_radar_dirty_target_with_bounded_tran
             "reason": "terminal_retry:operator checked radar target",
             "now_ms": 1_700_000_100_000,
             "due_at_ms": 1_700_000_100_000,
-            "commit": False,
-        }
-    ]
-
-
-def test_queue_resolve_retry_requeues_narrative_admission_dirty_target(monkeypatch) -> None:
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    source_row = {
-        "target_type": "Asset",
-        "target_id": "asset-unit",
-        "window": "1h",
-        "scope": "all",
-        "projection_version": "radar-v1",
-        "schema_version": "narrative-v1",
-        "payload_hash": "payload-narrative",
-        "source_watermark_ms": 1_700_000_000_000,
-        "attempt_count": 3,
-    }
-    conn = _FakeTerminalConnection()
-    conn.rows = [
-        _terminal_row(
-            "terminal-narrative-1",
-            worker_name="narrative_admission",
-            source_table="narrative_admission_dirty_targets",
-            target_key="Asset:asset-unit:1h:all:radar-v1:narrative-v1",
-            source_row_json=source_row,
-        )
-    ]
-    repos = SimpleNamespace(
-        signals=SimpleNamespace(conn=conn),
-        narrative_admission_dirty_targets=_FakeNarrativeAdmissionDirtyTargetRetryRepository(),
-    )
-
-    @contextmanager
-    def fake_repositories(_settings: object):
-        yield repos
-
-    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
-    stdout = io.StringIO()
-
-    code = main(
-        [
-            "ops",
-            "queue-resolve",
-            "--terminal-id",
-            "terminal-narrative-1",
-            "--action",
-            "retry",
-            "--reason",
-            "operator checked narrative target",
-            "--execute",
-        ],
-        stdout=stdout,
-    )
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert payload["ok"] is True
-    assert payload["data"]["operator_action"] == "retry"
-    assert payload["data"]["transition"] == {"requeued": 1, "due_at_ms": 1_700_000_100_000}
-    assert repos.narrative_admission_dirty_targets.calls == [
-        {
-            "targets": [{**source_row, "due_at_ms": 1_700_000_100_000}],
-            "reason": "terminal_retry:operator checked narrative target",
-            "now_ms": 1_700_000_100_000,
-            "due_at_ms": 1_700_000_100_000,
-            "commit": False,
         }
     ]
 
@@ -452,6 +386,7 @@ def test_queue_resolve_retry_requeues_market_tick_current_dirty_target(monkeypat
     ]
     repos = SimpleNamespace(
         signals=SimpleNamespace(conn=conn),
+        transaction=conn.transaction,
         market_tick_current_dirty_targets=_FakeMarketTickCurrentDirtyTargetRetryRepository(),
     )
 
@@ -489,75 +424,6 @@ def test_queue_resolve_retry_requeues_market_tick_current_dirty_target(monkeypat
             "targets": [source_row],
             "reason": "terminal_retry:operator checked market current",
             "now_ms": 1_700_000_100_000,
-            "commit": False,
-        }
-    ]
-
-
-def test_queue_resolve_retry_requeues_token_radar_source_dirty_event_with_bounded_transition_payload(
-    monkeypatch,
-) -> None:
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    source_row = {
-        "projection_version": "token-radar-v-test",
-        "source_event_id": "event-unit",
-        "target_type_key": "Asset",
-        "identity_id": "asset-unit",
-        "payload_hash": "payload-radar-source",
-        "attempt_count": 3,
-    }
-    conn = _FakeTerminalConnection()
-    conn.rows = [
-        _terminal_row(
-            "terminal-radar-source-1",
-            worker_name="token_radar_projection",
-            source_table="token_radar_source_dirty_events",
-            target_key="token-radar-v-test:event-unit:Asset:asset-unit",
-            source_row_json=source_row,
-        )
-    ]
-    repos = SimpleNamespace(
-        signals=SimpleNamespace(conn=conn),
-        token_radar_source_dirty_events=_FakeTokenRadarSourceRetryRepository(),
-    )
-
-    @contextmanager
-    def fake_repositories(_settings: object):
-        yield repos
-
-    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
-    stdout = io.StringIO()
-
-    code = main(
-        [
-            "ops",
-            "queue-resolve",
-            "--terminal-id",
-            "terminal-radar-source-1",
-            "--action",
-            "retry",
-            "--reason",
-            "operator checked radar source",
-            "--execute",
-        ],
-        stdout=stdout,
-    )
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert payload["ok"] is True
-    assert payload["data"]["operator_action"] == "retry"
-    assert payload["data"]["transition"] == {"requeued": 1, "due_at_ms": 1_700_000_100_000}
-    assert repos.token_radar_source_dirty_events.calls == [
-        {
-            "events": [source_row],
-            "reason": "terminal_retry:operator checked radar source",
-            "now_ms": 1_700_000_100_000,
-            "due_at_ms": 1_700_000_100_000,
-            "commit": False,
         }
     ]
 
@@ -587,6 +453,7 @@ def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatc
     ]
     repos = SimpleNamespace(
         signals=SimpleNamespace(conn=conn),
+        transaction=conn.transaction,
         macro_intel=_FakeMacroProjectionRetryRepository(),
     )
 
@@ -633,7 +500,6 @@ def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatc
             "now_ms": 1_700_000_100_000,
             "due_at_ms": 1_700_000_100_000,
             "reason": "terminal_retry:operator checked macro target",
-            "commit": False,
         }
     ]
     assert repos.macro_intel.current_calls == []
@@ -656,7 +522,11 @@ def test_queue_resolve_retry_rolls_back_when_transition_requeues_nothing(monkeyp
             },
         )
     ]
-    repos = SimpleNamespace(signals=SimpleNamespace(conn=conn), discovery=_FakeEmptyDiscoveryRetryRepository())
+    repos = SimpleNamespace(
+        signals=SimpleNamespace(conn=conn),
+        transaction=conn.transaction,
+        discovery=_FakeEmptyDiscoveryRetryRepository(),
+    )
 
     @contextmanager
     def fake_repositories(_settings: object):
@@ -705,7 +575,7 @@ def test_queue_resolve_retry_requires_discovery_repository_contract(monkeypatch)
             },
         )
     ]
-    repos = SimpleNamespace(signals=SimpleNamespace(conn=conn))
+    repos = SimpleNamespace(signals=SimpleNamespace(conn=conn), transaction=conn.transaction)
 
     @contextmanager
     def fake_repositories(_settings: object):
@@ -760,7 +630,7 @@ def test_queue_resolve_bucket_dry_run_reports_count_without_terminal_ids(monkeyp
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=conn))
+        yield SimpleNamespace(signals=SimpleNamespace(conn=conn), transaction=conn.transaction)
 
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
@@ -833,7 +703,7 @@ def test_queue_resolve_bucket_execute_archives_bounded_rows_without_terminal_ids
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield SimpleNamespace(signals=SimpleNamespace(conn=conn))
+        yield SimpleNamespace(signals=SimpleNamespace(conn=conn), transaction=conn.transaction)
 
     monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
@@ -881,11 +751,9 @@ def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
         ("resolution_refresh", "token_discovery_dirty_lookup_keys"),
         ("event_anchor_backfill", "event_anchor_backfill_jobs"),
         ("market_tick_current_projection", "market_tick_current_dirty_targets"),
-        ("narrative_admission", "narrative_admission_dirty_targets"),
         ("token_image_mirror", "token_image_source_dirty_targets"),
         ("token_profile_current", "token_profile_current_dirty_targets"),
         ("token_radar_projection", "token_radar_dirty_targets"),
-        ("token_radar_projection", "token_radar_source_dirty_events"),
         ("macro_view_projection", "macro_projection_dirty_targets"),
     }
     assert ("mention_semantics", "token_mention_semantics") not in queue_ops.QUEUE_RETRY_TRANSITIONS
@@ -947,7 +815,7 @@ def test_queue_inspect_active_uses_queue_health_adapter(monkeypatch) -> None:
     monkeypatch.setattr(queue_ops, "_now_ms", lambda: 1_700_000_100_000)
     monkeypatch.setattr(
         queue_ops,
-        "worker_queue_health_tables",
+        "worker_queue_tables",
         lambda: {"resolution_refresh": ("token_discovery_dirty_lookup_keys",)},
     )
     monkeypatch.setattr(
@@ -1007,7 +875,7 @@ def test_queue_inspect_active_rejects_zero_limit_before_queue_health_sampling(mo
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
     monkeypatch.setattr(
         queue_ops,
-        "worker_queue_health_tables",
+        "worker_queue_tables",
         lambda: {"resolution_refresh": ("token_discovery_dirty_lookup_keys",)},
     )
     monkeypatch.setattr(queue_ops, "fetch_queue_table_health", fake_queue_health)
@@ -1046,15 +914,6 @@ class _FakeEmptyDiscoveryRetryRepository(_FakeDiscoveryRetryRepository):
         return 0
 
 
-class _FakeNarrativeAdmissionDirtyTargetRetryRepository:
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-
-    def enqueue_targets(self, targets, **kwargs):
-        self.calls.append({"targets": [dict(target) for target in targets], **kwargs})
-        return {"targets": len(targets)}
-
-
 class _FakeMarketTickCurrentDirtyTargetRetryRepository:
     def __init__(self) -> None:
         self.calls: list[dict[str, Any]] = []
@@ -1080,15 +939,6 @@ class _FakeTokenRadarTargetRetryRepository:
     def enqueue_targets(self, targets, **kwargs):
         self.calls.append({"targets": [dict(target) for target in targets], **kwargs})
         return len(targets)
-
-
-class _FakeTokenRadarSourceRetryRepository:
-    def __init__(self) -> None:
-        self.calls: list[dict[str, Any]] = []
-
-    def enqueue_events(self, events, **kwargs):
-        self.calls.append({"events": [dict(event) for event in events], **kwargs})
-        return len(events)
 
 
 class _FakeMacroProjectionRetryRepository:

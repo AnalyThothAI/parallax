@@ -31,7 +31,7 @@ cold paths are retained by partition lifecycle, not by worker-loop deletes.
 
 | Retention class | Tables | Lifecycle rule |
 | --- | --- | --- |
-| Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows`, `macro_view_snapshots`, `cex_oi_radar_rows`, `cex_oi_radar_publication_state` | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` publication state and product/window current rows, with `current_generation_id` kept as attempt audit metadata rather than a serving join key. Current rows carry `rank_score`, `quality_status`, `degraded_reasons_json`, and `factor_snapshot_json`, not legacy top-level current-row JSON blocks. Macro and CEX serving rows are compact current rows; unchanged source signatures update publication state at most and write zero serving rows. |
+| Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows`, `macro_view_snapshots` | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` publication state and product/window current rows, with `current_generation_id` kept as attempt audit metadata rather than a serving join key. Current rows carry `rank_score`, `quality_status`, `degraded_reasons_json`, and `factor_snapshot_json`, not legacy top-level current-row JSON blocks. Macro module views are worker-built JSONB sections inside the current snapshot. Unchanged source signatures write zero serving rows. Retired CEX OI/detail tables are not performance templates. |
 | Projection-private/detail path | `token_radar_target_features`, `token_radar_rank_source_events` | Used by the Token Radar projection and bounded evidence/detail lookups only. `token_radar_target_features` is not an API, CLI, notification, or repair read path. `token_radar_rank_source_events` is lazy evidence/detail, not online leaderboard service. |
 | Selected-row hydrate | `events`, `enriched_events` | Access only after ranking or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
 | Cold audit/history | `raw_frames` and future explicit cold projections | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
@@ -223,9 +223,13 @@ Good examples from the hard cut:
 CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_token_intent_lookup_keys_intent_lookup
   ON token_intent_lookup_keys(intent_id, lookup_key);
 
-CREATE INDEX CONCURRENTLY IF NOT EXISTS idx_projection_runs_running_stale
-  ON projection_runs(projection_name, projection_version, started_at_ms ASC)
-  WHERE status = 'running';
+CREATE INDEX IF NOT EXISTS idx_token_radar_dirty_targets_claim
+  ON token_radar_dirty_targets(
+    due_at_ms ASC,
+    updated_at_ms ASC,
+    target_type_key,
+    identity_id
+  );
 ```
 
 ### Keep Runtime Idle Paths Bounded

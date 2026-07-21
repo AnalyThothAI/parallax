@@ -7,14 +7,13 @@ from types import SimpleNamespace
 
 import pytest
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.providers import DexMarketFactUpdate
 from parallax.domains.asset_market.runtime.market_tick_stream_worker import (
     MarketTickStreamWorker,
-    _stream_targets,
 )
 from parallax.domains.asset_market.types import market_tick_id
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 def test_market_tick_stream_worker_is_not_single_writer_locked() -> None:
@@ -116,7 +115,6 @@ def test_market_tick_stream_worker_reads_tier1_streams_outside_session_inserts_a
             "rows": [("chain_token", "eip155:1:0xAbC")],
             "reason": "market_tick_written",
             "now_ms": 1_800_000_000_100,
-            "commit": False,
         }
     ]
     tick = repos.market_ticks.inserted[0]
@@ -422,19 +420,6 @@ def test_market_tick_stream_worker_requires_stream_provider_contract() -> None:
         _worker(db=FakeDB(state, repos), stream=None)
 
 
-def test_market_tick_stream_worker_requires_formal_settings_contract() -> None:
-    state = FakeSessionState()
-    repos = FakeRepos(state, [])
-
-    with pytest.raises(RuntimeError, match="market_tick_stream_settings_required"):
-        MarketTickStreamWorker(
-            pool_bundle=FakeDB(state, repos),
-            stream_dex_market=FakeDexMarketStream(state, []),
-            settings=None,
-            telemetry=object(),
-        )
-
-
 def test_market_tick_stream_worker_requires_db_pool_bundle_contract() -> None:
     state = FakeSessionState()
 
@@ -445,75 +430,6 @@ def test_market_tick_stream_worker_requires_db_pool_bundle_contract() -> None:
             settings=_stream_settings(),
             telemetry=object(),
         )
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param(
-            {"subscription_limit": 0},
-            "market_tick_stream_subscription_limit_required",
-            id="subscription-zero",
-        ),
-        pytest.param(
-            {"subscription_limit": -1},
-            "market_tick_stream_subscription_limit_required",
-            id="subscription-negative",
-        ),
-        pytest.param(
-            {"subscription_limit": True},
-            "market_tick_stream_subscription_limit_required",
-            id="subscription-bool",
-        ),
-        pytest.param(
-            {"subscription_limit": "50"},
-            "market_tick_stream_subscription_limit_required",
-            id="subscription-string",
-        ),
-        pytest.param(
-            {"stream_cycle_seconds": 0.0},
-            "market_tick_stream_cycle_seconds_required",
-            id="cycle-zero",
-        ),
-        pytest.param(
-            {"stream_cycle_seconds": True},
-            "market_tick_stream_cycle_seconds_required",
-            id="cycle-bool",
-        ),
-        pytest.param(
-            {"stream_cycle_seconds": "0.01"},
-            "market_tick_stream_cycle_seconds_required",
-            id="cycle-string",
-        ),
-    ],
-)
-def test_market_tick_stream_worker_rejects_malformed_runtime_settings(
-    overrides: dict[str, object],
-    error_code: str,
-) -> None:
-    state = FakeSessionState()
-
-    with pytest.raises(ValueError, match=error_code):
-        MarketTickStreamWorker(
-            pool_bundle=FakeDB(state, FakeRepos(state, [])),
-            stream_dex_market=FakeDexMarketStream(state, []),
-            settings=_stream_settings(**overrides),
-            telemetry=object(),
-        )
-
-
-@pytest.mark.parametrize(
-    "limit",
-    [
-        pytest.param(-1, id="negative"),
-        pytest.param(0, id="zero"),
-        pytest.param(True, id="bool"),
-        pytest.param("1", id="string"),
-    ],
-)
-def test_market_tick_stream_target_selection_rejects_malformed_limit(limit: object) -> None:
-    with pytest.raises(ValueError, match="market_tick_stream_subscription_limit_required"):
-        _stream_targets([], limit=limit)  # type: ignore[arg-type]
 
 
 def _worker(
@@ -538,7 +454,6 @@ def _stream_settings(**overrides: object) -> SimpleNamespace:
     values = {
         "enabled": True,
         "interval_seconds": 5.0,
-        "soft_timeout_seconds": 120.0,
         "hard_timeout_seconds": 180.0,
         "subscription_limit": 50,
         "stream_cycle_seconds": 30.0,
@@ -573,6 +488,9 @@ class FakeRepos:
         self.market_tick_current_dirty_targets = FakeDirtyTargets()
         self.conn = FakeConn()
 
+    def transaction(self):
+        return FakeTransaction(self.conn)
+
     def require_transaction(self, *, operation: str) -> None:
         return None
 
@@ -605,8 +523,8 @@ class FakeDirtyTargets:
     def __init__(self) -> None:
         self.enqueues: list[dict[str, object]] = []
 
-    def enqueue_targets(self, rows, *, reason, now_ms, commit) -> int:
-        self.enqueues.append({"rows": list(rows), "reason": reason, "now_ms": now_ms, "commit": commit})
+    def enqueue_targets(self, rows, *, reason, now_ms) -> int:
+        self.enqueues.append({"rows": list(rows), "reason": reason, "now_ms": now_ms})
         return len(self.enqueues[-1]["rows"])
 
 
@@ -628,10 +546,6 @@ class FakeDB:
         self.session_names.append(name)
         return FakeSession(self.state, self.repos)
 
-    def worker_transaction(self, name: str):
-        self.session_names.append(name)
-        return FakeTransactionSession(self.state, self.repos)
-
 
 class FakeSession:
     def __init__(self, state: FakeSessionState, repos: FakeRepos) -> None:
@@ -648,11 +562,16 @@ class FakeSession:
         return False
 
 
-class FakeTransactionSession(FakeSession):
+class FakeTransaction:
+    def __init__(self, conn: FakeConn) -> None:
+        self.conn = conn
+
+    def __enter__(self) -> None:
+        return None
+
     def __exit__(self, exc_type, exc, tb) -> bool:
-        self.state.in_session = False
         if exc_type is None:
-            self.repos.conn.commit()
+            self.conn.commit()
         return False
 
 

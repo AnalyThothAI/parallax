@@ -44,9 +44,8 @@ def _write_identity(
         confidence=confidence,
         raw_payload=raw_payload or {},
         observed_at_ms=observed_at_ms,
-        commit=False,
     )
-    identity.recompute_current_identity(str(asset["asset_id"]), now_ms=observed_at_ms, commit=False)
+    identity.recompute_current_identity(str(asset["asset_id"]), now_ms=observed_at_ms)
 
 
 def test_registry_repository_writes_cex_token_asset_and_pricefeed_routes(tmp_path):

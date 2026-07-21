@@ -7,9 +7,9 @@ from types import SimpleNamespace
 
 import pytest
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.token_intel.runtime import token_radar_projection_worker as module
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class FakeTokenRadar:
@@ -32,10 +32,13 @@ class FakeTokenRadar:
 
 
 class FakeRepos:
-    def __init__(self, publication_state, *, dirty_claims=None, source_claims=None):
+    def __init__(self, publication_state, *, dirty_claims=None):
         self.token_radar = FakeTokenRadar(publication_state)
         self.token_radar_dirty_targets = FakeDirtyTargets(dirty_claims)
-        self.token_radar_source_dirty_events = FakeSourceDirtyEvents(source_claims)
+
+    @contextmanager
+    def transaction(self):
+        yield
 
 
 class FakeDirtyTargets:
@@ -53,19 +56,9 @@ class FakeDirtyTargets:
         raise AssertionError("token radar runtime worker must not run recent resolved catch-up")
 
 
-class FakeSourceDirtyEvents:
-    def __init__(self, claims=None):
-        self.claim_due_calls: list[dict[str, object]] = []
-        self.claims = list(claims) if claims is not None else []
-
-    def claim_due(self, **kwargs):
-        self.claim_due_calls.append(kwargs)
-        return [dict(claim, lease_owner=kwargs["lease_owner"]) for claim in self.claims]
-
-
 class FakeSession:
-    def __init__(self, publication_state, *, dirty_claims=None, source_claims=None):
-        self.repos = FakeRepos(publication_state, dirty_claims=dirty_claims, source_claims=source_claims)
+    def __init__(self, publication_state, *, dirty_claims=None):
+        self.repos = FakeRepos(publication_state, dirty_claims=dirty_claims)
 
     def __enter__(self):
         return self.repos
@@ -75,10 +68,9 @@ class FakeSession:
 
 
 class FakeDB:
-    def __init__(self, publication_state, *, dirty_claims=None, source_claims=None):
+    def __init__(self, publication_state, *, dirty_claims=None):
         self.publication_state = publication_state
         self.dirty_claims = dirty_claims
-        self.source_claims = source_claims
         self.worker_sessions: list[dict[str, object]] = []
         self.sessions: list[FakeSession] = []
 
@@ -88,7 +80,6 @@ class FakeDB:
         session = FakeSession(
             self.publication_state,
             dirty_claims=self.dirty_claims,
-            source_claims=self.source_claims,
         )
         self.sessions.append(session)
         yield session.repos
@@ -114,10 +105,9 @@ def _default_dirty_claim() -> dict[str, object]:
 def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild(monkeypatch):
     calls: list[dict[str, object]] = []
     publication_state = {}
-    wake_emitter = FakeWakeBus()
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -134,14 +124,14 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
         def rebuild(self, **kwargs):  # pragma: no cover - must not be called by runtime worker
             raise AssertionError("worker must not call full-window rebuild")
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     db = FakeDB(publication_state)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("5m", "1h", "4h"), scopes=("all", "matched"), batch_size=7),
         db=db,
         telemetry=object(),
-        wake_emitter=wake_emitter,
     )
 
     result = worker.rebuild_once(now_ms=1_777_800_000_000)
@@ -171,7 +161,6 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
                     "attempt_count": 1,
                 },
             ),
-            "claimed_source_events": (),
             "score_work_items": (
                 ("5m", "all"),
                 ("5m", "matched"),
@@ -184,7 +173,6 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
     ]
     assert result["rows_written"] == 2
     assert result["windows"]["5m:all"]["status"] == "ready"
-    assert wake_emitter.token_radar_notifications == [{"window": "5m", "scope": "all"}]
     assert isinstance(worker, WorkerBase)
     assert worker.SINGLE_WRITER_KEY == 2026051501
     assert worker.windows == ("5m", "1h", "4h")
@@ -193,20 +181,11 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
     assert worker.hot_windows == ("5m",)
     assert worker.limit == 7
     assert worker.cold_interval_ms == 60_000
-    assert worker.wake_emitter is wake_emitter
     assert not hasattr(worker, "wake_bus")
     assert db.worker_sessions[0] == {"name": "token_radar_projection", "statement_timeout_seconds": 120.0}
 
 
-def test_projection_worker_requires_formal_settings_and_db_contract() -> None:
-    with pytest.raises(RuntimeError, match="token_radar_projection_settings_required"):
-        module.TokenRadarProjectionWorker(
-            name="token_radar_projection",
-            settings=None,
-            db=FakeDB({}),
-            telemetry=object(),
-        )
-
+def test_projection_worker_requires_db_contract() -> None:
     with pytest.raises(RuntimeError, match="token_radar_projection_db_required"):
         module.TokenRadarProjectionWorker(
             name="token_radar_projection",
@@ -214,81 +193,6 @@ def test_projection_worker_requires_formal_settings_and_db_contract() -> None:
             db=None,
             telemetry=object(),
         )
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"batch_size": 0}, "token_radar_projection_batch_size_required", id="batch-zero"),
-        pytest.param({"batch_size": True}, "token_radar_projection_batch_size_required", id="batch-bool"),
-        pytest.param({"batch_size": "7"}, "token_radar_projection_batch_size_required", id="batch-string"),
-        pytest.param({"lease_ms": 0}, "token_radar_projection_lease_ms_required", id="lease-zero"),
-        pytest.param({"lease_ms": True}, "token_radar_projection_lease_ms_required", id="lease-bool"),
-        pytest.param({"lease_ms": "120000"}, "token_radar_projection_lease_ms_required", id="lease-string"),
-        pytest.param({"retry_ms": 0}, "token_radar_projection_retry_ms_required", id="retry-zero"),
-        pytest.param({"retry_ms": True}, "token_radar_projection_retry_ms_required", id="retry-bool"),
-        pytest.param({"retry_ms": "30000"}, "token_radar_projection_retry_ms_required", id="retry-string"),
-        pytest.param({"max_attempts": 0}, "token_radar_projection_max_attempts_required", id="attempts-zero"),
-        pytest.param({"max_attempts": True}, "token_radar_projection_max_attempts_required", id="attempts-bool"),
-        pytest.param({"max_attempts": "3"}, "token_radar_projection_max_attempts_required", id="attempts-string"),
-        pytest.param(
-            {"private_cache_retention_enabled": "true"},
-            "token_radar_projection_private_cache_retention_enabled_required",
-            id="retention-enabled-string",
-        ),
-        pytest.param(
-            {"private_cache_retention_enabled": 1},
-            "token_radar_projection_private_cache_retention_enabled_required",
-            id="retention-enabled-int",
-        ),
-        pytest.param(
-            {"private_cache_retention_ms": 0},
-            "token_radar_projection_private_cache_retention_ms_required",
-            id="retention-zero",
-        ),
-        pytest.param(
-            {"private_cache_retention_ms": True},
-            "token_radar_projection_private_cache_retention_ms_required",
-            id="retention-bool",
-        ),
-        pytest.param(
-            {"private_cache_retention_ms": "172800000"},
-            "token_radar_projection_private_cache_retention_ms_required",
-            id="retention-string",
-        ),
-        pytest.param(
-            {"cold_interval_seconds": -1.0},
-            "token_radar_projection_cold_interval_seconds_required",
-            id="cold-negative",
-        ),
-        pytest.param(
-            {"cold_interval_seconds": True},
-            "token_radar_projection_cold_interval_seconds_required",
-            id="cold-bool",
-        ),
-        pytest.param(
-            {"cold_interval_seconds": "60"},
-            "token_radar_projection_cold_interval_seconds_required",
-            id="cold-string",
-        ),
-    ],
-)
-def test_projection_worker_rejects_malformed_runtime_settings_before_session(
-    overrides: dict[str, object],
-    error_code: str,
-) -> None:
-    db = FakeDB({})
-
-    with pytest.raises(ValueError, match=error_code):
-        module.TokenRadarProjectionWorker(
-            name="token_radar_projection",
-            settings=_settings(**overrides),
-            db=db,
-            telemetry=object(),
-        )
-
-    assert db.worker_sessions == []
-    assert db.sessions == []
 
 
 @pytest.mark.parametrize("limit", [0, True, "7"])
@@ -308,45 +212,9 @@ def test_projection_worker_rejects_malformed_rebuild_limit_before_session(limit:
     assert db.sessions == []
 
 
-def test_projection_worker_requires_source_dirty_event_repository(monkeypatch):
-    projection_calls = 0
-
-    class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
-            self.repos = repos
-
-        def rebuild_dirty_targets(self, **kwargs):
-            nonlocal projection_calls
-            projection_calls += 1
-            return {"computed_at_ms": kwargs["now_ms"], "rows_written": 0, "source_rows": 0, "windows": {}}
-
-    class FakeDBWithoutSourceDirtyEvents(FakeDB):
-        @contextmanager
-        def worker_session(self, name, statement_timeout_seconds=None):
-            self.worker_sessions.append({"name": name, "statement_timeout_seconds": statement_timeout_seconds})
-            yield SimpleNamespace(
-                token_radar=FakeTokenRadar({}),
-                token_radar_dirty_targets=FakeDirtyTargets([]),
-            )
-
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
-    worker = module.TokenRadarProjectionWorker(
-        name="token_radar_projection",
-        settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), batch_size=7),
-        db=FakeDBWithoutSourceDirtyEvents({}),
-        telemetry=object(),
-    )
-
-    result = worker.rebuild_once(now_ms=1_777_800_000_000)
-
-    assert result["status"] == "failed"
-    assert "token_radar_source_dirty_events" in result["error"]
-    assert projection_calls == 0
-
-
 def test_projection_worker_run_once_returns_worker_result(monkeypatch):
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -359,7 +227,8 @@ def test_projection_worker_run_once_returns_worker_result(monkeypatch):
                 "windows": {"5m:all": {"status": "ready"}},
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), batch_size=7),
@@ -382,14 +251,15 @@ def test_token_radar_wake_does_not_bypass_hot_interval_gate(monkeypatch):
     publication_state = {("5m", "all"): _ready_state(now_ms - 1_000)}
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
             calls.append(kwargs)
             raise AssertionError("fresh publication should idle before projection service is called")
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), interval_seconds=10.0),
@@ -415,7 +285,7 @@ def test_token_radar_worker_claims_dirty_targets_even_when_publication_cadence_i
     }
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -429,7 +299,8 @@ def test_token_radar_worker_claims_dirty_targets_even_when_publication_cadence_i
                 "windows": {},
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     db = FakeDB(publication_state)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
@@ -466,7 +337,7 @@ def test_projection_worker_uses_formal_dirty_lease_and_retry_settings(monkeypatc
     now_ms = 1_777_800_001_000
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -480,7 +351,8 @@ def test_projection_worker_uses_formal_dirty_lease_and_retry_settings(monkeypatc
                 "windows": {},
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     db = FakeDB({})
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
@@ -501,7 +373,6 @@ def test_projection_worker_uses_formal_dirty_lease_and_retry_settings(monkeypatc
 
     assert result["status"] == "ready"
     assert db.sessions[0].repos.token_radar_dirty_targets.claim_due_calls[0]["lease_ms"] == 45_000
-    assert db.sessions[0].repos.token_radar_source_dirty_events.claim_due_calls[0]["lease_ms"] == 45_000
     assert calls[0]["lease_ms"] == 45_000
     assert calls[0]["retry_ms"] == 12_000
     assert calls[0]["max_attempts"] == 7
@@ -512,7 +383,7 @@ def test_projection_worker_runs_bounded_private_cache_retention_from_formal_sett
     now_ms = 1_777_800_001_000
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):  # pragma: no cover - retention-only path must stay idle
@@ -528,14 +399,15 @@ def test_projection_worker_runs_bounded_private_cache_retention_from_formal_sett
                 "limit": kwargs["limit"],
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     publication_state = {
         ("5m", "all"): _ready_state(now_ms),
         ("5m", "matched"): _ready_state(now_ms),
         ("1h", "all"): _ready_state(now_ms),
         ("1h", "matched"): _ready_state(now_ms),
     }
-    db = FakeDB(publication_state, dirty_claims=[], source_claims=[])
+    db = FakeDB(publication_state, dirty_claims=[])
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(
@@ -579,7 +451,7 @@ def test_token_radar_worker_runs_only_due_hot_items_after_interval(monkeypatch):
     }
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -593,7 +465,8 @@ def test_token_radar_worker_runs_only_due_hot_items_after_interval(monkeypatch):
                 "windows": {"5m:all": {"status": "ready"}},
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(
@@ -623,14 +496,15 @@ def test_token_radar_worker_idles_when_cold_grouped_window_is_fresh(monkeypatch)
     }
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
             calls.append(kwargs)
             raise AssertionError("fresh cold grouped publication should not run projection")
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(
@@ -662,7 +536,7 @@ def test_token_radar_worker_runs_due_cold_grouped_window_after_interval(monkeypa
     }
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -676,7 +550,8 @@ def test_token_radar_worker_runs_due_cold_grouped_window_after_interval(monkeypa
                 "windows": {"1h:matched": {"status": "ready"}},
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(
@@ -709,14 +584,15 @@ def test_token_radar_failed_without_current_backs_off_recent_attempt(monkeypatch
     }
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
             calls.append(kwargs)
             raise AssertionError("recent failed attempt without current generation should back off")
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), interval_seconds=10.0),
@@ -744,14 +620,15 @@ def test_token_radar_failed_with_previous_generation_uses_attempt_backoff(monkey
     }
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
             calls.append(kwargs)
             raise AssertionError("recent failed attempt should not retry from old current publication time")
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(
@@ -780,7 +657,7 @@ def test_token_radar_ready_state_without_publish_time_is_due(monkeypatch):
     }
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -794,7 +671,8 @@ def test_token_radar_ready_state_without_publish_time_is_due(monkeypatch):
                 "windows": {"5m:all": {"status": "ready"}},
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("5m",), scopes=("all",), hot_windows=("5m",), interval_seconds=10.0),
@@ -816,7 +694,7 @@ def test_token_radar_worker_limits_partial_cold_missing_to_one_background_item(m
     }
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -830,7 +708,8 @@ def test_token_radar_worker_limits_partial_cold_missing_to_one_background_item(m
                 "windows": {"1h:all": {"status": "ready"}},
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(
@@ -855,7 +734,7 @@ def test_projection_worker_limits_dirty_rebuild_to_hot_and_due_cold_work_items(m
     calls: list[dict[str, object]] = []
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -869,7 +748,8 @@ def test_projection_worker_limits_dirty_rebuild_to_hot_and_due_cold_work_items(m
                 "windows": {"5m:all": {"status": "ready"}},
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     publication_state = {
         ("1h", "all"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_777_799_990_000},
         ("1h", "matched"): {"latest_attempt_status": "ready", "current_published_at_ms": 1_777_799_990_000},
@@ -892,7 +772,7 @@ def test_projection_worker_treats_failed_publication_state_as_due_work(monkeypat
     calls: list[dict[str, object]] = []
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -906,7 +786,8 @@ def test_projection_worker_treats_failed_publication_state_as_due_work(monkeypat
                 "windows": {"24h:matched": {"status": "ready"}},
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     now_ms = 1_777_800_000_000
     publication_state = {
         ("5m", "matched"): _ready_state(now_ms - 1_000),
@@ -1007,7 +888,7 @@ def test_projection_worker_records_partial_window_results_before_background_fail
     sessions: list[FakeSession] = []
 
     class FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -1030,7 +911,8 @@ def test_projection_worker_records_partial_window_results_before_background_fail
         sessions.append(session)
         yield session.repos
 
-    monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
         settings=_settings(windows=("1h",), scopes=("all", "matched"), hot_windows=(), batch_size=7),
@@ -1052,7 +934,7 @@ def test_projection_worker_uses_wake_waiter_before_interval(monkeypatch):
 
     async def scenario() -> None:
         class FakeProjection:
-            def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+            def __init__(self, *, repos):
                 self.repos = repos
 
             def rebuild_dirty_targets(self, **kwargs):
@@ -1065,7 +947,8 @@ def test_projection_worker_uses_wake_waiter_before_interval(monkeypatch):
                     "windows": {},
                 }
 
-        monkeypatch.setattr(module, "_projection_class", lambda: FakeProjection)
+        monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
+        monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
         worker = module.TokenRadarProjectionWorker(
             name="token_radar_projection",
             settings=_settings(windows=("5m",), scopes=("all",), interval_seconds=60.0),
@@ -1108,14 +991,6 @@ class FakeWakeWaiter:
 
     def wake(self) -> None:
         return None
-
-
-class FakeWakeBus:
-    def __init__(self) -> None:
-        self.token_radar_notifications: list[dict[str, str]] = []
-
-    def notify_token_radar_updated(self, *, window: str, scope: str) -> None:
-        self.token_radar_notifications.append({"window": window, "scope": scope})
 
 
 async def _wait_until(predicate, *, timeout_seconds: float = 5.0) -> None:
@@ -1186,7 +1061,7 @@ def _worker(
     import pytest
 
     class _FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -1200,7 +1075,8 @@ def _worker(
             }
 
     monkeypatch = pytest.MonkeyPatch()
-    monkeypatch.setattr(module, "_projection_class", lambda: _FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", _FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     db = FakeDB(publication_state)
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",
@@ -1220,7 +1096,7 @@ def _worker(
 
 def test_projection_worker_leaves_catch_up_to_projection_service(monkeypatch) -> None:
     class _FakeProjection:
-        def __init__(self, *, repos, enqueue_narrative_admission: bool = True):
+        def __init__(self, *, repos):
             self.repos = repos
 
         def rebuild_dirty_targets(self, **kwargs):
@@ -1233,7 +1109,8 @@ def test_projection_worker_leaves_catch_up_to_projection_service(monkeypatch) ->
                 "windows": {},
             }
 
-    monkeypatch.setattr(module, "_projection_class", lambda: _FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarProjector", _FakeProjection)
+    monkeypatch.setattr(module, "TokenRadarPublisher", lambda *, repos, projector: projector)
     db = FakeDB({})
     worker = module.TokenRadarProjectionWorker(
         name="token_radar_projection",

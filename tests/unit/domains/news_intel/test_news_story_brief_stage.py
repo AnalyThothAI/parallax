@@ -2,12 +2,12 @@ from __future__ import annotations
 
 from parallax.domains.news_intel.services.news_story_brief_input import build_news_story_brief_input_packet
 from parallax.domains.news_intel.services.news_story_brief_stage import build_news_story_brief_stage
-from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefPayload
 from parallax.domains.news_intel.types.news_story_brief import (
     NEWS_STORY_BRIEF_AGENT_NAME,
     NEWS_STORY_BRIEF_LANE,
     NEWS_STORY_BRIEF_WORKFLOW_NAME,
     NewsStoryBriefAgentConfig,
+    NewsStoryBriefPayload,
 )
 
 
@@ -52,7 +52,7 @@ def test_story_stage_is_traceable() -> None:
     assert stage.stage == "news_story_brief"
     assert stage.workflow_name == NEWS_STORY_BRIEF_WORKFLOW_NAME
     assert stage.agent_name == NEWS_STORY_BRIEF_AGENT_NAME
-    assert stage.output_type is NewsItemBriefPayload
+    assert stage.output_type is NewsStoryBriefPayload
     assert stage.group_id == "news_story:news-story:event:btc-etf:t412000"
     assert stage.trace_metadata["story_key"] == "news-story:event:btc-etf:t412000"
     assert stage.trace_metadata["run_id"] == "run-1"

@@ -1,13 +1,12 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from parallax.app.runtime.app import _mount_frontend, create_app
+from parallax.app.surfaces.api.app import _mount_frontend, create_app
 from parallax.platform.config.settings import PerWorkerSettings, Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
 
 
 def _disable_workers(settings: Settings) -> None:
-    settings.workers.defaults.enabled = False
     for name in settings.workers.__class__.model_fields:
         worker_settings = getattr(settings.workers, name)
         if isinstance(worker_settings, PerWorkerSettings):

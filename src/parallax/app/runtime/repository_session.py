@@ -39,21 +39,17 @@ from parallax.domains.asset_market.repositories.token_image_source_dirty_target_
 from parallax.domains.asset_market.repositories.token_profile_current_dirty_target_repository import (
     TokenProfileCurrentDirtyTargetRepository,
 )
-from parallax.domains.cex_market_intel.repositories.cex_detail_snapshot_repository import (
-    CexDetailSnapshotRepository,
-)
-from parallax.domains.cex_market_intel.repositories.cex_oi_radar_repository import CexOiRadarRepository
+from parallax.domains.evidence.queries.watchlist_query import WatchlistQuery
 from parallax.domains.evidence.repositories.entity_repository import EntityRepository
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
-from parallax.domains.narrative_intel.repositories.narrative_admission_dirty_target_repository import (
-    NarrativeAdmissionDirtyTargetRepository,
-)
-from parallax.domains.narrative_intel.repositories.narrative_repository import NarrativeRepository
+from parallax.domains.news_intel.repositories.news_item_repository import NewsItemRepository
+from parallax.domains.news_intel.repositories.news_page_repository import NewsPageRepository
 from parallax.domains.news_intel.repositories.news_projection_dirty_target_repository import (
     NewsProjectionDirtyTargetRepository,
 )
-from parallax.domains.news_intel.repositories.news_repository import NewsRepository
+from parallax.domains.news_intel.repositories.news_source_repository import NewsSourceRepository
+from parallax.domains.news_intel.repositories.news_story_agent_repository import NewsStoryAgentRepository
 from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
 from parallax.domains.token_intel.interfaces import EventTokenProjectionQuery, SignalRepository
 from parallax.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
@@ -69,12 +65,13 @@ from parallax.domains.token_intel.repositories.token_radar_rank_source_repositor
     TokenRadarRankSourceRepository,
 )
 from parallax.domains.token_intel.repositories.token_radar_repository import TokenRadarRepository
-from parallax.domains.token_intel.repositories.token_radar_source_dirty_event_repository import (
-    TokenRadarSourceDirtyEventRepository,
-)
 from parallax.domains.token_intel.repositories.token_target_repository import TokenTargetRepository
-from parallax.domains.watchlist_intel.repositories.watchlist_intel_repository import WatchlistIntelRepository
-from parallax.platform.db.postgres_client import require_transaction, transaction
+from parallax.platform.db.postgres_client import (
+    connect_postgres,
+    require_transaction,
+    transaction,
+    with_password_from_file,
+)
 
 
 @dataclass(frozen=True, slots=True)
@@ -107,25 +104,20 @@ class RepositorySession:
     token_intent_lookup: TokenIntentLookupRepository
     event_tokens: EventTokenProjectionQuery
     token_radar_dirty_targets: TokenRadarDirtyTargetRepository
-    token_radar_source_dirty_events: TokenRadarSourceDirtyEventRepository
     token_radar_rank_sources: TokenRadarRankSourceRepository
     token_radar: TokenRadarRepository
     token_targets: TokenTargetRepository
     notifications: NotificationRepository
-    narratives: NarrativeRepository
-    narrative_admission_dirty_targets: NarrativeAdmissionDirtyTargetRepository
-    watchlist_intel: WatchlistIntelRepository
-    news: NewsRepository
+    watchlist: WatchlistQuery
+    news_sources: NewsSourceRepository
+    news_items: NewsItemRepository
+    news_story_agents: NewsStoryAgentRepository
+    news_pages: NewsPageRepository
     news_projection_dirty_targets: NewsProjectionDirtyTargetRepository
-    cex_detail_snapshots: CexDetailSnapshotRepository
-    cex_oi_radar: CexOiRadarRepository
     macro_intel: MacroIntelRepository
 
-    def unit_of_work(self) -> AbstractContextManager[None]:
-        return transaction(self.conn)
-
     def transaction(self) -> AbstractContextManager[None]:
-        return self.unit_of_work()
+        return transaction(self.conn)
 
     def require_transaction(self, *, operation: str) -> None:
         require_transaction(self.conn, operation=operation)
@@ -166,7 +158,6 @@ def repositories_for_connection(
         token_intent_lookup=TokenIntentLookupRepository(conn),
         event_tokens=EventTokenProjectionQuery(conn),
         token_radar_dirty_targets=TokenRadarDirtyTargetRepository(conn),
-        token_radar_source_dirty_events=TokenRadarSourceDirtyEventRepository(conn),
         token_radar_rank_sources=TokenRadarRankSourceRepository(conn),
         token_radar=TokenRadarRepository(conn),
         token_targets=TokenTargetRepository(conn),
@@ -175,15 +166,38 @@ def repositories_for_connection(
             running_timeout_ms=notification_delivery_running_timeout_ms,
             stale_running_terminalization_batch_size=notification_delivery_stale_running_terminalization_batch_size,
         ),
-        narratives=NarrativeRepository(conn),
-        narrative_admission_dirty_targets=NarrativeAdmissionDirtyTargetRepository(conn),
-        watchlist_intel=WatchlistIntelRepository(conn),
-        news=NewsRepository(conn),
+        watchlist=WatchlistQuery(conn),
+        news_sources=NewsSourceRepository(conn),
+        news_items=NewsItemRepository(conn),
+        news_story_agents=NewsStoryAgentRepository(conn),
+        news_pages=NewsPageRepository(conn),
         news_projection_dirty_targets=NewsProjectionDirtyTargetRepository(conn),
-        cex_detail_snapshots=CexDetailSnapshotRepository(conn),
-        cex_oi_radar=CexOiRadarRepository(conn),
         macro_intel=MacroIntelRepository(conn),
     )
+
+
+@contextmanager
+def postgres_connection(settings: Any) -> Iterator[Any]:
+    """Open the short-lived PostgreSQL connection used by application operations."""
+    dsn = with_password_from_file(settings.postgres_dsn, settings.postgres_password_file)
+    conn = connect_postgres(dsn, connect_timeout_seconds=settings.postgres_connect_timeout_seconds)
+    try:
+        yield conn
+    finally:
+        conn.close()
+
+
+@contextmanager
+def repositories(settings: Any) -> Iterator[RepositorySession]:
+    """Open one short-lived repository session for a CLI/application operation."""
+    with postgres_connection(settings) as conn:
+        yield repositories_for_connection(
+            conn,
+            notification_delivery_running_timeout_ms=int(settings.workers.notification_delivery.running_timeout_ms),
+            notification_delivery_stale_running_terminalization_batch_size=int(
+                settings.workers.notification_delivery.stale_running_terminalization_batch_size
+            ),
+        )
 
 
 @contextmanager
@@ -201,22 +215,3 @@ def repository_session(
                 notification_delivery_stale_running_terminalization_batch_size
             ),
         )
-
-
-class PooledRepository:
-    def __init__(self, pool: Any, repository_type: type, *args: Any, **kwargs: Any):
-        self._pool = pool
-        self._repository_type = repository_type
-        self._args = args
-        self._kwargs = kwargs
-
-    def __getattr__(self, name: str):
-        if name == "conn":
-            raise AttributeError("pooled repositories do not expose a pinned connection")
-
-        def method(*args: Any, **kwargs: Any):
-            with self._pool.connection() as conn:
-                repository = self._repository_type(conn, *self._args, **self._kwargs)
-                return getattr(repository, name)(*args, **kwargs)
-
-        return method

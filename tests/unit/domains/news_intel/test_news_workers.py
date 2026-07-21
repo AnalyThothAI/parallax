@@ -12,6 +12,8 @@ from unittest.mock import patch
 
 import pytest
 
+from parallax.domains.news_intel.providers import NewsSourceProviderError
+from parallax.domains.news_intel.repositories.news_repository_support import news_source_config_payload_hash
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker, _source_fetch_since_ms
 from parallax.domains.news_intel.runtime.news_item_process_worker import (
     NewsItemProcessWorker,
@@ -150,7 +152,6 @@ def test_news_fetch_worker_fetches_outside_db_session_and_writes_items() -> None
             "etag": "new-etag",
             "last_modified": "new-modified",
             "now_ms": NOW_MS,
-            "commit": False,
         }
     ]
     assert db.repo.finished_runs[0]["status"] == "success"
@@ -181,8 +182,33 @@ def test_news_fetch_worker_reads_formal_settings_for_session_claim_and_fetch_lim
     result = worker.run_once_sync(now_ms=NOW_MS)
 
     assert result.processed == 0
-    assert repo.claim_due_calls == [{"now_ms": NOW_MS, "limit": 7, "claim_lease_ms": 45_000, "commit": False}]
+    assert repo.claim_due_calls == [{"now_ms": NOW_MS, "limit": 7, "claim_lease_ms": 45_000}]
     assert feed.calls[0]["limit"] == 7
+
+
+def test_news_fetch_worker_prunes_successful_runs_at_most_once_per_hour() -> None:
+    repo = FakeNewsRepository([])
+    repo.pruned_successful_fetch_runs = 2
+    db = FakeDB(repo)
+    worker = _worker(
+        db=db,
+        feed_client=FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=304, observations=[])),
+        wake_bus=FakeWakeBus(),
+        sources=[],
+        settings=_news_fetch_settings(batch_size=7),
+    )
+
+    first = worker.run_once_sync(now_ms=NOW_MS)
+    worker.run_once_sync(now_ms=NOW_MS + 3_599_999)
+    third = worker.run_once_sync(now_ms=NOW_MS + 3_600_000)
+
+    retention_ms = 30 * 24 * 60 * 60 * 1_000
+    assert repo.fetch_run_prune_calls == [
+        {"cutoff_ms": NOW_MS - retention_ms, "limit": 1_000},
+        {"cutoff_ms": NOW_MS + 3_600_000 - retention_ms, "limit": 1_000},
+    ]
+    assert first.notes["pruned_successful_fetch_runs"] == 2
+    assert third.notes["pruned_successful_fetch_runs"] == 2
 
 
 def test_news_fetch_worker_metadata_dirty_uses_persisted_item_watermarks_not_worker_now() -> None:
@@ -321,6 +347,80 @@ def test_news_fetch_worker_treats_not_modified_as_success_without_wake() -> None
     assert wake_bus.notifications == []
 
 
+def test_news_fetch_worker_terminal_http_error_disables_source_without_interval_retry() -> None:
+    source = {
+        "source_id": "opennews-paid",
+        "provider_type": "opennews",
+        "feed_url": "opennews://subscribe",
+        "source_domain": "6551.io",
+        "source_name": "OpenNews Paid",
+    }
+    repo = FakeNewsRepository([source])
+    db = FakeDB(repo)
+    feed = HttpErrorNewsSourceProvider(db, status_code=402)
+    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
+
+    first = worker.run_once_sync(now_ms=NOW_MS)
+    second = worker.run_once_sync(now_ms=NOW_MS + 60_000)
+
+    assert first.failed == 1
+    assert second.failed == 0
+    assert second.notes["degraded"] is True
+    assert second.notes["terminal_sources"] == {"opennews-paid": "news_provider_http_402"}
+    assert len(feed.calls) == 1
+    assert repo.reconcile_calls == 1
+    assert repo.disabled_sources == [
+        {
+            "source_id": "opennews-paid",
+            "error": "news_provider_http_402",
+            "now_ms": NOW_MS,
+        }
+    ]
+    assert repo.finished_runs[0]["status"] == "failed"
+    assert repo.finished_runs[0]["http_status"] == 402
+
+
+def test_news_fetch_worker_terminal_source_survives_restart_until_config_hash_changes() -> None:
+    source = {
+        "source_id": "opennews-paid",
+        "provider_type": "opennews",
+        "feed_url": "opennews://subscribe",
+        "source_domain": "6551.io",
+        "source_name": "OpenNews Paid",
+    }
+    repo = FakeNewsRepository([source])
+    db = FakeDB(repo)
+    failing_feed = HttpErrorNewsSourceProvider(db, status_code=402)
+    _worker(db=db, feed_client=failing_feed, wake_bus=FakeWakeBus(), sources=[source]).run_once_sync(now_ms=NOW_MS)
+
+    restarted_feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=200, observations=[]))
+    restarted_result = _worker(
+        db=db,
+        feed_client=restarted_feed,
+        wake_bus=FakeWakeBus(),
+        sources=[source],
+    ).run_once_sync(now_ms=NOW_MS + 60_000)
+
+    assert restarted_feed.calls == []
+    assert restarted_result.notes["degraded"] is True
+    assert restarted_result.notes["terminal_sources"] == {"opennews-paid": "news_provider_http_402"}
+
+    changed_source = {**source, "refresh_interval_seconds": 301}
+    recovered_feed = FakeNewsSourceProvider(db, NewsProviderFetchResult(status_code=200, observations=[]))
+    recovered_result = _worker(
+        db=db,
+        feed_client=recovered_feed,
+        wake_bus=FakeWakeBus(),
+        sources=[changed_source],
+    ).run_once_sync(now_ms=NOW_MS + 120_000)
+
+    assert recovered_result.failed == 0
+    assert recovered_result.notes["degraded"] is False
+    assert len(recovered_feed.calls) == 1
+    assert repo.source_states["opennews-paid"]["terminal_config_payload_hash"] is None
+    assert repo.source_states["opennews-paid"]["enabled"] is True
+
+
 def test_news_fetch_worker_passes_source_sync_cursor_and_updates_after_success() -> None:
     source = {
         "source_id": "opennews-realtime",
@@ -370,7 +470,6 @@ def test_news_fetch_worker_passes_source_sync_cursor_and_updates_after_success()
             "source_id": "opennews-realtime",
             "next_cursor": next_cursor,
             "now_ms": NOW_MS,
-            "commit": False,
         }
     ]
     assert db.repo.events.index("update_source_sync_state") < db.repo.events.index("finish_fetch_run")
@@ -624,57 +723,6 @@ def test_news_fetch_worker_fails_when_canonical_upsert_omits_affected_news_item_
     assert repo.finished_runs[0]["status"] == "failed"
     assert all(batch["reason"] != "news_item_written" for batch in db.dirty.enqueued)
     assert wake_bus.notifications == []
-
-
-def test_news_fetch_worker_does_not_enqueue_brief_input_for_provider_signal_update() -> None:
-    source = {
-        "source_id": "opennews-news",
-        "provider_type": "opennews",
-        "feed_url": "https://opennews.test/news",
-        "source_domain": "opennews.test",
-        "source_name": "OpenNews",
-    }
-    db = FakeDB(FakeNewsRepository([source]))
-    db.repo.news_results = [
-        {
-            "news_item_id": "news-eligible",
-            "status": "updated",
-            "affected_news_item_ids": ["news-eligible"],
-        }
-    ]
-    feed = FakeNewsSourceProvider(
-        db,
-        NewsProviderFetchResult(
-            status_code=200,
-            observations=[
-                NewsProviderObservation(
-                    source_item_key="opennews-eligible",
-                    canonical_url="https://opennews.test/eligible",
-                    title="Eligible provider signal",
-                    summary="Summary",
-                    body_text="Body",
-                    language="en",
-                    published_at_ms=NOW_MS,
-                    raw_payload={"id": "opennews-eligible", "title": "Eligible provider signal"},
-                    provider_signal={"source": "provider", "provider": "opennews", "status": "ready", "score": 85},
-                )
-            ],
-        ),
-    )
-    worker = _worker(db=db, feed_client=feed, wake_bus=FakeWakeBus(), sources=[source])
-
-    worker.run_once_sync(now_ms=NOW_MS)
-
-    news_item_written_rows = [
-        row for batch in db.dirty.enqueued if batch["reason"] == "news_item_written" for row in batch["rows"]
-    ]
-    assert {
-        "projection_name": "page",
-        "target_kind": "news_item",
-        "target_id": "news-eligible",
-        "source_watermark_ms": NOW_MS,
-    } in news_item_written_rows
-    assert all(row["projection_name"] != "brief_input" for row in news_item_written_rows)
 
 
 def test_news_fetch_worker_passes_cryptopanic_source_context_to_feed_client() -> None:
@@ -1026,7 +1074,6 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_story_
             ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
-            "commit": False,
         },
         {
             "rows": [
@@ -1040,7 +1087,6 @@ def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_story_
             ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
-            "commit": False,
         },
     ]
 
@@ -1108,7 +1154,6 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_story_brief_wit
             ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
-            "commit": False,
         },
         {
             "rows": [
@@ -1122,7 +1167,6 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_story_brief_wit
             ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
-            "commit": False,
         },
     ]
 
@@ -1203,7 +1247,6 @@ def test_news_item_process_similar_story_without_material_delta_enqueues_page_on
             ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
-            "commit": False,
         }
     ]
 
@@ -2116,7 +2159,12 @@ class FakeDB:
         self.open_sessions += 1
         self.max_open_sessions = max(self.max_open_sessions, self.open_sessions)
         try:
-            session = SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
+            session = SimpleNamespace(
+                news_sources=self.repo,
+                news_items=self.repo,
+                news_projection_dirty_targets=self.dirty,
+                conn=self.conn,
+            )
             if self.expose_transaction:
                 session.transaction = self.conn.transaction
             yield session
@@ -2149,7 +2197,11 @@ class FakeItemProcessDB:
         self.open_sessions += 1
         self.max_open_sessions = max(self.max_open_sessions, self.open_sessions)
         try:
-            session = SimpleNamespace(news=self.repo, news_projection_dirty_targets=self.dirty, conn=self.conn)
+            session = SimpleNamespace(
+                news_items=self.repo,
+                news_projection_dirty_targets=self.dirty,
+                conn=self.conn,
+            )
             if self.expose_transaction:
                 session.transaction = self.conn.transaction
             yield session
@@ -2184,7 +2236,7 @@ class FakeProjectionDB:
         assert statement_timeout_seconds == 30
         self.sessions.append(name)
         yield SimpleNamespace(
-            news=self.repo,
+            news_pages=self.repo,
             news_projection_dirty_targets=self.dirty,
             conn=self.conn,
             transaction=self.conn.transaction,
@@ -2226,11 +2278,11 @@ class FakeProjectionDirtyTargetRepository:
     def claim_due(self, **payload):
         return [dict(row) for row in self.claimed]
 
-    def enqueue_targets(self, rows, *, reason: str, now_ms: int, commit: bool = True):
-        self.enqueued.append({"rows": list(rows), "reason": reason, "now_ms": now_ms, "commit": commit})
+    def enqueue_targets(self, rows, *, reason: str, now_ms: int):
+        self.enqueued.append({"rows": list(rows), "reason": reason, "now_ms": now_ms})
         return len(rows)
 
-    def mark_done(self, rows, *, now_ms: int, commit: bool = True):
+    def mark_done(self, rows, *, now_ms: int):
         return len(rows)
 
     def mark_error(
@@ -2241,7 +2293,6 @@ class FakeProjectionDirtyTargetRepository:
         retry_ms: int,
         now_ms: int,
         count_attempt: bool = True,
-        commit: bool = True,
     ):
         del count_attempt
         return len(rows)
@@ -2280,6 +2331,20 @@ class FakeNewsSourceProvider:
 
     def close(self) -> None:
         return None
+
+
+class HttpErrorNewsSourceProvider(FakeNewsSourceProvider):
+    def __init__(self, db: FakeDB, *, status_code: int) -> None:
+        super().__init__(db, NewsProviderFetchResult(status_code=200, observations=[]))
+        self.status_code = status_code
+
+    def fetch(self, source: NewsSourceSnapshot, **kwargs: Any) -> NewsProviderFetchResult:
+        super().fetch(source, **kwargs)
+        raise NewsSourceProviderError(
+            f"news_provider_http_{self.status_code}",
+            status_code=self.status_code,
+            terminal=True,
+        )
 
 
 class AwaitableCloseResult:
@@ -2361,19 +2426,66 @@ class FakeNewsRepository:
         self.sync_cursors: dict[str, dict[str, object]] = {}
         self.sync_updates: list[dict[str, object]] = []
         self.events: list[str] = []
+        self.reconcile_calls = 0
+        self.disabled_sources: list[dict[str, object]] = []
+        self.fetch_run_prune_calls: list[dict[str, int]] = []
+        self.pruned_successful_fetch_runs = 0
+        self.source_states = {
+            str(source["source_id"]): {
+                **source,
+                "enabled": bool(source.get("enabled", True)),
+                "config_payload_hash": news_source_config_payload_hash(source),
+                "terminal_config_payload_hash": None,
+                "last_error": None,
+            }
+            for source in due_sources
+        }
 
-    def reconcile_configured_sources(self, sources, *, now_ms: int, commit: bool = True):
+    def reconcile_configured_sources(self, sources, *, now_ms: int):
+        self.reconcile_calls += 1
         self.reconciled_sources = list(sources)
-        return [dict(row) for row in self.reconciled_result]
+        if self.reconciled_result:
+            return [{"terminal_config_payload_hash": None, **dict(row)} for row in self.reconciled_result]
+        reconciled: list[dict[str, object]] = []
+        for source in self.reconciled_sources:
+            payload = asdict(source) if is_dataclass(source) else dict(source)
+            source_id = str(payload["source_id"])
+            config_payload_hash = news_source_config_payload_hash(payload)
+            existing = self.source_states.get(source_id, {})
+            terminal_config_payload_hash = existing.get("terminal_config_payload_hash")
+            terminal_matches = terminal_config_payload_hash == config_payload_hash
+            row = {
+                **existing,
+                **payload,
+                "enabled": False if terminal_matches else bool(payload.get("enabled", True)),
+                "config_payload_hash": config_payload_hash,
+                "terminal_config_payload_hash": terminal_config_payload_hash if terminal_matches else None,
+                "last_error": existing.get("last_error") if terminal_matches else None,
+                "status": "duplicate" if existing.get("config_payload_hash") == config_payload_hash else "updated",
+            }
+            self.source_states[source_id] = row
+            reconciled.append(dict(row))
+        return reconciled
 
     def news_source_provider_constraint_values(self):
         return NEWS_SOURCE_PROVIDER_SCHEMA_TYPES
 
-    def claim_due_sources(self, *, now_ms: int, limit: int, claim_lease_ms: int, commit: bool = True):
-        self.claim_due_calls.append(
-            {"now_ms": now_ms, "limit": limit, "claim_lease_ms": claim_lease_ms, "commit": commit}
-        )
-        return self.due_sources[:limit]
+    def prune_successful_fetch_runs(self, *, cutoff_ms: int, limit: int) -> int:
+        self.fetch_run_prune_calls.append({"cutoff_ms": cutoff_ms, "limit": limit})
+        return self.pruned_successful_fetch_runs
+
+    def claim_due_sources(self, *, now_ms: int, limit: int, claim_lease_ms: int):
+        self.claim_due_calls.append({"now_ms": now_ms, "limit": limit, "claim_lease_ms": claim_lease_ms})
+        return [row for row in self.source_states.values() if row["enabled"]][:limit]
+
+    def disable_source(self, *, source_id: str, error: str, now_ms: int):
+        payload = {"source_id": source_id, "error": error, "now_ms": now_ms}
+        self.disabled_sources.append(payload)
+        row = self.source_states[source_id]
+        row["enabled"] = False
+        row["last_error"] = error
+        row["terminal_config_payload_hash"] = row["config_payload_hash"]
+        return dict(row)
 
     def list_news_item_ids_for_sources(self, *, source_ids):
         return [
@@ -2402,7 +2514,7 @@ class FakeNewsRepository:
     def servable_news_item_ids(self, news_item_ids):
         return [str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)]
 
-    def start_fetch_run(self, *, source_id: str, started_at_ms: int, commit: bool = True):
+    def start_fetch_run(self, *, source_id: str, started_at_ms: int):
         fetch_run_id = f"run-{source_id}"
         self.fetch_runs.append({"source_id": source_id, "started_at_ms": started_at_ms})
         return fetch_run_id
@@ -2410,10 +2522,8 @@ class FakeNewsRepository:
     def source_sync_cursor(self, source_id: str):
         return dict(self.sync_cursors.get(source_id, {}))
 
-    def update_source_sync_state(self, source_id: str, next_cursor: dict[str, object], *, now_ms: int, commit: bool):
-        self.sync_updates.append(
-            {"source_id": source_id, "next_cursor": dict(next_cursor), "now_ms": now_ms, "commit": commit}
-        )
+    def update_source_sync_state(self, source_id: str, next_cursor: dict[str, object], *, now_ms: int):
+        self.sync_updates.append({"source_id": source_id, "next_cursor": dict(next_cursor), "now_ms": now_ms})
         self.events.append("update_source_sync_state")
 
     def update_source_http_cache(
@@ -2423,10 +2533,9 @@ class FakeNewsRepository:
         etag: str | None,
         last_modified: str | None,
         now_ms: int,
-        commit: bool = True,
     ):
         self.cache_updates.append(
-            {"source_id": source_id, "etag": etag, "last_modified": last_modified, "now_ms": now_ms, "commit": commit}
+            {"source_id": source_id, "etag": etag, "last_modified": last_modified, "now_ms": now_ms}
         )
 
     def upsert_provider_item(self, **payload):
@@ -2498,13 +2607,13 @@ class FakeItemProcessRepository:
         self.retryable_rowcount = retryable_rowcount
         self.terminal_rowcount = terminal_rowcount
 
-    def release_expired_processing_items(self, *, now_ms: int, commit: bool = True) -> int:
+    def release_expired_processing_items(self, *, now_ms: int) -> int:
         assert self.conn is not None
         self.conn.record("release_expired_processing_items")
         self.release_calls.append(now_ms)
         return 0
 
-    def claim_unprocessed_items(self, *, limit: int, lease_owner: str, lease_ms: int, now_ms: int, commit: bool = True):
+    def claim_unprocessed_items(self, *, limit: int, lease_owner: str, lease_ms: int, now_ms: int):
         assert self.conn is not None
         self.conn.record("claim_unprocessed_items")
         self.claim_calls.append(
@@ -2517,17 +2626,17 @@ class FakeItemProcessRepository:
         )
         return self.items[:limit]
 
-    def replace_item_entities(self, news_item_id: str, entities: list[object], *, commit: bool = True) -> None:
+    def replace_item_entities(self, news_item_id: str, entities: list[object]) -> None:
         assert self.conn is not None
         self.conn.record("replace_item_entities")
         self.entities[news_item_id] = entities
 
-    def replace_token_mentions(self, news_item_id: str, mentions: list[object], *, commit: bool = True) -> None:
+    def replace_token_mentions(self, news_item_id: str, mentions: list[object]) -> None:
         assert self.conn is not None
         self.conn.record("replace_token_mentions")
         self.mentions[news_item_id] = mentions
 
-    def replace_fact_candidates(self, news_item_id: str, candidates: list[object], *, commit: bool = True) -> None:
+    def replace_fact_candidates(self, news_item_id: str, candidates: list[object]) -> None:
         assert self.conn is not None
         self.conn.record("replace_fact_candidates")
         self.fact_candidates[news_item_id] = candidates
@@ -2540,7 +2649,6 @@ class FakeItemProcessRepository:
         content_tags: list[str],
         classification_payload: dict[str, object],
         now_ms: int,
-        commit: bool = True,
     ) -> None:
         assert self.conn is not None
         self.conn.record("update_item_content_classification")
@@ -2561,7 +2669,6 @@ class FakeItemProcessRepository:
         market_scope: object,
         story_identity: object,
         now_ms: int,
-        commit: bool = True,
     ) -> None:
         self.market_scope_story_updates.append(
             {
@@ -2569,7 +2676,6 @@ class FakeItemProcessRepository:
                 "market_scope": market_scope,
                 "story_identity": story_identity,
                 "now_ms": now_ms,
-                "commit": commit,
             }
         )
 
@@ -2583,7 +2689,6 @@ class FakeItemProcessRepository:
         *,
         lease_owner: str,
         processing_attempts: int,
-        commit: bool = True,
     ) -> int:
         assert self.conn is not None
         self.conn.record("mark_item_processed")
@@ -2651,11 +2756,8 @@ class FakeItemProcessRepository:
         news_item_id: str,
         admission: object,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
-        self.agent_admission_updates.append(
-            {"news_item_id": news_item_id, "admission": admission, "now_ms": now_ms, "commit": commit}
-        )
+        self.agent_admission_updates.append({"news_item_id": news_item_id, "admission": admission, "now_ms": now_ms})
         return 1
 
     def mark_item_process_retryable(
@@ -2667,7 +2769,6 @@ class FakeItemProcessRepository:
         *,
         lease_owner: str,
         processing_attempts: int,
-        commit: bool = True,
     ) -> int:
         assert self.conn is not None
         self.conn.record("mark_item_process_retryable")
@@ -2691,7 +2792,6 @@ class FakeItemProcessRepository:
         *,
         lease_owner: str,
         processing_attempts: int,
-        commit: bool = True,
     ) -> int:
         assert self.conn is not None
         self.conn.record("mark_item_process_terminal_failed")
@@ -2753,12 +2853,12 @@ class FakePageProjectionRepository:
         self.story_load_news_item_ids = list(news_item_ids)
         return self.story_payloads
 
-    def replace_page_rows_for_items(self, *, news_item_ids, rows, commit: bool = True):
+    def replace_page_rows_for_items(self, *, news_item_ids, rows):
         self.replaced_news_item_ids = list(news_item_ids)
         self.replaced_rows = [dict(row) for row in rows]
         return {"inserted": 0, "updated": 0, "unchanged": 0, "deleted": len(self.replaced_news_item_ids)}
 
-    def replace_page_rows_for_story_targets(self, *, news_item_ids, story_keys, rows, commit: bool = True):
+    def replace_page_rows_for_story_targets(self, *, news_item_ids, story_keys, rows):
         self.replaced_story_news_item_ids = list(news_item_ids)
         self.replaced_story_keys = list(story_keys)
         self.replaced_story_rows = [dict(row) for row in rows]

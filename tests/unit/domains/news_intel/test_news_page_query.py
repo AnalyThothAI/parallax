@@ -15,7 +15,7 @@ def test_news_page_query_uses_positive_limit_with_lookahead() -> None:
         ]
     )
 
-    result = NewsPageQuery(repository=repository).list_news(limit=1)
+    result = NewsPageQuery(page_repository=repository, source_repository=repository).list_news(limit=1)
 
     assert [item["news_item_id"] for item in result["items"]] == ["news-2"]
     assert repository.calls == [{"limit": 2, "cursor": None, "status": None, "signal": None, "q": None}]
@@ -26,7 +26,9 @@ def test_news_page_query_rejects_malformed_limit_before_repository_call(limit: o
     repository = FakeNewsRepository(rows=[])
 
     with pytest.raises(ValueError, match="news_page_query_limit_required"):
-        NewsPageQuery(repository=repository).list_news(limit=limit)  # type: ignore[arg-type]
+        NewsPageQuery(page_repository=repository, source_repository=repository).list_news(  # type: ignore[arg-type]
+            limit=limit
+        )
 
     assert repository.calls == []
 

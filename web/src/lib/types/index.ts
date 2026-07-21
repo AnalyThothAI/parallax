@@ -13,7 +13,6 @@ export type OpenApiLiveMarketData = components["schemas"]["LiveMarketData"];
 export type OpenApiTargetPostsData = components["schemas"]["TargetPostsData"];
 export type OpenApiTargetSocialTimelineData = components["schemas"]["TargetSocialTimelineData"];
 export type OpenApiAccountAlertsData = components["schemas"]["AccountAlertsData"];
-export type OpenApiAccountQualityData = components["schemas"]["AccountQualityData"];
 export type OpenApiNotificationSummary = components["schemas"]["NotificationSummary"];
 export type OpenApiNotificationsData = components["schemas"]["NotificationsData"];
 export type OpenApiNotificationReadData = components["schemas"]["NotificationReadData"];
@@ -22,14 +21,11 @@ export type OpenApiNotificationReadAllData = components["schemas"]["Notification
 // frontend-contracts: these UI/domain shapes still encode frontend-specific view models
 // that are richer than the current extensible OpenAPI response schemas.
 export type {
-  AccountQualityData,
   AlertRecord,
   ApiResponse,
   AssetFlowData,
   AssetFlowRow,
   BootstrapData,
-  CexDetailSnapshot,
-  CexLevelBand,
   Decision,
   EntityRecord,
   EventRecord,
@@ -125,8 +121,6 @@ export type {
   WatchlistHandlesOverviewData,
   WatchlistOverviewCluster,
   WatchlistHandleTimelineData,
-  WatchlistSocialEvent,
   WatchlistTimelineItem,
-  WatchlistTimelineScope,
   WindowKey,
 } from "./frontend-contracts";

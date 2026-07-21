@@ -6,11 +6,11 @@
 **Approved by**: qinghuan
 **Approved at**: 2026-06-09
 **Related**: `docs/WORKFLOW.md`, `docs/TESTING.md`, `AGENTS.md`, `CLAUDE.md`
-**Superseded by**: `docs/sdd/features/active/2026-06-11-executable-harness-followup/`
+**Superseded by**: `docs/sdd/features/completed/2026-06-11-executable-harness-followup/`
 
 ## Background
 
-The repository previously used a legacy superpowers planning tree and generated an agent work index from those files. Current workflow guidance is in docs/WORKFLOW.md:1, while the architecture harness is rooted in tests/architecture/test_harness_structure.py:1 and tests/architecture/test_agent_playbook_contracts.py:1.
+The repository previously used a legacy superpowers planning tree and generated an agent work index from those files. Current workflow guidance is in docs/WORKFLOW.md:1, while the surviving SDD validation boundary is implemented in scripts/validate_sdd_artifacts.py:1.
 
 ## Clarifications
 

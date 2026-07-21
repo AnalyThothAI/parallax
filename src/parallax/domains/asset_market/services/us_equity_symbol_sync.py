@@ -1,10 +1,10 @@
 from __future__ import annotations
 
 import csv
-from contextlib import AbstractContextManager
+from collections.abc import Iterable
 from dataclasses import dataclass
 from io import StringIO
-from typing import Any, cast
+from typing import Any
 
 import httpx
 
@@ -46,14 +46,19 @@ class NasdaqTraderSymbolClient:
         return response.text
 
 
-def sync_us_equity_symbols(*, registry: Any, client: Any, observed_at_ms: int) -> dict[str, Any]:
-    rows = client.symbols()
+def sync_us_equity_symbols(
+    *,
+    repos: Any,
+    symbols: Iterable[NasdaqTraderSymbol],
+    observed_at_ms: int,
+) -> dict[str, Any]:
+    rows = list(symbols)
     active_symbols: set[str] = set()
     written = 0
-    with _transaction(registry.conn):
+    with repos.transaction():
         for row in rows:
             active_symbols.add(row.symbol)
-            registry.upsert_us_equity_symbol(
+            repos.registry.upsert_us_equity_symbol(
                 symbol=row.symbol,
                 exchange=row.exchange,
                 security_name=row.security_name,
@@ -62,14 +67,12 @@ def sync_us_equity_symbols(*, registry: Any, client: Any, observed_at_ms: int) -
                 source_updated_at_ms=observed_at_ms,
                 raw_payload=row.raw_payload,
                 observed_at_ms=observed_at_ms,
-                commit=False,
             )
             written += 1
-        deactivated = registry.deactivate_missing_us_equity_symbols(
+        deactivated = repos.registry.deactivate_missing_us_equity_symbols(
             source=SOURCE_NASDAQ_TRADER,
             active_symbols=active_symbols,
             observed_at_ms=observed_at_ms,
-            commit=False,
         )
     return {
         "source": SOURCE_NASDAQ_TRADER,
@@ -146,13 +149,3 @@ def _symbol(value: str | None) -> str:
 
 def _text(value: str | None) -> str:
     return str(value or "").strip()
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("us_equity_symbol_sync_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("us_equity_symbol_sync_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())

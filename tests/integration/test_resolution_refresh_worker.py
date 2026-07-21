@@ -65,7 +65,8 @@ def _ingest_service_for_connection(conn) -> IngestService:
         market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
         enriched_events=repos.enriched_events,
         event_anchor_jobs=repos.event_anchor_jobs,
-        token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
+        token_radar_dirty_targets=repos.token_radar_dirty_targets,
+        transaction=repos.transaction,
         event_anchor_active_window_ms=300_000,
     )
 
@@ -538,7 +539,6 @@ def test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_resul
             chain_id="eip155:56",
             address=_evm_address(99),
             observed_at_ms=now_ms,
-            commit=False,
         )
         repos.identity_evidence.upsert_identity_evidence(
             asset_id=old["asset_id"],
@@ -553,12 +553,10 @@ def test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_resul
             confidence="provider_candidate",
             raw_payload={"tokenSymbol": "HANTA", "stale": True},
             observed_at_ms=now_ms,
-            commit=False,
         )
         repos.identity_evidence.recompute_current_identity(
             old["asset_id"],
             now_ms=now_ms,
-            commit=False,
         )
         conn.commit()
         worker = ResolutionRefreshWorker(
@@ -727,7 +725,7 @@ class FakeDexMarket:
 
 
 class FakeEnrichment:
-    def enqueue_watched_event(self, *, event_id, received_at_ms, priority=None, commit=False):
+    def enqueue_watched_event(self, *, event_id, received_at_ms, priority=None):
         return None
 
 

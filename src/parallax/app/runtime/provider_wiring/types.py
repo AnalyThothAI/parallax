@@ -13,9 +13,8 @@ from parallax.domains.asset_market.providers import (
     DexTokenQuoteProvider,
     ProviderHealth,
 )
-from parallax.domains.cex_market_intel.providers import CexOiMarketProvider, CoinglassDerivativesProvider
 from parallax.domains.ingestion.providers import UpstreamClientProtocol
-from parallax.domains.news_intel.providers import NewsItemBriefProvider, NewsSourceProvider
+from parallax.domains.news_intel.providers import NewsSourceProvider, NewsStoryBriefProvider
 
 UpstreamClientFactory = Callable[[Callable[[str], Awaitable[None]]], UpstreamClientProtocol | None]
 
@@ -62,19 +61,6 @@ class AssetMarketProviders:
 
 
 @dataclass(frozen=True, slots=True)
-class CexMarketIntelProviders:
-    oi_market: CexOiMarketProvider | None = None
-    coinglass_derivatives: CoinglassDerivativesProvider | None = None
-
-    async def aclose(self) -> None:
-        errors: list[Exception] = []
-        seen: set[int] = set()
-        _close_sync_provider(errors, seen, self.oi_market)
-        if errors:
-            raise ExceptionGroup("cex_market_intel_provider_cleanup_failed", errors)
-
-
-@dataclass(frozen=True, slots=True)
 class OkxProviderBundle:
     dex_discovery_market: DexTokenDiscoveryProvider | None
     dex_quote_market: DexTokenQuoteProvider | None
@@ -85,13 +71,13 @@ class OkxProviderBundle:
 @dataclass(frozen=True, slots=True)
 class NewsIntelProviders:
     feed_client: NewsSourceProvider | None = None
-    brief_provider: NewsItemBriefProvider | None = None
+    story_brief_provider: NewsStoryBriefProvider | None = None
 
     async def aclose(self) -> None:
         errors: list[Exception] = []
         seen: set[int] = set()
         _close_sync_provider(errors, seen, self.feed_client)
-        await _close_async_provider(errors, seen, self.brief_provider)
+        await _close_async_provider(errors, seen, self.story_brief_provider)
         if errors:
             raise ExceptionGroup("news_intel_provider_cleanup_failed", errors)
 
@@ -100,7 +86,6 @@ class NewsIntelProviders:
 class WiredProviders:
     ingestion: IngestionProviders
     asset_market: AssetMarketProviders
-    cex_market_intel: CexMarketIntelProviders
     news_intel: NewsIntelProviders
     agent_execution_gateway: object | None = None
 
@@ -109,7 +94,6 @@ class WiredProviders:
         for providers in (
             self.ingestion,
             self.asset_market,
-            self.cex_market_intel,
             self.news_intel,
         ):
             try:
@@ -148,7 +132,6 @@ async def _close_async_provider(errors: list[Exception], seen: set[int], provide
 
 __all__ = [
     "AssetMarketProviders",
-    "CexMarketIntelProviders",
     "IngestionProviders",
     "NewsIntelProviders",
     "OkxProviderBundle",

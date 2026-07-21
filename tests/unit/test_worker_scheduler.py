@@ -477,7 +477,7 @@ def test_scheduler_unhealthy_reasons_use_formal_status_payload_for_reason_detail
                 "unavailable_reason": "payload unavailable",
             },
         ),
-        "news_item_brief": SimpleNamespace(
+        "news_story_brief": SimpleNamespace(
             active_run_once_hard_timed_out_at_ms=None,
             status_payload=lambda: {
                 "enabled": True,
@@ -492,7 +492,7 @@ def test_scheduler_unhealthy_reasons_use_formal_status_payload_for_reason_detail
 
     assert "worker:token_radar_projection:errored:payload error" in reasons
     assert "worker:live_price_gateway:unavailable:payload unavailable" in reasons
-    assert "worker:news_item_brief:hard_timeout" in reasons
+    assert "worker:news_story_brief:hard_timeout" in reasons
     assert not any("stale attribute" in reason for reason in reasons)
 
 

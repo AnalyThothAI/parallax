@@ -7,8 +7,6 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, Protocol, cast
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.providers import (
     DexMarketFactUpdate,
     DexMarketStreamProvider,
@@ -21,6 +19,9 @@ from parallax.domains.asset_market.types import (
     MarketTickSourceTier,
     market_tick_id,
 )
+from parallax.platform.config.settings import MarketTickStreamWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 SOURCE_TIER: MarketTickSourceTier = "tier1_ws"
 SOURCE_PROVIDER: MarketTickSourceProvider = "okx_dex_ws"
@@ -41,11 +42,9 @@ class MarketTickStreamWorker(WorkerBase):
         wake_emitter: Any | None = None,
         clock: Any | None = None,
         name: str = "market_tick_stream",
-        settings: Any,
+        settings: MarketTickStreamWorkerSettings,
         telemetry: Any,
     ) -> None:
-        if settings is None:
-            raise RuntimeError("market_tick_stream_settings_required")
         if pool_bundle is None:
             raise RuntimeError("market_tick_stream_db_required")
         if stream_dex_market is None:
@@ -58,15 +57,8 @@ class MarketTickStreamWorker(WorkerBase):
         )
         self.stream_dex_market = stream_dex_market
         self.wake_emitter = wake_emitter
-        self.subscription_limit = _required_positive_int(
-            settings.subscription_limit,
-            error_code="market_tick_stream_subscription_limit_required",
-        )
-        self.stream_cycle_seconds = _required_min_float(
-            settings.stream_cycle_seconds,
-            minimum=0.001,
-            error_code="market_tick_stream_cycle_seconds_required",
-        )
+        self.subscription_limit = settings.subscription_limit
+        self.stream_cycle_seconds = settings.stream_cycle_seconds
         self.clock = clock or _now_ms
 
     async def run_once(self) -> WorkerResult:
@@ -175,7 +167,7 @@ class MarketTickStreamWorker(WorkerBase):
         materialized = list(ticks)
         if not materialized:
             return 0
-        with self.db.worker_transaction(self.name) as repos:
+        with self.db.worker_session(self.name) as repos, repos.transaction():
             result = MarketTickPersistenceService(repos).insert_ticks_and_enqueue_current_dirty(
                 materialized,
                 reason="market_tick_written",
@@ -249,13 +241,9 @@ def _provider_failure_category(provider_state: Mapping[str, Any], exc: BaseExcep
 
 
 def _stream_targets(rows: Sequence[Mapping[str, Any]], *, limit: int) -> tuple[list[DexMarketStreamTarget], int]:
-    parsed_limit = _required_positive_int(
-        limit,
-        error_code="market_tick_stream_subscription_limit_required",
-    )
     targets: list[DexMarketStreamTarget] = []
     skipped = 0
-    for row in rows[:parsed_limit]:
+    for row in rows[:limit]:
         target_type = str(row.get("target_type") or "").strip()
         if target_type != "chain_token":
             skipped += 1
@@ -367,21 +355,6 @@ def _emit_wake(wake_emitter: Any, *, target_type: str, target_id: str) -> None:
     if wake_emitter is None:
         return
     wake_emitter.notify_market_tick_written(target_type=target_type, target_id=target_id)
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_min_float(value: Any, *, minimum: float, error_code: str) -> float:
-    if isinstance(value, bool) or not isinstance(value, (int, float)):
-        raise ValueError(error_code)
-    parsed = float(value)
-    if parsed < minimum:
-        raise ValueError(error_code)
-    return parsed
 
 
 def _now_ms() -> int:

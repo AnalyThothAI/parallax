@@ -7,9 +7,10 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
+from parallax.platform.config.settings import TokenCaptureTierWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 SCORE_KEYS = ("score", "rank_score")
 ADVISORY_LOCK_KEY = 2026051503
@@ -23,13 +24,11 @@ class TokenCaptureTierWorker(WorkerBase):
         self,
         *,
         pool_bundle: Any,
-        settings: Any,
+        settings: TokenCaptureTierWorkerSettings,
         clock: Any | None = None,
         name: str = "token_capture_tier",
         telemetry: Any | None = None,
     ) -> None:
-        if settings is None:
-            raise RuntimeError("token_capture_tier_settings_required")
         if pool_bundle is None:
             raise RuntimeError("token_capture_tier_db_required")
         super().__init__(
@@ -38,18 +37,9 @@ class TokenCaptureTierWorker(WorkerBase):
             db=pool_bundle,
             telemetry=telemetry or object(),
         )
-        self.batch_size = _required_positive_int(
-            settings.batch_size,
-            error_code="token_capture_tier_batch_size_required",
-        )
-        self.ws_limit = _required_nonnegative_int(
-            settings.ws_limit,
-            error_code="token_capture_tier_ws_limit_required",
-        )
-        self.poll_limit = _required_nonnegative_int(
-            settings.poll_limit,
-            error_code="token_capture_tier_poll_limit_required",
-        )
+        self.batch_size = settings.batch_size
+        self.ws_limit = settings.ws_limit
+        self.poll_limit = settings.poll_limit
         self.clock = clock or _now_ms
 
     async def run_once(self, *, now_ms: int | None = None) -> WorkerResult:
@@ -81,25 +71,16 @@ class TokenCaptureTierWorker(WorkerBase):
                 "started_at_ms": int(now_ms),
                 "finished_at_ms": int(now_ms),
             }
-            lease_ms = _required_positive_int(
-                self.settings.lease_ms,
-                error_code="token_capture_tier_lease_ms_required",
-            )
-            retry_ms = _required_positive_int(
-                self.settings.retry_ms,
-                error_code="token_capture_tier_retry_ms_required",
-            )
-            max_attempts = _required_positive_int(
-                self.settings.max_attempts,
-                error_code="token_capture_tier_max_attempts_required",
-            )
-            claims = repos.token_capture_tier_dirty_targets.claim_due(
-                now_ms=now_ms,
-                limit=1,
-                lease_owner=self.name,
-                lease_ms=lease_ms,
-                commit=True,
-            )
+            lease_ms = self.settings.lease_ms
+            retry_ms = self.settings.retry_ms
+            max_attempts = self.settings.max_attempts
+            with repos.transaction():
+                claims = repos.token_capture_tier_dirty_targets.claim_due(
+                    now_ms=now_ms,
+                    limit=1,
+                    lease_owner=self.name,
+                    lease_ms=lease_ms,
+                )
             result["claimed"] = len(claims)
             result["queue_depth"] = repos.token_capture_tier_dirty_targets.queue_depth(now_ms=now_ms)
             result["targets_loaded"] = len(claims)
@@ -115,7 +96,7 @@ class TokenCaptureTierWorker(WorkerBase):
                         ws_limit=self.ws_limit,
                         poll_limit=self.poll_limit,
                     )
-                    done = repos.token_capture_tier_dirty_targets.mark_done(claims, now_ms=now_ms, commit=False)
+                    done = repos.token_capture_tier_dirty_targets.mark_done(claims, now_ms=now_ms)
                     if done != len(claims):
                         raise RuntimeError("token_capture_tier_dirty_target_stale_completion")
                 result["rows_written"] = rows_written
@@ -128,7 +109,6 @@ class TokenCaptureTierWorker(WorkerBase):
                         max_attempts=max_attempts,
                         worker_name=self.name,
                         now_ms=now_ms,
-                        commit=False,
                     )
                 result["error"] = len(claims)
                 result["last_error"] = _error_text(exc)
@@ -144,24 +124,12 @@ def project_once(
     poll_limit: int,
 ) -> int:
     repos.require_transaction(operation="token_capture_tier_projection")
-    resolved_batch_size = _required_positive_int(
-        batch_size,
-        error_code="token_capture_tier_project_batch_size_required",
-    )
-    resolved_ws_limit = _required_nonnegative_int(
-        ws_limit,
-        error_code="token_capture_tier_project_ws_limit_required",
-    )
-    resolved_poll_limit = _required_nonnegative_int(
-        poll_limit,
-        error_code="token_capture_tier_project_poll_limit_required",
-    )
     rows = repos.registry.ranked_live_market_targets(
         projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         since_ms=int(now_ms) - WINDOW_MS["24h"],
-        limit=resolved_batch_size,
+        limit=batch_size,
     )
-    candidates = _candidate_rows(rows)[:resolved_batch_size]
+    candidates = _candidate_rows(rows)[:batch_size]
     candidates.sort(key=lambda candidate: (-candidate.score, candidate.target_type, candidate.target_id))
 
     # Tier 1 is OKX DEX WS only: only chain_token candidates are eligible. Even if a CEX
@@ -169,13 +137,13 @@ def project_once(
     # is the projection boundary that prevents the runtime owner of OKX DEX WS from being
     # asked to subscribe to a CEX market id it cannot serve.
     tier1_candidates = [candidate for candidate in candidates if candidate.target_type == "chain_token"]
-    tier1 = tier1_candidates[:resolved_ws_limit]
+    tier1 = tier1_candidates[:ws_limit]
     tier1_keys = {(candidate.target_type, candidate.target_id) for candidate in tier1}
 
     tier2_pool = [
         candidate for candidate in candidates if (candidate.target_type, candidate.target_id) not in tier1_keys
     ]
-    tier2 = tier2_pool[:resolved_poll_limit]
+    tier2 = tier2_pool[:poll_limit]
     tier2_keys = {(candidate.target_type, candidate.target_id) for candidate in tier2}
 
     tier3 = [
@@ -297,18 +265,6 @@ def _changed_count(value: Any) -> int:
     if isinstance(value, int) and value >= 0:
         return value
     raise TypeError("token_capture_tier_changed_count_invalid")
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _now_ms() -> int:

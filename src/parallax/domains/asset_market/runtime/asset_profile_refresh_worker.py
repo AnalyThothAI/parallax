@@ -4,8 +4,6 @@ import asyncio
 import time
 from typing import Any
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.providers import (
     DexProfileSource,
     DexProviderTemporarilyUnavailable,
@@ -17,6 +15,9 @@ from parallax.domains.asset_market.services.asset_profile_refresh import (
     write_missing_asset_profile,
     write_ready_asset_profile,
 )
+from parallax.platform.config.settings import AssetProfileRefreshWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class AssetProfileRefreshWorker(WorkerBase):
@@ -24,7 +25,7 @@ class AssetProfileRefreshWorker(WorkerBase):
         self,
         *,
         name: str,
-        settings: Any,
+        settings: AssetProfileRefreshWorkerSettings,
         db: Any,
         telemetry: Any,
         dex_profile_sources: tuple[DexProfileSource, ...] = (),
@@ -106,23 +107,19 @@ class AssetProfileRefreshWorker(WorkerBase):
             "started_at_ms": int(now_ms),
             "finished_at_ms": int(now_ms),
         }
-        with self.db.worker_session(
-            self.name,
-            statement_timeout_seconds=self.settings.statement_timeout_seconds,
-        ) as repos:
+        with (
+            self.db.worker_session(
+                self.name,
+                statement_timeout_seconds=self.settings.statement_timeout_seconds,
+            ) as repos,
+            repos.transaction(),
+        ):
             rows = repos.asset_profile_refresh_targets.claim_due(
                 provider=profile_source.provider,
                 now_ms=now_ms,
-                limit=_required_positive_int(
-                    self.settings.batch_size,
-                    error_code="asset_profile_refresh_batch_size_required",
-                ),
+                limit=self.settings.batch_size,
                 lease_owner=self.name,
-                lease_ms=_required_positive_int(
-                    self.settings.lease_ms,
-                    error_code="asset_profile_refresh_lease_ms_required",
-                ),
-                commit=True,
+                lease_ms=self.settings.lease_ms,
             )
             source_result["queue_depth"] = repos.asset_profile_refresh_targets.queue_depth(
                 provider=profile_source.provider,
@@ -135,18 +132,9 @@ class AssetProfileRefreshWorker(WorkerBase):
             source_result["skipped"] = 1
             source_result["reason"] = "no_due_asset_profile_refresh_targets"
             return source_result
-        ready_refresh_ms = _required_positive_int(
-            self.settings.ready_refresh_ms,
-            error_code="asset_profile_refresh_ready_refresh_ms_required",
-        )
-        missing_refresh_ms = _required_positive_int(
-            self.settings.missing_refresh_ms,
-            error_code="asset_profile_refresh_missing_refresh_ms_required",
-        )
-        error_refresh_ms = _required_positive_int(
-            self.settings.error_refresh_ms,
-            error_code="asset_profile_refresh_error_refresh_ms_required",
-        )
+        ready_refresh_ms = self.settings.ready_refresh_ms
+        missing_refresh_ms = self.settings.missing_refresh_ms
+        error_refresh_ms = self.settings.error_refresh_ms
         for row in rows:
             try:
                 profile = fetch_asset_profile(profile_source=profile_source, row=row)
@@ -155,7 +143,7 @@ class AssetProfileRefreshWorker(WorkerBase):
                 source_result["last_error"] = str(exc)[:500]
                 self._reschedule_claims(
                     [item for item in rows if int(item.get("due_at_ms") or 0) <= int(now_ms)],
-                    due_at_ms=now_ms + self._provider_retry_ms(),
+                    due_at_ms=now_ms + self.settings.provider_retry_ms,
                     now_ms=now_ms,
                     reason="provider_blocked",
                 )
@@ -182,7 +170,6 @@ class AssetProfileRefreshWorker(WorkerBase):
                         due_at_ms=next_refresh_at_ms,
                         now_ms=now_ms,
                         reason="profile_error_written",
-                        commit=False,
                     )
                     _enqueue_profile_current(repos=repos, row=row, now_ms=now_ms)
                 source_result["rows_written"] += 1
@@ -210,7 +197,6 @@ class AssetProfileRefreshWorker(WorkerBase):
                         due_at_ms=next_refresh_at_ms,
                         now_ms=now_ms,
                         reason="profile_ready_written",
-                        commit=False,
                     )
                     source_result["ready"] += 1
                 else:
@@ -227,7 +213,6 @@ class AssetProfileRefreshWorker(WorkerBase):
                         due_at_ms=next_refresh_at_ms,
                         now_ms=now_ms,
                         reason="profile_missing_written",
-                        commit=False,
                     )
                     source_result["missing"] += 1
                 _enqueue_profile_current(repos=repos, row=row, now_ms=now_ms)
@@ -249,14 +234,7 @@ class AssetProfileRefreshWorker(WorkerBase):
                 due_at_ms=due_at_ms,
                 now_ms=now_ms,
                 reason=reason,
-                commit=False,
             )
-
-    def _provider_retry_ms(self) -> int:
-        return _required_positive_int(
-            self.settings.provider_retry_ms,
-            error_code="asset_profile_refresh_provider_retry_ms_required",
-        )
 
 
 def _enqueue_profile_current(*, repos: Any, row: dict[str, Any], now_ms: int) -> None:
@@ -272,7 +250,6 @@ def _enqueue_profile_current(*, repos: Any, row: dict[str, Any], now_ms: int) ->
         ],
         reason="asset_profile_refresh_changed",
         now_ms=now_ms,
-        commit=False,
     )
 
 
@@ -285,10 +262,4 @@ def _required_source_watermark_ms(row: dict[str, Any], *, error: str) -> int:
         raise RuntimeError(error)
     if value <= 0:
         raise RuntimeError(error)
-    return int(value)
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
     return int(value)

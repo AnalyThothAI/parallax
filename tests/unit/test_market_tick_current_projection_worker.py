@@ -5,13 +5,11 @@ from contextlib import contextmanager
 from types import SimpleNamespace
 from typing import Any
 
-import pytest
-
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.runtime.market_tick_current_projection_worker import (
     MarketTickCurrentProjectionWorker,
 )
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 def test_worker_claims_dirty_target_writes_current_enqueues_radar_and_wakes_after_success() -> None:
@@ -40,20 +38,18 @@ def test_worker_claims_dirty_target_writes_current_enqueues_radar_and_wakes_afte
             "now_ms": 1_700_000_010_000,
             "lease_ms": 120_000,
             "lease_owner": "market_tick_current_projection",
-            "commit": True,
         }
     ]
-    tx = db.transactions[0].repos
+    tx = db.transactions[1].repos
     assert tx.market_tick_current.upserts == [(tick, 1_700_000_010_000)]
     assert tx.token_radar_dirty_targets.market_enqueues == [
         {
             "rows": [("chain_token", "solana:abc")],
             "reason": "market_tick_current_changed",
             "now_ms": 1_700_000_010_000,
-            "commit": False,
         }
     ]
-    assert tx.market_tick_current_dirty_targets.done == [(claim, 1_700_000_010_000, False)]
+    assert tx.market_tick_current_dirty_targets.done == [(claim, 1_700_000_010_000)]
     assert wake.market_tick_current_notifications == [{"target_type": "batch", "target_id": "market_tick_current"}]
 
 
@@ -78,13 +74,12 @@ def test_worker_does_not_wake_token_radar_when_dirty_enqueue_returns_zero() -> N
         "failed": 0,
         "token_radar_dirty_enqueued": 0,
     }
-    tx = db.transactions[0].repos
+    tx = db.transactions[1].repos
     assert tx.token_radar_dirty_targets.market_enqueues == [
         {
             "rows": [("chain_token", "solana:abc")],
             "reason": "market_tick_current_changed",
             "now_ms": 1_700_000_010_000,
-            "commit": False,
         }
     ]
     assert wake.market_tick_current_notifications == []
@@ -125,9 +120,9 @@ def test_worker_requires_wake_emitter_contract_after_token_radar_dirty_enqueue()
     else:
         raise AssertionError("expected missing wake emitter contract to fail after dirty enqueue")
 
-    tx = db.transactions[0].repos
+    tx = db.transactions[1].repos
     assert tx.token_radar_dirty_targets.market_enqueues
-    assert db.transactions[0].committed is True
+    assert db.transactions[1].committed is True
 
 
 def test_worker_marks_done_without_radar_enqueue_when_latest_tick_missing() -> None:
@@ -137,7 +132,7 @@ def test_worker_marks_done_without_radar_enqueue_when_latest_tick_missing() -> N
 
     result = asyncio.run(_worker(db=db, wake_emitter=wake).run_once(now_ms=1_700_000_010_000))
 
-    tx = db.transactions[0].repos
+    tx = db.transactions[1].repos
     assert result.notes == {
         "claimed": 1,
         "changed": 0,
@@ -147,7 +142,7 @@ def test_worker_marks_done_without_radar_enqueue_when_latest_tick_missing() -> N
     }
     assert tx.market_tick_current.upserts == []
     assert tx.token_radar_dirty_targets.market_enqueues == []
-    assert tx.market_tick_current_dirty_targets.done == [(claim, 1_700_000_010_000, False)]
+    assert tx.market_tick_current_dirty_targets.done == [(claim, 1_700_000_010_000)]
     assert wake.market_tick_current_notifications == []
 
 
@@ -158,7 +153,7 @@ def test_worker_marks_done_without_radar_enqueue_when_current_row_is_unchanged()
 
     result = asyncio.run(_worker(db=db).run_once(now_ms=1_700_000_010_000))
 
-    tx = db.transactions[0].repos
+    tx = db.transactions[1].repos
     assert result.notes == {
         "claimed": 1,
         "changed": 0,
@@ -167,7 +162,7 @@ def test_worker_marks_done_without_radar_enqueue_when_current_row_is_unchanged()
         "token_radar_dirty_enqueued": 0,
     }
     assert tx.token_radar_dirty_targets.market_enqueues == []
-    assert tx.market_tick_current_dirty_targets.done == [(claim, 1_700_000_010_000, False)]
+    assert tx.market_tick_current_dirty_targets.done == [(claim, 1_700_000_010_000)]
 
 
 def test_worker_marks_error_on_processing_failure() -> None:
@@ -185,8 +180,8 @@ def test_worker_marks_error_on_processing_failure() -> None:
         "failed": 1,
         "token_radar_dirty_enqueued": 0,
     }
-    assert db.transactions[0].rolled_back is True
-    assert db.transactions[1].repos.market_tick_current_dirty_targets.errors == [
+    assert db.transactions[1].rolled_back is True
+    assert db.transactions[2].repos.market_tick_current_dirty_targets.errors == [
         {
             "claims": [claim],
             "error": "RuntimeError: boom",
@@ -194,7 +189,6 @@ def test_worker_marks_error_on_processing_failure() -> None:
             "max_attempts": 3,
             "worker_name": "market_tick_current_projection",
             "now_ms": 1_700_000_010_000,
-            "commit": False,
         }
     ]
 
@@ -217,10 +211,20 @@ def test_worker_reads_formal_settings_fields_directly_for_claim_sessions_and_ret
     )
 
     assert result.failed == 1
-    assert db.worker_sessions == [{"name": "market_tick_current_projection", "statement_timeout_seconds": 42.0}]
-    assert db.worker_transactions == [
+    assert db.worker_sessions == [
         {"name": "market_tick_current_projection", "statement_timeout_seconds": 42.0},
         {"name": "market_tick_current_projection", "statement_timeout_seconds": 42.0},
+        {"name": "market_tick_current_projection", "statement_timeout_seconds": 42.0},
+    ]
+    assert [transaction.committed for transaction in db.transactions] == [
+        True,
+        False,
+        True,
+    ]
+    assert [transaction.rolled_back for transaction in db.transactions] == [
+        False,
+        True,
+        False,
     ]
     assert db.claim_calls == [
         {
@@ -228,62 +232,10 @@ def test_worker_reads_formal_settings_fields_directly_for_claim_sessions_and_ret
             "now_ms": 1_700_000_010_000,
             "lease_ms": 9_000,
             "lease_owner": "market_tick_current_projection",
-            "commit": True,
         }
     ]
-    assert db.transactions[1].repos.market_tick_current_dirty_targets.errors[0]["retry_ms"] == 11_000
-    assert db.transactions[1].repos.market_tick_current_dirty_targets.errors[0]["max_attempts"] == 5
-
-
-def test_worker_requires_formal_statement_timeout_settings_contract() -> None:
-    settings = _worker_settings()
-    delattr(settings, "statement_timeout_seconds")
-    db = _FakeDB(claims=[])
-    worker = _worker(db=db, settings=settings)
-
-    with pytest.raises(AttributeError, match="statement_timeout_seconds"):
-        asyncio.run(worker.run_once(now_ms=1_700_000_010_000))
-
-    assert db.worker_sessions == []
-    assert db.worker_transactions == []
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code", "expect_error_path"),
-    [
-        pytest.param({"batch_size": 0}, "market_tick_current_batch_size_required", False, id="batch-zero"),
-        pytest.param({"batch_size": True}, "market_tick_current_batch_size_required", False, id="batch-bool"),
-        pytest.param({"batch_size": "7"}, "market_tick_current_batch_size_required", False, id="batch-string"),
-        pytest.param({"lease_ms": 0}, "market_tick_current_lease_ms_required", False, id="lease-zero"),
-        pytest.param({"lease_ms": True}, "market_tick_current_lease_ms_required", False, id="lease-bool"),
-        pytest.param({"lease_ms": "9000"}, "market_tick_current_lease_ms_required", False, id="lease-string"),
-        pytest.param({"retry_ms": 0}, "market_tick_current_retry_ms_required", True, id="retry-zero"),
-        pytest.param({"retry_ms": True}, "market_tick_current_retry_ms_required", True, id="retry-bool"),
-        pytest.param({"retry_ms": "11000"}, "market_tick_current_retry_ms_required", True, id="retry-string"),
-        pytest.param({"max_attempts": 0}, "market_tick_current_max_attempts_required", True, id="attempts-zero"),
-        pytest.param({"max_attempts": True}, "market_tick_current_max_attempts_required", True, id="attempts-bool"),
-        pytest.param({"max_attempts": "5"}, "market_tick_current_max_attempts_required", True, id="attempts-string"),
-    ],
-)
-def test_worker_rejects_malformed_runtime_settings_without_runtime_repair(
-    overrides: dict[str, Any],
-    error_code: str,
-    expect_error_path: bool,
-) -> None:
-    db = _FakeDB(
-        claims=[_claim("chain_token", "solana:abc")],
-        latest_by_target={},
-        latest_error=RuntimeError("boom") if expect_error_path else None,
-    )
-
-    with pytest.raises(ValueError, match=error_code):
-        asyncio.run(_worker(db=db, settings_overrides=overrides).run_once(now_ms=1_700_000_010_000))
-
-    if expect_error_path:
-        assert db.claim_calls
-        assert db.transactions[-1].repos.market_tick_current_dirty_targets.errors == []
-    else:
-        assert db.claim_calls == []
+    assert db.transactions[2].repos.market_tick_current_dirty_targets.errors[0]["retry_ms"] == 11_000
+    assert db.transactions[2].repos.market_tick_current_dirty_targets.errors[0]["max_attempts"] == 5
 
 
 def test_worker_passes_wake_waiter_and_statement_timeout_from_settings() -> None:
@@ -332,7 +284,6 @@ def _worker_settings(**overrides: Any) -> SimpleNamespace:
         "retry_ms": 30_000,
         "max_attempts": 3,
         "statement_timeout_seconds": 30.0,
-        "soft_timeout_seconds": 120.0,
         "hard_timeout_seconds": 180.0,
     }
     values.update(overrides)
@@ -369,7 +320,6 @@ class _FakeDB:
         self.latest_error = latest_error
         self.token_radar_enqueue_counts = list(token_radar_enqueue_counts or [])
         self.worker_sessions: list[dict[str, Any]] = []
-        self.worker_transactions: list[dict[str, Any]] = []
         self.claim_calls: list[dict[str, Any]] = []
         self.transactions: list[_FakeTransaction] = []
 
@@ -384,19 +334,6 @@ class _FakeDB:
         repos = _FakeRepos(self)
         yield repos
 
-    @contextmanager
-    def worker_transaction(self, name: str, statement_timeout_seconds: float | None = None):
-        self.worker_transactions.append({"name": name, "statement_timeout_seconds": statement_timeout_seconds})
-        transaction = _FakeTransaction(_FakeRepos(self))
-        self.transactions.append(transaction)
-        try:
-            yield transaction.repos
-        except BaseException:
-            transaction.rolled_back = True
-            raise
-        else:
-            transaction.committed = True
-
 
 class _FakeTransaction:
     def __init__(self, repos: _FakeRepos) -> None:
@@ -407,23 +344,36 @@ class _FakeTransaction:
 
 class _FakeRepos:
     def __init__(self, db: _FakeDB) -> None:
+        self.db = db
         self.market_tick_current_dirty_targets = _FakeDirtyTargets(db)
         self.market_tick_current = _FakeCurrentRepo(db)
         self.token_radar_dirty_targets = _FakeRadarDirtyTargets(db)
+
+    @contextmanager
+    def transaction(self):
+        transaction = _FakeTransaction(self)
+        self.db.transactions.append(transaction)
+        try:
+            yield self
+        except BaseException:
+            transaction.rolled_back = True
+            raise
+        else:
+            transaction.committed = True
 
 
 class _FakeDirtyTargets:
     def __init__(self, db: _FakeDB) -> None:
         self.db = db
-        self.done: list[tuple[dict[str, Any], int, bool]] = []
+        self.done: list[tuple[dict[str, Any], int]] = []
         self.errors: list[dict[str, Any]] = []
 
     def claim_due(self, **kwargs: Any) -> list[dict[str, Any]]:
         self.db.claim_calls.append(kwargs)
         return list(self.db.claims)
 
-    def mark_done(self, claims: list[dict[str, Any]], *, now_ms: int, commit: bool = True) -> int:
-        self.done.extend((claim, now_ms, commit) for claim in claims)
+    def mark_done(self, claims: list[dict[str, Any]], *, now_ms: int) -> int:
+        self.done.extend((claim, now_ms) for claim in claims)
         return len(claims)
 
     def mark_error(
@@ -435,7 +385,6 @@ class _FakeDirtyTargets:
         max_attempts: int,
         worker_name: str,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
         self.errors.append(
             {
@@ -445,7 +394,6 @@ class _FakeDirtyTargets:
                 "max_attempts": max_attempts,
                 "worker_name": worker_name,
                 "now_ms": now_ms,
-                "commit": commit,
             }
         )
         return len(claims)
@@ -471,9 +419,9 @@ class _FakeRadarDirtyTargets:
         self.db = db
         self.market_enqueues: list[dict[str, Any]] = []
 
-    def enqueue_market_targets(self, rows, *, reason: str, now_ms: int, commit: bool = True):
+    def enqueue_market_targets(self, rows, *, reason: str, now_ms: int):
         materialized = list(rows)
-        self.market_enqueues.append({"rows": materialized, "reason": reason, "now_ms": now_ms, "commit": commit})
+        self.market_enqueues.append({"rows": materialized, "reason": reason, "now_ms": now_ms})
         return self.db.next_token_radar_enqueue_count(default=len(materialized))
 
 

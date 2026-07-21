@@ -3,6 +3,8 @@ from __future__ import annotations
 import time
 from typing import Any
 
+from parallax.platform.validation import require_nonnegative_int
+
 from .asset_flow_service import WINDOW_MS
 from .token_target_cursor import TokenTargetCursorError, decode_target_cursor, encode_target_cursor
 from .token_target_post_serializer import token_target_post_payload
@@ -46,7 +48,7 @@ class TokenTargetPostsService:
         cursor: str | None = None,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
-        row_limit = _required_nonnegative_int(limit, "token_target_posts_limit_required")
+        row_limit = require_nonnegative_int(limit, error_code="token_target_posts_limit_required")
         if post_range not in {"current_window", "since_ignition", "all_history"}:
             raise TokenTargetPostsRangeError(post_range)
         if sort not in {"recent", "catalyst"}:
@@ -108,11 +110,3 @@ def _watched_only(scope: str) -> bool:
     if scope == "all":
         return False
     raise TokenTargetPostsScopeError(scope)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)

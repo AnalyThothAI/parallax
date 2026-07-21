@@ -5,6 +5,7 @@ from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from psycopg import pq
 
 from parallax.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
 from parallax.domains.token_intel.repositories.token_evidence_repository import TokenEvidenceRepository
@@ -18,20 +19,21 @@ NOW_MS = 1_779_000_000_000
 MISSING_ROWCOUNT = object()
 
 
-def test_token_fact_mutations_require_connection_transaction_before_sql_when_committing() -> None:
+def test_token_fact_mutations_require_explicit_transaction_before_sql() -> None:
     cases = _repository_cases(NoTransactionTokenFactConnection())
     for case in cases:
         conn = NoTransactionTokenFactConnection()
-        with pytest.raises(RuntimeError, match=case.error):
+        with pytest.raises(RuntimeError, match="requires_explicit_transaction"):
             case.write(conn)
         assert conn.sql == []
 
 
-def test_token_fact_commit_owned_writes_use_connection_transaction_without_manual_commit() -> None:
+def test_token_fact_writes_run_inside_caller_owned_transaction() -> None:
     cases = _repository_cases(FakeTokenFactConnection())
     for case in cases:
-        conn = FakeTokenFactConnection()
-        case.write(conn)
+        conn = FakeTokenFactConnection(active_transaction=False)
+        with conn.transaction():
+            case.write(conn)
         assert conn.transaction_entries == 1
         assert conn.transaction_exits == ["ok"]
         assert conn.manual_commits == 0
@@ -73,23 +75,23 @@ def _repository_cases(conn: Any) -> list[RepositoryCase]:
     ("operation", "error_code"),
     (
         pytest.param(
-            lambda conn: TokenEvidenceRepository(conn).insert(_evidence_payload(), commit=False),
-            "token_evidence_repository_rowcount_required",
+            lambda conn: TokenEvidenceRepository(conn).insert(_evidence_payload()),
+            "token_evidence_repository_rowcount_invalid",
             id="token_evidence_insert",
         ),
         pytest.param(
             lambda conn: TokenEvidenceRepository(conn).delete_by_event_id("event-1"),
-            "token_evidence_repository_rowcount_required",
+            "token_evidence_repository_rowcount_invalid",
             id="token_evidence_delete",
         ),
         pytest.param(
-            lambda conn: TokenIntentRepository(conn).insert(_intent_payload(), commit=False),
-            "token_intent_repository_rowcount_required",
+            lambda conn: TokenIntentRepository(conn).insert(_intent_payload()),
+            "token_intent_repository_rowcount_invalid",
             id="token_intent_insert",
         ),
         pytest.param(
             lambda conn: TokenIntentRepository(conn).delete_by_event_id("event-1"),
-            "token_intent_repository_rowcount_required",
+            "token_intent_repository_rowcount_invalid",
             id="token_intent_delete",
         ),
         pytest.param(
@@ -99,14 +101,13 @@ def _repository_cases(conn: Any) -> list[RepositoryCase]:
                 keys=["symbol:AAA"],
                 source_evidence_id="evidence-1",
                 created_at_ms=1_778_162_002_774,
-                commit=False,
             ),
-            "token_intent_lookup_repository_rowcount_required",
+            "token_intent_lookup_repository_rowcount_invalid",
             id="token_intent_lookup_replace",
         ),
         pytest.param(
-            lambda conn: IntentResolutionRepository(conn).insert_resolution(_resolution_payload(), commit=False),
-            "intent_resolution_repository_rowcount_required",
+            lambda conn: IntentResolutionRepository(conn).insert_resolution(_resolution_payload()),
+            "intent_resolution_repository_rowcount_invalid",
             id="intent_resolution_insert",
         ),
     ),
@@ -126,7 +127,7 @@ def test_token_fact_writes_require_cursor_rowcount(
     ("operation", "error_code"),
     (
         pytest.param(
-            lambda conn: TokenEvidenceRepository(conn).insert(_evidence_payload(), commit=False),
+            lambda conn: TokenEvidenceRepository(conn).insert(_evidence_payload()),
             "token_evidence_repository_rowcount_invalid",
             id="token_evidence_insert",
         ),
@@ -136,7 +137,7 @@ def test_token_fact_writes_require_cursor_rowcount(
             id="token_evidence_delete",
         ),
         pytest.param(
-            lambda conn: TokenIntentRepository(conn).insert(_intent_payload(), commit=False),
+            lambda conn: TokenIntentRepository(conn).insert(_intent_payload()),
             "token_intent_repository_rowcount_invalid",
             id="token_intent_insert",
         ),
@@ -152,13 +153,12 @@ def test_token_fact_writes_require_cursor_rowcount(
                 keys=["symbol:AAA"],
                 source_evidence_id="evidence-1",
                 created_at_ms=1_778_162_002_774,
-                commit=False,
             ),
             "token_intent_lookup_repository_rowcount_invalid",
             id="token_intent_lookup_replace",
         ),
         pytest.param(
-            lambda conn: IntentResolutionRepository(conn).insert_resolution(_resolution_payload(), commit=False),
+            lambda conn: IntentResolutionRepository(conn).insert_resolution(_resolution_payload()),
             "intent_resolution_repository_rowcount_invalid",
             id="intent_resolution_insert",
         ),
@@ -180,13 +180,13 @@ def test_token_fact_writes_reject_invalid_cursor_rowcount(
     ("operation", "error_code", "rowcounts"),
     (
         pytest.param(
-            lambda conn: TokenEvidenceRepository(conn).insert(_evidence_payload(), commit=False),
+            lambda conn: TokenEvidenceRepository(conn).insert(_evidence_payload()),
             "token_evidence_repository_rowcount_invalid",
             None,
             id="token_evidence_insert",
         ),
         pytest.param(
-            lambda conn: TokenIntentRepository(conn).insert(_intent_payload(), commit=False),
+            lambda conn: TokenIntentRepository(conn).insert(_intent_payload()),
             "token_intent_repository_rowcount_invalid",
             None,
             id="token_intent_insert",
@@ -198,14 +198,13 @@ def test_token_fact_writes_reject_invalid_cursor_rowcount(
                 keys=["symbol:AAA"],
                 source_evidence_id="evidence-1",
                 created_at_ms=1_778_162_002_774,
-                commit=False,
             ),
             "token_intent_lookup_repository_rowcount_invalid",
             [0],
             id="token_intent_lookup_replace_insert",
         ),
         pytest.param(
-            lambda conn: IntentResolutionRepository(conn).insert_resolution(_resolution_payload(), commit=False),
+            lambda conn: IntentResolutionRepository(conn).insert_resolution(_resolution_payload()),
             "intent_resolution_repository_rowcount_invalid",
             None,
             id="intent_resolution_insert",
@@ -227,7 +226,7 @@ def test_token_fact_single_row_writes_require_one_affected_row(
 def test_token_evidence_insert_accepts_formal_input_contract() -> None:
     conn = FakeTokenFactConnection(rowcounts=[1])
 
-    row = TokenEvidenceRepository(conn).insert(_formal_evidence(), commit=False)
+    row = TokenEvidenceRepository(conn).insert(_formal_evidence())
 
     assert row["evidence_id"] == "evidence-1"
 
@@ -236,7 +235,7 @@ def test_token_evidence_insert_rejects_loose_slots_object_before_sql() -> None:
     conn = FakeTokenFactConnection(rowcounts=[1])
 
     with pytest.raises(TypeError, match="token_evidence_repository_input_contract_required"):
-        TokenEvidenceRepository(conn).insert(_loose_evidence(), commit=False)
+        TokenEvidenceRepository(conn).insert(_loose_evidence())
 
     assert conn.sql == []
 
@@ -244,7 +243,7 @@ def test_token_evidence_insert_rejects_loose_slots_object_before_sql() -> None:
 def test_intent_resolution_insert_accepts_formal_decision_contract() -> None:
     conn = FakeTokenFactConnection(rowcounts=[1])
 
-    row = IntentResolutionRepository(conn).insert_resolution(_formal_resolution(), commit=False)
+    row = IntentResolutionRepository(conn).insert_resolution(_formal_resolution())
 
     assert row["resolution_id"] == "resolution-1"
 
@@ -253,7 +252,7 @@ def test_intent_resolution_insert_rejects_loose_slots_object_before_sql() -> Non
     conn = FakeTokenFactConnection(rowcounts=[1])
 
     with pytest.raises(TypeError, match="intent_resolution_repository_input_contract_required"):
-        IntentResolutionRepository(conn).insert_resolution(_loose_resolution(), commit=False)
+        IntentResolutionRepository(conn).insert_resolution(_loose_resolution())
 
     assert conn.sql == []
 
@@ -261,7 +260,7 @@ def test_intent_resolution_insert_rejects_loose_slots_object_before_sql() -> Non
 def test_token_intent_evidence_links_allow_do_nothing_zero_rowcount() -> None:
     conn = FakeTokenFactConnection(rowcounts=[1, 0])
 
-    row = TokenIntentRepository(conn).insert(_formal_intent_with_evidence_links(), commit=False)
+    row = TokenIntentRepository(conn).insert(_formal_intent_with_evidence_links())
 
     assert row["intent_id"] == "intent-1"
 
@@ -270,7 +269,7 @@ def test_token_intent_insert_rejects_loose_slots_object_before_sql() -> None:
     conn = FakeTokenFactConnection(rowcounts=[1, 0])
 
     with pytest.raises(TypeError, match="token_intent_repository_input_contract_required"):
-        TokenIntentRepository(conn).insert(_intent_with_evidence_links(), commit=False)
+        TokenIntentRepository(conn).insert(_intent_with_evidence_links())
 
     assert conn.sql == []
 
@@ -313,7 +312,7 @@ def test_token_evidence_for_intents_batches_keyset_and_groups_evidence() -> None
 @pytest.mark.parametrize(
     ("bad_rowcount", "error_code"),
     (
-        pytest.param(MISSING_ROWCOUNT, "token_intent_repository_rowcount_required", id="missing"),
+        pytest.param(MISSING_ROWCOUNT, "token_intent_repository_rowcount_invalid", id="missing"),
         pytest.param(2, "token_intent_repository_rowcount_invalid", id="multirow"),
     ),
 )
@@ -324,13 +323,13 @@ def test_token_intent_evidence_links_require_optional_single_rowcount(
     conn = FakeTokenFactConnection(rowcounts=[1, bad_rowcount])
 
     with pytest.raises(TypeError, match=error_code):
-        TokenIntentRepository(conn).insert(_formal_intent_with_evidence_links(), commit=False)
+        TokenIntentRepository(conn).insert(_formal_intent_with_evidence_links())
 
 
 @pytest.mark.parametrize(
     ("bad_rowcount", "error_code"),
     (
-        pytest.param(MISSING_ROWCOUNT, "intent_resolution_repository_rowcount_required", id="missing"),
+        pytest.param(MISSING_ROWCOUNT, "intent_resolution_repository_rowcount_invalid", id="missing"),
         pytest.param(0, "intent_resolution_repository_rowcount_invalid", id="zero"),
         pytest.param(2, "intent_resolution_repository_rowcount_invalid", id="multirow"),
     ),
@@ -345,7 +344,7 @@ def test_intent_resolution_supersede_requires_single_row_update_count(
     )
 
     with pytest.raises(TypeError, match=error_code):
-        IntentResolutionRepository(conn).insert_resolution(_resolution_payload(), commit=False)
+        IntentResolutionRepository(conn).insert_resolution(_resolution_payload())
 
 
 def test_token_intent_recent_unresolved_zero_limit_returns_empty_without_sql() -> None:
@@ -414,6 +413,7 @@ class FakeTokenFactConnection:
         *,
         rowcounts: list[object] | None = None,
         active_resolution_row: dict[str, Any] | None = None,
+        active_transaction: bool = True,
     ) -> None:
         self.sql: list[str] = []
         self.transaction_entries = 0
@@ -421,6 +421,9 @@ class FakeTokenFactConnection:
         self.manual_commits = 0
         self.rowcounts = list(rowcounts or [])
         self.active_resolution_row = active_resolution_row
+        self.info = SimpleNamespace(
+            transaction_status=(pq.TransactionStatus.INTRANS if active_transaction else pq.TransactionStatus.IDLE)
+        )
 
     def transaction(self) -> FakeTransaction:
         return FakeTransaction(self)
@@ -469,6 +472,7 @@ class FakeTokenFactConnection:
 class NoTransactionTokenFactConnection:
     def __init__(self) -> None:
         self.sql: list[str] = []
+        self.info = SimpleNamespace(transaction_status=pq.TransactionStatus.IDLE)
 
     def execute(self, sql: str, params: Any = None) -> FakeResult:
         self.sql.append(sql)
@@ -502,9 +506,11 @@ class FakeTransaction:
 
     def __enter__(self) -> None:
         self.conn.transaction_entries += 1
+        self.conn.info.transaction_status = pq.TransactionStatus.INTRANS
 
     def __exit__(self, exc_type: type[BaseException] | None, exc: BaseException | None, tb: Any) -> bool:
         self.conn.transaction_exits.append(exc_type.__name__ if exc_type else "ok")
+        self.conn.info.transaction_status = pq.TransactionStatus.IDLE
         return False
 
 

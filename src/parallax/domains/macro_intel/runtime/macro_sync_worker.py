@@ -5,20 +5,21 @@ import time
 from collections.abc import Callable
 from typing import Any
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
+from parallax.platform.config.settings import MacroSyncWorkerSettings, Settings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class MacroSyncWorker(WorkerBase):
     def __init__(
         self,
         *,
-        settings: Any,
+        settings: MacroSyncWorkerSettings,
         db: Any,
         telemetry: Any,
-        settings_root: Any,
+        settings_root: Settings,
         wake_waiter: Any | None = None,
         wake_emitter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
@@ -26,12 +27,8 @@ class MacroSyncWorker(WorkerBase):
         service_factory: Callable[[], MacroSyncService] | None = None,
         name: str = "macro_sync",
     ) -> None:
-        if settings is None:
-            raise RuntimeError("macro_sync_settings_required")
         if db is None:
             raise RuntimeError("macro_sync_db_required")
-        if settings_root is None:
-            raise RuntimeError("macro_sync_settings_root_required")
         super().__init__(
             name=name,
             settings=settings,
@@ -81,7 +78,6 @@ class MacroSyncWorker(WorkerBase):
                 "provider_calls": len(results),
                 "sync_run_id": last_result.sync_run_id,
                 "sync_run_ids": [result.sync_run_id for result in results],
-                "import_run_id": last_result.import_run_id,
                 "status": last_result.status,
                 "statuses": [result.status for result in results],
                 "imported_observation_count": sum(result.imported_observation_count for result in results),
@@ -92,10 +88,7 @@ class MacroSyncWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return _required_positive_int(
-            self.settings.batch_size,
-            error_code="macro_sync_batch_size_required",
-        )
+        return int(self.settings.batch_size)
 
     def _service(self) -> MacroSyncService:
         if self.service_factory is not None:
@@ -111,12 +104,6 @@ class MacroSyncWorker(WorkerBase):
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 __all__ = ["MacroSyncWorker"]

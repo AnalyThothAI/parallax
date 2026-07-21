@@ -26,8 +26,8 @@ from parallax.domains.token_intel.repositories.token_intent_lookup_repository im
     TokenIntentLookupRepository,
 )
 from parallax.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
-from parallax.domains.token_intel.repositories.token_radar_source_dirty_event_repository import (
-    TokenRadarSourceDirtyEventRepository,
+from parallax.domains.token_intel.repositories.token_radar_dirty_target_repository import (
+    TokenRadarDirtyTargetRepository,
 )
 from parallax.domains.token_intel.scoring.factor_snapshot_contract import (
     is_token_factor_snapshot,
@@ -87,7 +87,7 @@ __all__ = [
     "TokenIntentRepository",
     "TokenIntentResolutionDecision",
     "TokenIntentResolver",
-    "TokenRadarSourceDirtyEventRepository",
+    "TokenRadarDirtyTargetRepository",
     "build_token_evidence",
     "build_token_intents",
     "build_token_target_stages",

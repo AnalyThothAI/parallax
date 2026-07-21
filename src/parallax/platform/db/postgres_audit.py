@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from parallax.platform.db.postgres_migrations import latest_migration_version
+from parallax.platform.validation import require_nonnegative_int
 
 TOKEN_RADAR_PROJECTION_VERSION_PARAM = "token_radar_projection_version"
 TOKEN_FACTOR_VERSION_PARAM = "token_factor_version"
@@ -27,8 +28,6 @@ CORE_TABLES = (
 )
 
 PROJECTION_TABLES = (
-    "projection_offsets",
-    "projection_runs",
     "token_radar_current_rows",
     "token_radar_publication_state",
 )
@@ -279,7 +278,10 @@ class ProjectionValidationAudit:
         self.conn = conn
 
     def run(self, *, sample: int) -> dict[str, Any]:
-        sample_size = _required_nonnegative_int(sample, "projection_validation_sample_required")
+        sample_size = require_nonnegative_int(
+            sample,
+            error_code="projection_validation_sample_required",
+        )
         row = self.conn.execute(
             """
             WITH sampled_radar_rows AS (
@@ -337,12 +339,6 @@ class ProjectionValidationAudit:
                 "token_radar_current_rows_missing_refs": missing_refs,
             },
         }
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _plan_line(row: Any) -> str:

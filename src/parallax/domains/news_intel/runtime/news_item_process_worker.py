@@ -6,36 +6,36 @@ from collections.abc import Callable, Mapping
 from dataclasses import fields, is_dataclass
 from typing import Any
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_page_reprojection,
     enqueue_story_brief_work,
 )
-from parallax.domains.news_intel.runtime.news_runtime_settings import positive_worker_setting_int
 from parallax.domains.news_intel.services.news_content_classification import classify_news_item_content
 from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
 from parallax.domains.news_intel.services.news_item_agent_admission import (
     decide_news_item_agent_admission,
 )
-from parallax.domains.news_intel.services.news_item_agent_policy import (
-    news_item_agent_brief_priority,
-)
 from parallax.domains.news_intel.services.news_market_scope import classify_news_market_scope
+from parallax.domains.news_intel.services.news_story_agent_policy import (
+    news_story_brief_priority,
+)
 from parallax.domains.news_intel.services.news_story_identity import build_news_story_identity
 from parallax.domains.news_intel.services.news_token_mentions import build_news_token_mentions
 from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmissionContext
 from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
 from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdentity
 from parallax.domains.token_intel.interfaces import TokenIdentityLookup
+from parallax.platform.config.settings import NewsItemProcessWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class NewsItemProcessWorker(WorkerBase):
     def __init__(
         self,
         *,
-        settings: Any,
+        settings: NewsItemProcessWorkerSettings,
         db: Any,
         telemetry: Any,
         identity_lookup: TokenIdentityLookup | None = None,
@@ -44,8 +44,6 @@ class NewsItemProcessWorker(WorkerBase):
         clock_ms: Callable[[], int] | None = None,
         name: str = "news_item_process",
     ) -> None:
-        if settings is None:
-            raise RuntimeError("news_item_process_settings_required")
         if db is None:
             raise RuntimeError("news_item_process_db_required")
         super().__init__(
@@ -68,13 +66,12 @@ class NewsItemProcessWorker(WorkerBase):
 
         now = int(now_ms if now_ms is not None else self.clock_ms())
         with self._repository_session() as repos, repos.transaction():
-            repos.news.release_expired_processing_items(now_ms=now, commit=False)
-            items = repos.news.claim_unprocessed_items(
+            repos.news_items.release_expired_processing_items(now_ms=now)
+            items = repos.news_items.claim_unprocessed_items(
                 limit=self._batch_size(),
                 lease_owner=self.name,
                 lease_ms=self._lease_ms(),
                 now_ms=now,
-                commit=False,
             )
         if not items:
             return WorkerResult(skipped=1, notes={"reason": "no_unprocessed_items"})
@@ -152,34 +149,30 @@ class NewsItemProcessWorker(WorkerBase):
                     }
                 )
                 with self._repository_session() as repos, repos.transaction():
-                    repos.news.replace_item_entities(news_item_id=news_item_id, entities=entities, commit=False)
-                    repos.news.replace_token_mentions(news_item_id=news_item_id, mentions=mentions, commit=False)
-                    repos.news.replace_fact_candidates(
+                    repos.news_items.replace_item_entities(news_item_id=news_item_id, entities=entities)
+                    repos.news_items.replace_token_mentions(news_item_id=news_item_id, mentions=mentions)
+                    repos.news_items.replace_fact_candidates(
                         news_item_id=news_item_id,
                         candidates=candidates,
-                        commit=False,
                     )
-                    repos.news.update_item_content_classification(
+                    repos.news_items.update_item_content_classification(
                         news_item_id=news_item_id,
                         content_class=classification.content_class,
                         content_tags=classification.content_tags,
                         classification_payload=classification.classification_payload,
                         now_ms=now,
-                        commit=False,
                     )
-                    repos.news.update_item_market_scope_and_story_identity(
+                    repos.news_items.update_item_market_scope_and_story_identity(
                         news_item_id=news_item_id,
                         market_scope=market_scope,
                         story_identity=story_identity,
                         now_ms=now,
-                        commit=False,
                     )
-                    marked = repos.news.mark_item_processed(
+                    marked = repos.news_items.mark_item_processed(
                         news_item_id=news_item_id,
                         processed_at_ms=now,
                         lease_owner=claim_lease_owner,
                         processing_attempts=claim_attempt,
-                        commit=False,
                     )
                     if marked == 0:
                         raise _StaleClaimError(news_item_id)
@@ -189,10 +182,9 @@ class NewsItemProcessWorker(WorkerBase):
                         reason="news_item_processed",
                         now_ms=now,
                         source_watermark_ms_by_news_item_id={news_item_id: _source_watermark_ms(processed_item)},
-                        commit=False,
                     )
                     context_payload = _agent_admission_context(
-                        repos.news.load_agent_admission_contexts(news_item_ids=[news_item_id], now_ms=now),
+                        repos.news_items.load_agent_admission_contexts(news_item_ids=[news_item_id], now_ms=now),
                         news_item_id=news_item_id,
                     )
                     context_item = context_payload["item"]
@@ -206,15 +198,14 @@ class NewsItemProcessWorker(WorkerBase):
                         context=NewsItemAgentAdmissionContext.from_repository_context(context_payload),
                         now_ms=now,
                     )
-                    repos.news.update_item_agent_admission(
+                    repos.news_items.update_item_agent_admission(
                         news_item_id=news_item_id,
                         admission=agent_admission,
                         now_ms=now,
-                        commit=False,
                     )
                     if agent_admission.eligible:
                         story_key = _required_text(context_item, "story_key")
-                        brief_priority = news_item_agent_brief_priority(
+                        brief_priority = news_story_brief_priority(
                             item=context_item,
                             admission=agent_admission,
                         )
@@ -226,7 +217,6 @@ class NewsItemProcessWorker(WorkerBase):
                             source_watermark_ms_by_story_key={story_key: source_watermark_ms},
                             reason="news_item_processed",
                             now_ms=now,
-                            commit=False,
                         )
                 processed += 1
             except _StaleClaimError:
@@ -265,24 +255,22 @@ class NewsItemProcessWorker(WorkerBase):
             with self._repository_session() as repos, repos.transaction():
                 if attempt_after_claim >= self._max_attempts():
                     return int(
-                        repos.news.mark_item_process_terminal_failed(
+                        repos.news_items.mark_item_process_terminal_failed(
                             news_item_id=news_item_id,
                             error=error_text,
                             now_ms=failure_now_ms,
                             lease_owner=lease_owner,
                             processing_attempts=attempt_after_claim,
-                            commit=False,
                         )
                     )
                 return int(
-                    repos.news.mark_item_process_retryable(
+                    repos.news_items.mark_item_process_retryable(
                         news_item_id=news_item_id,
                         error=error_text,
                         next_due_at_ms=failure_now_ms + self._retry_delay_ms(),
                         now_ms=failure_now_ms,
                         lease_owner=lease_owner,
                         processing_attempts=attempt_after_claim,
-                        commit=False,
                     )
                 )
         except Exception:
@@ -295,16 +283,16 @@ class NewsItemProcessWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)
+        return self.settings.batch_size
 
     def _lease_ms(self) -> int:
-        return positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)
+        return self.settings.lease_ms
 
     def _max_attempts(self) -> int:
-        return positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)
+        return self.settings.max_attempts
 
     def _retry_delay_ms(self) -> int:
-        return positive_worker_setting_int(self.settings, "retry_delay_ms", worker_name=self.name)
+        return self.settings.retry_delay_ms
 
 
 def _required_text(item: Mapping[str, Any], key: str) -> str:

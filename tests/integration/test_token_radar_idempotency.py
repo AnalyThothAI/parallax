@@ -9,10 +9,8 @@ from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from parallax.domains.token_intel.services.token_radar_projection import (
-    PROJECTION_VERSION,
-    TokenRadarProjection,
-)
+from parallax.domains.token_intel.services.token_radar_projector import PROJECTION_VERSION, TokenRadarProjector
+from parallax.domains.token_intel.services.token_radar_publisher import TokenRadarPublisher
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -29,13 +27,12 @@ def test_token_radar_rebuild_is_idempotent_from_explicit_repair_dirty_targets(tm
         _seed_resolved_radar_source(conn)
         conn.commit()
 
-        projection = TokenRadarProjection(
-            repos=repositories_for_connection(
-                conn,
-                notification_delivery_running_timeout_ms=300_000,
-                notification_delivery_stale_running_terminalization_batch_size=100,
-            )
+        repos = repositories_for_connection(
+            conn,
+            notification_delivery_running_timeout_ms=300_000,
+            notification_delivery_stale_running_terminalization_batch_size=100,
         )
+        projection = TokenRadarPublisher(repos=repos, projector=TokenRadarProjector(repos=repos))
         first_enqueued = _enqueue_radar_repair_targets(conn, now_ms=FIXED_NOW_MS)
         first_result = projection.rebuild_dirty_targets(
             lease_ms=120_000,
@@ -82,15 +79,15 @@ def _enqueue_radar_repair_targets(conn: Any, *, now_ms: int) -> int:
         notification_delivery_running_timeout_ms=300_000,
         notification_delivery_stale_running_terminalization_batch_size=100,
     )
-    return int(
-        repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
-            since_ms=now_ms - 60 * 60 * 1000,
-            now_ms=now_ms,
-            limit=10,
-            reason="integration_catch_up",
-            commit=True,
+    with repos.transaction():
+        return int(
+            repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
+                since_ms=now_ms - 60 * 60 * 1000,
+                now_ms=now_ms,
+                limit=10,
+                reason="integration_catch_up",
+            )
         )
-    )
 
 
 def _radar_rows(conn: Any) -> list[dict[str, Any]]:
@@ -131,16 +128,17 @@ def _seed_resolved_radar_source(conn: Any) -> None:
     intent_id = "intent-radar-idempotent"
     resolution_id = "resolution-radar-idempotent"
 
-    EvidenceRepository(conn).insert_event(
-        make_event(
-            event_id=event_id,
-            author_handle="signal_builder",
-            text="$IDEMP fresh onchain momentum",
-            received_at_ms=EVENT_MS,
+    with conn.transaction():
+        EvidenceRepository(conn).insert_event(
+            make_event(
+                event_id=event_id,
+                author_handle="signal_builder",
+                text="$IDEMP fresh onchain momentum",
+                received_at_ms=EVENT_MS,
+                is_watched=True,
+            ),
             is_watched=True,
-        ),
-        is_watched=True,
-    )
+        )
     _insert_intent(conn, intent_id=intent_id, event_id=event_id, observed_at_ms=EVENT_MS)
     asset_id = _insert_asset(conn, observed_at_ms=EVENT_MS)
     _insert_current_identity(conn, asset_id=asset_id, observed_at_ms=EVENT_MS)
@@ -181,7 +179,6 @@ def _insert_asset(conn: Any, *, observed_at_ms: int) -> str:
         address=ASSET_ADDRESS,
         observed_at_ms=observed_at_ms,
         status="candidate",
-        commit=False,
     )
     return str(asset["asset_id"])
 

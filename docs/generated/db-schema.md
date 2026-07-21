@@ -2,35 +2,6 @@
 
 # Database Schema
 
-## `account_profiles`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `handle` | `TEXT` | False | `None` |
-| `first_seen_ms` | `BIGINT` | False | `None` |
-| `latest_seen_ms` | `BIGINT` | False | `None` |
-| `follower_max` | `BIGINT` | True | `None` |
-| `watched_status` | `TEXT` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-| `gmgn_user_id` | `TEXT` | True | `None` |
-| `gmgn_user_tags` | `ARRAY` | True | `None` |
-| `gmgn_platform_followers` | `BIGINT` | True | `None` |
-| `gmgn_directory_observed_at_ms` | `BIGINT` | True | `None` |
-
-## `account_quality_snapshots`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `handle` | `TEXT` | False | `None` |
-| `window` | `TEXT` | False | `None` |
-| `precision_score` | `DOUBLE PRECISION` | True | `None` |
-| `early_call_score` | `DOUBLE PRECISION` | True | `None` |
-| `spam_risk_score` | `DOUBLE PRECISION` | True | `None` |
-| `avg_realized_return` | `DOUBLE PRECISION` | True | `None` |
-| `sample_size` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
 ## `account_token_alerts`
 
 | Column | Type | Nullable | Default |
@@ -47,22 +18,6 @@
 | `is_first_seen_by_author` | `BOOLEAN` | False | `None` |
 | `received_at_ms` | `BIGINT` | False | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
-
-## `account_token_call_stats`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `handle` | `TEXT` | False | `None` |
-| `token_id` | `TEXT` | False | `None` |
-| `first_mention_ms` | `BIGINT` | False | `None` |
-| `mention_count` | `BIGINT` | False | `None` |
-| `was_early_author` | `BOOLEAN` | False | `None` |
-| `price_change_5m_pct` | `DOUBLE PRECISION` | True | `None` |
-| `price_change_1h_pct` | `DOUBLE PRECISION` | True | `None` |
-| `price_change_24h_pct` | `DOUBLE PRECISION` | True | `None` |
-| `max_drawdown_1h_pct` | `DOUBLE PRECISION` | True | `None` |
-| `outcome_status` | `TEXT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
 
 ## `alembic_version`
 
@@ -154,85 +109,6 @@
 | `last_error` | `TEXT` | True | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `cex_detail_snapshots`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `target_type` | `TEXT` | False | `'CexToken'::text` |
-| `target_id` | `TEXT` | False | `None` |
-| `exchange` | `TEXT` | False | `'binance'::text` |
-| `native_market_id` | `TEXT` | False | `None` |
-| `base_symbol` | `TEXT` | False | `None` |
-| `quote_symbol` | `TEXT` | False | `'USDT'::text` |
-| `status` | `TEXT` | False | `None` |
-| `baseline_status` | `TEXT` | False | `None` |
-| `coinglass_status` | `TEXT` | False | `None` |
-| `price_usd` | `NUMERIC` | True | `None` |
-| `mark_price` | `NUMERIC` | True | `None` |
-| `funding_rate` | `NUMERIC` | True | `None` |
-| `volume_24h_usd` | `NUMERIC` | True | `None` |
-| `open_interest_usd` | `NUMERIC` | True | `None` |
-| `oi_change_pct_1h` | `NUMERIC` | True | `None` |
-| `oi_change_pct_4h` | `NUMERIC` | True | `None` |
-| `oi_change_pct_24h` | `NUMERIC` | True | `None` |
-| `cvd_delta_1h` | `NUMERIC` | True | `None` |
-| `cvd_delta_4h` | `NUMERIC` | True | `None` |
-| `cvd_delta_24h` | `NUMERIC` | True | `None` |
-| `long_short_ratio` | `NUMERIC` | True | `None` |
-| `top_trader_position_ratio` | `NUMERIC` | True | `None` |
-| `level_bands_json` | `JSONB` | False | `'[]'::jsonb` |
-| `degraded_reasons_json` | `JSONB` | False | `'[]'::jsonb` |
-| `source_refs_json` | `JSONB` | False | `'[]'::jsonb` |
-| `observed_at_ms` | `BIGINT` | True | `None` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
-
-## `cex_oi_radar_publication_state`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `board_key` | `TEXT` | False | `None` |
-| `provider` | `TEXT` | False | `None` |
-| `exchange` | `TEXT` | False | `None` |
-| `quote_symbol` | `TEXT` | False | `None` |
-| `contract_type` | `TEXT` | False | `None` |
-| `period` | `TEXT` | False | `None` |
-| `current_published_at_ms` | `BIGINT` | True | `None` |
-| `current_source_frontier_ms` | `BIGINT` | True | `None` |
-| `current_row_count` | `BIGINT` | False | `0` |
-| `latest_attempt_status` | `TEXT` | False | `'pending'::text` |
-| `latest_attempt_started_at_ms` | `BIGINT` | True | `None` |
-| `latest_attempt_finished_at_ms` | `BIGINT` | True | `None` |
-| `latest_attempt_error` | `TEXT` | True | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-| `current_payload_hash` | `TEXT` | True | `None` |
-
-## `cex_oi_radar_rows`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `row_id` | `TEXT` | False | `None` |
-| `period` | `TEXT` | False | `None` |
-| `board_provider` | `TEXT` | False | `None` |
-| `board_exchange` | `TEXT` | False | `None` |
-| `board_quote_symbol` | `TEXT` | False | `None` |
-| `board_contract_type` | `TEXT` | False | `None` |
-| `rank` | `BIGINT` | False | `None` |
-| `target_id` | `TEXT` | False | `None` |
-| `pricefeed_id` | `TEXT` | True | `None` |
-| `native_market_id` | `TEXT` | False | `None` |
-| `base_symbol` | `TEXT` | False | `None` |
-| `quote_symbol` | `TEXT` | False | `None` |
-| `open_interest_usd` | `NUMERIC` | True | `None` |
-| `open_interest_change_pct_1h` | `NUMERIC` | True | `None` |
-| `volume_24h_usd` | `NUMERIC` | True | `None` |
-| `funding_rate` | `NUMERIC` | True | `None` |
-| `mark_price` | `NUMERIC` | True | `None` |
-| `score` | `NUMERIC` | False | `None` |
-| `score_components_json` | `JSONB` | False | `'{}'::jsonb` |
-| `observed_at_ms` | `BIGINT` | False | `None` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
 
 ## `cex_token_profiles`
 
@@ -363,42 +239,6 @@
 | `updated_at_ms` | `BIGINT` | False | `None` |
 | `search_tsv` | `TSVECTOR` | True | `None` |
 
-## `macro_daily_briefs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `brief_key` | `TEXT` | False | `None` |
-| `projection_version` | `TEXT` | False | `None` |
-| `brief_date` | `DATE` | True | `None` |
-| `asof_date` | `DATE` | True | `None` |
-| `status` | `TEXT` | False | `None` |
-| `headline` | `TEXT` | False | `None` |
-| `payload_json` | `JSONB` | False | `'{}'::jsonb` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
-
-## `macro_import_runs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `run_id` | `TEXT` | False | `None` |
-| `source_name` | `TEXT` | False | `None` |
-| `bundle_name` | `TEXT` | False | `None` |
-| `asof_date` | `DATE` | True | `None` |
-| `status` | `TEXT` | False | `None` |
-| `observations_count` | `INTEGER` | False | `0` |
-| `coverage_json` | `JSONB` | False | `'{}'::jsonb` |
-| `missing_series_json` | `JSONB` | False | `'[]'::jsonb` |
-| `series_errors_json` | `JSONB` | False | `'[]'::jsonb` |
-| `reason_codes_json` | `JSONB` | False | `'[]'::jsonb` |
-| `started_at_ms` | `BIGINT` | False | `None` |
-| `completed_at_ms` | `BIGINT` | False | `None` |
-| `seen_observation_count` | `INTEGER` | False | `0` |
-| `inserted_observation_count` | `INTEGER` | False | `0` |
-| `changed_observation_count` | `INTEGER` | False | `0` |
-| `noop_observation_count` | `INTEGER` | False | `0` |
-
 ## `macro_observation_series_publication_state`
 
 | Column | Type | Nullable | Default |
@@ -419,19 +259,13 @@
 | `projection_version` | `TEXT` | False | `None` |
 | `concept_key` | `TEXT` | False | `None` |
 | `observed_at` | `DATE` | False | `None` |
-| `series_rank` | `INTEGER` | False | `None` |
 | `value_numeric` | `DOUBLE PRECISION` | True | `None` |
 | `source_name` | `TEXT` | False | `None` |
 | `series_key` | `TEXT` | False | `None` |
-| `source_priority` | `INTEGER` | False | `None` |
 | `unit` | `TEXT` | True | `None` |
 | `frequency` | `TEXT` | True | `None` |
 | `data_quality` | `TEXT` | True | `None` |
-| `source_ts` | `TEXT` | True | `None` |
-| `raw_payload_json` | `JSONB` | False | `'{}'::jsonb` |
-| `ingested_at_ms` | `BIGINT` | False | `None` |
-| `projected_at_ms` | `BIGINT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
+| `event_metadata_json` | `JSONB` | False | `None` |
 
 ## `macro_observations`
 
@@ -484,10 +318,9 @@
 | `sync_window_id` | `TEXT` | True | `None` |
 | `source_name` | `TEXT` | False | `None` |
 | `bundle_name` | `TEXT` | False | `None` |
-| `requested_start` | `DATE` | False | `None` |
-| `requested_end` | `DATE` | False | `None` |
+| `requested_start` | `DATE` | True | `None` |
+| `requested_end` | `DATE` | True | `None` |
 | `status` | `TEXT` | False | `None` |
-| `import_run_id` | `TEXT` | True | `None` |
 | `asof_date` | `DATE` | True | `None` |
 | `max_observed_at` | `DATE` | True | `None` |
 | `observations_count` | `INTEGER` | False | `0` |
@@ -566,6 +399,8 @@
 | `scenario_json` | `JSONB` | False | `'{}'::jsonb` |
 | `scorecard_json` | `JSONB` | False | `'{}'::jsonb` |
 | `payload_hash` | `TEXT` | False | `None` |
+| `assets_brief_json` | `JSONB` | False | `None` |
+| `module_views_json` | `JSONB` | False | `None` |
 
 ## `market_tick_current`
 
@@ -663,56 +498,6 @@
 | `payload_hash` | `TEXT` | False | `''::text` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 
-## `narrative_admission_dirty_targets`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `target_type` | `TEXT` | False | `None` |
-| `target_id` | `TEXT` | False | `None` |
-| `window` | `TEXT` | False | `None` |
-| `scope` | `TEXT` | False | `None` |
-| `projection_version` | `TEXT` | False | `None` |
-| `schema_version` | `TEXT` | False | `None` |
-| `dirty_reason` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
-| `source_watermark_ms` | `BIGINT` | False | `None` |
-| `priority` | `INTEGER` | False | `100` |
-| `due_at_ms` | `BIGINT` | False | `None` |
-| `leased_until_ms` | `BIGINT` | True | `None` |
-| `lease_owner` | `TEXT` | True | `None` |
-| `attempt_count` | `INTEGER` | False | `0` |
-| `last_error` | `TEXT` | True | `None` |
-| `first_dirty_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `narrative_admissions`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `target_type` | `TEXT` | False | `None` |
-| `target_id` | `TEXT` | False | `None` |
-| `window` | `TEXT` | False | `None` |
-| `scope` | `TEXT` | False | `None` |
-| `schema_version` | `TEXT` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `reason` | `TEXT` | False | `None` |
-| `priority` | `BIGINT` | False | `0` |
-| `last_radar_rank` | `BIGINT` | True | `None` |
-| `last_rank_score` | `DOUBLE PRECISION` | True | `None` |
-| `source_event_ids_json` | `JSONB` | False | `'[]'::jsonb` |
-| `source_fingerprint` | `TEXT` | True | `None` |
-| `source_max_received_at_ms` | `BIGINT` | True | `None` |
-| `admitted_at_ms` | `BIGINT` | False | `None` |
-| `last_seen_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-| `projection_computed_at_ms` | `BIGINT` | True | `None` |
-| `source_window_start_ms` | `BIGINT` | True | `None` |
-| `source_window_end_ms` | `BIGINT` | True | `None` |
-| `source_event_count` | `BIGINT` | False | `0` |
-| `independent_author_count` | `BIGINT` | False | `0` |
-| `admission_generation` | `TEXT` | True | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
-
 ## `news_fact_candidates`
 
 | Column | Type | Nullable | Default |
@@ -751,60 +536,6 @@
 | `http_status` | `INTEGER` | True | `None` |
 | `error` | `TEXT` | True | `None` |
 | `extra_json` | `JSONB` | False | `'{}'::jsonb` |
-
-## `news_item_agent_briefs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `news_item_id` | `TEXT` | False | `None` |
-| `agent_run_id` | `TEXT` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `direction` | `TEXT` | False | `None` |
-| `decision_class` | `TEXT` | False | `None` |
-| `brief_json` | `JSONB` | False | `'{}'::jsonb` |
-| `input_hash` | `TEXT` | False | `None` |
-| `artifact_version_hash` | `TEXT` | False | `None` |
-| `prompt_version` | `TEXT` | False | `None` |
-| `schema_version` | `TEXT` | False | `None` |
-| `validator_version` | `TEXT` | False | `None` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `news_item_agent_runs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `run_id` | `TEXT` | False | `None` |
-| `news_item_id` | `TEXT` | False | `None` |
-| `provider` | `TEXT` | False | `None` |
-| `model` | `TEXT` | False | `None` |
-| `backend` | `TEXT` | False | `'litellm_sdk'::text` |
-| `execution_trace_id` | `TEXT` | True | `None` |
-| `workflow_name` | `TEXT` | False | `None` |
-| `agent_name` | `TEXT` | False | `None` |
-| `lane` | `TEXT` | False | `None` |
-| `artifact_version_hash` | `TEXT` | False | `None` |
-| `prompt_version` | `TEXT` | False | `None` |
-| `schema_version` | `TEXT` | False | `None` |
-| `validator_version` | `TEXT` | False | `None` |
-| `guardrail_version` | `TEXT` | False | `None` |
-| `input_hash` | `TEXT` | False | `None` |
-| `output_hash` | `TEXT` | True | `None` |
-| `execution_started` | `BOOLEAN` | False | `false` |
-| `status` | `TEXT` | False | `None` |
-| `outcome` | `TEXT` | False | `None` |
-| `error_class` | `TEXT` | True | `None` |
-| `error` | `TEXT` | True | `None` |
-| `request_json` | `JSONB` | False | `'{}'::jsonb` |
-| `response_json` | `JSONB` | True | `None` |
-| `validation_errors_json` | `JSONB` | False | `'[]'::jsonb` |
-| `trace_metadata_json` | `JSONB` | False | `'{}'::jsonb` |
-| `usage_json` | `JSONB` | False | `'{}'::jsonb` |
-| `latency_ms` | `BIGINT` | False | `0` |
-| `started_at_ms` | `BIGINT` | False | `None` |
-| `finished_at_ms` | `BIGINT` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
 
 ## `news_item_entities`
 
@@ -971,29 +702,6 @@
 | `provider_published_at_ms` | `BIGINT` | True | `None` |
 | `provider_observed_at_ms` | `BIGINT` | False | `0` |
 
-## `news_source_quality_rows`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `row_id` | `TEXT` | False | `None` |
-| `source_id` | `TEXT` | False | `None` |
-| `window` | `TEXT` | False | `None` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `fetch_success_rate` | `DOUBLE PRECISION` | True | `None` |
-| `items_fetched` | `INTEGER` | False | `0` |
-| `items_inserted` | `INTEGER` | False | `0` |
-| `duplicate_rate` | `DOUBLE PRECISION` | True | `None` |
-| `process_success_rate` | `DOUBLE PRECISION` | True | `None` |
-| `resolved_token_rate` | `DOUBLE PRECISION` | True | `None` |
-| `attention_rate` | `DOUBLE PRECISION` | True | `None` |
-| `accepted_fact_rate` | `DOUBLE PRECISION` | True | `None` |
-| `brief_ready_rate` | `DOUBLE PRECISION` | True | `None` |
-| `median_lag_ms` | `BIGINT` | True | `None` |
-| `quality_score` | `DOUBLE PRECISION` | True | `None` |
-| `diagnostics_json` | `JSONB` | False | `'{}'::jsonb` |
-| `projection_version` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `''::text` |
-
 ## `news_sources`
 
 | Column | Type | Nullable | Default |
@@ -1027,6 +735,8 @@
 | `sync_high_watermark_ms` | `BIGINT` | False | `0` |
 | `sync_overlap_ms` | `BIGINT` | False | `900000` |
 | `sync_diagnostics_json` | `JSONB` | False | `'{}'::jsonb` |
+| `config_payload_hash` | `TEXT` | False | `None` |
+| `terminal_config_payload_hash` | `TEXT` | True | `None` |
 
 ## `news_story_agent_briefs`
 
@@ -1185,39 +895,6 @@
 | `evidence_level` | `TEXT` | False | `None` |
 | `first_seen_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `projection_offsets`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `projection_name` | `TEXT` | False | `None` |
-| `projection_version` | `TEXT` | False | `None` |
-| `source_table` | `TEXT` | False | `None` |
-| `source_max_received_at_ms` | `BIGINT` | False | `0` |
-| `source_max_id` | `TEXT` | False | `''::text` |
-| `last_run_id` | `TEXT` | True | `None` |
-| `status` | `TEXT` | False | `None` |
-| `lag_ms` | `BIGINT` | False | `0` |
-| `last_error` | `TEXT` | True | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `projection_runs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `run_id` | `TEXT` | False | `None` |
-| `projection_name` | `TEXT` | False | `None` |
-| `projection_version` | `TEXT` | False | `None` |
-| `mode` | `TEXT` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `source_start_ms` | `BIGINT` | True | `None` |
-| `source_end_ms` | `BIGINT` | True | `None` |
-| `rows_read` | `BIGINT` | False | `0` |
-| `rows_written` | `BIGINT` | False | `0` |
-| `started_at_ms` | `BIGINT` | False | `None` |
-| `finished_at_ms` | `BIGINT` | True | `None` |
-| `error` | `TEXT` | True | `None` |
 
 ## `raw_frames`
 
@@ -1587,24 +1264,6 @@
 | `pricefeed_id` | `TEXT` | True | `None` |
 | `resolution_status` | `TEXT` | True | `None` |
 | `is_watched` | `BOOLEAN` | False | `false` |
-
-## `token_radar_source_dirty_events`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `projection_version` | `TEXT` | False | `None` |
-| `source_event_id` | `TEXT` | False | `None` |
-| `target_type_key` | `TEXT` | False | `None` |
-| `identity_id` | `TEXT` | False | `None` |
-| `dirty_reason` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
-| `due_at_ms` | `BIGINT` | False | `None` |
-| `leased_until_ms` | `BIGINT` | True | `None` |
-| `lease_owner` | `TEXT` | True | `None` |
-| `attempt_count` | `BIGINT` | False | `0` |
-| `last_error` | `TEXT` | True | `None` |
-| `first_dirty_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
 
 ## `token_radar_target_features`
 

@@ -5,8 +5,6 @@ import time
 from dataclasses import dataclass
 from typing import Any
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.services.token_image_source_admission import (
     admit_token_image_sources,
     image_source_candidates_for_target,
@@ -14,6 +12,8 @@ from parallax.domains.asset_market.services.token_image_source_admission import 
 from parallax.domains.asset_market.services.token_profile_current_projection import (
     project_token_profile_current,
 )
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 SINGLE_WRITER_KEY = 2026051702
 
@@ -48,23 +48,11 @@ class TokenProfileCurrentWorker(WorkerBase):
             return rebuild_token_profile_current_once(
                 repos=repos,
                 now_ms=now_ms,
-                limit=_required_positive_int(
-                    self.settings.batch_size,
-                    error_code="token_profile_current_batch_size_required",
-                ),
+                limit=self.settings.batch_size,
                 lease_owner=self.name,
-                lease_ms=_required_positive_int(
-                    self.settings.lease_ms,
-                    error_code="token_profile_current_lease_ms_required",
-                ),
-                retry_ms=_required_positive_int(
-                    self.settings.retry_ms,
-                    error_code="token_profile_current_retry_ms_required",
-                ),
-                max_attempts=_required_positive_int(
-                    self.settings.max_attempts,
-                    error_code="token_profile_current_max_attempts_required",
-                ),
+                lease_ms=self.settings.lease_ms,
+                retry_ms=self.settings.retry_ms,
+                max_attempts=self.settings.max_attempts,
             )
 
 
@@ -79,13 +67,13 @@ def rebuild_token_profile_current_once(
     max_attempts: int,
 ) -> dict[str, Any]:
     result = _empty_result(now_ms=now_ms)
-    claims = repos.token_profile_current_dirty_targets.claim_due(
-        now_ms=now_ms,
-        limit=limit,
-        lease_owner=lease_owner,
-        lease_ms=lease_ms,
-        commit=True,
-    )
+    with repos.transaction():
+        claims = repos.token_profile_current_dirty_targets.claim_due(
+            now_ms=now_ms,
+            limit=limit,
+            lease_owner=lease_owner,
+            lease_ms=lease_ms,
+        )
     result["claimed"] = len(claims)
     result["selected"] = len(claims)
     result["queue_depth"] = repos.token_profile_current_dirty_targets.queue_depth(now_ms=now_ms)
@@ -151,8 +139,8 @@ def rebuild_token_profile_current_once(
                     image_states_by_source_key=admission.image_states_by_source_key,
                     now_ms=now_ms,
                 )
-                changed = repos.token_profiles.upsert_current(row, commit=False)
-                done = repos.token_profile_current_dirty_targets.mark_done([claim], now_ms=now_ms, commit=False)
+                changed = repos.token_profiles.upsert_current(row)
+                done = repos.token_profile_current_dirty_targets.mark_done([claim], now_ms=now_ms)
                 if done != 1:
                     raise RuntimeError("token_profile_current_dirty_target_stale_completion")
             result["rows_written"] += int(bool(changed))
@@ -277,7 +265,6 @@ def _mark_claim_error(
                 retry_ms=retry_ms,
                 max_attempts=max_attempts,
                 worker_name=lease_owner,
-                commit=False,
             )
             if changed != 1:
                 raise RuntimeError("token_profile_current_dirty_target_stale_error_completion")
@@ -360,12 +347,6 @@ def _empty_result(*, now_ms: int) -> dict[str, Any]:
         "started_at_ms": int(now_ms),
         "finished_at_ms": int(now_ms),
     }
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _error_text(exc: BaseException) -> str:

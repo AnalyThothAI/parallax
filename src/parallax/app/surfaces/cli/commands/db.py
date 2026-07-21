@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from typing import Any
 
-from parallax.app.surfaces.cli.dependencies import postgres_connection
+from parallax.app.runtime.repository_session import postgres_connection
 from parallax.domains.token_intel.interfaces import (
     TOKEN_FACTOR_SNAPSHOT_VERSION,
     TOKEN_RADAR_PROJECTION_VERSION,

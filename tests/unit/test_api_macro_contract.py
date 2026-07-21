@@ -14,8 +14,6 @@ from parallax.app.surfaces.api.http import create_api_router
 from parallax.app.surfaces.api.routes_macro import _public_macro
 from parallax.domains.macro_intel._constants import (
     MACRO_CORE_CONCEPTS,
-    MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
-    MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
 )
 from parallax.domains.macro_intel.services.macro_gap_payloads import build_macro_data_gaps
 
@@ -418,54 +416,10 @@ def test_macro_asset_correlation_api_rejects_provider_series_keys() -> None:
     assert response.json() == {"ok": False, "error": "unsupported_asset", "field": "assets"}
 
 
-def test_macro_module_api_returns_backend_module_view() -> None:
+def test_macro_module_api_reads_precomputed_payload_without_observation_query() -> None:
+    module_view = _module_view("rates/yield-curve")
     repo = FakeMacroIntelRepository(
-        snapshot={
-            "projection_version": "macro_regime_v4",
-            "asof_date": "2026-05-20",
-            "status": "partial",
-            "regime": "tightening",
-            "computed_at_ms": 1_779_000_000_000,
-            "panels_json": {"rates": {"regime": "tightening"}},
-            "indicators_json": {"rates:dgs2": {"value": 3.9}, "rates:dgs10": {"value": 4.7}},
-            "triggers_json": [{"code": "higher_real_rates"}],
-            "features_json": {
-                "rates:dgs2": {
-                    "label": "2年期美债收益率",
-                    "short_label": "2Y",
-                    "description": "政策预期敏感的短端美债收益率",
-                    "unit_label": "%",
-                    "latest": {"value": 3.9, "observed_at": "2026-05-20", "unit": "percent"},
-                    "freshness_days": 1,
-                    "history_points": 1,
-                    "data_gaps": build_macro_data_gaps(["insufficient_history:20d"]),
-                    "data_quality": "ok",
-                    "source": {"name": "fred"},
-                },
-                "rates:dgs10": {
-                    "label": "10年期美债收益率",
-                    "short_label": "10Y",
-                    "description": "美国长期无风险利率基准",
-                    "unit_label": "%",
-                    "latest": {"value": 4.7, "observed_at": "2026-05-20", "unit": "percent"},
-                    "freshness_days": 1,
-                    "history_points": 1,
-                    "data_gaps": build_macro_data_gaps(["insufficient_history:20d"]),
-                    "data_quality": "ok",
-                    "source": {"name": "fred"},
-                },
-            },
-            "chain_json": {"rates": {"regime": "tightening"}},
-            "scenario_json": {
-                "current_regime": "tightening",
-                "confidence": 0.64,
-                "watch_triggers": [{"code": "higher_real_rates"}],
-            },
-            "source_coverage_json": {"latest_coverage_ratio": 1.0, "history_coverage_ratio": 0.0},
-            "data_gaps_json": build_macro_data_gaps(["insufficient_history:20d"]),
-            "scorecard_json": {"projection_version": "macro_regime_v4", "chain_average": 7.1},
-        },
-        observations=[_macro_observation("rates:dgs10", "2026-05-20", 4.7)],
+        snapshot={"module_views_json": {"rates/yield-curve": module_view}},
     )
     app = _app(repo)
 
@@ -473,252 +427,22 @@ def test_macro_module_api_returns_backend_module_view() -> None:
         response = client.get("/api/macro/modules/rates/yield-curve", headers={"Authorization": "Bearer secret"})
 
     assert response.status_code == 200
-    assert repo.calls == [
-        ("latest_snapshot", "macro_regime_v4"),
-        ("macro_series_publication_state", "macro_regime_v4"),
-    ]
-    assert repo.latest_observations_call is None
-    assert repo.observations_for_concepts_call == {
-        "concept_keys": (
-            "rates:dgs2",
-            "rates:dgs10",
-            "rates:dgs1mo",
-            "rates:dgs3mo",
-            "rates:dgs6mo",
-            "rates:dgs1",
-            "rates:dgs3",
-            "rates:dgs5",
-            "rates:dgs7",
-            "rates:dgs20",
-            "rates:dgs30",
-            "rates:10y2y",
-            "rates:10y3m",
-        ),
-        "lookback_days": MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
-        "limit_per_series": MACRO_VIEW_HISTORY_LIMIT_PER_SERIES,
-    }
-    payload = response.json()
-    assert payload["ok"] is True
-    assert payload["data"]["snapshot"]["module_id"] == "rates/yield-curve"
-    assert payload["data"]["snapshot"]["projection_version"] == "macro_module_view_v3"
-    assert payload["data"]["snapshot"]["source_projection_version"] == "macro_regime_v4"
-    assert "module_read" in payload["data"]
-    assert "module_evidence" in payload["data"]
-    assert "transmission" in payload["data"]
-    assert "data_health" in payload["data"]
-    assert "section_boards" not in payload["data"]
-    assert "read" not in payload["data"]
-    assert "evidence" not in payload["data"]
-    assert "data_gaps" not in payload["data"]
-    assert payload["data"]["primary_chart"]["status"] == "partial"
-    assert payload["data"]["primary_chart"]["series"][0]["status"] == "insufficient_history"
-    assert payload["data"]["provenance"]["rows"][-1] == {
-        "row_id": "source:Yahoo",
-        "source_label": "Yahoo",
-        "status": "ok",
-        "status_label": "可用",
-        "latest_observed_at": "2026-05-20",
-        "concept_count": 1,
-        "notes": "",
-    }
-    assert "macro_import" not in str(payload["data"]["provenance"])
-    assert "macro-import-1" not in str(payload["data"]["provenance"])
-    assert "charts" not in payload["data"]
-    assert "current_read" not in payload["data"]
-    assert "signals" not in payload["data"]
-    assert "latest_import_run" not in payload["data"]["provenance"]
-    assert all(isinstance(gap, dict) for gap in payload["data"]["data_health"]["module_gaps"])
+    assert response.json() == {"ok": True, "data": module_view}
+    assert repo.calls == [("module_view:rates/yield-curve", "macro_regime_v4")]
+    assert repo.observations_for_concepts_call is None
 
 
-def test_macro_overview_module_api_loads_event_concepts_for_market_event_flow() -> None:
-    snapshot = _macro_snapshot()
-    snapshot["scenario_json"] = {
-        "current_regime": "funding_stress",
-        "confidence": 0.72,
-        "confirmations": [],
-        "contradictions": [],
-        "watch_triggers": [],
-        "invalidations": [],
-        "top_changes": [],
-        "quality_blockers": [],
-        "trade_map": [
-            {
-                "expression": "risk_down_credit_sensitive",
-                "label": "风险降档 / 信用敏感",
-                "time_window": "1w",
-            }
-        ],
-        "scenario_cases": [
-            {
-                "case": "base",
-                "label": "基准情景",
-                "thesis": "风险降档延续。",
-                "trade": "降低信用敏感 beta。",
-                "invalidation": "美元与信用压力同步回落。",
-            }
-        ],
-    }
-    repo = FakeMacroIntelRepository(
-        snapshot=snapshot,
-        observations=[
-            {
-                **_macro_observation("event:fomc_decision_next", "2026-06-17", 1),
-                "series_key": "official_calendar:fomc_decision_next",
-                "source_name": "official_calendar",
-                "unit": "days",
-                "frequency": "event",
-                "raw_payload_json": {
-                    "series_key": "official_calendar:fomc_decision_next",
-                    "provider": "official_calendar",
-                    "observed_at": "2026-06-17",
-                    "value": 1,
-                    "unit": "days",
-                    "frequency": "event",
-                    "provenance": [
-                        {
-                            "event_title": "FOMC decision",
-                            "event_time": "14:00 ET",
-                            "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
-                        }
-                    ],
-                },
-            },
-        ],
-    )
+def test_macro_module_api_surfaces_missing_projection_without_inline_build() -> None:
+    repo = FakeMacroIntelRepository(snapshot=None)
     app = _app(repo)
 
     with TestClient(app) as client:
         response = client.get("/api/macro/modules/overview", headers={"Authorization": "Bearer secret"})
 
-    assert response.status_code == 200
-    assert repo.latest_observations_call is None
-    assert repo.observations_for_concepts_call is not None
-    assert repo.observations_for_concepts_call["lookback_days"] == 60
-    assert "event:fomc_decision_next" in repo.observations_for_concepts_call["concept_keys"]
-    assert "event:fed_speech" in repo.observations_for_concepts_call["concept_keys"]
-    assert "event:bea_gdp_next" in repo.observations_for_concepts_call["concept_keys"]
-    assert "event:treasury_auction_10y_bid_to_cover" in repo.observations_for_concepts_call["concept_keys"]
-    assert "asset:ndx" not in repo.observations_for_concepts_call["concept_keys"]
-    assert "crypto:btc" not in repo.observations_for_concepts_call["concept_keys"]
-    assert "asset:gld" not in repo.observations_for_concepts_call["concept_keys"]
-    assert "asset:spx" in repo.observations_for_concepts_call["concept_keys"]
-    assert "asset:tlt" not in repo.observations_for_concepts_call["concept_keys"]
-    payload = response.json()
-    assert "event_catalysts" not in payload["data"]["module_read"]["decision_console"]
-    assert "event_heatmap" not in payload["data"]["module_read"]["decision_console"]
-    assert payload["data"]["module_read"]["market_event_flow"]["rows"] == [
-        {
-            "key": "official_calendar:fomc_decision_next",
-            "label": "FOMC 决议",
-            "date": "2026-06-17",
-            "detail": "2026-06-17 · 还有 1 天 · 14:00 ET",
-            "source": "官方日历",
-            "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
-            "kind": "calendar",
-            "window": "0-3d",
-            "window_label": "0-3天",
-            "severity": "high",
-            "severity_label": "高",
-            "category": "policy",
-            "category_label": "政策",
-            "impact": "policy_path",
-            "impact_label": "政策路径",
-            "watch": "利率路径和流动性定价。",
-        }
-    ]
-    decision_console = payload["data"]["module_read"]["decision_console"]
-    assert decision_console["trade_map"] == [
-        {
-            "expression": "risk_down_credit_sensitive",
-            "label": "风险降档 / 信用敏感",
-            "time_window": "1w",
-        }
-    ]
-    assert "judgement_review" not in decision_console
-
-
-def test_macro_overview_module_api_loads_news_rows_for_market_event_flow() -> None:
-    macro_intel = FakeMacroIntelRepository(snapshot=_macro_snapshot(), observations=[])
-    news = FakeNewsRepository(
-        rows=[
-            {
-                "row_id": "news-row-1",
-                "news_item_id": "news-1",
-                "headline": "中东震荡下，日本追加预算预期升温",
-                "summary": "油价与美元走强，风险资产低开。",
-                "source_domain": "bloomberg.com",
-                "canonical_url": "https://news.google.com/articles/macro-1",
-                "latest_at_ms": 1_781_049_600_000,
-                "token_lanes": [{"symbol": "SPX"}, {"symbol": "美元"}],
-                "market_scope": {
-                    "primary": "macro_policy",
-                    "scope": ["macro_policy", "equities", "fx"],
-                    "status": "classified",
-                },
-                "macro_event_flow": {
-                    "window": "recent",
-                    "window_label": "近期",
-                    "severity": "low",
-                    "severity_label": "低",
-                    "category": "macro_policy",
-                    "category_label": "美联储",
-                    "impact": "mainline_context",
-                    "impact_label": "不改主线",
-                    "watch": "SPX · 美元 · 美联储",
-                },
-                "signal": {
-                    "agent_signal": {
-                        "status": "ready",
-                        "decision_class": "context",
-                        "direction": "neutral",
-                    },
-                    "display_signal": {
-                        "status": "ready",
-                        "direction": "neutral",
-                        "label_zh": "中性",
-                    },
-                    "alert_eligibility": {"in_app_eligible": False, "decision_class": "context"},
-                },
-            }
-        ]
-    )
-    app = _app(macro_intel, news=news)
-
-    with TestClient(app) as client:
-        response = client.get("/api/macro/modules/overview", headers={"Authorization": "Bearer secret"})
-
-    assert response.status_code == 200
-    assert news.calls == [
-        {
-            "cursor": None,
-            "limit": 7,
-            "macro_event_flow": True,
-            "q": None,
-            "signal": None,
-            "status": None,
-        }
-    ]
-    payload = response.json()
-    assert payload["data"]["module_read"]["market_event_flow"]["rows"] == [
-        {
-            "key": "news:news-row-1",
-            "label": "中东震荡下，日本追加预算预期升温",
-            "date": "2026-06-10",
-            "detail": "油价与美元走强，风险资产低开。",
-            "source": "bloomberg.com",
-            "source_url": "https://news.google.com/articles/macro-1",
-            "kind": "news",
-            "window": "recent",
-            "window_label": "近期",
-            "severity": "low",
-            "severity_label": "低",
-            "category": "macro_policy",
-            "category_label": "美联储",
-            "impact": "mainline_context",
-            "impact_label": "不改主线",
-            "watch": "SPX · 美元 · 美联储",
-        }
-    ]
+    assert response.status_code == 503
+    assert response.json() == {"ok": False, "error": "macro_module_projection_missing"}
+    assert repo.calls == [("module_view:overview", "macro_regime_v4")]
+    assert repo.observations_for_concepts_call is None
 
 
 def test_macro_module_api_rejects_unsupported_module() -> None:
@@ -731,8 +455,9 @@ def test_macro_module_api_rejects_unsupported_module() -> None:
     assert response.json() == {"ok": False, "error": "unsupported_macro_module", "field": "module_id"}
 
 
-def test_macro_module_api_serves_assets_landing_module() -> None:
-    app = _app(FakeMacroIntelRepository(snapshot=None))
+def test_macro_module_api_serves_precomputed_assets_payload_without_daily_brief_repository() -> None:
+    module_view = _module_view("assets")
+    app = _app(FakeMacroIntelRepository(snapshot={"module_views_json": {"assets": module_view}}))
 
     with TestClient(app) as client:
         response = client.get("/api/macro/modules/assets", headers={"Authorization": "Bearer secret"})
@@ -740,13 +465,6 @@ def test_macro_module_api_serves_assets_landing_module() -> None:
     assert response.status_code == 200
     assert response.json()["data"]["snapshot"]["module_id"] == "assets"
     assert response.json()["data"]["snapshot"]["route_path"] == "/macro/assets"
-
-
-def test_macro_assets_module_requires_daily_brief_repository_contract() -> None:
-    app = _app(MissingDailyBriefMacroIntelRepository(snapshot=None))
-
-    with pytest.raises(AttributeError, match="latest_macro_daily_brief"), TestClient(app) as client:
-        client.get("/api/macro/modules/assets", headers={"Authorization": "Bearer secret"})
 
 
 @pytest.mark.parametrize("module_id", ("rates", "fed", "liquidity", "economy", "volatility", "credit"))
@@ -840,20 +558,25 @@ class FakeMacroIntelRepository:
         snapshot: dict[str, object] | None,
         observations: list[dict[str, object]] | None = None,
         publication_state: dict[str, object] | None = None,
-        daily_brief: dict[str, object] | None = None,
     ) -> None:
         self.snapshot = snapshot
         self.observations = observations or []
         self.publication_state = publication_state
-        self.daily_brief = daily_brief
         self.calls: list[tuple[str, str | None]] = []
         self.observations_for_concepts_call: dict[str, object] | None = None
-        self.latest_observations_call: dict[str, object] | None = None
-        self.latest_macro_daily_brief_call: dict[str, object] | None = None
 
     def latest_snapshot(self, *, projection_version: str | None = None):
         self.calls.append(("latest_snapshot", projection_version))
         return self.snapshot
+
+    def module_view(self, *, module_id: str, projection_version: str):
+        self.calls.append((f"module_view:{module_id}", projection_version))
+        if self.snapshot is None:
+            return None
+        module_views = self.snapshot.get("module_views_json")
+        if not isinstance(module_views, dict):
+            return None
+        return module_views.get(module_id)
 
     def observations_for_concepts(
         self,
@@ -869,61 +592,14 @@ class FakeMacroIntelRepository:
         }
         return self.observations
 
-    def latest_observations(self, *, limit: int = 250, concept_keys: tuple[str, ...] | None = None):
-        self.latest_observations_call = {
-            "concept_keys": concept_keys,
-            "limit": limit,
-        }
-        return self.observations
-
     def macro_series_publication_state(self, projection_version: str):
         self.calls.append(("macro_series_publication_state", projection_version))
         return self.publication_state
 
-    def latest_macro_daily_brief(self, *, brief_key: str = "assets_today"):
-        self.latest_macro_daily_brief_call = {"brief_key": brief_key}
-        return self.daily_brief
-
-
-class MissingDailyBriefMacroIntelRepository(FakeMacroIntelRepository):
-    def __getattribute__(self, name: str):
-        if name == "latest_macro_daily_brief":
-            raise AttributeError(name)
-        return super().__getattribute__(name)
-
-
-class FakeNewsRepository:
-    def __init__(self, *, rows: list[dict[str, object]] | None = None) -> None:
-        self.rows = rows or []
-        self.calls: list[dict[str, object]] = []
-
-    def list_news_page_rows(
-        self,
-        *,
-        limit: int,
-        cursor: str | None = None,
-        status: str | None = None,
-        signal: str | None = None,
-        macro_event_flow: bool = False,
-        q: str | None = None,
-    ):
-        self.calls.append(
-            {
-                "cursor": cursor,
-                "limit": limit,
-                "macro_event_flow": macro_event_flow,
-                "q": q,
-                "signal": signal,
-                "status": status,
-            }
-        )
-        return self.rows[:limit]
-
 
 class FakeRepositoryContext:
-    def __init__(self, macro_intel: FakeMacroIntelRepository, news: FakeNewsRepository) -> None:
+    def __init__(self, macro_intel: FakeMacroIntelRepository) -> None:
         self.macro_intel = macro_intel
-        self.news = news
 
     def __enter__(self):
         return self
@@ -933,21 +609,20 @@ class FakeRepositoryContext:
 
 
 class FakeRuntime:
-    def __init__(self, macro_intel: FakeMacroIntelRepository, news: FakeNewsRepository | None = None) -> None:
+    def __init__(self, macro_intel: FakeMacroIntelRepository) -> None:
         self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
         self.macro_intel = macro_intel
-        self.news = news or FakeNewsRepository()
 
     def repositories(self):
-        return FakeRepositoryContext(self.macro_intel, self.news)
+        return FakeRepositoryContext(self.macro_intel)
 
 
-def _app(macro_intel: FakeMacroIntelRepository, *, news: FakeNewsRepository | None = None) -> FastAPI:
+def _app(macro_intel: FakeMacroIntelRepository) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
     app.include_router(create_api_router(lambda _: ({"ok": True}, 200)))
-    app.state.service = FakeRuntime(macro_intel, news)
+    app.state.service = FakeRuntime(macro_intel)
     return app
 
 
@@ -962,6 +637,33 @@ def _macro_observation(concept_key: str, observed_at: str, value: float) -> dict
         "unit": "price",
         "data_quality": "ok",
         "ingested_at_ms": 1_779_000_000_000,
+    }
+
+
+def _module_view(module_id: str) -> dict[str, object]:
+    route_path = "/macro" if module_id == "overview" else f"/macro/{module_id}"
+    return {
+        "snapshot": {
+            "module_id": module_id,
+            "route_path": route_path,
+            "title": module_id,
+            "projection_version": "macro_module_view_v3",
+            "status": "ready",
+        },
+        "tiles": [],
+        "primary_chart": {"id": "current", "status": "ready"},
+        "tables": [],
+        "module_read": {},
+        "module_evidence": {
+            "confirmations": [],
+            "contradictions": [],
+            "watch_triggers": [],
+            "invalidations": [],
+        },
+        "transmission": [],
+        "data_health": {"summary_status": "ready", "module_gaps": [], "chart_gaps": [], "global_gaps": []},
+        "provenance": {"rows": []},
+        "related_routes": [],
     }
 
 

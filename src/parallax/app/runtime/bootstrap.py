@@ -2,34 +2,36 @@ from __future__ import annotations
 
 import asyncio
 import time
-from collections.abc import Mapping
+from collections.abc import Callable
 from dataclasses import dataclass
 from threading import Thread
 from typing import Any
 
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
 from parallax.app.runtime.llm_gateway import LLMGateway
+from parallax.app.runtime.provider_wiring import wire_providers
 from parallax.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
-from parallax.app.runtime.providers_wiring import WiredProviders, wire_providers
-from parallax.app.runtime.repository_session import PooledRepository
+from parallax.app.runtime.provider_wiring.types import WiredProviders
 from parallax.app.runtime.telemetry import TelemetryRegistry
 from parallax.app.runtime.worker_factories import construct_workers
 from parallax.app.runtime.worker_scheduler import WorkerScheduler
-from parallax.app.surfaces.api.ws import PublicWebSocketHub
 from parallax.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,
     TickLookup,
 )
-from parallax.domains.evidence.repositories.entity_repository import EntityRepository
-from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
 from parallax.domains.evidence.services.ingest_service import (
     IngestService,
     PreparedIngest,
     require_event_anchor_active_window_ms,
 )
+from parallax.domains.ingestion.providers import EventPublisherProtocol
 from parallax.domains.ingestion.runtime.collector_service import CollectorService
-from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
-from parallax.domains.token_intel.interfaces import SignalRepository
+from parallax.domains.news_intel.services.news_provider_contract import (
+    NewsProviderContractError,
+    configured_news_provider_types,
+    validate_news_provider_contract,
+)
+from parallax.platform.config.news_provider_types import RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES
 from parallax.platform.config.settings import Settings
 from parallax.platform.db.postgres_client import postgres_health_check
 from parallax.platform.db.postgres_migrations import latest_migration_version
@@ -41,29 +43,17 @@ class Runtime:
     db: DBPoolBundle
     telemetry: TelemetryRegistry
     providers: WiredProviders
-    hub: PublicWebSocketHub
+    hub: EventPublisherProtocol
     collector: CollectorService
-    start_collector: bool
-    workers: Mapping[str, Any]
     scheduler: WorkerScheduler
+    startup_db_status: dict[str, object]
+    news_provider_contract: dict[str, Any]
+    ingest: _PooledIngestStore
     llm_gateway: Any | None = None
     agent_execution_gateway: Any | None = None
-    evidence: Any | None = None
-    entities: Any | None = None
-    signals: Any | None = None
-    notifications: Any | None = None
-    read_evidence: Any | None = None
-    read_entities: Any | None = None
-    read_signals: Any | None = None
-    read_notifications: Any | None = None
-    ingest: Any | None = None
 
     def repositories(self):
         return self.db.api_session()
-
-    @property
-    def collector_status(self):
-        return self.collector.status
 
     async def aclose(self) -> None:
         scheduler_error: Exception | None = None
@@ -80,7 +70,15 @@ class Runtime:
             raise ExceptionGroup("provider_cleanup_failed", provider_errors)
 
 
-def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
+PublisherFactory = Callable[[DBPoolBundle], EventPublisherProtocol]
+
+
+def bootstrap(
+    settings: Settings,
+    *,
+    start_collector: bool = True,
+    publisher_factory: PublisherFactory | None = None,
+) -> Runtime:
     if not settings.ws_token:
         raise ValueError("ws_token is required in config.yaml")
     telemetry = TelemetryRegistry()
@@ -94,6 +92,7 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
             startup_db = postgres_health_check(conn, expected_migration_version=latest_migration_version())
         if not startup_db.get("ok"):
             raise RuntimeError(f"postgres health check failed: {startup_db}")
+        news_provider_contract = _load_news_provider_contract(settings, db)
 
         if settings.news_agent_execution_enabled:
             llm_gateway = LLMGateway.create(settings)
@@ -115,6 +114,9 @@ def bootstrap(settings: Settings, *, start_collector: bool = True) -> Runtime:
             start_collector=start_collector,
             llm_gateway=llm_gateway,
             agent_execution_gateway=agent_execution_gateway,
+            startup_db_status=startup_db,
+            news_provider_contract=news_provider_contract,
+            publisher_factory=publisher_factory,
         )
     except Exception as exc:
         for error in _cleanup_provider_roots_sync(providers, agent_execution_gateway, llm_gateway):
@@ -137,30 +139,20 @@ def _assemble_runtime(
     start_collector: bool,
     llm_gateway: Any | None,
     agent_execution_gateway: Any | None = None,
+    startup_db_status: dict[str, object],
+    news_provider_contract: dict[str, Any],
+    publisher_factory: PublisherFactory | None = None,
 ) -> Runtime:
     workers = settings.workers
     worker_collector_enabled = bool(
         start_collector and workers.collector.enabled and providers.ingestion.upstream_client_factory is not None
-    )
-    evidence = PooledRepository(db.api_pool, EvidenceRepository)
-    entities = PooledRepository(db.api_pool, EntityRepository)
-    signals = PooledRepository(db.api_pool, SignalRepository)
-    notifications = PooledRepository(
-        db.api_pool,
-        NotificationRepository,
-        running_timeout_ms=db.notification_delivery_running_timeout_ms,
-        stale_running_terminalization_batch_size=db.notification_delivery_stale_running_terminalization_batch_size,
     )
     ingest = _PooledIngestStore(
         db,
         providers=providers.asset_market,
         event_anchor_active_window_ms=workers.event_anchor_backfill.active_window_ms,
     )
-    hub = PublicWebSocketHub(
-        token=settings.ws_token,
-        repository_session=db.api_session,
-        default_replay_limit=settings.replay_limit,
-    )
+    hub = publisher_factory(db) if publisher_factory is not None else _NullEventPublisher()
     collector = CollectorService(
         name="collector",
         settings=workers.collector,
@@ -191,25 +183,46 @@ def _assemble_runtime(
         providers=providers,
         hub=hub,
         collector=collector,
-        start_collector=worker_collector_enabled,
-        workers=runtime_workers,
         scheduler=scheduler,
+        startup_db_status=dict(startup_db_status),
+        news_provider_contract=dict(news_provider_contract),
         llm_gateway=llm_gateway,
         agent_execution_gateway=agent_execution_gateway,
-        evidence=evidence,
-        entities=entities,
-        signals=signals,
-        notifications=notifications,
-        read_evidence=evidence,
-        read_entities=entities,
-        read_signals=signals,
-        read_notifications=notifications,
         ingest=ingest,
     )
     if worker_collector_enabled:
         factory = providers.ingestion.upstream_client_factory
         collector.upstream_client = factory(collector.handle_frame) if factory is not None else None
     return runtime
+
+
+def _load_news_provider_contract(settings: Settings, db: DBPoolBundle) -> dict[str, Any]:
+    configured_sources = tuple(settings.news_intel.sources)
+    try:
+        configured_news_provider_types(configured_sources)
+        with db.api_session() as repos:
+            schema_provider_types = repos.news_sources.news_source_provider_constraint_values()
+        return validate_news_provider_contract(
+            configured_sources=configured_sources,
+            supported_provider_types=RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES,
+            schema_provider_types=schema_provider_types,
+        )
+    except NewsProviderContractError as exc:
+        return exc.to_payload()
+    except Exception as exc:
+        return {
+            "ok": False,
+            "reason": "news_provider_contract_unavailable",
+            "error": type(exc).__name__,
+            "configured_provider_types": list(configured_news_provider_types(configured_sources)),
+            "supported_provider_types": list(RUNTIME_SUPPORTED_NEWS_PROVIDER_TYPES),
+            "schema_provider_types": [],
+        }
+
+
+class _NullEventPublisher:
+    async def publish(self, _payload: dict[str, Any]) -> None:
+        return None
 
 
 class _PooledIngestStore:
@@ -229,7 +242,7 @@ class _PooledIngestStore:
         )
 
     def insert_raw_frame(self, **kwargs) -> bool:
-        with self.db.worker_session("collector") as repos:
+        with self.db.worker_session("collector") as repos, repos.transaction():
             return repos.evidence.insert_raw_frame(**kwargs)
 
     def ingest_event(self, event: Any, *, is_watched: bool):
@@ -301,7 +314,8 @@ def _ingest_service_for_repos(
         market_tick_current_dirty_targets=repos.market_tick_current_dirty_targets,
         enriched_events=repos.enriched_events,
         event_anchor_jobs=repos.event_anchor_jobs,
-        token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
+        token_radar_dirty_targets=repos.token_radar_dirty_targets,
+        transaction=repos.transaction,
         event_anchor_active_window_ms=event_anchor_active_window_ms,
     )
 

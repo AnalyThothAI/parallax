@@ -48,7 +48,6 @@ def test_redact_diagnostics_keeps_business_token_keys() -> None:
 
 
 def test_worker_group_only_recognizes_current_narrative_worker_names() -> None:
-    assert _worker_group("narrative_admission") == "narrative"
     assert _worker_group("mention_semantics") != "narrative"
     assert _worker_group("token_discussion_digest") != "narrative"
 
@@ -61,6 +60,9 @@ def test_ops_diagnostics_survives_news_section_failure() -> None:
     assert payload["schema_version"] == "ops.diagnostics.v1"
     assert payload["domains"]["news"]["status"] == "unknown"
     assert payload["domains"]["news"]["error_type"] == "RuntimeError"
+    assert payload["domains"]["token_radar"]["status"] == "ok"
+    assert payload["domains"]["token_radar"]["publication"]["status"] == "ready"
+    assert "projection" not in payload["domains"]["token_radar"]
     assert payload["workers"]
     assert set(payload["worker_lanes"]) >= {"ingest", "projection", "agent"}
     assert payload["worker_lanes"]["projection"]["running_workers"] >= 1
@@ -187,7 +189,7 @@ def test_ops_diagnostics_reuses_effective_worker_lane_counts() -> None:
             "effective_status": "degraded",
             "unavailable_reason": "optional_profile_source_missing",
         },
-        "news_item_brief": {
+        "news_story_brief": {
             "enabled": True,
             "running": False,
             "last_error": "agent lane failed",
@@ -314,7 +316,7 @@ def test_ops_diagnostics_agent_execution_sanitizes_snapshot() -> None:
             "prompt": "do not expose",
             "api_key": "sk-live",
             "lanes": {
-                "news.item_brief": {
+                "news.story_brief": {
                     "policy": {"priority": "high", "max_concurrency": 1},
                     "in_flight": 1,
                     "input_payload": {"secret": "value"},
@@ -329,13 +331,13 @@ def test_ops_diagnostics_agent_execution_sanitizes_snapshot() -> None:
     assert payload["agent_execution"]["status"] == "ok"
     assert "prompt" not in payload["agent_execution"]
     assert "api_key" not in payload["agent_execution"]
-    assert set(payload["agent_execution"]["lanes"]["news.item_brief"]) <= {
+    assert set(payload["agent_execution"]["lanes"]["news.story_brief"]) <= {
         "status",
         "reason",
         "policy",
         "counters",
     }
-    assert "input_payload" not in payload["agent_execution"]["lanes"]["news.item_brief"]
+    assert "input_payload" not in payload["agent_execution"]["lanes"]["news.story_brief"]
 
 
 def test_ops_diagnostics_agent_execution_disabled_without_gateway() -> None:
@@ -387,7 +389,7 @@ def test_ops_diagnostics_overall_includes_blocked_agent_execution() -> None:
             "global_max_concurrency": 4,
             "global_in_flight": 0,
             "lanes": {
-                "news.item_brief": {
+                "news.story_brief": {
                     "policy": {"priority": "high", "max_concurrency": 1},
                     "circuit_state": "open",
                     "last_circuit_open_at_ms": 9_900,
@@ -410,7 +412,7 @@ def test_ops_diagnostics_agent_execution_degraded_requires_recent_signal() -> No
             "global_max_concurrency": 4,
             "global_in_flight": 0,
             "lanes": {
-                "news.item_brief": {
+                "news.story_brief": {
                     "policy": {"priority": "standard", "max_concurrency": 2},
                     "capacity_denied_total": 17,
                     "timeout_total": 3,
@@ -429,7 +431,7 @@ def test_ops_diagnostics_agent_execution_degraded_requires_recent_signal() -> No
     assert stale_payload["agent_execution"]["status"] == "ok"
     assert stale_payload["overall"]["status"] == "ok"
 
-    runtime.agent_execution_gateway.snapshot["lanes"]["news.item_brief"]["last_rpm_wait_at_ms"] = 999_800
+    runtime.agent_execution_gateway.snapshot["lanes"]["news.story_brief"]["last_rpm_wait_at_ms"] = 999_800
     recent_payload = ops_diagnostics_payload(runtime, now_ms=1_000_000)
 
     assert recent_payload["agent_execution"]["status"] == "degraded"
@@ -472,8 +474,19 @@ class FakeConn:
                     }
                 ]
             )
-        if "FROM projection_offsets" in sql:
-            return FakeRows([])
+        if "FROM token_radar_publication_state" in sql:
+            return FakeRows(
+                [
+                    {
+                        "projection_version": "token-radar-v-test",
+                        "window": "5m",
+                        "scope": "all",
+                        "venue": "all",
+                        "current_generation_id": "gen-ready",
+                        "latest_attempt_status": "ready",
+                    }
+                ]
+            )
         return FakeRows([{"ok": True, "probe": "postgres_liveness"}])
 
     def commit(self) -> None:
@@ -519,7 +532,7 @@ class FakeNotificationRepository:
 
 class FakeRepos:
     def __init__(self, news_error: Exception | None) -> None:
-        self.news = FakeNewsRepository(news_error)
+        self.news_sources = FakeNewsRepository(news_error)
         self.notifications = FakeNotificationRepository()
         self.conn = FakeConn()
 

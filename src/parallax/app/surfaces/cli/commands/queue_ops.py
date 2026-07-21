@@ -3,8 +3,8 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from typing import Any, cast
 
-from parallax.app.runtime.queue_health import fetch_queue_table_health
-from parallax.app.runtime.worker_manifest import worker_queue_health_tables
+from parallax.app.operations.queue_health import fetch_queue_table_health
+from parallax.app.runtime.worker_manifest import worker_queue_tables
 from parallax.domains.asset_market.repositories.discovery_repository import DISCOVERY_PROVIDER
 from parallax.platform.db.queue_terminal import inspect_terminal_events, list_terminal_event_ids, resolve_terminal_event
 
@@ -40,14 +40,15 @@ def handle_queue_resolve(args: object, repos: object, *, now_ms: int) -> tuple[i
     if not bool(getattr(args, "execute", False)) or not reason:
         return 1, {"ok": False, "error": "execute_and_reason_required"}
     try:
-        data = resolve_terminal_event(
-            _conn(repos),
-            terminal_id=str(getattr(args, "terminal_id", "") or ""),
-            action=str(getattr(args, "action", "") or ""),
-            reason=reason,
-            now_ms=int(now_ms),
-            retry_transitions=_bound_retry_transitions(repos),
-        )
+        with cast(Any, repos).transaction():
+            data = resolve_terminal_event(
+                _conn(repos),
+                terminal_id=str(getattr(args, "terminal_id", "") or ""),
+                action=str(getattr(args, "action", "") or ""),
+                reason=reason,
+                now_ms=int(now_ms),
+                retry_transitions=_bound_retry_transitions(repos),
+            )
     except ValueError as exc:
         return 1, {"ok": False, "error": str(exc)}
     return 0, {"ok": True, "data": data}
@@ -97,14 +98,15 @@ def handle_queue_resolve_bucket(args: object, repos: object, *, now_ms: int) -> 
     error_counts: dict[str, int] = {}
     for terminal_id in terminal_ids:
         try:
-            resolve_terminal_event(
-                _conn(repos),
-                terminal_id=terminal_id,
-                action=action,
-                reason=reason,
-                now_ms=int(now_ms),
-                retry_transitions=retry_transitions,
-            )
+            with cast(Any, repos).transaction():
+                resolve_terminal_event(
+                    _conn(repos),
+                    terminal_id=terminal_id,
+                    action=action,
+                    reason=reason,
+                    now_ms=int(now_ms),
+                    retry_transitions=retry_transitions,
+                )
         except ValueError as exc:
             message = str(exc)
             error_counts[message] = error_counts.get(message, 0) + 1
@@ -145,7 +147,7 @@ def _inspect_active_queues(
     source_table: str | None,
     limit: int,
 ) -> dict[str, Any]:
-    tables_by_worker = worker_queue_health_tables()
+    tables_by_worker = worker_queue_tables()
     if worker_name is not None:
         selected_tables = list(tables_by_worker.get(worker_name, ()))
     else:
@@ -210,7 +212,6 @@ def _retry_discovery_lookup_key(
         due_at_ms=int(now_ms),
         latest_seen_ms=latest_seen_ms,
         intent_count=intent_count,
-        commit=False,
     )
     if int(requeued or 0) <= 0:
         raise ValueError("discovery_lookup_retry_not_requeued")
@@ -242,34 +243,6 @@ def _retry_event_anchor_job(
     return {"requeued": 1, "job": row}
 
 
-def _retry_narrative_admission_dirty_target(
-    repos: object,
-    event: dict[str, Any],
-    *,
-    now_ms: int,
-    reason: str,
-) -> dict[str, Any]:
-    try:
-        enqueue_targets = cast(Any, repos).narrative_admission_dirty_targets.enqueue_targets
-    except AttributeError as exc:
-        raise ValueError("narrative_admission_dirty_target_repository_required") from exc
-    if not callable(enqueue_targets):
-        raise ValueError("narrative_admission_dirty_target_repository_required")
-    source_row = _source_row(event)
-    target = {**source_row, "due_at_ms": int(now_ms)}
-    requeued = enqueue_targets(
-        [target],
-        reason=f"terminal_retry:{reason}",
-        now_ms=int(now_ms),
-        due_at_ms=int(now_ms),
-        commit=False,
-    )
-    requeued_count = int((requeued or {}).get("targets") or 0)
-    if requeued_count <= 0:
-        raise ValueError("narrative_admission_dirty_target_retry_not_requeued")
-    return {"requeued": requeued_count, "due_at_ms": int(now_ms)}
-
-
 def _retry_market_tick_current_dirty_target(
     repos: object,
     event: dict[str, Any],
@@ -288,7 +261,6 @@ def _retry_market_tick_current_dirty_target(
         [source_row],
         reason=f"terminal_retry:{reason}",
         now_ms=int(now_ms),
-        commit=False,
     )
     requeued_count = int(requeued or 0)
     if requeued_count <= 0:
@@ -316,7 +288,6 @@ def _retry_token_image_source_target(
         reason=f"terminal_retry:{reason}",
         now_ms=int(now_ms),
         due_at_ms=int(now_ms),
-        commit=False,
     )
     requeued_count = int((requeued or {}).get("targets") or 0)
     if requeued_count <= 0:
@@ -349,7 +320,6 @@ def _retry_token_profile_current_dirty_target(
         reason=f"terminal_retry:{reason}",
         now_ms=int(now_ms),
         due_at_ms=int(now_ms),
-        commit=False,
     )
     requeued_count = int((requeued or {}).get("targets") or 0)
     if requeued_count <= 0:
@@ -376,38 +346,10 @@ def _retry_token_radar_dirty_target(
         reason=f"terminal_retry:{reason}",
         now_ms=int(now_ms),
         due_at_ms=int(now_ms),
-        commit=False,
     )
     requeued_count = int(requeued or 0)
     if requeued_count <= 0:
         raise ValueError("token_radar_dirty_target_retry_not_requeued")
-    return {"requeued": requeued_count, "due_at_ms": int(now_ms)}
-
-
-def _retry_token_radar_source_dirty_event(
-    repos: object,
-    event: dict[str, Any],
-    *,
-    now_ms: int,
-    reason: str,
-) -> dict[str, Any]:
-    try:
-        enqueue_events = cast(Any, repos).token_radar_source_dirty_events.enqueue_events
-    except AttributeError as exc:
-        raise ValueError("token_radar_source_dirty_event_repository_required") from exc
-    if not callable(enqueue_events):
-        raise ValueError("token_radar_source_dirty_event_repository_required")
-    source_row = _source_row(event)
-    requeued = enqueue_events(
-        [source_row],
-        reason=f"terminal_retry:{reason}",
-        now_ms=int(now_ms),
-        due_at_ms=int(now_ms),
-        commit=False,
-    )
-    requeued_count = int(requeued or 0)
-    if requeued_count <= 0:
-        raise ValueError("token_radar_source_dirty_event_retry_not_requeued")
     return {"requeued": requeued_count, "due_at_ms": int(now_ms)}
 
 
@@ -442,7 +384,6 @@ def _retry_macro_projection_dirty_target(
             now_ms=int(now_ms),
             due_at_ms=int(now_ms),
             reason=retry_reason,
-            commit=False,
         )
     elif target_kind == "concept":
         try:
@@ -466,7 +407,6 @@ def _retry_macro_projection_dirty_target(
             now_ms=int(now_ms),
             due_at_ms=int(now_ms),
             reason=retry_reason,
-            commit=False,
         )
     else:
         raise ValueError(f"unsupported_macro_projection_dirty_target_kind:{target_kind}")
@@ -517,11 +457,9 @@ QUEUE_RETRY_TRANSITIONS = {
     ("resolution_refresh", "token_discovery_dirty_lookup_keys"): _retry_discovery_lookup_key,
     ("event_anchor_backfill", "event_anchor_backfill_jobs"): _retry_event_anchor_job,
     ("market_tick_current_projection", "market_tick_current_dirty_targets"): _retry_market_tick_current_dirty_target,
-    ("narrative_admission", "narrative_admission_dirty_targets"): _retry_narrative_admission_dirty_target,
     ("token_image_mirror", "token_image_source_dirty_targets"): _retry_token_image_source_target,
     ("token_profile_current", "token_profile_current_dirty_targets"): _retry_token_profile_current_dirty_target,
     ("token_radar_projection", "token_radar_dirty_targets"): _retry_token_radar_dirty_target,
-    ("token_radar_projection", "token_radar_source_dirty_events"): _retry_token_radar_source_dirty_event,
     ("macro_view_projection", "macro_projection_dirty_targets"): _retry_macro_projection_dirty_target,
 }
 

@@ -60,13 +60,13 @@ def _rebuild_event_token_intents(*, repos: Any, event_row: dict[str, Any]) -> di
         token_snapshot=_token_snapshot(event_row.get("event_json")),
         created_at_ms=received_at_ms,
     )
-    repos.token_evidence.insert_many(evidence_inputs, commit=False)
+    repos.token_evidence.insert_many(evidence_inputs)
     intent_inputs = build_token_intents(
         event_id=event_id,
         evidence=evidence_inputs,
         created_at_ms=received_at_ms,
     )
-    repos.token_intents.insert_many(intent_inputs, commit=False)
+    repos.token_intents.insert_many(intent_inputs)
     _upsert_chain_intent_registry(repos=repos, intents=intent_inputs, observed_at_ms=received_at_ms)
 
     resolver = TokenIntentResolver(registry=repos.registry, resolutions=repos.intent_resolutions)
@@ -84,7 +84,6 @@ def _rebuild_event_token_intents(*, repos: Any, event_row: dict[str, Any]) -> di
             keys=decision.lookup_keys,
             source_evidence_id=intent.primary_evidence_id,
             created_at_ms=received_at_ms,
-            commit=False,
         )
         if decision.target_type and decision.target_id:
             resolved += 1
@@ -137,7 +136,6 @@ def _upsert_chain_intent_registry(*, repos: Any, intents: list[Any], observed_at
             chain_id=str(intent.chain_hint),
             address=str(intent.address_hint),
             observed_at_ms=observed_at_ms,
-            commit=False,
         )
         repos.identity_evidence.upsert_identity_evidence(
             asset_id=str(asset["asset_id"]),
@@ -152,6 +150,5 @@ def _upsert_chain_intent_registry(*, repos: Any, intents: list[Any], observed_at
             confidence=CONFIDENCE_MENTION_ONLY,
             source_intent_id=intent.intent_id,
             observed_at_ms=observed_at_ms,
-            commit=False,
         )
-        repos.identity_evidence.recompute_current_identity(str(asset["asset_id"]), now_ms=observed_at_ms, commit=False)
+        repos.identity_evidence.recompute_current_identity(str(asset["asset_id"]), now_ms=observed_at_ms)

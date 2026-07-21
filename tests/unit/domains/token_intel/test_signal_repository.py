@@ -1,16 +1,18 @@
 from __future__ import annotations
 
+from types import SimpleNamespace
 from typing import Any
 
 import pytest
+from psycopg import pq
 
 from parallax.domains.token_intel.repositories.signal_repository import SignalRepository
 
 
-def test_signal_repository_alert_insert_requires_connection_transaction_before_sql_when_committing():
+def test_signal_repository_alert_insert_requires_explicit_transaction_before_sql():
     conn = NoTransactionConn(rowcount=1)
 
-    with pytest.raises(RuntimeError, match="signal_repository_transaction_required"):
+    with pytest.raises(RuntimeError, match="requires_explicit_transaction"):
         SignalRepository(conn).insert_account_token_alert(
             event_id="event-1",
             author_handle="alice",
@@ -27,21 +29,22 @@ def test_signal_repository_alert_insert_requires_connection_transaction_before_s
     assert conn.sqls == []
 
 
-def test_signal_repository_alert_insert_uses_connection_transaction_without_manual_commit():
-    conn = FakeConn(rowcount=1)
+def test_signal_repository_alert_insert_runs_inside_caller_owned_transaction():
+    conn = FakeConn(rowcount=1, active_transaction=False)
 
-    alert = SignalRepository(conn).insert_account_token_alert(
-        event_id="event-1",
-        author_handle="alice",
-        entity_key="asset:1",
-        entity_type="Asset",
-        normalized_value="PEPE",
-        chain=None,
-        token_resolution_status="EXACT",
-        is_first_seen_global=True,
-        is_first_seen_by_author=True,
-        received_at_ms=1_700_000_000_000,
-    )
+    with conn.transaction():
+        alert = SignalRepository(conn).insert_account_token_alert(
+            event_id="event-1",
+            author_handle="alice",
+            entity_key="asset:1",
+            entity_type="Asset",
+            normalized_value="PEPE",
+            chain=None,
+            token_resolution_status="EXACT",
+            is_first_seen_global=True,
+            is_first_seen_by_author=True,
+            received_at_ms=1_700_000_000_000,
+        )
 
     assert alert is not None
     assert "INSERT INTO account_token_alerts" in conn.sql
@@ -51,7 +54,7 @@ def test_signal_repository_alert_insert_uses_connection_transaction_without_manu
     assert conn.commit_count == 0
 
 
-def test_signal_repository_caller_owned_alert_insert_does_not_open_inner_transaction():
+def test_signal_repository_alert_insert_does_not_open_inner_transaction():
     conn = FakeConn(rowcount=1)
 
     SignalRepository(conn).insert_account_token_alert(
@@ -65,7 +68,6 @@ def test_signal_repository_caller_owned_alert_insert_does_not_open_inner_transac
         is_first_seen_global=True,
         is_first_seen_by_author=True,
         received_at_ms=1_700_000_000_000,
-        commit=False,
     )
 
     assert conn.sql_transaction_depths == [0]
@@ -76,7 +78,7 @@ def test_signal_repository_caller_owned_alert_insert_does_not_open_inner_transac
 def test_signal_repository_alert_insert_requires_cursor_rowcount() -> None:
     conn = FakeConn(omit_rowcount=True)
 
-    with pytest.raises(TypeError, match="signal_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="signal_repository_rowcount_invalid"):
         SignalRepository(conn).insert_account_token_alert(
             event_id="event-1",
             author_handle="alice",
@@ -88,7 +90,6 @@ def test_signal_repository_alert_insert_requires_cursor_rowcount() -> None:
             is_first_seen_global=True,
             is_first_seen_by_author=True,
             received_at_ms=1_700_000_000_000,
-            commit=False,
         )
 
 
@@ -108,7 +109,6 @@ def test_signal_repository_alert_insert_rejects_invalid_cursor_rowcount(rowcount
             is_first_seen_global=True,
             is_first_seen_by_author=True,
             received_at_ms=1_700_000_000_000,
-            commit=False,
         )
 
 
@@ -143,16 +143,24 @@ class FakeTransaction:
     def __enter__(self):
         self.conn.transaction_enter_count += 1
         self.conn.transaction_depth += 1
+        self.conn.info.transaction_status = pq.TransactionStatus.INTRANS
         return self
 
     def __exit__(self, exc_type, exc, tb):
         self.conn.transaction_depth -= 1
         self.conn.transaction_exit_count += 1
+        self.conn.info.transaction_status = pq.TransactionStatus.IDLE
         return False
 
 
 class FakeConn:
-    def __init__(self, *, rowcount: object = 1, omit_rowcount: bool = False) -> None:
+    def __init__(
+        self,
+        *,
+        rowcount: object = 1,
+        omit_rowcount: bool = False,
+        active_transaction: bool = True,
+    ) -> None:
         if not omit_rowcount:
             self.rowcount = rowcount
         self.sql = ""
@@ -163,6 +171,9 @@ class FakeConn:
         self.transaction_exit_count = 0
         self.transaction_depth = 0
         self.sql_transaction_depths: list[int] = []
+        self.info = SimpleNamespace(
+            transaction_status=(pq.TransactionStatus.INTRANS if active_transaction else pq.TransactionStatus.IDLE)
+        )
 
     def execute(self, sql, params=None):
         self.sql = str(sql)
@@ -184,3 +195,6 @@ class FakeConn:
 
 class NoTransactionConn(FakeConn):
     transaction = None
+
+    def __init__(self, **kwargs: Any) -> None:
+        super().__init__(active_transaction=False, **kwargs)

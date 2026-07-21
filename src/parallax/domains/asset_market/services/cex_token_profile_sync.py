@@ -1,30 +1,34 @@
 from __future__ import annotations
 
-from collections.abc import Mapping
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from parallax.domains.asset_market.repositories.cex_token_profile_repository import (
     BINANCE_CEX_PROFILE_PROVIDER,
 )
 
 
-def sync_cex_token_profiles(*, cex_token_profiles: Any, profile_source: Any, observed_at_ms: int) -> dict[str, Any]:
-    profiles = [_formal_profile(profile) for profile in profile_source.token_profiles()]
+def sync_cex_token_profiles(
+    *,
+    repos: Any,
+    profiles: Iterable[Mapping[str, Any]],
+    observed_at_ms: int,
+) -> dict[str, Any]:
+    formal_profiles = [_formal_profile(profile) for profile in profiles]
     profiles_seen = 0
     profiles_updated = 0
     missing_cex_tokens = 0
     affected_lookup_keys: set[str] = set()
     provider_name = None
 
-    with _transaction(cex_token_profiles.conn):
-        for profile in profiles:
+    with repos.transaction():
+        for profile in formal_profiles:
             base_symbol = profile["base_symbol"]
             logo_url = profile["logo_url"]
             provider = profile["provider"]
             profiles_seen += 1
             provider_name = provider_name or provider
-            row = cex_token_profiles.upsert_ready_profile_if_token_exists(
+            row = repos.cex_token_profiles.upsert_ready_profile_if_token_exists(
                 base_symbol=base_symbol,
                 provider=provider,
                 symbol=profile["symbol"],
@@ -33,7 +37,6 @@ def sync_cex_token_profiles(*, cex_token_profiles: Any, profile_source: Any, obs
                 source_ref=profile["source_ref"],
                 raw_payload=profile["raw_payload"],
                 observed_at_ms=int(observed_at_ms),
-                commit=False,
             )
             if row is None:
                 missing_cex_tokens += 1
@@ -97,13 +100,3 @@ def _symbol_lookup_keys(symbol: Any) -> set[str]:
     if not normalized:
         return set()
     return {f"symbol:{normalized}", f"project_symbol:{normalized}", f"cex_token:{normalized}"}
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("cex_token_profile_sync_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("cex_token_profile_sync_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())

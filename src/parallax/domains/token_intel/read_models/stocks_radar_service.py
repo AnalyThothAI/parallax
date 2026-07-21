@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from parallax.domains.token_intel.queries.stocks_radar_query import StocksRadarQuery
+from parallax.platform.validation import require_nonnegative_int
 
 from .asset_flow_service import WINDOW_MS
 
@@ -24,7 +25,7 @@ class StocksRadarService:
         scope: str,
         now_ms: int,
     ) -> dict[str, Any]:
-        parsed_limit = _required_nonnegative_int(limit, "stocks_radar_limit_required")
+        parsed_limit = require_nonnegative_int(limit, error_code="stocks_radar_limit_required")
         since_ms = int(now_ms) - WINDOW_MS[window]
         rows = self.stock_rows_query.stock_rows(
             since_ms=since_ms,
@@ -116,11 +117,3 @@ def _int_or_none(value: Any) -> int | None:
         return int(value)
     except (TypeError, ValueError):
         return None
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)

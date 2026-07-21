@@ -7,7 +7,7 @@ from typing import Any
 
 import pytest
 
-from parallax.app.runtime.providers_wiring import AssetMarketProviders
+from parallax.app.runtime.provider_wiring.types import AssetMarketProviders
 from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote
 from parallax.domains.asset_market.services.event_market_capture import (
     EventMarketCaptureService,

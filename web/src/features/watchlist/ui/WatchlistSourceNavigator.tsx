@@ -1,5 +1,4 @@
 import { formatRelativeTime } from "@lib/format";
-import type { WatchlistTimelineScope } from "@lib/types";
 import { AtSign, Bell, Radio } from "lucide-react";
 import type { ReactNode } from "react";
 import { Link } from "react-router-dom";
@@ -12,13 +11,11 @@ export function WatchlistSourceNavigator({
   overviewWindow,
   rows,
   selectedHandle,
-  timelineScope,
   updating,
 }: {
   overviewWindow: string | null;
   rows: WatchlistRow[];
   selectedHandle: string | null;
-  timelineScope: WatchlistTimelineScope;
   updating: boolean;
 }) {
   const totals = sourceTotals(rows);
@@ -55,7 +52,7 @@ export function WatchlistSourceNavigator({
             className="watchlist-source-row"
             data-active={row.handle === selectedHandle ? "true" : undefined}
             key={row.handle}
-            to={watchlistSourceHref(row.handle, timelineScope)}
+            to={watchlistSourceHref(row.handle)}
           >
             <span className="watchlist-source-row-main">
               <b>@{row.handle}</b>
@@ -98,7 +95,7 @@ function sourceTotals(rows: WatchlistRow[]): { unread: number } {
   );
 }
 
-function watchlistSourceHref(handle: string, timelineScope: WatchlistTimelineScope): string {
-  const params = new URLSearchParams({ handle, timeline_scope: timelineScope });
+function watchlistSourceHref(handle: string): string {
+  const params = new URLSearchParams({ handle });
   return `/watchlist?${params.toString()}`;
 }

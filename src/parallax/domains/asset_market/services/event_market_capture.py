@@ -3,9 +3,14 @@ from __future__ import annotations
 from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
-from typing import TYPE_CHECKING, Any, Literal, cast
+from typing import Any, Literal, cast
 
-from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
+from parallax.domains.asset_market.providers import (
+    AssetMarketProviderBundle,
+    CexTicker,
+    DexTokenQuote,
+    DexTokenQuoteRequest,
+)
 from parallax.domains.asset_market.types import (
     DEX_QUOTE_SOURCE_PROVIDERS,
     EnrichedEventCapture,
@@ -13,9 +18,6 @@ from parallax.domains.asset_market.types import (
     MarketTickSourceProvider,
     market_tick_id,
 )
-
-if TYPE_CHECKING:
-    from parallax.app.runtime.providers_wiring import AssetMarketProviders
 
 TargetType = Literal["chain_token", "cex_symbol"]
 DEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_dex_rest"
@@ -46,7 +48,7 @@ class _CaptureRequest:
 class EventMarketCaptureService:
     def __init__(
         self,
-        providers: AssetMarketProviders,
+        providers: AssetMarketProviderBundle,
         now_ms: Callable[[], int],
         max_existing_tick_lag_ms: int = 60_000,
     ) -> None:
@@ -116,7 +118,7 @@ def _capture_chain_token(
     req: _CaptureRequest,
     *,
     resolution: Mapping[str, Any],
-    providers: AssetMarketProviders,
+    providers: AssetMarketProviderBundle,
     now_ms: Callable[[], int],
 ) -> CaptureResult:
     provider = providers.dex_quote_market
@@ -176,7 +178,7 @@ def _capture_cex_symbol(
     req: _CaptureRequest,
     *,
     resolution: Mapping[str, Any],
-    providers: AssetMarketProviders,
+    providers: AssetMarketProviderBundle,
     now_ms: Callable[[], int],
 ) -> CaptureResult:
     provider = providers.cex_market

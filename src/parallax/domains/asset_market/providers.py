@@ -175,7 +175,13 @@ class DexMarketStreamProvider(Protocol):
     async def aclose(self) -> None: ...
 
 
+class AssetMarketProviderBundle(Protocol):
+    cex_market: CexMarketProvider | None
+    dex_quote_market: DexTokenQuoteProvider | None
+
+
 __all__ = [
+    "AssetMarketProviderBundle",
     "CexMarketProvider",
     "CexTicker",
     "DexMarketFactUpdate",

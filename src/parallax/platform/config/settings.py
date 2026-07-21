@@ -9,6 +9,7 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, field_validator, model_validator
 
+from parallax.platform.config.news_provider_types import OPENNEWS_FETCH_POLICY_KEYS
 from parallax.platform.paths.runtime_paths import app_home, app_log_path, config_path, workers_config_path
 
 DEFAULT_UPSTREAM_CHAINS = ("sol", "eth", "base", "bsc")
@@ -19,24 +20,6 @@ NOTIFICATION_RULE_IDS = (
     "watched_account_activity",
     "watched_account_token_alert",
     "news_high_signal",
-)
-NARRATIVE_REALTIME_WINDOWS = ("1h",)
-NARRATIVE_REALTIME_WINDOW_SET = frozenset(NARRATIVE_REALTIME_WINDOWS)
-NARRATIVE_REALTIME_SCOPES = ("all",)
-NARRATIVE_REALTIME_SCOPE_SET = frozenset(NARRATIVE_REALTIME_SCOPES)
-NEWS_SOURCE_QUALITY_WINDOWS = ("1h", "4h", "24h", "7d")
-NEWS_SOURCE_QUALITY_WINDOW_SET = frozenset(NEWS_SOURCE_QUALITY_WINDOWS)
-REMOVED_OPENNEWS_WEBSOCKET_POLICY_KEYS = frozenset(
-    {
-        "fetch_mode",
-        "wss_url",
-        "stream_timeout_seconds",
-        "streamTimeoutSeconds",
-        "max_messages",
-        "maxMessages",
-        "connect_timeout_seconds",
-        "connectTimeoutSeconds",
-    }
 )
 SettingsNewsProviderType = Literal[
     "rss",
@@ -433,7 +416,7 @@ class NotificationsConfig(BaseModel):
     news_high_signal_recency_window_ms: int = Field(default=7_200_000, ge=1)
     news_high_signal_query_min_limit: int = Field(default=500, ge=1)
     news_high_signal_query_multiplier: int = Field(default=20, ge=1)
-    retention_days: int = 30
+    retention_days: int = Field(default=30, ge=1)
     rules: dict[str, NotificationRuleConfig] = Field(
         default_factory=lambda: {
             rule_id: NotificationRuleConfig(**payload)
@@ -668,15 +651,13 @@ class NewsIntelSettings(BaseModel):
 
     @field_validator("sources", mode="after")
     @classmethod
-    def reject_removed_opennews_websocket_policy(
-        cls, sources: tuple[NewsSourceSettings, ...]
-    ) -> tuple[NewsSourceSettings, ...]:
+    def validate_opennews_fetch_policy(cls, sources: tuple[NewsSourceSettings, ...]) -> tuple[NewsSourceSettings, ...]:
         for source in sources:
             if source.provider_type != "opennews":
                 continue
-            bad = sorted(REMOVED_OPENNEWS_WEBSOCKET_POLICY_KEYS.intersection(source.fetch_policy))
-            if bad:
-                raise ValueError(f"{source.source_id} uses removed OpenNews websocket policy keys: {', '.join(bad)}")
+            unknown = sorted(set(source.fetch_policy) - OPENNEWS_FETCH_POLICY_KEYS)
+            if unknown:
+                raise ValueError(f"{source.source_id} has unknown OpenNews fetch policy keys: {', '.join(unknown)}")
         return sources
 
 
@@ -728,12 +709,6 @@ class AgentLaneSettings(BaseModel):
 
 def _default_agent_lanes() -> dict[str, AgentLaneSettings]:
     return {
-        "news.item_brief": AgentLaneSettings(
-            priority="low",
-            max_concurrency=1,
-            timeout_seconds=180.0,
-            max_tokens=2200,
-        ),
         "news.story_brief": AgentLaneSettings(
             priority="low",
             max_concurrency=1,
@@ -808,25 +783,18 @@ class PerWorkerSettings(BaseModel):
 
     enabled: bool = True
     interval_seconds: float = Field(default=5.0, ge=0)
-    soft_timeout_seconds: float = Field(default=120.0, ge=0)
     hard_timeout_seconds: float = Field(default=180.0, ge=0)
     concurrency: int = Field(default=1, ge=1)
     batch_size: int = Field(default=100, ge=1)
     max_attempts: int = Field(default=3, ge=1)
     lease_ms: int = Field(default=120_000, ge=1)
-    restart_locally: bool = False
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     backoff: BackoffPolicy = Field(default_factory=BackoffPolicy)
-
-
-class WorkerDefaults(PerWorkerSettings):
-    pass
 
 
 class CollectorWorkerSettings(PerWorkerSettings):
     mode: Literal["continuous"] = "continuous"
     interval_seconds: float = Field(default=3.0, ge=0)
-    soft_timeout_seconds: float = Field(default=0.0, ge=0)
     hard_timeout_seconds: float = Field(default=0.0, ge=0)
     snapshot_timeout_seconds: float = Field(default=0.5, ge=0)
     watchdog_interval_seconds: float = Field(default=30.0, ge=0)
@@ -938,23 +906,6 @@ class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
         return tuple(_split_values(value))
 
 
-class CexOiRadarBoardWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=300.0, ge=0)
-    batch_size: int = Field(default=500, ge=1)
-    statement_timeout_seconds: float = Field(default=120.0, ge=0)
-    advisory_lock_key: int = 2026052108
-    universe_limit: int = Field(default=500, ge=1)
-    period: str = "5m"
-    coinglass_enrichment_limit: int = Field(default=5, ge=0)
-    coinglass_level_limit: int = Field(default=6, ge=0)
-
-    @field_validator("period", mode="before")
-    @classmethod
-    def parse_period(cls, value: Any) -> str:
-        normalized = str(value or "5m").strip().lower()
-        return normalized or "5m"
-
-
 class MacroViewProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=300.0, ge=0)
     batch_size: int = Field(default=250, ge=1)
@@ -967,15 +918,8 @@ class MacroViewProjectionWorkerSettings(PerWorkerSettings):
     limit_per_series: int = Field(default=800, ge=800)
 
 
-class MacroDailyBriefProjectionWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=86_400.0, ge=0)
-    statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    advisory_lock_key: int = 2026060901
-
-
 class MacroSyncWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=900.0, ge=0)
-    soft_timeout_seconds: float = Field(default=180.0, ge=0)
     hard_timeout_seconds: float = Field(default=300.0, ge=0)
     batch_size: int = Field(default=3, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
@@ -1006,38 +950,6 @@ class MacroSyncWorkerSettings(PerWorkerSettings):
         if len(set(parsed)) != len(parsed):
             raise ValueError("macro_sync.bundle_names must be unique")
         return parsed
-
-
-class NarrativeAdmissionWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=60.0, ge=0)
-    soft_timeout_seconds: float = Field(default=180.0, ge=0)
-    hard_timeout_seconds: float = Field(default=300.0, ge=0)
-    advisory_lock_key: int = 2026051901
-    windows: tuple[str, ...] = NARRATIVE_REALTIME_WINDOWS
-    scopes: tuple[str, ...] = ("all",)
-    admission_limit: int = Field(default=200, ge=1)
-    source_limit: int = Field(default=2000, ge=1)
-    lease_ms: int = Field(default=60_000, ge=1)
-    retry_ms: int = Field(default=60_000, ge=1)
-    max_attempts: int = Field(default=3, ge=1)
-    statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    min_rank_score: int = Field(default=30, ge=0)
-    hot_rank_limit: int = Field(default=50, ge=1)
-
-    @field_validator("windows", "scopes", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
-
-    @field_validator("windows", mode="after")
-    @classmethod
-    def validate_windows(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        return _validate_narrative_realtime_windows("narrative_admission.windows", value)
-
-    @field_validator("scopes", mode="after")
-    @classmethod
-    def validate_scopes(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        return _validate_narrative_realtime_scopes("narrative_admission.scopes", value)
 
 
 class NotificationRuleWorkerSettings(PerWorkerSettings):
@@ -1072,22 +984,8 @@ class NewsItemProcessWorkerSettings(PerWorkerSettings):
     retry_delay_ms: int = Field(default=60_000, ge=1)
 
 
-class NewsItemBriefWorkerSettings(PerWorkerSettings):
-    enabled: bool = False
-    interval_seconds: float = Field(default=10.0, ge=0)
-    soft_timeout_seconds: float = Field(default=180.0, ge=0)
-    hard_timeout_seconds: float = Field(default=240.0, ge=0)
-    batch_size: int = Field(default=5, ge=1)
-    lease_ms: int = Field(default=120_000, ge=1)
-    retry_ms: int = Field(default=60_000, ge=1)
-    statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    advisory_lock_key: int = 2026052001
-    backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
-
-
 class NewsStoryBriefWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
-    soft_timeout_seconds: float = Field(default=180.0, ge=0)
     hard_timeout_seconds: float = Field(default=240.0, ge=0)
     batch_size: int = Field(default=5, ge=1)
     lease_ms: int = Field(default=120_000, ge=1)
@@ -1105,37 +1003,9 @@ class NewsPageProjectionWorkerSettings(PerWorkerSettings):
     advisory_lock_key: int = 2026051904
 
 
-class NewsSourceQualityProjectionWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=60.0, ge=0)
-    batch_size: int = Field(default=100, ge=1)
-    lease_ms: int = Field(default=120_000, ge=1)
-    retry_ms: int = Field(default=30_000, ge=1)
-    statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    advisory_lock_key: int = 2026052201
-    windows: tuple[str, ...] = ("24h", "7d")
-
-    @field_validator("windows", mode="before")
-    @classmethod
-    def parse_tuple(cls, value: Any) -> tuple[str, ...]:
-        return tuple(_split_values(value))
-
-    @field_validator("windows", mode="after")
-    @classmethod
-    def validate_windows(cls, value: tuple[str, ...]) -> tuple[str, ...]:
-        if not value:
-            raise ValueError("news_source_quality_projection.windows must not be empty")
-        invalid = tuple(window for window in value if window not in NEWS_SOURCE_QUALITY_WINDOW_SET)
-        if invalid:
-            allowed = ", ".join(NEWS_SOURCE_QUALITY_WINDOWS)
-            rejected = ", ".join(invalid)
-            raise ValueError(f"news_source_quality_projection.windows must contain only {allowed}; got: {rejected}")
-        return value
-
-
 class WorkersSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    defaults: WorkerDefaults = Field(default_factory=WorkerDefaults)
     agent_runtime: AgentRuntimeSettings = Field(default_factory=AgentRuntimeSettings)
     collector: CollectorWorkerSettings = Field(default_factory=CollectorWorkerSettings)
     market_tick_stream: MarketTickStreamWorkerSettings = Field(default_factory=MarketTickStreamWorkerSettings)
@@ -1153,30 +1023,21 @@ class WorkersSettings(BaseModel):
     token_radar_projection: TokenRadarProjectionWorkerSettings = Field(
         default_factory=TokenRadarProjectionWorkerSettings
     )
-    cex_oi_radar_board: CexOiRadarBoardWorkerSettings = Field(default_factory=CexOiRadarBoardWorkerSettings)
     macro_sync: MacroSyncWorkerSettings = Field(default_factory=MacroSyncWorkerSettings)
     macro_view_projection: MacroViewProjectionWorkerSettings = Field(default_factory=MacroViewProjectionWorkerSettings)
-    macro_daily_brief_projection: MacroDailyBriefProjectionWorkerSettings = Field(
-        default_factory=MacroDailyBriefProjectionWorkerSettings
-    )
-    narrative_admission: NarrativeAdmissionWorkerSettings = Field(default_factory=NarrativeAdmissionWorkerSettings)
     notification_rule: NotificationRuleWorkerSettings = Field(default_factory=NotificationRuleWorkerSettings)
     notification_delivery: NotificationDeliveryWorkerSettings = Field(
         default_factory=NotificationDeliveryWorkerSettings
     )
     news_fetch: NewsFetchWorkerSettings = Field(default_factory=NewsFetchWorkerSettings)
     news_item_process: NewsItemProcessWorkerSettings = Field(default_factory=NewsItemProcessWorkerSettings)
-    news_item_brief: NewsItemBriefWorkerSettings = Field(default_factory=NewsItemBriefWorkerSettings)
     news_story_brief: NewsStoryBriefWorkerSettings = Field(default_factory=NewsStoryBriefWorkerSettings)
     news_page_projection: NewsPageProjectionWorkerSettings = Field(default_factory=NewsPageProjectionWorkerSettings)
-    news_source_quality_projection: NewsSourceQualityProjectionWorkerSettings = Field(
-        default_factory=NewsSourceQualityProjectionWorkerSettings
-    )
 
     @model_validator(mode="after")
     def reject_zero_hard_timeout_for_non_continuous_workers(self) -> WorkersSettings:
         for worker_key in type(self).model_fields:
-            if worker_key in {"defaults", "agent_runtime", "collector"}:
+            if worker_key in {"agent_runtime", "collector"}:
                 continue
             worker_settings = getattr(self, worker_key)
             if worker_settings.hard_timeout_seconds <= 0:
@@ -1201,16 +1062,12 @@ class Settings(BaseModel):
     notifications: NotificationsConfig = Field(default_factory=NotificationsConfig)
     workers: WorkersSettings = Field(default_factory=WorkersSettings)
 
-    @property
-    def config_dir(self) -> Path:
-        return self._config_dir
-
     def set_config_dir(self, value: Path) -> None:
         self._config_dir = value
 
     @property
     def app_home(self) -> Path:
-        return self.config_dir
+        return self._config_dir
 
     @property
     def postgres_dsn(self) -> str:
@@ -1224,7 +1081,7 @@ class Settings(BaseModel):
         configured = Path(value).expanduser()
         if configured.is_absolute():
             return configured
-        return self.config_dir / configured
+        return self._config_dir / configured
 
     @property
     def postgres_pool_min_size(self) -> int:
@@ -1240,7 +1097,7 @@ class Settings(BaseModel):
 
     @property
     def log_file(self) -> Path:
-        return app_log_path(self.config_dir)
+        return app_log_path(self._config_dir)
 
     @property
     def api_host(self) -> str:
@@ -1266,13 +1123,6 @@ class Settings(BaseModel):
     def agent_runtime_default_model(self) -> str:
         return self.workers.agent_runtime.defaults.model
 
-    def agent_runtime_model_for_lane(self, lane: str) -> str:
-        lane_key = str(lane)
-        lane_settings = self.workers.agent_runtime.lanes.get(lane_key)
-        if lane_settings is not None and lane_settings.model:
-            return lane_settings.model
-        return self.agent_runtime_default_model
-
     @property
     def llm_base_url(self) -> str:
         return self.llm.base_url
@@ -1280,10 +1130,6 @@ class Settings(BaseModel):
     @property
     def llm_provider(self) -> str:
         return self.llm.provider
-
-    @property
-    def llm_timeout_seconds(self) -> float:
-        return self.llm.timeout_seconds
 
     @property
     def llm_trace_enabled(self) -> bool:
@@ -1307,11 +1153,7 @@ class Settings(BaseModel):
 
     @property
     def news_agent_execution_enabled(self) -> bool:
-        return bool(
-            self.news_intel.enabled
-            and self.llm_configured
-            and (self.workers.news_item_brief.enabled or self.workers.news_story_brief.enabled)
-        )
+        return bool(self.news_intel.enabled and self.llm_configured and self.workers.news_story_brief.enabled)
 
     @property
     def gmgn_api_key(self) -> str | None:
@@ -1623,265 +1465,9 @@ def _default_news_intel_yaml() -> str:
 
 
 def default_workers_yaml() -> str:
-    return """# Parallax worker runtime
-defaults:
-  enabled: true
-  interval_seconds: 5.0
-  soft_timeout_seconds: 120.0
-  hard_timeout_seconds: 180.0
-  concurrency: 1
-  batch_size: 100
-  max_attempts: 3
-  lease_ms: 120000
-  restart_locally: false
-  statement_timeout_seconds: 30.0
-  backoff:
-    kind: "exponential"
-    base_ms: 1000
-    max_ms: 60000
-agent_runtime:
-  defaults:
-    model: "deepseek-v4-flash"
-    disable_thinking: true
-    include_usage: true
-  global_max_concurrency: 4
-  global_rpm_limit: 60
-  lanes:
-    news.item_brief:
-      priority: "low"
-      max_concurrency: 1
-      timeout_seconds: 180.0
-      max_tokens: 2200
-    news.story_brief:
-      priority: "low"
-      max_concurrency: 1
-      timeout_seconds: 180.0
-      max_tokens: 2200
-collector:
-  enabled: true
-  mode: "continuous"
-  interval_seconds: 3.0
-  soft_timeout_seconds: 0.0
-  hard_timeout_seconds: 0.0
-  snapshot_timeout_seconds: 0.5
-  watchdog_interval_seconds: 30.0
-  stale_timeout_seconds: 180.0
-market_tick_stream:
-  enabled: true
-  interval_seconds: 5.0
-  subscription_limit: 100
-  stream_cycle_seconds: 30.0
-market_tick_poll:
-  enabled: true
-  interval_seconds: 15.0
-  batch_size: 100
-  concurrency: 4
-market_tick_current_projection:
-  enabled: true
-  interval_seconds: 5.0
-  batch_size: 100
-  retry_ms: 30000
-  advisory_lock_key: 2026052401
-event_anchor_backfill:
-  enabled: true
-  interval_seconds: 1.0
-  batch_size: 50
-  concurrency: 8
-  min_age_ms: 250
-  active_window_ms: 300000
-  max_anchor_lag_ms: 60000
-token_capture_tier:
-  enabled: true
-  interval_seconds: 30.0
-  batch_size: 500
-  ws_limit: 100
-  poll_limit: 500
-  retry_ms: 30000
-  statement_timeout_seconds: 120.0
-  advisory_lock_key: 2026051503
-live_price_gateway:
-  enabled: true
-  interval_seconds: 2.0
-  target_limit: 100
-  target_ttl_seconds: 300.0
-resolution_refresh:
-  enabled: true
-  interval_seconds: 30.0
-  batch_size: 50
-  lease_ms: 300000
-  hot_not_found_retry_ms: 60000
-  reprocess_limit: 500
-  chain_ids: ["solana", "eip155:1", "eip155:56", "eip155:8453", "ton"]
-asset_profile_refresh:
-  enabled: true
-  interval_seconds: 60.0
-  batch_size: 50
-  provider_retry_ms: 300000
-  ready_refresh_ms: 21600000
-  missing_refresh_ms: 900000
-  error_refresh_ms: 900000
-  statement_timeout_seconds: 120.0
-token_image_mirror:
-  enabled: true
-  interval_seconds: 60.0
-  batch_size: 100
-  source_limit: 5000
-  retry_ms: 300000
-  max_attempts: 3
-  statement_timeout_seconds: 120.0
-  advisory_lock_key: 2026052111
-token_radar_projection:
-  enabled: true
-  interval_seconds: 10.0
-  batch_size: 100
-  retry_ms: 30000
-  private_cache_retention_enabled: true
-  private_cache_retention_ms: 172800000
-  statement_timeout_seconds: 120.0
-  advisory_lock_key: 2026051501
-  windows: ["5m", "1h", "4h", "24h"]
-  scopes: ["all", "matched"]
-  venues: ["all", "sol", "eth", "base", "bsc", "cex"]
-  hot_windows: ["5m"]
-  cold_interval_seconds: 60.0
-token_profile_current:
-  enabled: true
-  interval_seconds: 60.0
-  batch_size: 500
-  retry_ms: 30000
-  advisory_lock_key: 2026051702
-cex_oi_radar_board:
-  enabled: true
-  interval_seconds: 300.0
-  batch_size: 500
-  statement_timeout_seconds: 120.0
-  advisory_lock_key: 2026052108
-  universe_limit: 500
-  period: "5m"
-  coinglass_enrichment_limit: 5
-  coinglass_level_limit: 6
-macro_sync:
-  enabled: true
-  interval_seconds: 900.0
-  soft_timeout_seconds: 180.0
-  hard_timeout_seconds: 300.0
-  batch_size: 3
-  statement_timeout_seconds: 30.0
-  advisory_lock_key: 2026052711
-  bundle_names:
-    - "macro-core"
-    - "macro-calendar-core"
-    - "treasury-auction-core"
-    - "fed-text-core"
-    - "crypto-derivatives-core"
-  source_name: "macrodata-cli"
-  bootstrap_lookback_days: 1095
-  max_window_days: 31
-  steady_overlap_days: 7
-  max_bootstrap_windows_per_cycle: 1
-  lease_ms: 300000
-  retry_delay_ms: 900000
-  max_attempts: 8
-  macrodata_timeout_seconds: 240.0
-macro_view_projection:
-  enabled: true
-  interval_seconds: 300.0
-  batch_size: 250
-  statement_timeout_seconds: 30.0
-  lease_ms: 300000
-  retry_ms: 300000
-  max_attempts: 3
-  advisory_lock_key: 2026052109
-  lookback_days: 1095
-  limit_per_series: 800
-macro_daily_brief_projection:
-  enabled: true
-  interval_seconds: 86400.0
-  statement_timeout_seconds: 30.0
-  advisory_lock_key: 2026060901
-narrative_admission:
-  enabled: true
-  interval_seconds: 60.0
-  soft_timeout_seconds: 180.0
-  hard_timeout_seconds: 300.0
-  advisory_lock_key: 2026051901
-  windows: ["1h"]
-  scopes: ["all"]
-  admission_limit: 200
-  source_limit: 2000
-  lease_ms: 60000
-  retry_ms: 60000
-  max_attempts: 3
-  statement_timeout_seconds: 30.0
-  min_rank_score: 30
-  hot_rank_limit: 50
-news_fetch:
-  enabled: true
-  interval_seconds: 60.0
-  batch_size: 5
-  lease_ms: 60000
-  statement_timeout_seconds: 30.0
-  advisory_lock_key: 2026051905
-news_item_process:
-  enabled: true
-  batch_size: 10
-  lease_ms: 120000
-  max_attempts: 3
-  statement_timeout_seconds: 30.0
-  advisory_lock_key: 2026051902
-  retry_delay_ms: 60000
-news_item_brief:
-  enabled: false
-  interval_seconds: 10.0
-  soft_timeout_seconds: 180.0
-  hard_timeout_seconds: 240.0
-  batch_size: 5
-  lease_ms: 120000
-  retry_ms: 60000
-  statement_timeout_seconds: 30.0
-  advisory_lock_key: 2026052001
-  backpressure_cooldown_ms: 60000
-news_story_brief:
-  enabled: true
-  interval_seconds: 10.0
-  soft_timeout_seconds: 180.0
-  hard_timeout_seconds: 240.0
-  batch_size: 5
-  lease_ms: 120000
-  retry_ms: 60000
-  statement_timeout_seconds: 30.0
-  advisory_lock_key: 2026061801
-  backpressure_cooldown_ms: 60000
-news_page_projection:
-  enabled: true
-  batch_size: 100
-  lease_ms: 120000
-  retry_ms: 30000
-  statement_timeout_seconds: 30.0
-  advisory_lock_key: 2026051904
-news_source_quality_projection:
-  enabled: true
-  interval_seconds: 60.0
-  batch_size: 100
-  lease_ms: 120000
-  retry_ms: 30000
-  statement_timeout_seconds: 30.0
-  advisory_lock_key: 2026052201
-  windows: ["24h", "7d"]
-notification_rule:
-  enabled: true
-  interval_seconds: 5.0
-  batch_size: 50
-  statement_timeout_seconds: 30.0
-notification_delivery:
-  enabled: true
-  interval_seconds: 5.0
-  batch_size: 1
-  max_attempts: 5
-  running_timeout_ms: 300000
-  stale_running_terminalization_batch_size: 100
-  statement_timeout_seconds: 30.0
-"""
+    payload = WorkersSettings().model_dump(mode="json")
+    rendered = yaml.safe_dump(payload, sort_keys=False)
+    return f"# Parallax worker runtime\n{rendered}"
 
 
 def write_default_workers_config(*, force: bool = False) -> Path:
@@ -1911,30 +1497,6 @@ def _split_values(value: Any) -> list[str]:
     if isinstance(value, list | tuple | set):
         return [str(item).strip() for item in value if str(item).strip()]
     return [str(value).strip()]
-
-
-def _validate_narrative_realtime_windows(field_name: str, value: tuple[str, ...]) -> tuple[str, ...]:
-    if not value:
-        raise ValueError(f"{field_name} must be exactly 1h")
-    invalid = tuple(window for window in value if window not in NARRATIVE_REALTIME_WINDOW_SET)
-    if invalid:
-        rejected = ", ".join(invalid)
-        raise ValueError(f"{field_name} must contain only 1h; got: {rejected}")
-    if tuple(value) != NARRATIVE_REALTIME_WINDOWS:
-        raise ValueError(f"{field_name} must be exactly ['1h']")
-    return value
-
-
-def _validate_narrative_realtime_scopes(field_name: str, value: tuple[str, ...]) -> tuple[str, ...]:
-    if not value:
-        raise ValueError(f"{field_name} must be exactly all")
-    invalid = tuple(scope for scope in value if scope not in NARRATIVE_REALTIME_SCOPE_SET)
-    if invalid:
-        rejected = ", ".join(invalid)
-        raise ValueError(f"{field_name} must contain only all; got: {rejected}")
-    if tuple(value) != NARRATIVE_REALTIME_SCOPES:
-        raise ValueError(f"{field_name} must be exactly ['all']")
-    return value
 
 
 def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:

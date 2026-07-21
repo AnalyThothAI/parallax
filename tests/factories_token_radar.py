@@ -112,7 +112,8 @@ def open_token_radar_runtime(tmp_path):
         enriched_events=repos.enriched_events,
         event_anchor_jobs=repos.event_anchor_jobs,
         token_intent_lookup=repos.token_intent_lookup,
-        token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
+        token_radar_dirty_targets=repos.token_radar_dirty_targets,
+        transaction=repos.transaction,
         event_anchor_active_window_ms=300_000,
     )
     return conn, repos, ingest
@@ -127,7 +128,6 @@ def insert_base_versa_asset(conn: Any, *, observed_at_ms: int | None = None) -> 
         address=VERSA_BASE_CA,
         observed_at_ms=now_ms,
         status="canonical",
-        commit=False,
     )
     identity.upsert_identity_evidence(
         asset_id=str(asset["asset_id"]),
@@ -139,11 +139,9 @@ def insert_base_versa_asset(conn: Any, *, observed_at_ms: int | None = None) -> 
         symbol="VERSA",
         confidence=CONFIDENCE_PROVIDER_EXACT,
         observed_at_ms=now_ms,
-        commit=False,
     )
     identity.recompute_current_identity(
         str(asset["asset_id"]),
         now_ms=now_ms,
-        commit=False,
     )
     conn.commit()

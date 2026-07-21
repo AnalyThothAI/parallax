@@ -3,7 +3,9 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any
 
-from parallax.domains.news_intel.providers import NewsSourceProvider
+import httpx
+
+from parallax.domains.news_intel.providers import NewsSourceProvider, NewsSourceProviderError
 from parallax.domains.news_intel.services.feed_item_normalizer import normalize_feed_entry
 from parallax.domains.news_intel.types.source_provider import (
     NewsProviderFetchResult,
@@ -49,16 +51,24 @@ class RegistryBackedNewsSourceProvider:
         cache: NewsSourceHttpCache | None = None,
         limit: int | None = None,
     ) -> NewsProviderFetchResult:
-        feed_result = self._registry.fetch(
-            provider_type=source.provider_type,
-            feed_url=source.feed_url,
-            etag=cache.etag if cache else None,
-            last_modified=cache.last_modified if cache else None,
-            source=source.raw,
-            cursor=cursor or {},
-            since_ms=since_ms,
-            limit=limit,
-        )
+        try:
+            feed_result = self._registry.fetch(
+                provider_type=source.provider_type,
+                feed_url=source.feed_url,
+                etag=cache.etag if cache else None,
+                last_modified=cache.last_modified if cache else None,
+                source=source.raw,
+                cursor=cursor or {},
+                since_ms=since_ms,
+                limit=limit,
+            )
+        except httpx.HTTPStatusError as exc:
+            status_code = int(exc.response.status_code)
+            raise NewsSourceProviderError(
+                f"news_provider_http_{status_code}",
+                status_code=status_code,
+                terminal=_terminal_provider_http_status(status_code),
+            ) from exc
         observations = [_observation_from_entry(source, entry) for entry in feed_result.entries]
         return NewsProviderFetchResult(
             status_code=feed_result.status_code,
@@ -119,6 +129,10 @@ def _optional_mapping_list(value: Any) -> list[dict[str, Any]]:
     if not isinstance(value, list):
         return []
     return [dict(item) for item in value if isinstance(item, Mapping)]
+
+
+def _terminal_provider_http_status(status_code: int) -> bool:
+    return 400 <= int(status_code) < 500 and int(status_code) not in {408, 409, 425, 429}
 
 
 __all__ = [

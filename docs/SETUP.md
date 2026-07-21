@@ -34,17 +34,15 @@ for exact token profiles and OKX provider settings for discovery, market data,
 or DEX WebSocket lanes when those workers are enabled. Keep secrets out of
 terminal output, docs, tests, and commits.
 
-Use `uv run parallax config` to inspect both config paths and
-the effective worker settings. Use
-`uv run parallax ops worker-status` to inspect the canonical
-worker status map and queue depths without starting the upstream
-collector.
+Use `uv run parallax config` to inspect both config paths and the effective
+worker settings. Inspect the running process through authenticated
+`/api/status` and `/api/ops/diagnostics`; a new CLI process cannot report the
+state of an already-running scheduler.
 
 Useful live-data smoke checks:
 
 ```bash
 uv run parallax config
-uv run parallax ops worker-status
 uv run parallax ops refresh-asset-profiles --limit 5
 uv run parallax ops rebuild-token-profiles --limit 500
 uv run parallax ops repair-token-profile-images --limit 500

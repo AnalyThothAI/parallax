@@ -29,10 +29,6 @@ describe("watchlist navigation", () => {
               handle: "toly",
               last_source_event_at_ms: 1_700_000_000_000,
               recent_source_event_count: 2,
-              recent_signal_event_count: 1,
-              total_signal_event_count: 1,
-              summary_status: "ready",
-              summary_is_stale: false,
             },
           ],
         });
@@ -74,20 +70,15 @@ describe("watchlist navigation", () => {
               handle: "marionawfal",
               last_source_event_at_ms: 1_700_000_000_000,
               recent_source_event_count: 42,
-              recent_signal_event_count: 42,
-              total_signal_event_count: 42,
-              summary_status: "ready",
-              summary_is_stale: false,
             },
           ],
         });
       }
       if (path === "/api/watchlist/handle/marionawfal/overview") {
         return ok({
-          query: { handle: "marionawfal", scope: "signal", window: "7d" },
+          query: { handle: "marionawfal", window: "3d" },
           metrics: {
             source_event_count: 42,
-            signal_event_count: 42,
             resolved_token_count: 0,
             candidate_mention_count: 3,
             narrative_count: 0,
@@ -100,32 +91,16 @@ describe("watchlist navigation", () => {
               count: 3,
               query: "$ALOY",
               kind: "candidate_mention",
-              source: "social_event_candidates",
+              source: "event_cashtags",
             },
           ],
           narrative_clusters: [],
           risk_notes: ["candidate_mentions_unresolved"],
         });
       }
-      if (path === "/api/watchlist/handle/marionawfal/summary") {
-        return ok({
-          handle: "marionawfal",
-          status: "ready",
-          generated_at_ms: 1_700_000_000_000,
-          staleness_ms: 0,
-          is_stale: false,
-          pending_recompute: false,
-          signal_count: 42,
-          input_event_count: 25,
-          signal_count_at_generation: 42,
-          model: "test-model",
-          summary_zh: "Marion 正在讨论 ALOY。",
-          topics: [{ title: "ALOY", event_count: 3, description: "ALOY 被多次提及。" }],
-        });
-      }
       if (path === "/api/watchlist/handle/marionawfal/timeline") {
         return ok({
-          query: { handle: "marionawfal", scope: "signal", limit: 80 },
+          query: { handle: "marionawfal", limit: 80 },
           items: [],
           has_more: false,
           next_cursor: null,
@@ -143,7 +118,7 @@ describe("watchlist navigation", () => {
       return ok({});
     };
 
-    renderAppRoute("/watchlist?handle=marionawfal&timeline_scope=signal");
+    renderAppRoute("/watchlist?handle=marionawfal");
 
     expect(
       await screen.findByRole("navigation", { name: "Twitter source list" }),

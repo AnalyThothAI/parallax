@@ -2,7 +2,6 @@ import type {
   ScopeKey,
   TokenPostRange,
   TokenPostServerSort,
-  WatchlistTimelineScope,
   WindowKey,
 } from "@lib/types";
 import type { TokenRadarVenueFilter } from "@lib/venue";
@@ -65,7 +64,6 @@ export const queryKeys = {
     sort: TokenPostServerSort,
     limit: number,
   ) => ["target-posts", targetKey, window, scope, range, sort, limit] as const,
-  accountQuality: (handles: string) => ["account-quality", handles] as const,
   notifications: () => ["notifications"] as const,
   notificationSummary: () => ["notification-summary"] as const,
   opsDiagnostics: () => ["ops-diagnostics"] as const,
@@ -73,8 +71,7 @@ export const queryKeys = {
     ["ops-queue", queueName ?? "", status ?? "", limit] as const,
   watchlistHandlesOverview: () => ["watchlist-handles-overview"] as const,
   macroAssetCorrelation: (window: string) => ["macro", "asset-correlation", window] as const,
-  watchlistHandleOverview: (handle: string, scope: WatchlistTimelineScope) =>
-    ["watchlist-handle-overview", handle, scope] as const,
-  watchlistHandleTimeline: (handle: string, scope: WatchlistTimelineScope, limit: number) =>
-    ["watchlist-handle-timeline", handle, scope, limit] as const,
+  watchlistHandleOverview: (handle: string) => ["watchlist-handle-overview", handle] as const,
+  watchlistHandleTimeline: (handle: string, limit: number) =>
+    ["watchlist-handle-timeline", handle, limit] as const,
 };

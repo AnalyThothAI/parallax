@@ -108,7 +108,6 @@ def test_token_image_source_dirty_target_rejects_legacy_raw_ref_keys_before_json
             ],
             reason="profile_source_changed",
             now_ms=1_700_000_000_000,
-            commit=False,
         )
 
     assert conn.sql == []

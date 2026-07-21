@@ -8,8 +8,6 @@ from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
 from typing import Any, cast
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
 from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
 from parallax.domains.asset_market.types import (
@@ -19,6 +17,9 @@ from parallax.domains.asset_market.types import (
     MarketTickSourceTier,
     market_tick_id,
 )
+from parallax.platform.config.settings import MarketTickPollWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 SOURCE_TIER: MarketTickSourceTier = "tier2_poll"
 DEX_SOURCE_PROVIDER: MarketTickSourceProvider = "okx_dex_rest"
@@ -33,14 +34,12 @@ class MarketTickPollWorker(WorkerBase):
         *,
         pool_bundle: Any,
         providers: Any,
-        settings: Any,
+        settings: MarketTickPollWorkerSettings,
         wake_emitter: Any | None = None,
         clock: Any | None = None,
         name: str = "market_tick_poll",
         telemetry: Any | None = None,
     ) -> None:
-        if settings is None:
-            raise RuntimeError("market_tick_poll_settings_required")
         if providers is None:
             raise RuntimeError("market_tick_poll_providers_required")
         if pool_bundle is None:
@@ -55,14 +54,8 @@ class MarketTickPollWorker(WorkerBase):
         self.dex_quote_market = providers.dex_quote_market
         self.cex_market = providers.cex_market
         self.wake_emitter = wake_emitter
-        self.batch_size = _required_positive_int(
-            settings.batch_size,
-            error_code="market_tick_poll_batch_size_required",
-        )
-        self.concurrency = _required_positive_int(
-            settings.concurrency,
-            error_code="market_tick_poll_concurrency_required",
-        )
+        self.batch_size = settings.batch_size
+        self.concurrency = settings.concurrency
         self.clock = clock or _now_ms
         self._recent_tier2_attempts: set[tuple[str, str]] = set()
 
@@ -250,7 +243,7 @@ class MarketTickPollWorker(WorkerBase):
         materialized = list(ticks)
         if not materialized:
             return 0
-        with self.db.worker_transaction(self.name) as repos:
+        with self.db.worker_session(self.name) as repos, repos.transaction():
             result = MarketTickPersistenceService(repos).insert_ticks_and_enqueue_current_dirty(
                 materialized,
                 reason="market_tick_written",
@@ -528,12 +521,6 @@ def _provider_error_reason(exc: Exception) -> str:
 
 def _now_ms() -> int:
     return int(time.time() * 1000)
-
-
-def _required_positive_int(value: Any, *, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 __all__ = ["MarketTickPollWorker"]

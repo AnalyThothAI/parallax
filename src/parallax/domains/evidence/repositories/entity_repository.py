@@ -2,12 +2,13 @@ from __future__ import annotations
 
 import hashlib
 import time
-from collections.abc import Callable
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from typing import Any
 
 from parallax.domains.evidence.types.entity import EVM_QUERY_CHAINS, ExtractedEntity
 from parallax.domains.evidence.types.twitter_event import TwitterEvent
+from parallax.platform.db.postgres_client import require_transaction
+from parallax.platform.db.write_contract import mutation_count
+from parallax.platform.validation import require_nonnegative_int
 
 
 class EntityRepository:
@@ -20,49 +21,49 @@ class EntityRepository:
         entities: list[ExtractedEntity],
         *,
         is_watched: bool,
-        commit: bool = True,
     ) -> int:
-        def _write() -> int:
-            inserted = 0
-            now_ms = _now_ms()
-            author = event.author.handle.lower() if event.author.handle else None
-            for entity in entities:
-                cursor = self.conn.execute(
-                    """
-                    INSERT INTO event_entities(
-                      entity_id, event_id, entity_type, raw_value, normalized_value, chain,
-                      token_resolution_status, confidence, source, received_at_ms, author_handle,
-                      is_watched, text_surface, span_start, span_end, sentence_id, local_group_key,
-                      created_at_ms
-                    )
-                    VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                    ON CONFLICT DO NOTHING
-                    """,
-                    (
-                        _entity_id(event.event_id, entity),
-                        event.event_id,
-                        entity.entity_type,
-                        entity.raw_value,
-                        entity.normalized_value,
-                        entity.chain,
-                        entity.token_resolution_status,
-                        entity.confidence,
-                        entity.source,
-                        event.received_at_ms,
-                        author,
-                        is_watched,
-                        entity.text_surface,
-                        entity.span_start,
-                        entity.span_end,
-                        entity.sentence_id,
-                        entity.local_group_key,
-                        now_ms,
-                    ),
+        require_transaction(self.conn, operation="insert_event_entities")
+        inserted = 0
+        now_ms = _now_ms()
+        author = event.author.handle.lower() if event.author.handle else None
+        for entity in entities:
+            cursor = self.conn.execute(
+                """
+                INSERT INTO event_entities(
+                  entity_id, event_id, entity_type, raw_value, normalized_value, chain,
+                  token_resolution_status, confidence, source, received_at_ms, author_handle,
+                  is_watched, text_surface, span_start, span_end, sentence_id, local_group_key,
+                  created_at_ms
                 )
-                inserted += _single_rowcount(cursor)
-            return inserted
-
-        return _run_repository_write(self.conn, commit, _write)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                ON CONFLICT DO NOTHING
+                """,
+                (
+                    _entity_id(event.event_id, entity),
+                    event.event_id,
+                    entity.entity_type,
+                    entity.raw_value,
+                    entity.normalized_value,
+                    entity.chain,
+                    entity.token_resolution_status,
+                    entity.confidence,
+                    entity.source,
+                    event.received_at_ms,
+                    author,
+                    is_watched,
+                    entity.text_surface,
+                    entity.span_start,
+                    entity.span_end,
+                    entity.sentence_id,
+                    entity.local_group_key,
+                    now_ms,
+                ),
+            )
+            rowcount = mutation_count(cursor, error_code="entity_repository_rowcount_invalid")
+            if rowcount not in (0, 1):
+                raise TypeError("entity_repository_rowcount_invalid")
+            inserted += rowcount
+        return inserted
 
     def entities_for_event(self, event_id: str) -> list[dict[str, Any]]:
         rows = self.conn.execute(
@@ -108,7 +109,7 @@ class EntityRepository:
         limit: int,
         watched_only: bool,
     ) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(limit, "entity_repository_find_limit_required")
+        parsed_limit = require_nonnegative_int(limit, error_code="entity_repository_find_limit_required")
         clauses = ["entity_type = %s", "normalized_value = %s"]
         params: list[Any] = [entity_type, normalized_value]
         if chain is None:
@@ -155,40 +156,3 @@ def _now_ms() -> int:
 
 def _event_ids(event_ids: tuple[str, ...]) -> list[str]:
     return [event_id for event_id in dict.fromkeys(str(item).strip() for item in event_ids) if event_id]
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _single_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("entity_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("entity_repository_rowcount_invalid")
-    if rowcount not in (0, 1):
-        raise TypeError("entity_repository_rowcount_invalid")
-    return rowcount
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction_context = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("entity_repository_transaction_required") from exc
-    if not callable(transaction_context):
-        raise RuntimeError("entity_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction_context())
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()

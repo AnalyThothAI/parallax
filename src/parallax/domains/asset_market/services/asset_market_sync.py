@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import time
 from collections.abc import Iterable
-from contextlib import AbstractContextManager
 from dataclasses import dataclass
-from typing import Any, cast
+from typing import Any
 
 
 @dataclass(frozen=True, slots=True)
@@ -17,7 +16,7 @@ class BinanceUsdtPerpRoute:
 
 def sync_binance_usdt_perp_routes(
     *,
-    registry: Any,
+    repos: Any,
     routes: Iterable[BinanceUsdtPerpRoute],
     observed_at_ms: int,
     dry_run: bool,
@@ -30,6 +29,7 @@ def sync_binance_usdt_perp_routes(
     routes = _normalized_routes(routes)
     base_symbols = [route.base_symbol for route in routes]
     native_market_ids = [route.native_market_id for route in routes]
+    registry = repos.registry
     plan = dict(
         registry.binance_usdt_perp_sync_plan_counts(
             base_symbols=base_symbols,
@@ -41,13 +41,12 @@ def sync_binance_usdt_perp_routes(
     pricefeeds_written = 0
     affected_lookup_keys: set[str] = set()
     if execute:
-        with _transaction(registry.conn):
+        with repos.transaction():
             for route in routes:
                 cex_token = registry.upsert_cex_token(
                     base_symbol=route.base_symbol,
                     source="binance_cex",
                     observed_at_ms=observed_at_ms,
-                    commit=False,
                 )
                 cex_tokens_written += 1
                 registry.upsert_pricefeed(
@@ -61,7 +60,6 @@ def sync_binance_usdt_perp_routes(
                     quote_symbol=route.quote_symbol,
                     multiplier=route.multiplier,
                     observed_at_ms=observed_at_ms,
-                    commit=False,
                 )
                 pricefeeds_written += 1
                 affected_lookup_keys.update(_symbol_lookup_keys(route.base_symbol))
@@ -112,13 +110,3 @@ def _symbol_lookup_keys(symbol: Any) -> set[str]:
     if not normalized:
         return set()
     return {f"symbol:{normalized}", f"project_symbol:{normalized}", f"cex_token:{normalized}"}
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("asset_market_sync_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("asset_market_sync_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())

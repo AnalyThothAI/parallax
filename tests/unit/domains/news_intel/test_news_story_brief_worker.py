@@ -210,7 +210,7 @@ async def _test_worker_restores_completed_story_run_without_second_model_call() 
         "outcome": "ready",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -248,7 +248,6 @@ async def _test_worker_restores_completed_story_run_without_second_model_call() 
             ],
             "reason": "news_story_brief_updated",
             "now_ms": NOW_MS - 30_000,
-            "commit": False,
         }
     ]
     assert wake_bus.story_brief_updates == [1]
@@ -273,7 +272,7 @@ async def _test_worker_rejects_completed_story_run_missing_finished_at_without_c
         "outcome": "ready",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -313,7 +312,7 @@ async def _test_worker_rejects_completed_story_run_malformed_finished_at_without
         "outcome": "ready",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -351,7 +350,7 @@ async def _test_worker_rejects_completed_story_run_missing_outcome_before_second
         "status": "completed",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -390,7 +389,7 @@ async def _test_worker_rejects_completed_story_run_missing_response_before_secon
         "outcome": "ready",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -427,7 +426,7 @@ async def _test_worker_rejects_completed_story_run_missing_input_hash_before_sec
         "status": "completed",
         "outcome": "ready",
         "execution_started": True,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -469,7 +468,7 @@ async def _test_worker_rejects_completed_story_run_ready_payload_missing_summary
         "outcome": "ready",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -511,7 +510,7 @@ async def _test_worker_rejects_completed_story_run_ready_payload_summary_missing
         "outcome": "ready",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -545,7 +544,7 @@ async def _test_worker_rejects_current_story_brief_missing_status_before_second_
         "story_identity_version": packet.story_identity_version,
         "agent_run_id": "story-current-run",
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -577,7 +576,7 @@ async def _test_worker_rejects_current_story_brief_missing_input_hash_before_sec
         "story_identity_version": packet.story_identity_version,
         "agent_run_id": "story-current-run",
         "status": "ready",
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -616,7 +615,7 @@ async def _test_worker_restores_failed_current_from_started_failed_story_run_wit
         "error": "model timed out",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -659,7 +658,6 @@ async def _test_worker_restores_failed_current_from_started_failed_story_run_wit
             ],
             "reason": "news_story_brief_updated",
             "now_ms": NOW_MS - 30_000,
-            "commit": False,
         }
     ]
     assert wake_bus.story_brief_updates == [1]
@@ -687,7 +685,7 @@ async def _test_worker_rejects_failed_story_run_missing_outcome_before_restore_o
         "error": "model timed out",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -726,7 +724,7 @@ async def _test_worker_rejects_failed_story_run_missing_run_id_before_restore_or
         "error": "model timed out",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -765,7 +763,7 @@ async def _test_worker_rejects_failed_story_run_missing_story_brief_key_before_r
         "error": "model timed out",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -804,7 +802,7 @@ async def _test_worker_rejects_failed_story_run_missing_error_class_before_resto
         "error": "model timed out",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -843,7 +841,7 @@ async def _test_worker_rejects_failed_story_run_missing_error_before_restore_or_
         "error_class": "timeout",
         "execution_started": True,
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -882,7 +880,7 @@ async def _test_worker_rejects_failed_story_run_missing_execution_started_before
         "error_class": "timeout",
         "error": "model timed out",
         "input_hash": packet.input_hash,
-        "artifact_version_hash": provider.story_artifact_version_hash,
+        "artifact_version_hash": provider.artifact_version_hash,
         "prompt_version": packet.prompt_version,
         "schema_version": packet.schema_version,
         "validator_version": agent_config.validator_version,
@@ -1178,6 +1176,36 @@ def test_worker_rejects_malformed_queue_depth_without_reserving_or_claiming() ->
     asyncio.run(_test_worker_rejects_malformed_queue_depth_without_reserving_or_claiming())
 
 
+def test_worker_prunes_unreferenced_story_runs_at_most_once_per_hour() -> None:
+    asyncio.run(_test_worker_prunes_unreferenced_story_runs_at_most_once_per_hour())
+
+
+async def _test_worker_prunes_unreferenced_story_runs_at_most_once_per_hour() -> None:
+    db = FakeDB([])
+    db.news.pruned_story_runs = 2
+    times = iter((NOW_MS, NOW_MS + 3_599_999, NOW_MS + 3_600_000))
+    worker = NewsStoryBriefWorker(
+        name="news_story_brief",
+        settings=_news_story_brief_settings(batch_size=3),
+        db=db,
+        telemetry=object(),
+        provider=FakeStoryBriefProvider(),
+        clock_ms=lambda: next(times),
+    )
+
+    first = await worker.run_once()
+    await worker.run_once()
+    third = await worker.run_once()
+
+    retention_ms = 180 * 24 * 60 * 60 * 1_000
+    assert db.news.story_run_prune_calls == [
+        {"cutoff_ms": NOW_MS - retention_ms, "limit": 500},
+        {"cutoff_ms": NOW_MS + 3_600_000 - retention_ms, "limit": 500},
+    ]
+    assert first.notes["pruned_story_agent_runs"] == 2
+    assert third.notes["pruned_story_agent_runs"] == 2
+
+
 async def _test_worker_rejects_malformed_queue_depth_without_reserving_or_claiming() -> None:
     db = FakeDB([_story_candidate()])
     provider = FakeStoryBriefProvider()
@@ -1314,8 +1342,8 @@ def _ready_payload() -> dict[str, Any]:
 
 class FakeStoryBriefProvider:
     provider = "litellm"
-    story_model = "gpt-5-mini"
-    story_artifact_version_hash = "artifact-story-1"
+    model = "gpt-5-mini"
+    artifact_version_hash = "artifact-story-1"
 
     def __init__(
         self,
@@ -1350,7 +1378,7 @@ class FakeStoryBriefProvider:
         self.reservation.rate_units = rate_units
         return self.reservation
 
-    def request_story_audit(self, *, run_id: str, packet: Any) -> dict[str, Any]:
+    def request_audit(self, *, run_id: str, packet: Any) -> dict[str, Any]:
         assert self.db is None or self.db.in_session is False
         self.request_audit_calls.append(run_id)
         if self.request_error is not None:
@@ -1384,7 +1412,7 @@ class FakeStoryBriefProvider:
         return {
             "provider": self.provider,
             "backend": "litellm_sdk",
-            "model": self.story_model,
+            "model": self.model,
             "lane": NEWS_STORY_BRIEF_LANE,
             "stage": "news_story_brief",
             "workflow_name": config.workflow_name,
@@ -1393,7 +1421,7 @@ class FakeStoryBriefProvider:
             "group_id": f"news_story:{packet.story_key}",
             "prompt_version": packet.prompt_version,
             "schema_version": packet.schema_version,
-            "artifact_version_hash": self.story_artifact_version_hash,
+            "artifact_version_hash": self.artifact_version_hash,
             "input_hash": packet.input_hash,
             "usage": {},
             "trace_metadata": {"run_id": run_id, "story_key": packet.story_key},
@@ -1412,8 +1440,8 @@ class FakeStoryBriefProvider:
 
     def agent_config(self) -> Any:
         return default_news_story_brief_agent_config(
-            model=self.story_model,
-            artifact_version_hash=self.story_artifact_version_hash,
+            model=self.model,
+            artifact_version_hash=self.artifact_version_hash,
         )
 
 
@@ -1447,7 +1475,8 @@ class FakeDB:
 class FakeSession:
     def __init__(self, db: FakeDB) -> None:
         self.db = db
-        self.news = db.news
+        self.news_story_agents = db.news
+        self.news_items = db.news
         self.conn = db.conn
         self.news_projection_dirty_targets = db.dirty
         self.transaction = db.conn.transaction
@@ -1467,6 +1496,12 @@ class FakeNewsRepository:
         self.runs: list[dict[str, Any]] = []
         self.briefs: list[dict[str, Any]] = []
         self.loaded_story_keys: list[list[str]] = []
+        self.story_run_prune_calls: list[dict[str, int]] = []
+        self.pruned_story_runs = 0
+
+    def prune_unreferenced_story_agent_runs(self, *, cutoff_ms: int, limit: int) -> int:
+        self.story_run_prune_calls.append({"cutoff_ms": cutoff_ms, "limit": limit})
+        return self.pruned_story_runs
 
     def load_story_brief_targets(self, *, story_keys: list[str]) -> list[dict[str, Any]]:
         self.loaded_story_keys.append(list(story_keys))
@@ -1519,13 +1554,12 @@ class FakeDirtyRepository:
         self.error_kwargs.append(dict(kwargs))
         return len(keys)
 
-    def enqueue_targets(self, rows: list[dict[str, Any]], *, reason: str, now_ms: int, commit: bool = True) -> int:
+    def enqueue_targets(self, rows: list[dict[str, Any]], *, reason: str, now_ms: int) -> int:
         self.enqueued.append(
             {
                 "rows": [dict(row) for row in rows],
                 "reason": reason,
                 "now_ms": now_ms,
-                "commit": commit,
             }
         )
         return len(rows)

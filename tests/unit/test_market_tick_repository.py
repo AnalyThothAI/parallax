@@ -133,7 +133,7 @@ def test_insert_market_tick_returning_write_requires_cursor_rowcount() -> None:
     tick = _tick()
     conn = _ScriptedConnection([{"tick_id": tick.tick_id}], rowcounts=[_ROWCOUNT_MISSING])
 
-    with pytest.raises(TypeError, match="market_tick_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="market_tick_repository_rowcount_invalid"):
         MarketTickRepository(conn).insert_ticks_returning_ids([tick])
 
 

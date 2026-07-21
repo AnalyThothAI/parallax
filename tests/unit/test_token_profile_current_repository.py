@@ -74,9 +74,9 @@ def test_upsert_current_sanitizes_text_and_json_payloads():
     assert "logo_image_id" in conn.sqls[-1]
     assert "logo_source_provider" in conn.sqls[-1]
     assert "logo_source_url_hash" in conn.sqls[-1]
-    assert conn.transaction_commits == 1
+    assert conn.transaction_commits == 0
     assert conn.manual_commits == 0
-    assert conn.sql_depths == [1]
+    assert conn.sql_depths == [0]
 
 
 @pytest.mark.parametrize(
@@ -114,7 +114,7 @@ def test_upsert_current_requires_formal_json_payload_fields_before_sql(patch, er
     row = {**_current_row(), **patch}
 
     with pytest.raises(ValueError, match=error):
-        TokenProfileCurrentRepository(conn).upsert_current(row, commit=False)
+        TokenProfileCurrentRepository(conn).upsert_current(row)
 
     assert conn.sqls == []
 
@@ -128,34 +128,25 @@ def test_upsert_current_rejects_legacy_quality_and_source_payload_aliases_before
     row["source_payload"] = {}
 
     with pytest.raises(ValueError, match="token_profile_current_repository_required:quality_flags_json"):
-        TokenProfileCurrentRepository(conn).upsert_current(row, commit=False)
+        TokenProfileCurrentRepository(conn).upsert_current(row)
 
     assert conn.sqls == []
 
 
-def test_upsert_current_requires_connection_transaction_before_sql_when_committing():
+def test_upsert_current_does_not_require_or_own_a_transaction():
     conn = _NoTransactionConn(rows=[])
 
-    with pytest.raises(RuntimeError, match="token_profile_current_repository_transaction_required"):
-        TokenProfileCurrentRepository(conn).upsert_current(_current_row())
-
-    assert conn.sqls == []
-
-
-def test_upsert_current_commit_owned_write_uses_connection_transaction_without_manual_commit():
-    conn = _Conn(rows=[{"changed": True}])
-
-    assert TokenProfileCurrentRepository(conn).upsert_current(_current_row()) is True
-    assert conn.transaction_commits == 1
+    assert TokenProfileCurrentRepository(conn).upsert_current(_current_row()) is False
+    assert len(conn.sqls) == 1
     assert conn.manual_commits == 0
-    assert conn.sql_depths == [1]
+    assert conn.sql_depths == [0]
 
 
 def test_upsert_current_returning_changed_requires_cursor_rowcount():
     conn = _Conn(rows=[{"changed": True}], omit_rowcount=True)
 
-    with pytest.raises(TypeError, match="token_profile_current_repository_rowcount_required"):
-        TokenProfileCurrentRepository(conn).upsert_current(_current_row(), commit=False)
+    with pytest.raises(TypeError, match="token_profile_current_repository_rowcount_invalid"):
+        TokenProfileCurrentRepository(conn).upsert_current(_current_row())
 
 
 @pytest.mark.parametrize("rowcount", [True, False, "1", None, -1, 2])
@@ -163,7 +154,7 @@ def test_upsert_current_returning_changed_rejects_invalid_cursor_rowcount(rowcou
     conn = _Conn(rows=[{"changed": True}], rowcount=rowcount)
 
     with pytest.raises(TypeError, match="token_profile_current_repository_rowcount_invalid"):
-        TokenProfileCurrentRepository(conn).upsert_current(_current_row(), commit=False)
+        TokenProfileCurrentRepository(conn).upsert_current(_current_row())
 
 
 @pytest.mark.parametrize(
@@ -177,7 +168,7 @@ def test_upsert_current_returning_changed_rejects_rowcount_returning_mismatch(ro
     conn = _Conn(rows=rows, rowcount=rowcount)
 
     with pytest.raises(TypeError, match="token_profile_current_repository_rowcount_invalid"):
-        TokenProfileCurrentRepository(conn).upsert_current(_current_row(), commit=False)
+        TokenProfileCurrentRepository(conn).upsert_current(_current_row())
 
 
 def _current_row() -> dict:

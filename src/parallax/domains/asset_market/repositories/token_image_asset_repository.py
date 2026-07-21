@@ -1,12 +1,13 @@
 from __future__ import annotations
 
-from contextlib import AbstractContextManager
 from hashlib import sha256
-from typing import Any, cast
+from typing import Any
 
 from psycopg.types.json import Jsonb
 
 from parallax.platform.db.json_safety import postgres_safe_json, postgres_safe_text
+from parallax.platform.db.write_contract import mutation_count, returning_mutation_count
+from parallax.platform.validation import require_positive_int
 
 READY_MEDIA_TYPES = {"image/gif", "image/jpeg", "image/png", "image/webp"}
 READY_FILE_EXTENSIONS = {".gif", ".jpg", ".png", ".webp"}
@@ -16,14 +17,10 @@ class TokenImageAssetRepository:
     def __init__(self, conn: Any):
         self.conn = conn
 
-    def upsert_pending_sources(self, rows: list[dict[str, Any]], now_ms: int, commit: bool = True) -> int:
+    def upsert_pending_sources(self, rows: list[dict[str, Any]], now_ms: int) -> int:
         unique_rows = _unique_source_rows(rows)
         if not unique_rows:
             return 0
-        if commit:
-            with _transaction(self.conn):
-                return self.upsert_pending_sources(unique_rows, now_ms=now_ms, commit=False)
-
         affected = 0
         for source in unique_rows:
             source_url = _required_source_url(source.get("source_url"))
@@ -60,7 +57,11 @@ class TokenImageAssetRepository:
                 ),
             )
             row = cursor.fetchone()
-            affected += _single_returning_rowcount(cursor, row)
+            affected += returning_mutation_count(
+                cursor,
+                row,
+                error_code="token_image_asset_repository_rowcount_invalid",
+            )
 
         return affected
 
@@ -73,21 +74,8 @@ class TokenImageAssetRepository:
         byte_size: int,
         storage_path: str,
         now_ms: int,
-        commit: bool = True,
     ) -> dict[str, Any]:
         normalized_source_url = _required_source_url(source_url)
-        if commit:
-            with _transaction(self.conn):
-                return self.mark_ready(
-                    source_url=normalized_source_url,
-                    media_type=media_type,
-                    file_extension=file_extension,
-                    content_sha256=content_sha256,
-                    byte_size=byte_size,
-                    storage_path=storage_path,
-                    now_ms=now_ms,
-                    commit=False,
-                )
         source_url_hash = _source_url_hash(normalized_source_url)
         public_url = f"/api/token-images/{source_url_hash}"
         cursor = self.conn.execute(
@@ -120,7 +108,7 @@ class TokenImageAssetRepository:
             ),
         )
         row = cursor.fetchone()
-        _single_returning_rowcount(cursor, row)
+        returning_mutation_count(cursor, row, error_code="token_image_asset_repository_rowcount_invalid")
         if row is None:
             raise ValueError("token image source has not been upserted")
         return dict(row)
@@ -131,23 +119,12 @@ class TokenImageAssetRepository:
         error: str,
         now_ms: int,
         retry_ms: int,
-        commit: bool = True,
     ) -> None:
         normalized_source_url = _required_source_url(source_url)
-        parsed_retry_ms = _required_positive_int(
+        parsed_retry_ms = require_positive_int(
             retry_ms,
-            "token_image_asset_retry_ms_required",
+            error_code="token_image_asset_retry_ms_required",
         )
-        if commit:
-            with _transaction(self.conn):
-                self.mark_error(
-                    source_url=normalized_source_url,
-                    error=error,
-                    now_ms=now_ms,
-                    retry_ms=parsed_retry_ms,
-                    commit=False,
-                )
-                return
         retry_at_ms = int(now_ms) + parsed_retry_ms
         cursor = self.conn.execute(
             """
@@ -167,25 +144,17 @@ class TokenImageAssetRepository:
                 _source_url_hash(normalized_source_url),
             ),
         )
-        _single_rowcount(cursor)
+        rowcount = mutation_count(cursor, error_code="token_image_asset_repository_rowcount_invalid")
+        if rowcount not in (0, 1):
+            raise TypeError("token_image_asset_repository_rowcount_invalid")
 
     def mark_unsupported(
         self,
         source_url: str,
         error: str,
         now_ms: int,
-        commit: bool = True,
     ) -> None:
         normalized_source_url = _required_source_url(source_url)
-        if commit:
-            with _transaction(self.conn):
-                self.mark_unsupported(
-                    source_url=normalized_source_url,
-                    error=error,
-                    now_ms=now_ms,
-                    commit=False,
-                )
-                return
         cursor = self.conn.execute(
             """
             UPDATE token_image_assets
@@ -204,7 +173,9 @@ class TokenImageAssetRepository:
                 _source_url_hash(normalized_source_url),
             ),
         )
-        _single_rowcount(cursor)
+        rowcount = mutation_count(cursor, error_code="token_image_asset_repository_rowcount_invalid")
+        if rowcount not in (0, 1):
+            raise TypeError("token_image_asset_repository_rowcount_invalid")
 
     def ready_by_source_urls(self, source_urls: list[str]) -> dict[str, dict[str, Any]]:
         source_url_hashes = [_source_url_hash(source_url) for source_url in _unique_source_urls(source_urls)]
@@ -268,32 +239,6 @@ class TokenImageAssetRepository:
         return dict(row) if row else None
 
 
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("token_image_asset_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("token_image_asset_repository_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("token_image_asset_repository_rowcount_invalid")
-    return rowcount
-
-
-def _single_rowcount(cursor: Any) -> int:
-    count = _cursor_rowcount(cursor)
-    if count not in (0, 1):
-        raise TypeError("token_image_asset_repository_rowcount_invalid")
-    return count
-
-
-def _single_returning_rowcount(cursor: Any, row: Any | None) -> int:
-    count = _single_rowcount(cursor)
-    if count != (1 if row is not None else 0):
-        raise TypeError("token_image_asset_repository_rowcount_invalid")
-    return count
-
-
 def _unique_source_rows(rows: list[dict[str, Any]]) -> list[dict[str, Any]]:
     unique: dict[str, dict[str, Any]] = {}
     for row in rows:
@@ -342,16 +287,6 @@ def _sha256_hex(value: Any, *, field_name: str) -> str:
     return text
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("token_image_asset_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("token_image_asset_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
 def _relative_cache_filename(value: Any) -> str:
     text = _required_text(value, field_name="storage_path")
     if text.startswith(("/", "\\")) or "/" in text or "\\" in text or text in {".", ".."}:
@@ -364,12 +299,6 @@ def _positive_int(value: Any, *, field_name: str) -> int:
     if number <= 0:
         raise ValueError(f"{field_name} must be positive")
     return number
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _optional_text(value: Any) -> str | None:

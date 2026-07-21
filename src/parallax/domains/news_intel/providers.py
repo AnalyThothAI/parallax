@@ -3,7 +3,6 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from parallax.domains.news_intel.types.news_item_brief import NewsItemBriefInputPacket
 from parallax.domains.news_intel.types.news_story_brief import NewsStoryBriefInputPacket
 from parallax.domains.news_intel.types.source_provider import (
     NewsProviderFetchResult,
@@ -11,6 +10,14 @@ from parallax.domains.news_intel.types.source_provider import (
     NewsSourceSnapshot,
 )
 from parallax.platform.agent_execution import AgentCapacityReservation
+
+
+class NewsSourceProviderError(RuntimeError):
+    def __init__(self, error_code: str, *, status_code: int | None = None, terminal: bool = False) -> None:
+        super().__init__(error_code)
+        self.error_code = error_code
+        self.status_code = status_code
+        self.terminal = terminal
 
 
 class NewsSourceProvider(Protocol):
@@ -30,7 +37,7 @@ class NewsSourceProvider(Protocol):
     def close(self) -> None: ...
 
 
-class NewsItemBriefProvider(Protocol):
+class NewsStoryBriefProvider(Protocol):
     @property
     def provider(self) -> str: ...
 
@@ -40,25 +47,9 @@ class NewsItemBriefProvider(Protocol):
     @property
     def artifact_version_hash(self) -> str: ...
 
-    @property
-    def story_model(self) -> str: ...
-
-    @property
-    def story_artifact_version_hash(self) -> str: ...
-
     def try_reserve_execution(self, lane: str, *, rate_units: int = 1) -> AgentCapacityReservation: ...
 
-    def request_audit(self, *, run_id: str, packet: NewsItemBriefInputPacket) -> dict[str, Any]: ...
-
-    def request_story_audit(self, *, run_id: str, packet: NewsStoryBriefInputPacket) -> dict[str, Any]: ...
-
-    async def brief_item(
-        self,
-        *,
-        run_id: str,
-        packet: NewsItemBriefInputPacket,
-        reservation: AgentCapacityReservation | None = None,
-    ) -> dict[str, Any]: ...
+    def request_audit(self, *, run_id: str, packet: NewsStoryBriefInputPacket) -> dict[str, Any]: ...
 
     async def brief_story(
         self,
@@ -71,4 +62,4 @@ class NewsItemBriefProvider(Protocol):
     async def aclose(self) -> None: ...
 
 
-__all__ = ["NewsItemBriefProvider", "NewsSourceProvider"]
+__all__ = ["NewsSourceProvider", "NewsSourceProviderError", "NewsStoryBriefProvider"]

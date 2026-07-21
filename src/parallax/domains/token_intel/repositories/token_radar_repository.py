@@ -2,9 +2,8 @@ from __future__ import annotations
 
 import time
 from collections.abc import Callable, Mapping
-from contextlib import AbstractContextManager
 from decimal import Decimal
-from typing import Any, TypedDict, cast
+from typing import Any, TypedDict
 
 from psycopg.types.json import Jsonb
 
@@ -17,6 +16,9 @@ from parallax.domains.token_intel.types.token_radar_payload_hash import (
     canonical_token_radar_payload,
     stable_token_radar_payload_hash,
 )
+from parallax.platform.db.postgres_client import require_transaction
+from parallax.platform.db.write_contract import mutation_count
+from parallax.platform.validation import require_nonnegative_int, require_positive_int
 
 RADAR_ROW_COLUMNS = (
     "row_id",
@@ -100,25 +102,8 @@ class TokenRadarRepository:
         started_at_ms: int | None = None,
         finished_at_ms: int | None = None,
         on_current_changes: Callable[..., None] | None = None,
-        commit: bool = True,
     ) -> PublicationResult:
-        if commit:
-            with _transaction(self.conn):
-                return self.publish_current_generation(
-                    projection_version=projection_version,
-                    window=window,
-                    scope=scope,
-                    venue=venue,
-                    generation_id=generation_id,
-                    published_at_ms=published_at_ms,
-                    source_frontier_ms=source_frontier_ms,
-                    rows=rows,
-                    source_rows=source_rows,
-                    started_at_ms=started_at_ms,
-                    finished_at_ms=finished_at_ms,
-                    on_current_changes=on_current_changes,
-                    commit=False,
-                )
+        require_transaction(self.conn, operation="publish_token_radar_current_generation")
         self.conn.execute(
             """
             SELECT pg_advisory_xact_lock(hashtext(%s), hashtext(%s))
@@ -225,7 +210,7 @@ class TokenRadarRepository:
                 """,
                 (projection_version, window, scope, venue, *_current_key(row)),
             )
-            rows_written += _cursor_rowcount(cursor)
+            rows_written += mutation_count(cursor, error_code="token_radar_repository_rowcount_invalid")
         for row in rows_to_insert:
             cursor = self.conn.execute(
                 f"""
@@ -264,7 +249,7 @@ class TokenRadarRepository:
                 """,
                 _json_payload(row),
             )
-            rows_written += _cursor_rowcount(cursor)
+            rows_written += mutation_count(cursor, error_code="token_radar_repository_rowcount_invalid")
         self.upsert_first_seen_batch(
             projection_version=projection_version,
             window=window,
@@ -272,7 +257,6 @@ class TokenRadarRepository:
             venue=venue,
             rows=rows_to_insert,
             computed_at_ms=int(published_at_ms),
-            commit=False,
         )
         self._upsert_ready_publication_state(
             projection_version=projection_version,
@@ -395,7 +379,10 @@ class TokenRadarRepository:
         limit: int,
         projection_version: str,
     ) -> list[dict[str, Any]]:
-        row_limit = _required_nonnegative_int(limit, "token_radar_latest_current_rows_limit_required")
+        row_limit = require_nonnegative_int(
+            limit,
+            error_code="token_radar_latest_current_rows_limit_required",
+        )
         rows = self.conn.execute(
             """
             WITH ranked AS (
@@ -475,18 +462,8 @@ class TokenRadarRepository:
         scope: str,
         row: dict[str, Any],
         computed_at_ms: int,
-        commit: bool = True,
     ) -> int:
-        if commit:
-            with _transaction(self.conn):
-                return self.upsert_target_feature(
-                    projection_version=projection_version,
-                    window=window,
-                    scope=scope,
-                    row=row,
-                    computed_at_ms=computed_at_ms,
-                    commit=False,
-                )
+        require_transaction(self.conn, operation="upsert_token_radar_target_feature")
         _validate_factor_contract(row)
         payload = _target_feature_payload(
             row,
@@ -573,7 +550,7 @@ class TokenRadarRepository:
             """,
             payload,
         )
-        return _cursor_rowcount(cursor)
+        return mutation_count(cursor, error_code="token_radar_repository_rowcount_invalid")
 
     def delete_target_feature(
         self,
@@ -584,19 +561,8 @@ class TokenRadarRepository:
         lane: str,
         target_type_key: str,
         identity_id: str,
-        commit: bool = True,
     ) -> int:
-        if commit:
-            with _transaction(self.conn):
-                return self.delete_target_feature(
-                    projection_version=projection_version,
-                    window=window,
-                    scope=scope,
-                    lane=lane,
-                    target_type_key=target_type_key,
-                    identity_id=identity_id,
-                    commit=False,
-                )
+        require_transaction(self.conn, operation="delete_token_radar_target_feature")
         cursor = self.conn.execute(
             """
             DELETE FROM token_radar_target_features
@@ -609,7 +575,7 @@ class TokenRadarRepository:
             """,
             (projection_version, window, scope, lane, target_type_key, identity_id),
         )
-        return _cursor_rowcount(cursor)
+        return mutation_count(cursor, error_code="token_radar_repository_rowcount_invalid")
 
     def prune_target_features(
         self,
@@ -619,19 +585,12 @@ class TokenRadarRepository:
         scope: str,
         latest_event_before_ms: int,
         limit: int,
-        commit: bool = True,
     ) -> int:
-        if commit:
-            with _transaction(self.conn):
-                return self.prune_target_features(
-                    projection_version=projection_version,
-                    window=window,
-                    scope=scope,
-                    latest_event_before_ms=latest_event_before_ms,
-                    limit=limit,
-                    commit=False,
-                )
-        row_limit = _required_positive_int(limit, "token_radar_prune_target_features_limit_required")
+        require_transaction(self.conn, operation="prune_token_radar_target_features")
+        row_limit = require_positive_int(
+            limit,
+            error_code="token_radar_prune_target_features_limit_required",
+        )
         cursor = self.conn.execute(
             """
             DELETE FROM token_radar_target_features
@@ -648,7 +607,7 @@ class TokenRadarRepository:
             """,
             (projection_version, window, scope, int(latest_event_before_ms), row_limit),
         )
-        return _cursor_rowcount(cursor)
+        return mutation_count(cursor, error_code="token_radar_repository_rowcount_invalid")
 
     def list_rank_inputs_for_rank_set(
         self,
@@ -762,19 +721,8 @@ class TokenRadarRepository:
         venue: str,
         rows: list[dict[str, Any]],
         computed_at_ms: int,
-        commit: bool = True,
     ) -> int:
-        if commit:
-            with _transaction(self.conn):
-                return self.upsert_first_seen_batch(
-                    projection_version=projection_version,
-                    window=window,
-                    scope=scope,
-                    venue=venue,
-                    rows=rows,
-                    computed_at_ms=computed_at_ms,
-                    commit=False,
-                )
+        require_transaction(self.conn, operation="upsert_token_radar_first_seen")
         now_ms = _now_ms()
         records: list[tuple[Any, ...]] = []
         seen: set[tuple[str, str]] = set()
@@ -831,7 +779,7 @@ class TokenRadarRepository:
             """,
             params,
         )
-        return _cursor_rowcount(cursor)
+        return mutation_count(cursor, error_code="token_radar_repository_rowcount_invalid")
 
     def mark_publication_failed(
         self,
@@ -844,21 +792,8 @@ class TokenRadarRepository:
         started_at_ms: int | None = None,
         finished_at_ms: int | None = None,
         error: str | None = None,
-        commit: bool = True,
     ) -> None:
-        if commit:
-            with _transaction(self.conn):
-                return self.mark_publication_failed(
-                    projection_version=projection_version,
-                    window=window,
-                    scope=scope,
-                    venue=venue,
-                    generation_id=generation_id,
-                    started_at_ms=started_at_ms,
-                    finished_at_ms=finished_at_ms,
-                    error=error,
-                    commit=False,
-                )
+        require_transaction(self.conn, operation="mark_token_radar_publication_failed")
         now_ms = _now_ms()
         self.conn.execute(
             """
@@ -1372,28 +1307,6 @@ def _payload_hash(row: dict[str, Any]) -> str:
     return stable_token_radar_payload_hash(stable_payload)
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("token_radar_repository_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("token_radar_repository_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("token_radar_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("token_radar_repository_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("token_radar_repository_rowcount_invalid")
-    return rowcount
-
-
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -1503,19 +1416,3 @@ def _json_ready(value: Any) -> Any:
     if isinstance(value, tuple):
         return [_json_ready(item) for item in value]
     return value
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)

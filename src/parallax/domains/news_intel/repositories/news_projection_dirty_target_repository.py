@@ -2,14 +2,15 @@ from __future__ import annotations
 
 import hashlib
 import json
-from collections.abc import Callable, Iterable, Mapping
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from parallax.platform.db.json_safety import postgres_safe_json
 from parallax.platform.db.queue_terminal import terminalize_source_row
+from parallax.platform.db.write_contract import expect_mutation_count, mutation_count
+from parallax.platform.validation import require_nonnegative_int, require_positive_int
 
-_ALLOWED_PROJECTION_NAMES = frozenset({"brief_input", "page", "source_quality", "story_brief"})
+_ALLOWED_PROJECTION_NAMES = frozenset({"page", "story_brief"})
 
 
 class NewsProjectionDirtyTargetRepository:
@@ -23,7 +24,6 @@ class NewsProjectionDirtyTargetRepository:
         reason: str,
         now_ms: int,
         due_at_ms: int | None = None,
-        commit: bool = True,
     ) -> int:
         records = _dirty_records(
             rows,
@@ -156,9 +156,9 @@ class NewsProjectionDirtyTargetRepository:
                     "now_ms": int(now_ms),
                 },
             )
-            return _cursor_rowcount(cursor)
+            return mutation_count(cursor, error_code="news_projection_dirty_target_rowcount_invalid")
 
-        return _run_repository_write(self.conn, commit, _enqueue_targets)
+        return _enqueue_targets()
 
     def claim_due(
         self,
@@ -168,16 +168,15 @@ class NewsProjectionDirtyTargetRepository:
         now_ms: int,
         lease_owner: str,
         projection_name: str | None = None,
-        commit: bool = True,
     ) -> list[dict[str, Any]]:
         projection_filter = ""
-        parsed_lease_ms = _required_positive_int(
+        parsed_lease_ms = require_positive_int(
             lease_ms,
-            "news_projection_dirty_target_claim_lease_ms_required",
+            error_code="news_projection_dirty_target_claim_lease_ms_required",
         )
-        parsed_limit = _required_nonnegative_int(
+        parsed_limit = require_nonnegative_int(
             limit,
-            "news_projection_dirty_target_claim_limit_required",
+            error_code="news_projection_dirty_target_claim_limit_required",
         )
         params: dict[str, Any] = {
             "now_ms": int(now_ms),
@@ -225,18 +224,21 @@ class NewsProjectionDirtyTargetRepository:
                 params,
             )
             rows = cursor.fetchall()
-            _returned_rowcount(cursor, rows)
+            expect_mutation_count(
+                cursor,
+                expected=len(rows),
+                error_code="news_projection_dirty_target_rowcount_invalid",
+            )
             claimed_rows = [dict(row) for row in rows]
             return claimed_rows
 
-        return _run_repository_write(self.conn, commit, _claim_due)
+        return _claim_due()
 
     def mark_done(
         self,
         keys: Iterable[Mapping[str, Any]],
         *,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
         records = _key_records(keys)
         if not records:
@@ -277,9 +279,9 @@ class NewsProjectionDirtyTargetRepository:
                 """,
                 _key_params(records),
             )
-            return _cursor_rowcount(cursor)
+            return mutation_count(cursor, error_code="news_projection_dirty_target_rowcount_invalid")
 
-        return _run_repository_write(self.conn, commit, _mark_done)
+        return _mark_done()
 
     def delete_claimed_targets(self, keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         records = _key_records(keys)
@@ -325,7 +327,11 @@ class NewsProjectionDirtyTargetRepository:
             _key_params(records),
         )
         rows = cursor.fetchall()
-        deleted_count = _returned_rowcount(cursor, rows)
+        deleted_count = expect_mutation_count(
+            cursor,
+            expected=len(rows),
+            error_code="news_projection_dirty_target_rowcount_invalid",
+        )
         return [dict(row) for row in rows], deleted_count
 
     def mark_error(
@@ -336,14 +342,13 @@ class NewsProjectionDirtyTargetRepository:
         retry_ms: int,
         now_ms: int,
         count_attempt: bool = True,
-        commit: bool = True,
     ) -> int:
         records = _key_records(keys)
         if not records:
             return 0
-        parsed_retry_ms = _required_positive_int(
+        parsed_retry_ms = require_positive_int(
             retry_ms,
-            "news_projection_dirty_target_retry_ms_required",
+            error_code="news_projection_dirty_target_retry_ms_required",
         )
         params: dict[str, Any] = {
             **_key_params(records),
@@ -394,9 +399,9 @@ class NewsProjectionDirtyTargetRepository:
                 """,
                 params,
             )
-            return _cursor_rowcount(cursor)
+            return mutation_count(cursor, error_code="news_projection_dirty_target_rowcount_invalid")
 
-        return _run_repository_write(self.conn, commit, _mark_error)
+        return _mark_error()
 
     def terminalize_targets(
         self,
@@ -408,7 +413,6 @@ class NewsProjectionDirtyTargetRepository:
         now_ms: int,
         semantic_payload_hash: str | None = None,
         terminal_attempt_count: int | None = None,
-        commit: bool = True,
     ) -> int:
         records = _key_records(keys)
         if not records:
@@ -432,11 +436,10 @@ class NewsProjectionDirtyTargetRepository:
                         terminal_attempt_count if terminal_attempt_count is not None else record["attempt_count"]
                     ),
                     payload_hash=str(semantic_payload_hash or record["payload_hash"]),
-                    commit=False,
                 )
             return deleted_count
 
-        return _run_repository_write(self.conn, commit, _terminalize_targets)
+        return _terminalize_targets()
 
     def queue_depth(
         self,
@@ -532,8 +535,7 @@ def _dirty_record_text(row: Mapping[str, Any], *, field: str) -> str:
 
 
 def _dirty_record_window(row: Mapping[str, Any], *, projection_name: str) -> str:
-    if projection_name == "source_quality":
-        return _dirty_record_text(row, field="window").lower()
+    del projection_name
     if "window" not in row:
         return ""
     if row["window"] != "":
@@ -542,12 +544,11 @@ def _dirty_record_window(row: Mapping[str, Any], *, projection_name: str) -> str
 
 
 def _requires_source_watermark(*, projection_name: str, target_kind: str, window: str) -> bool:
-    if projection_name in {"page", "brief_input"}:
+    del window
+    if projection_name == "page":
         return target_kind == "news_item"
     if projection_name == "story_brief":
         return target_kind == "story"
-    if projection_name == "source_quality":
-        return target_kind == "source" and window != "_refresh"
     return False
 
 
@@ -587,9 +588,7 @@ def _key_records(keys: Iterable[Mapping[str, Any]]) -> list[dict[str, Any]]:
         window = _completion_window_text(key)
         _validate_projection_name(projection_name)
         _validate_projection_target(projection_name=projection_name, target_kind=target_kind)
-        if projection_name == "source_quality" and not window.strip():
-            raise ValueError("news source_quality dirty target completion requires window from claim_due")
-        if projection_name != "source_quality" and window != "":
+        if window != "":
             raise ValueError("news projection dirty target completion requires empty window from claim_due")
         payload_hash = _completion_payload_hash(key)
         lease_owner = _completion_lease_owner(key)
@@ -677,49 +676,11 @@ def _validate_projection_name(projection_name: str) -> None:
 
 
 def _validate_projection_target(*, projection_name: str, target_kind: str) -> None:
-    if projection_name in {"page", "brief_input"} and target_kind == "news_item":
-        return
-    if projection_name == "source_quality" and target_kind == "source":
+    if projection_name == "page" and target_kind == "news_item":
         return
     if projection_name == "story_brief" and target_kind == "story":
         return
     raise ValueError(f"unsupported news projection target: {projection_name}/{target_kind}")
-
-
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("news_projection_dirty_target_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("news_projection_dirty_target_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("news_projection_dirty_target_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("news_projection_dirty_target_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("news_projection_dirty_target_rowcount_invalid")
-    return rowcount
-
-
-def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
-    count = _cursor_rowcount(cursor)
-    if count != len(rows):
-        raise TypeError("news_projection_dirty_target_rowcount_invalid")
-    return count
 
 
 def _key_params(records: list[dict[str, Any]]) -> dict[str, list[Any]]:
@@ -779,18 +740,6 @@ def _required_dirty_due_at_ms(value: Any) -> int:
     if not isinstance(value, int) or isinstance(value, bool) or value <= 0:
         raise ValueError("news_projection_dirty_target_due_at_ms_required")
     return value
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _payload_hash(payload: Mapping[str, Any]) -> str:

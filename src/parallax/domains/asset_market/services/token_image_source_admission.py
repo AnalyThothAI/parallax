@@ -261,7 +261,6 @@ def admit_token_image_sources(
             enqueues,
             reason=DIRTY_REASON,
             now_ms=int(now_ms),
-            commit=False,
         )
         counts["admitted"] = int(enqueue_result.get("targets") or 0)
 

@@ -5,8 +5,6 @@ import time
 from collections.abc import Callable, Iterable, Mapping
 from typing import Any
 
-from parallax.app.runtime.worker_base import WorkerBase
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION
 from parallax.domains.news_intel.runtime.news_projection_work import (
     PAGE_PROJECTION,
@@ -14,23 +12,23 @@ from parallax.domains.news_intel.runtime.news_projection_work import (
     mark_work_done,
     mark_work_error,
 )
-from parallax.domains.news_intel.runtime.news_runtime_settings import positive_worker_setting_int
 from parallax.domains.news_intel.services.news_page_projection import build_news_page_row
+from parallax.platform.config.settings import NewsPageProjectionWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class NewsPageProjectionWorker(WorkerBase):
     def __init__(
         self,
         *,
-        settings: Any,
+        settings: NewsPageProjectionWorkerSettings,
         db: Any,
         telemetry: Any,
         wake_waiter: Any | None = None,
         clock_ms: Callable[[], int] | None = None,
         name: str = "news_page_projection",
     ) -> None:
-        if settings is None:
-            raise RuntimeError("news_page_projection_settings_required")
         if db is None:
             raise RuntimeError("news_page_projection_db_required")
         super().__init__(
@@ -67,7 +65,6 @@ class NewsPageProjectionWorker(WorkerBase):
                 lease_ms=lease_ms,
                 now_ms=now,
                 lease_owner=self.name,
-                commit=False,
             )
             if not claimed:
                 return WorkerResult(
@@ -86,7 +83,7 @@ class NewsPageProjectionWorker(WorkerBase):
             try:
                 claimed_ids = _required_page_claim_news_item_ids(claimed)
                 with repos.transaction():
-                    payloads = repos.news.load_story_projection_payloads_for_items(news_item_ids=claimed_ids)
+                    payloads = repos.news_pages.load_story_projection_payloads_for_items(news_item_ids=claimed_ids)
                     story_keys: list[str] = []
                     member_item_ids: list[str] = []
                     for payload in payloads:
@@ -116,7 +113,6 @@ class NewsPageProjectionWorker(WorkerBase):
                     now_ms=now,
                     max_attempts=self._max_attempts(),
                     worker_name=self.name,
-                    commit=False,
                 )
                 return WorkerResult(
                     failed=len(claimed),
@@ -137,19 +133,17 @@ class NewsPageProjectionWorker(WorkerBase):
                     orphaned_claim_ids = [
                         news_item_id for news_item_id in claimed_ids if news_item_id not in projected_member_ids
                     ]
-                    replacement = repos.news.replace_page_rows_for_story_targets(
+                    replacement = repos.news_pages.replace_page_rows_for_story_targets(
                         news_item_ids=[
                             news_item_id for news_item_id in claimed_ids if news_item_id in projected_member_ids
                         ],
                         story_keys=story_keys,
                         rows=rows,
-                        commit=False,
                     )
                     if orphaned_claim_ids:
-                        orphan_replacement = repos.news.replace_page_rows_for_items(
+                        orphan_replacement = repos.news_pages.replace_page_rows_for_items(
                             news_item_ids=orphaned_claim_ids,
                             rows=[],
-                            commit=False,
                         )
                         replacement["deleted"] = int(replacement.get("deleted", 0)) + int(
                             orphan_replacement.get("deleted", 0)
@@ -165,7 +159,6 @@ class NewsPageProjectionWorker(WorkerBase):
                     now_ms=now,
                     max_attempts=self._max_attempts(),
                     worker_name=self.name,
-                    commit=False,
                 )
                 return WorkerResult(
                     failed=len(claimed),
@@ -180,7 +173,7 @@ class NewsPageProjectionWorker(WorkerBase):
                     ),
                 )
 
-            mark_work_done(repos, claimed, now_ms=now, commit=False)
+            mark_work_done(repos, claimed, now_ms=now)
 
         return WorkerResult(
             processed=len(claimed_ids),
@@ -202,16 +195,16 @@ class NewsPageProjectionWorker(WorkerBase):
         )
 
     def _batch_size(self) -> int:
-        return positive_worker_setting_int(self.settings, "batch_size", worker_name=self.name)
+        return self.settings.batch_size
 
     def _lease_ms(self) -> int:
-        return positive_worker_setting_int(self.settings, "lease_ms", worker_name=self.name)
+        return self.settings.lease_ms
 
     def _retry_ms(self) -> int:
-        return positive_worker_setting_int(self.settings, "retry_ms", worker_name=self.name)
+        return self.settings.retry_ms
 
     def _max_attempts(self) -> int:
-        return positive_worker_setting_int(self.settings, "max_attempts", worker_name=self.name)
+        return self.settings.max_attempts
 
 
 def _projection_parts(

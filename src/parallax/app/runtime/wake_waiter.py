@@ -10,6 +10,8 @@ from typing import Any
 
 from loguru import logger
 
+from parallax.platform.validation import require_nonnegative_float
+
 _CHANNEL_RE = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
 _NOTIFY_WAIT_SLICE_SECONDS = 0.25
 
@@ -46,7 +48,10 @@ class WakeWaiter:
             executor.shutdown(wait=False, cancel_futures=True)
 
     def wait(self, timeout: float) -> bool:
-        timeout_seconds = _nonnegative_timeout_seconds(timeout)
+        timeout_seconds = require_nonnegative_float(
+            timeout,
+            error_code="wake_waiter_timeout_seconds_required",
+        )
         deadline = time.monotonic() + timeout_seconds
         retry_after_failure = False
         while True:
@@ -98,12 +103,6 @@ def _normalize_channel(channel: str) -> str:
     if not _CHANNEL_RE.fullmatch(normalized):
         raise ValueError(f"invalid_wake_channel:{normalized}")
     return normalized
-
-
-def _nonnegative_timeout_seconds(value: Any) -> float:
-    if isinstance(value, bool) or not isinstance(value, int | float) or value < 0:
-        raise ValueError("wake_waiter_timeout_seconds_required")
-    return float(value)
 
 
 def _remaining_wait_seconds(value: float) -> float:

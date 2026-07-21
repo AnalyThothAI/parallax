@@ -50,6 +50,45 @@ def token_radar_max_market_tick_observed_at_ms(conn: Any) -> int | None:
     return int(value) if value is not None else None
 
 
+def token_radar_publication_status(conn: Any, *, projection_version: str) -> dict[str, Any]:
+    version = str(projection_version).strip()
+    if not version:
+        raise ValueError("token_radar_projection_version_required")
+    states = [
+        dict(row)
+        for row in conn.execute(
+            """
+            SELECT *
+            FROM token_radar_publication_state
+            WHERE projection_version = %s
+            ORDER BY "window" ASC, scope ASC, venue ASC
+            """,
+            (version,),
+        ).fetchall()
+    ]
+    statuses = [str(state["latest_attempt_status"]) for state in states]
+    ready_count = statuses.count("ready")
+    failed_count = statuses.count("failed")
+    if len(statuses) != ready_count + failed_count:
+        raise ValueError("token_radar_publication_status_invalid")
+    if not states:
+        status = "missing"
+    elif failed_count == 0:
+        status = "ready"
+    elif ready_count > 0 or any(state.get("current_generation_id") is not None for state in states):
+        status = "degraded"
+    else:
+        status = "failed"
+    return {
+        "projection_version": version,
+        "status": status,
+        "state_count": len(states),
+        "ready_count": ready_count,
+        "failed_count": failed_count,
+        "publication_states": states,
+    }
+
+
 def token_profile_image_repair_targets(conn: Any, *, limit: int) -> list[dict[str, Any]]:
     rows = conn.execute(
         """
@@ -94,5 +133,6 @@ __all__ = [
     "token_profile_image_repair_targets",
     "token_radar_max_market_tick_observed_at_ms",
     "token_radar_max_resolution_ms",
+    "token_radar_publication_status",
     "token_radar_source_count",
 ]

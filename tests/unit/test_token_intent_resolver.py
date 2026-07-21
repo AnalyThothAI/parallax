@@ -201,6 +201,6 @@ class FakeResolutions:
     def __init__(self):
         self.items = []
 
-    def insert_resolution(self, decision, *, commit=True):
+    def insert_resolution(self, decision):
         self.items.append(decision)
         return {}

@@ -1,11 +1,12 @@
 from __future__ import annotations
 
-from collections.abc import Callable, Iterable, Mapping
-from contextlib import AbstractContextManager
-from typing import Any, cast
+from collections.abc import Iterable, Mapping
+from typing import Any
 
 from parallax.platform.current_read_model_payload_hash import stable_dirty_target_payload_hash
 from parallax.platform.db.queue_terminal import terminalize_source_row
+from parallax.platform.db.write_contract import expect_mutation_count, mutation_count
+from parallax.platform.validation import require_nonnegative_int, require_positive_int
 
 
 class TokenProfileCurrentDirtyTargetRepository:
@@ -19,7 +20,6 @@ class TokenProfileCurrentDirtyTargetRepository:
         reason: str,
         now_ms: int,
         due_at_ms: int | None = None,
-        commit: bool = True,
     ) -> dict[str, int]:
         records = _target_records(
             targets,
@@ -29,123 +29,120 @@ class TokenProfileCurrentDirtyTargetRepository:
         if not records:
             return {"targets": 0}
 
-        def _write() -> dict[str, int]:
-            cursor = self.conn.execute(
-                """
-                WITH incoming AS (
-                  SELECT *
-                  FROM unnest(
-                    %(target_types)s::text[],
-                    %(target_ids)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(source_watermark_ms_values)s::bigint[],
-                    %(priorities)s::integer[],
-                    %(due_at_ms_values)s::bigint[]
-                  ) AS incoming(
-                    target_type,
-                    target_id,
-                    payload_hash,
-                    source_watermark_ms,
-                    priority,
-                    due_at_ms
-                  )
-                )
-                INSERT INTO token_profile_current_dirty_targets(
-                  target_type,
-                  target_id,
-                  dirty_reason,
-                  payload_hash,
-                  source_watermark_ms,
-                  priority,
-                  due_at_ms,
-                  leased_until_ms,
-                  lease_owner,
-                  attempt_count,
-                  last_error,
-                  first_dirty_at_ms,
-                  updated_at_ms
-                )
-                SELECT
-                  incoming.target_type,
-                  incoming.target_id,
-                  %(dirty_reason)s,
-                  incoming.payload_hash,
-                  incoming.source_watermark_ms,
-                  incoming.priority,
-                  incoming.due_at_ms,
-                  NULL,
-                  NULL,
-                  0,
-                  NULL,
-                  %(now_ms)s,
-                  %(now_ms)s
-                FROM incoming
-                ON CONFLICT(target_type, target_id) DO UPDATE SET
-                  dirty_reason = CASE
-                    WHEN EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
-                      THEN EXCLUDED.dirty_reason
-                    ELSE token_profile_current_dirty_targets.dirty_reason
-                  END,
-                  payload_hash = CASE
-                    WHEN EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
-                      THEN EXCLUDED.payload_hash
-                    ELSE token_profile_current_dirty_targets.payload_hash
-                  END,
-                  source_watermark_ms = GREATEST(
-                    token_profile_current_dirty_targets.source_watermark_ms,
-                    EXCLUDED.source_watermark_ms
-                  ),
-                  priority = LEAST(token_profile_current_dirty_targets.priority, EXCLUDED.priority),
-                  due_at_ms = LEAST(token_profile_current_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
-                  leased_until_ms = CASE
-                    WHEN token_profile_current_dirty_targets.leased_until_ms IS NOT NULL
-                      AND (
-                        EXCLUDED.source_watermark_ms > token_profile_current_dirty_targets.source_watermark_ms
-                        OR (
-                          EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
-                          AND (
-                            token_profile_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                            OR token_profile_current_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
-                          )
-                        )
-                      )
-                      THEN NULL
-                    ELSE token_profile_current_dirty_targets.leased_until_ms
-                  END,
-                  lease_owner = CASE
-                    WHEN token_profile_current_dirty_targets.leased_until_ms IS NOT NULL
-                      AND (
-                        EXCLUDED.source_watermark_ms > token_profile_current_dirty_targets.source_watermark_ms
-                        OR (
-                          EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
-                          AND (
-                            token_profile_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                            OR token_profile_current_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
-                          )
-                        )
-                      )
-                      THEN NULL
-                    ELSE token_profile_current_dirty_targets.lease_owner
-                  END,
-                  attempt_count = CASE
-                    WHEN EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
-                    AND token_profile_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
-                      THEN 0
-                    ELSE token_profile_current_dirty_targets.attempt_count
-                  END,
-                  last_error = NULL,
-                  first_dirty_at_ms = token_profile_current_dirty_targets.first_dirty_at_ms,
-                  updated_at_ms = EXCLUDED.updated_at_ms
-                """,
-                {
-                    **_target_params(records),
-                    "dirty_reason": str(reason),
-                    "now_ms": int(now_ms),
-                },
+        cursor = self.conn.execute(
+            """
+            WITH incoming AS (
+              SELECT *
+              FROM unnest(
+                %(target_types)s::text[],
+                %(target_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(source_watermark_ms_values)s::bigint[],
+                %(priorities)s::integer[],
+                %(due_at_ms_values)s::bigint[]
+              ) AS incoming(
+                target_type,
+                target_id,
+                payload_hash,
+                source_watermark_ms,
+                priority,
+                due_at_ms
+              )
             )
-            return {"targets": _cursor_rowcount(cursor)}
-
-        return _run_repository_write(self.conn, commit, _write)
+            INSERT INTO token_profile_current_dirty_targets(
+              target_type,
+              target_id,
+              dirty_reason,
+              payload_hash,
+              source_watermark_ms,
+              priority,
+              due_at_ms,
+              leased_until_ms,
+              lease_owner,
+              attempt_count,
+              last_error,
+              first_dirty_at_ms,
+              updated_at_ms
+            )
+            SELECT
+              incoming.target_type,
+              incoming.target_id,
+              %(dirty_reason)s,
+              incoming.payload_hash,
+              incoming.source_watermark_ms,
+              incoming.priority,
+              incoming.due_at_ms,
+              NULL,
+              NULL,
+              0,
+              NULL,
+              %(now_ms)s,
+              %(now_ms)s
+            FROM incoming
+            ON CONFLICT(target_type, target_id) DO UPDATE SET
+              dirty_reason = CASE
+                WHEN EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
+                  THEN EXCLUDED.dirty_reason
+                ELSE token_profile_current_dirty_targets.dirty_reason
+              END,
+              payload_hash = CASE
+                WHEN EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
+                  THEN EXCLUDED.payload_hash
+                ELSE token_profile_current_dirty_targets.payload_hash
+              END,
+              source_watermark_ms = GREATEST(
+                token_profile_current_dirty_targets.source_watermark_ms,
+                EXCLUDED.source_watermark_ms
+              ),
+              priority = LEAST(token_profile_current_dirty_targets.priority, EXCLUDED.priority),
+              due_at_ms = LEAST(token_profile_current_dirty_targets.due_at_ms, EXCLUDED.due_at_ms),
+              leased_until_ms = CASE
+                WHEN token_profile_current_dirty_targets.leased_until_ms IS NOT NULL
+                  AND (
+                    EXCLUDED.source_watermark_ms > token_profile_current_dirty_targets.source_watermark_ms
+                    OR (
+                      EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
+                      AND (
+                        token_profile_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                        OR token_profile_current_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+                      )
+                    )
+                  )
+                  THEN NULL
+                ELSE token_profile_current_dirty_targets.leased_until_ms
+              END,
+              lease_owner = CASE
+                WHEN token_profile_current_dirty_targets.leased_until_ms IS NOT NULL
+                  AND (
+                    EXCLUDED.source_watermark_ms > token_profile_current_dirty_targets.source_watermark_ms
+                    OR (
+                      EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
+                      AND (
+                        token_profile_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                        OR token_profile_current_dirty_targets.dirty_reason IS DISTINCT FROM EXCLUDED.dirty_reason
+                      )
+                    )
+                  )
+                  THEN NULL
+                ELSE token_profile_current_dirty_targets.lease_owner
+              END,
+              attempt_count = CASE
+                WHEN EXCLUDED.source_watermark_ms >= token_profile_current_dirty_targets.source_watermark_ms
+                AND token_profile_current_dirty_targets.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
+                  THEN 0
+                ELSE token_profile_current_dirty_targets.attempt_count
+              END,
+              last_error = NULL,
+              first_dirty_at_ms = token_profile_current_dirty_targets.first_dirty_at_ms,
+              updated_at_ms = EXCLUDED.updated_at_ms
+            """,
+            {
+                **_target_params(records),
+                "dirty_reason": str(reason),
+                "now_ms": int(now_ms),
+            },
+        )
+        return {"targets": mutation_count(cursor, error_code="token_profile_current_dirty_target_rowcount_invalid")}
 
     def claim_due(
         self,
@@ -154,100 +151,96 @@ class TokenProfileCurrentDirtyTargetRepository:
         limit: int,
         lease_owner: str,
         lease_ms: int,
-        commit: bool = True,
     ) -> list[dict[str, Any]]:
-        parsed_limit = _required_nonnegative_int(
+        parsed_limit = require_nonnegative_int(
             limit,
-            "token_profile_current_dirty_target_claim_limit_required",
+            error_code="token_profile_current_dirty_target_claim_limit_required",
         )
-        parsed_lease_ms = _required_positive_int(
+        parsed_lease_ms = require_positive_int(
             lease_ms,
-            "token_profile_current_dirty_target_claim_lease_ms_required",
+            error_code="token_profile_current_dirty_target_claim_lease_ms_required",
         )
 
-        def _write() -> list[dict[str, Any]]:
-            cursor = self.conn.execute(
-                """
-                WITH due AS (
-                  SELECT target_type, target_id
-                  FROM token_profile_current_dirty_targets
-                  WHERE due_at_ms <= %(now_ms)s
-                    AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
-                  ORDER BY priority ASC,
-                           due_at_ms ASC,
-                           updated_at_ms ASC,
-                           target_type ASC,
-                           target_id ASC
-                  LIMIT %(limit)s
-                  FOR UPDATE SKIP LOCKED
-                )
-                UPDATE token_profile_current_dirty_targets
-                SET leased_until_ms = %(leased_until_ms)s,
-                    lease_owner = %(lease_owner)s,
-                    attempt_count = token_profile_current_dirty_targets.attempt_count + 1,
-                    last_error = NULL,
-                    updated_at_ms = %(now_ms)s
-                FROM due
-                WHERE token_profile_current_dirty_targets.target_type = due.target_type
-                  AND token_profile_current_dirty_targets.target_id = due.target_id
-                RETURNING token_profile_current_dirty_targets.*
-                """,
-                {
-                    "now_ms": int(now_ms),
-                    "leased_until_ms": int(now_ms) + parsed_lease_ms,
-                    "lease_owner": str(lease_owner),
-                    "limit": parsed_limit,
-                },
+        cursor = self.conn.execute(
+            """
+            WITH due AS (
+              SELECT target_type, target_id
+              FROM token_profile_current_dirty_targets
+              WHERE due_at_ms <= %(now_ms)s
+                AND (leased_until_ms IS NULL OR leased_until_ms <= %(now_ms)s)
+              ORDER BY priority ASC,
+                       due_at_ms ASC,
+                       updated_at_ms ASC,
+                       target_type ASC,
+                       target_id ASC
+              LIMIT %(limit)s
+              FOR UPDATE SKIP LOCKED
             )
-            rows = cursor.fetchall()
-            _returned_rowcount(cursor, rows)
-            return [dict(row) for row in rows]
-
-        return _run_repository_write(self.conn, commit, _write)
+            UPDATE token_profile_current_dirty_targets
+            SET leased_until_ms = %(leased_until_ms)s,
+                lease_owner = %(lease_owner)s,
+                attempt_count = token_profile_current_dirty_targets.attempt_count + 1,
+                last_error = NULL,
+                updated_at_ms = %(now_ms)s
+            FROM due
+            WHERE token_profile_current_dirty_targets.target_type = due.target_type
+              AND token_profile_current_dirty_targets.target_id = due.target_id
+            RETURNING token_profile_current_dirty_targets.*
+            """,
+            {
+                "now_ms": int(now_ms),
+                "leased_until_ms": int(now_ms) + parsed_lease_ms,
+                "lease_owner": str(lease_owner),
+                "limit": parsed_limit,
+            },
+        )
+        rows = cursor.fetchall()
+        expect_mutation_count(
+            cursor,
+            expected=len(rows),
+            error_code="token_profile_current_dirty_target_rowcount_invalid",
+        )
+        return [dict(row) for row in rows]
 
     def mark_done(
         self,
         claims: Iterable[Mapping[str, Any]],
         *,
         now_ms: int,
-        commit: bool = True,
     ) -> int:
         records = _claim_records(claims)
         if not records:
             return 0
 
-        def _write() -> int:
-            cursor = self.conn.execute(
-                """
-                WITH done AS (
-                  SELECT *
-                  FROM unnest(
-                    %(target_types)s::text[],
-                    %(target_ids)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(lease_owners)s::text[],
-                    %(attempt_counts)s::bigint[]
-                  ) AS done(
-                    target_type,
-                    target_id,
-                    payload_hash,
-                    lease_owner,
-                    attempt_count
-                  )
-                )
-                DELETE FROM token_profile_current_dirty_targets queue
-                USING done
-                WHERE queue.target_type = done.target_type
-                  AND queue.target_id = done.target_id
-                  AND queue.payload_hash = done.payload_hash
-                  AND queue.lease_owner = done.lease_owner
-                  AND queue.attempt_count = done.attempt_count
-                """,
-                _claim_params(records),
+        cursor = self.conn.execute(
+            """
+            WITH done AS (
+              SELECT *
+              FROM unnest(
+                %(target_types)s::text[],
+                %(target_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS done(
+                target_type,
+                target_id,
+                payload_hash,
+                lease_owner,
+                attempt_count
+              )
             )
-            return _cursor_rowcount(cursor)
-
-        return _run_repository_write(self.conn, commit, _write)
+            DELETE FROM token_profile_current_dirty_targets queue
+            USING done
+            WHERE queue.target_type = done.target_type
+              AND queue.target_id = done.target_id
+              AND queue.payload_hash = done.payload_hash
+              AND queue.lease_owner = done.lease_owner
+              AND queue.attempt_count = done.attempt_count
+            """,
+            _claim_params(records),
+        )
+        return mutation_count(cursor, error_code="token_profile_current_dirty_target_rowcount_invalid")
 
     def mark_error(
         self,
@@ -258,18 +251,17 @@ class TokenProfileCurrentDirtyTargetRepository:
         retry_ms: int,
         max_attempts: int,
         worker_name: str,
-        commit: bool = True,
     ) -> int:
         records = _claim_records(claims)
         if not records:
             return 0
-        parsed_retry_ms = _required_positive_int(
+        parsed_retry_ms = require_positive_int(
             retry_ms,
-            "token_profile_current_dirty_target_retry_ms_required",
+            error_code="token_profile_current_dirty_target_retry_ms_required",
         )
-        parsed_max_attempts = _required_positive_int(
+        parsed_max_attempts = require_positive_int(
             max_attempts,
-            "token_profile_current_dirty_target_max_attempts_required",
+            error_code="token_profile_current_dirty_target_max_attempts_required",
         )
         parsed_worker_name = _required_text(worker_name, "token_profile_current_dirty_target_worker_name_required")
         retry_records = [record for record in records if int(record["attempt_count"]) < parsed_max_attempts]
@@ -281,65 +273,61 @@ class TokenProfileCurrentDirtyTargetRepository:
             "last_error": str(error)[:2048],
         }
 
-        def _write() -> int:
-            changed = 0
-            if retry_records:
-                cursor = self.conn.execute(
-                    """
-                WITH failed AS (
-                  SELECT *
-                  FROM unnest(
-                    %(target_types)s::text[],
-                    %(target_ids)s::text[],
-                    %(payload_hashes)s::text[],
-                    %(lease_owners)s::text[],
-                    %(attempt_counts)s::bigint[]
-                  ) AS failed(
-                    target_type,
-                    target_id,
-                    payload_hash,
-                    lease_owner,
-                    attempt_count
-                  )
+        changed = 0
+        if retry_records:
+            cursor = self.conn.execute(
+                """
+            WITH failed AS (
+              SELECT *
+              FROM unnest(
+                %(target_types)s::text[],
+                %(target_ids)s::text[],
+                %(payload_hashes)s::text[],
+                %(lease_owners)s::text[],
+                %(attempt_counts)s::bigint[]
+              ) AS failed(
+                target_type,
+                target_id,
+                payload_hash,
+                lease_owner,
+                attempt_count
+              )
+            )
+            UPDATE token_profile_current_dirty_targets queue
+            SET due_at_ms = %(due_at_ms)s,
+                leased_until_ms = NULL,
+                lease_owner = NULL,
+                last_error = %(last_error)s,
+                updated_at_ms = %(now_ms)s
+            FROM failed
+            WHERE queue.target_type = failed.target_type
+              AND queue.target_id = failed.target_id
+              AND queue.payload_hash = failed.payload_hash
+              AND queue.lease_owner = failed.lease_owner
+              AND queue.attempt_count = failed.attempt_count
+                """,
+                params,
+            )
+            changed += mutation_count(cursor, error_code="token_profile_current_dirty_target_rowcount_invalid")
+        if exhausted_records:
+            deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
+            changed += deleted_count
+            for row in deleted_rows:
+                terminalize_source_row(
+                    self.conn,
+                    worker_name=parsed_worker_name,
+                    source_table="token_profile_current_dirty_targets",
+                    target_key=f"{row['target_type']}:{row['target_id']}",
+                    source_row=row,
+                    final_status="terminal",
+                    final_reason=f"retry_budget_exhausted:{str(error)[:512]}",
+                    now_ms=int(now_ms),
+                    attempt_count=int(row["attempt_count"]),
+                    payload_hash=str(row["payload_hash"]),
+                    first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
+                    last_attempted_at_ms=int(now_ms),
                 )
-                UPDATE token_profile_current_dirty_targets queue
-                SET due_at_ms = %(due_at_ms)s,
-                    leased_until_ms = NULL,
-                    lease_owner = NULL,
-                    last_error = %(last_error)s,
-                    updated_at_ms = %(now_ms)s
-                FROM failed
-                WHERE queue.target_type = failed.target_type
-                  AND queue.target_id = failed.target_id
-                  AND queue.payload_hash = failed.payload_hash
-                  AND queue.lease_owner = failed.lease_owner
-                  AND queue.attempt_count = failed.attempt_count
-                    """,
-                    params,
-                )
-                changed += _cursor_rowcount(cursor)
-            if exhausted_records:
-                deleted_rows, deleted_count = self._delete_claims_returning(exhausted_records)
-                changed += deleted_count
-                for row in deleted_rows:
-                    terminalize_source_row(
-                        self.conn,
-                        worker_name=parsed_worker_name,
-                        source_table="token_profile_current_dirty_targets",
-                        target_key=f"{row['target_type']}:{row['target_id']}",
-                        source_row=row,
-                        final_status="terminal",
-                        final_reason=f"retry_budget_exhausted:{str(error)[:512]}",
-                        now_ms=int(now_ms),
-                        attempt_count=int(row["attempt_count"]),
-                        payload_hash=str(row["payload_hash"]),
-                        first_seen_at_ms=_optional_int(row.get("first_dirty_at_ms")),
-                        last_attempted_at_ms=int(now_ms),
-                        commit=False,
-                    )
-            return changed
-
-        return _run_repository_write(self.conn, commit, _write)
+        return changed
 
     def _delete_claims_returning(self, records: list[dict[str, Any]]) -> tuple[list[dict[str, Any]], int]:
         cursor = self.conn.execute(
@@ -366,7 +354,11 @@ class TokenProfileCurrentDirtyTargetRepository:
             _claim_params(records),
         )
         rows = cursor.fetchall()
-        return [dict(row) for row in rows], _returned_rowcount(cursor, rows)
+        return [dict(row) for row in rows], expect_mutation_count(
+            cursor,
+            expected=len(rows),
+            error_code="token_profile_current_dirty_target_rowcount_invalid",
+        )
 
     def queue_depth(self, *, now_ms: int) -> int:
         row = self.conn.execute(
@@ -471,9 +463,9 @@ def _completion_attempt_count(claim: Mapping[str, Any]) -> int:
         value = claim["attempt_count"]
     except KeyError as exc:
         raise ValueError("token profile current dirty target completion requires attempt_count from claim_due") from exc
-    return _required_positive_int(
+    return require_positive_int(
         value,
-        "token profile current dirty target completion requires attempt_count from claim_due",
+        error_code="token profile current dirty target completion requires attempt_count from claim_due",
     )
 
 
@@ -540,48 +532,6 @@ def _payload_hash(payload: Mapping[str, Any]) -> str:
     return stable_dirty_target_payload_hash(payload)
 
 
-def _transaction(conn: Any) -> AbstractContextManager[Any]:
-    try:
-        transaction = conn.transaction
-    except AttributeError as exc:
-        raise RuntimeError("token_profile_current_dirty_target_transaction_required") from exc
-    if not callable(transaction):
-        raise RuntimeError("token_profile_current_dirty_target_transaction_required")
-    return cast(AbstractContextManager[Any], transaction())
-
-
-def _run_repository_write[T](conn: Any, commit: bool, write: Callable[[], T]) -> T:
-    if commit:
-        with _transaction(conn):
-            return write()
-    return write()
-
-
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("token_profile_current_dirty_target_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("token_profile_current_dirty_target_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("token_profile_current_dirty_target_rowcount_invalid")
-    return int(rowcount)
-
-
-def _returned_rowcount(cursor: Any, rows: list[Any]) -> int:
-    rowcount = _cursor_rowcount(cursor)
-    if rowcount != len(rows):
-        raise TypeError("token_profile_current_dirty_target_rowcount_invalid")
-    return rowcount
-
-
-def _required_positive_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError(error_code)
-    return int(value)
-
-
 def _required_text(value: Any, error_code: str) -> str:
     text = str(value or "").strip()
     if not text:
@@ -591,9 +541,3 @@ def _required_text(value: Any, error_code: str) -> str:
 
 def _optional_int(value: Any) -> int | None:
     return None if value is None else int(value)
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int) or value < 0:
-        raise ValueError(error_code)
-    return int(value)

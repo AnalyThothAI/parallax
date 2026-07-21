@@ -3,6 +3,9 @@ from __future__ import annotations
 from typing import Any
 
 from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
+from parallax.platform.validation import require_nonnegative_int
+
+from .token_radar_narrative_admission import narrative_admission_from_current_row
 
 WINDOW_MS = {
     "5m": 5 * 60 * 1000,
@@ -26,7 +29,7 @@ class AssetFlowService:
         venue: str,
         now_ms: int | None = None,
     ) -> dict[str, Any]:
-        parsed_limit = _required_nonnegative_int(limit, "asset_flow_limit_required")
+        parsed_limit = require_nonnegative_int(limit, error_code="asset_flow_limit_required")
         publication_state = self.token_radar.latest_publication_state(
             projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             windows=(window,),
@@ -61,7 +64,7 @@ class AssetFlowService:
         row_computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
         published_at_ms = (publication_state or {}).get("current_published_at_ms")
         computed_at_ms = published_at_ms if published_at_ms is not None else row_computed_at_ms
-        public_rows = [_public_row(row) for row in rows]
+        public_rows = [_public_row(row, window=window) for row in rows]
         _hydrate_profiles(public_rows, profiles=self.profiles)
         unresolved = _unresolved_diagnostics(rows)
         targetful_rows = [row for row in public_rows if _mapping(row.get("target")).get("target_id")]
@@ -102,15 +105,16 @@ class AssetFlowService:
         }
 
 
-def _public_row(row: dict[str, Any]) -> dict[str, Any]:
+def _public_row(row: dict[str, Any], *, window: str) -> dict[str, Any]:
     factor_snapshot = _mapping(row.get("factor_snapshot_json"))
     score = _composite_from_snapshot(factor_snapshot)
     if row.get("rank_score") is not None:
         score["rank_score"] = _float_or_none(row.get("rank_score"))
+    target = _target_from_snapshot(factor_snapshot)
     return {
         "_lane": row.get("lane"),
         "intent": row.get("intent_json") or {},
-        "target": _target_from_snapshot(factor_snapshot),
+        "target": target,
         "attention": _attention_from_snapshot(factor_snapshot),
         "market": _market_from_snapshot(factor_snapshot),
         "radar": _radar_from_row(row),
@@ -120,6 +124,9 @@ def _public_row(row: dict[str, Any]) -> dict[str, Any]:
             "status": row.get("quality_status"),
             "degraded_reasons": _string_list(row.get("degraded_reasons_json")),
         },
+        "narrative_admission": (
+            narrative_admission_from_current_row(row, window=window) if target.get("target_id") else None
+        ),
         "factor_snapshot": factor_snapshot,
         "data_health": row.get("data_health_json") or {},
         "source_event_ids": row.get("source_event_ids_json") or [],
@@ -258,14 +265,6 @@ def _pending_quality(reason: str) -> tuple[str, list[str]]:
     if reason == "projection_window_failed":
         return "failed", [reason]
     return "insufficient", [reason]
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _string_list(value: Any) -> list[str]:

@@ -2,7 +2,7 @@ from __future__ import annotations
 
 from dataclasses import dataclass
 
-from parallax.domains.macro_intel._constants import MACRO_EVENT_CONCEPTS
+from parallax.domains.macro_intel._constants import MACRO_EVENT_CONCEPTS, MACRO_MODULE_IDS
 
 
 class UnsupportedMacroModuleError(ValueError):
@@ -37,26 +37,6 @@ class MacroModuleConfig:
     chart_specs: tuple[MacroChartSpec, ...]
     table_specs: tuple[MacroTableSpec, ...]
     related_routes: tuple[str, ...]
-
-
-MACRO_MODULE_IDS = (
-    "overview",
-    "assets",
-    "assets/equities",
-    "assets/bonds",
-    "assets/commodities",
-    "assets/fx",
-    "assets/crypto",
-    "rates/fed-funds",
-    "rates/yield-curve",
-    "rates/real-rates",
-    "liquidity/rrp-tga",
-    "economy/gdp",
-    "economy/employment",
-    "economy/inflation",
-    "volatility/vix",
-    "credit/stress",
-)
 
 
 _MODULE_CONFIGS = {
@@ -892,6 +872,18 @@ _MODULE_CONFIGS = {
 }
 
 
+MACRO_MODULE_CONCEPTS = tuple(
+    dict.fromkeys(
+        concept_key
+        for module_id in MACRO_MODULE_IDS
+        for concept_key in (
+            *_MODULE_CONFIGS[module_id].required_concepts,
+            *_MODULE_CONFIGS[module_id].optional_concepts,
+        )
+    )
+)
+
+
 def get_macro_module_config(module_id: str) -> MacroModuleConfig:
     config = _MODULE_CONFIGS.get(module_id)
     if config is None:
@@ -900,6 +892,7 @@ def get_macro_module_config(module_id: str) -> MacroModuleConfig:
 
 
 __all__ = [
+    "MACRO_MODULE_CONCEPTS",
     "MACRO_MODULE_IDS",
     "MacroChartSpec",
     "MacroModuleConfig",

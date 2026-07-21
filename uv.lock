@@ -328,17 +328,6 @@ wheels = [
 ]
 
 [[package]]
-name = "coinglass-cli"
-version = "0.1.0"
-source = { git = "https://github.com/AnalyThothAI/coinglass-cli.git?rev=592bf2f973411e4d516ca928f65aaabf40d707eb#592bf2f973411e4d516ca928f65aaabf40d707eb" }
-dependencies = [
-    { name = "curl-cffi" },
-    { name = "playwright" },
-    { name = "pycryptodome" },
-    { name = "quickjs" },
-]
-
-[[package]]
 name = "colorama"
 version = "0.4.6"
 source = { registry = "https://pypi.org/simple" }
@@ -1601,7 +1590,6 @@ dependencies = [
     { name = "aiolimiter" },
     { name = "alembic" },
     { name = "apprise" },
-    { name = "coinglass-cli" },
     { name = "cryptopanic-cli" },
     { name = "curl-cffi" },
     { name = "eth-hash", extra = ["pycryptodome"] },
@@ -1638,7 +1626,6 @@ requires-dist = [
     { name = "aiolimiter", specifier = ">=1.2.1" },
     { name = "alembic", specifier = ">=1.18.0" },
     { name = "apprise", specifier = ">=1.10.0" },
-    { name = "coinglass-cli", git = "https://github.com/AnalyThothAI/coinglass-cli.git?rev=592bf2f973411e4d516ca928f65aaabf40d707eb" },
     { name = "cryptopanic-cli", git = "https://github.com/AnalyThothAI/cryptopanic-cli.git?rev=921245022ff30fc027dd7dde7dd59f4a6d94ae7c" },
     { name = "curl-cffi", specifier = ">=0.15,<0.16" },
     { name = "eth-hash", extras = ["pycryptodome"], specifier = ">=0.8.0" },
@@ -2189,12 +2176,6 @@ wheels = [
     { url = "https://files.pythonhosted.org/packages/f0/7a/1c7270340330e575b92f397352af856a8c06f230aa3e76f86b39d01b416a/pyyaml-6.0.3-cp314-cp314t-win_amd64.whl", hash = "sha256:4ad1906908f2f5ae4e5a8ddfce73c320c2a1429ec52eafd27138b7f1cbe341c9", size = 174062, upload-time = "2025-09-25T21:32:55.767Z" },
     { url = "https://files.pythonhosted.org/packages/f1/12/de94a39c2ef588c7e6455cfbe7343d3b2dc9d6b6b2f40c4c6565744c873d/pyyaml-6.0.3-cp314-cp314t-win_arm64.whl", hash = "sha256:ebc55a14a21cb14062aa4162f906cd962b28e2e9ea38f9b4391244cd8de4ae0b", size = 149341, upload-time = "2025-09-25T21:32:56.828Z" },
 ]
-
-[[package]]
-name = "quickjs"
-version = "1.19.4"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/f1/a7/8fac2e213db8108d8108e9f1ee8d6c2abfcbe943238b0960585c26666862/quickjs-1.19.4.tar.gz", hash = "sha256:1205953abc24ff757f4a795304d5d61e4bf1e555c9ef6ec96a132d4b95535484", size = 456179, upload-time = "2023-11-19T10:06:39.445Z" }
 
 [[package]]
 name = "referencing"

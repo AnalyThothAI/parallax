@@ -21,7 +21,7 @@ Required reading:
 Diagnostic commands:
 
 - `uv run parallax config`
-- `uv run parallax ops worker-status --help`
+- `uv run parallax ops queue-inspect --help`
 - The smallest domain-specific `uv run parallax ops ... --help` command before running a live operation
 
 Answer must separate:
@@ -72,7 +72,7 @@ Required reading:
 
 Diagnostic commands:
 
-- `uv run parallax ops worker-status --help`
+- `uv run parallax ops queue-inspect --help`
 - `uv run pytest tests/architecture/test_worker_inventory_contract.py`
 - `uv run pytest tests/architecture/test_worker_runtime_contracts.py`
 
@@ -175,7 +175,7 @@ Required reading:
 Diagnostic commands:
 
 - `uv run parallax macro --help`
-- `uv run parallax ops worker-status --help`
+- `uv run parallax ops queue-inspect --help`
 - `uv run pytest tests/architecture/test_macro_no_compatibility_contract.py`
 
 Answer must separate:

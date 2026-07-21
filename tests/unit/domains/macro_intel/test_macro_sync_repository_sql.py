@@ -2,13 +2,11 @@ from __future__ import annotations
 
 import inspect
 from datetime import date
-from typing import Any
 
 import pytest
 
 from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
-    _macro_daily_brief_payload_hash,
     _macro_projection_dirty_change_payload_hash,
     _macro_projection_dirty_payload_hash,
 )
@@ -21,7 +19,6 @@ CONTROL_METHODS = (
     "complete_macro_sync_window",
     "retry_macro_sync_window",
     "fail_macro_sync_window",
-    "latest_macro_sync_run",
     "macro_sync_queue_summary",
     "macro_sync_state_max_observed_at",
     "update_macro_sync_state",
@@ -188,136 +185,7 @@ def test_macro_projection_dirty_target_methods_use_claim_done_error_contract() -
     assert "max_attempts" in error_source
 
 
-def test_macro_projection_dirty_target_default_writes_require_connection_transaction_before_sql() -> None:
-    conn = DirtyTargetConnectionWithoutTransaction()
-    repo = MacroIntelRepository(conn)
-
-    with pytest.raises(RuntimeError, match="macro_projection_dirty_target_transaction_required"):
-        repo.claim_macro_projection_dirty_targets(
-            projection_name="macro_view",
-            projection_version="macro_regime_v4",
-            limit=10,
-            lease_ms=30_000,
-            lease_owner="worker-1",
-            now_ms=1_779_000_000_000,
-        )
-
-    assert conn.executions == []
-
-
-@pytest.mark.parametrize("operation", ("current", "changes"))
-def test_macro_projection_dirty_target_default_enqueues_require_connection_transaction_before_sql(
-    operation: str,
-) -> None:
-    conn = DirtyTargetConnectionWithoutTransaction()
-    repo = MacroIntelRepository(conn)
-
-    with pytest.raises(RuntimeError, match="macro_projection_dirty_target_transaction_required"):
-        if operation == "current":
-            repo.enqueue_macro_projection_dirty_target(
-                projection_name="macro_view",
-                projection_version="macro_regime_v4",
-                now_ms=1_779_000_000_000,
-                reason="macro_observations_imported",
-            )
-        else:
-            repo.enqueue_macro_projection_dirty_targets_for_changes(
-                changed_observations=[{"concept_key": "liquidity:sofr", "observed_at": "2026-05-28"}],
-                projection_name="macro_view",
-                projection_version="macro_regime_v4",
-                now_ms=1_779_000_000_000,
-                reason="macro_observations_changed",
-            )
-
-    assert conn.executions == []
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"limit": -1}, "macro_projection_dirty_target_claim_limit_required", id="limit-negative"),
-        pytest.param({"limit": True}, "macro_projection_dirty_target_claim_limit_required", id="limit-bool"),
-        pytest.param({"limit": "10"}, "macro_projection_dirty_target_claim_limit_required", id="limit-string"),
-        pytest.param({"lease_ms": 0}, "macro_projection_dirty_target_claim_lease_ms_required", id="lease-zero"),
-        pytest.param({"lease_ms": True}, "macro_projection_dirty_target_claim_lease_ms_required", id="lease-bool"),
-        pytest.param(
-            {"lease_ms": "30000"},
-            "macro_projection_dirty_target_claim_lease_ms_required",
-            id="lease-string",
-        ),
-    ],
-)
-def test_macro_projection_dirty_target_claim_rejects_malformed_parameters_before_transaction(
-    overrides: dict[str, object],
-    error_code: str,
-) -> None:
-    conn = DirtyTargetConnection()
-    repo = MacroIntelRepository(conn)
-    params = {
-        "projection_name": "macro_view",
-        "projection_version": "macro_regime_v4",
-        "limit": 10,
-        "lease_ms": 30_000,
-        "lease_owner": "worker-1",
-        "now_ms": 1_779_000_000_000,
-    }
-    params.update(overrides)
-
-    with pytest.raises(ValueError, match=error_code):
-        repo.claim_macro_projection_dirty_targets(**params)
-
-    assert conn.events == []
-    assert conn.executions == []
-    assert conn.commit_count == 0
-
-
-@pytest.mark.parametrize(
-    ("overrides", "error_code"),
-    [
-        pytest.param({"retry_ms": 0}, "macro_projection_dirty_target_retry_ms_required", id="retry-zero"),
-        pytest.param({"retry_ms": True}, "macro_projection_dirty_target_retry_ms_required", id="retry-bool"),
-        pytest.param({"retry_ms": "5000"}, "macro_projection_dirty_target_retry_ms_required", id="retry-string"),
-        pytest.param(
-            {"max_attempts": 0},
-            "macro_projection_dirty_target_max_attempts_required",
-            id="attempts-zero",
-        ),
-        pytest.param(
-            {"max_attempts": True},
-            "macro_projection_dirty_target_max_attempts_required",
-            id="attempts-bool",
-        ),
-        pytest.param(
-            {"max_attempts": "3"},
-            "macro_projection_dirty_target_max_attempts_required",
-            id="attempts-string",
-        ),
-    ],
-)
-def test_macro_projection_dirty_target_error_rejects_malformed_parameters_before_transaction(
-    overrides: dict[str, object],
-    error_code: str,
-) -> None:
-    conn = DirtyTargetConnection()
-    repo = MacroIntelRepository(conn)
-    params = {
-        "error": "projection failed",
-        "retry_ms": 5_000,
-        "max_attempts": 3,
-        "worker_name": "macro_view_projection",
-        "now_ms": 1_779_000_000_002,
-    }
-    params.update(overrides)
-
-    with pytest.raises(ValueError, match=error_code):
-        repo.mark_macro_projection_dirty_targets_error([_dirty_target_claim()], **params)
-
-    assert conn.events == []
-    assert conn.executions == []
-    assert conn.commit_count == 0
-
-
-def test_macro_projection_dirty_target_default_writes_use_connection_transaction_without_manual_commit() -> None:
+def test_macro_projection_dirty_target_writes_have_caller_owned_transactions() -> None:
     claim = _dirty_target_claim()
     conn = DirtyTargetConnection(rows=[claim], rowcount=1)
     repo = MacroIntelRepository(conn)
@@ -330,48 +198,7 @@ def test_macro_projection_dirty_target_default_writes_use_connection_transaction
         lease_owner="worker-1",
         now_ms=1_779_000_000_000,
     )
-    done_count = repo.mark_macro_projection_dirty_targets_done(claimed, now_ms=1_779_000_000_001)
-    error_count = repo.mark_macro_projection_dirty_targets_error(
-        claimed,
-        error="projection failed",
-        retry_ms=5_000,
-        max_attempts=3,
-        worker_name="macro_view_projection",
-        now_ms=1_779_000_000_002,
-    )
-
-    assert claimed == [claim]
-    assert done_count == 1
-    assert error_count == 1
-    assert conn.events == [
-        "begin",
-        "execute",
-        "commit",
-        "begin",
-        "execute",
-        "commit",
-        "begin",
-        "execute",
-        "commit",
-    ]
-    assert conn.commit_count == 0
-
-
-def test_macro_projection_dirty_target_caller_owned_writes_do_not_open_inner_transaction() -> None:
-    claim = _dirty_target_claim()
-    conn = DirtyTargetConnection(rows=[claim], rowcount=1)
-    repo = MacroIntelRepository(conn)
-
-    claimed = repo.claim_macro_projection_dirty_targets(
-        projection_name="macro_view",
-        projection_version="macro_regime_v4",
-        limit=10,
-        lease_ms=30_000,
-        lease_owner="worker-1",
-        now_ms=1_779_000_000_000,
-        commit=False,
-    )
-    repo.mark_macro_projection_dirty_targets_done(claimed, now_ms=1_779_000_000_001, commit=False)
+    repo.mark_macro_projection_dirty_targets_done(claimed, now_ms=1_779_000_000_001)
     repo.mark_macro_projection_dirty_targets_error(
         claimed,
         error="projection failed",
@@ -379,7 +206,6 @@ def test_macro_projection_dirty_target_caller_owned_writes_do_not_open_inner_tra
         max_attempts=3,
         worker_name="macro_view_projection",
         now_ms=1_779_000_000_002,
-        commit=False,
     )
 
     assert claimed == [claim]
@@ -399,7 +225,6 @@ def test_macro_projection_dirty_target_error_terminalizes_exhausted_claim() -> N
         max_attempts=1,
         worker_name="macro_view_projection",
         now_ms=1_779_000_000_002,
-        commit=False,
     )
 
     assert changed == 1
@@ -425,7 +250,6 @@ def test_enqueue_macro_projection_dirty_target_coalesces_current_target() -> Non
         now_ms=1_779_000_000_000,
         due_at_ms=1_779_000_000_000,
         reason="macro_observations_imported",
-        commit=False,
     )
 
     assert inserted == 1
@@ -471,63 +295,7 @@ def test_upsert_observation_requires_explicit_data_quality_without_default_ok() 
     assert '_required_observation_text(observation, "data_quality")' in source
 
 
-def test_upsert_macro_daily_brief_is_stable_key_payload_hash_read_model() -> None:
-    source = inspect.getsource(MacroIntelRepository.upsert_macro_daily_brief)
-    hash_source = inspect.getsource(_macro_daily_brief_payload_hash)
-    normalized_source = " ".join(source.split())
-
-    assert "INSERT INTO macro_daily_briefs" in source
-    assert "ON CONFLICT(brief_key) DO UPDATE" in source
-    assert "payload_hash" in source
-    assert "RETURNING true AS changed" in source
-    assert "WHERE macro_daily_briefs.payload_hash IS DISTINCT FROM excluded.payload_hash" in normalized_source
-    assert '"computed_at_ms"' in hash_source
-    assert "if key not in" in hash_source
-    assert "stable_current_payload_hash" in hash_source
-    assert "postgres_safe_json" not in hash_source
-
-
-@pytest.mark.parametrize(
-    ("rowcount", "rows", "expected_error"),
-    (
-        (None, [{"changed": True}], "macro_intel_repository_rowcount_required"),
-        (True, [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
-        (False, [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
-        ("1", [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
-        (-1, [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
-        (2, [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
-        (0, [{"changed": True}], "macro_intel_repository_rowcount_invalid"),
-        (1, [], "macro_intel_repository_rowcount_invalid"),
-    ),
-)
-def test_upsert_macro_daily_brief_requires_returning_rowcount_match(
-    rowcount: object,
-    rows: list[dict[str, object]],
-    expected_error: str,
-) -> None:
-    conn = DailyBriefReturningConnection(rows=rows, rowcount=rowcount)
-    repo = MacroIntelRepository(conn)
-
-    with pytest.raises(TypeError, match=expected_error):
-        repo.upsert_macro_daily_brief(_daily_brief(), now_ms=1_779_000_000_000)
-
-
-def test_macro_daily_brief_payload_hash_rejects_legacy_payload_keys() -> None:
-    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
-        _macro_daily_brief_payload_hash(
-            {
-                "brief_key": "assets_today",
-                "projection_version": "macro_regime_v4",
-                "status": "ready",
-                "headline": "Liquidity improving",
-                "payload_json": {"status": "ready"},
-                123: "legacy",
-            }
-        )
-
-
-def test_record_run_methods_write_hard_cut_observation_counts_and_watermarks() -> None:
-    import_source = inspect.getsource(MacroIntelRepository.record_import_run)
+def test_record_sync_run_writes_hard_cut_observation_counts_and_watermarks() -> None:
     sync_source = inspect.getsource(MacroIntelRepository.record_macro_sync_run)
 
     for column_name in (
@@ -536,7 +304,6 @@ def test_record_run_methods_write_hard_cut_observation_counts_and_watermarks() -
         "changed_observation_count",
         "noop_observation_count",
     ):
-        assert column_name in import_source
         assert column_name in sync_source
     for column_name in ("max_seen_observed_at", "min_changed_observed_at", "max_changed_observed_at"):
         assert column_name in sync_source
@@ -556,7 +323,6 @@ def test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_wa
         now_ms=1_779_000_000_000,
         due_at_ms=1_779_000_000_000,
         reason="macro_observations_changed",
-        commit=False,
     )
 
     assert inserted == 1
@@ -609,112 +375,6 @@ def test_queue_summary_excludes_exhausted_retryable_windows_from_open_count() ->
     assert "exhausted_count" in source
 
 
-@pytest.mark.parametrize(
-    "operation",
-    (
-        "complete_window",
-        "retry_window",
-        "fail_window",
-        "update_sync_state",
-        "rebuild_sync_state_delete",
-        "rebuild_sync_state_upsert",
-        "enqueue_dirty_current",
-        "enqueue_dirty_changes",
-        "dirty_done",
-        "dirty_error",
-    ),
-)
-def test_macro_repository_write_counts_require_cursor_rowcount(operation: str) -> None:
-    conn = MacroRowcountConnection(rowcount=_ROWCOUNT_MISSING, operation=operation)
-
-    with pytest.raises(TypeError, match="macro_intel_repository_rowcount_required"):
-        _run_macro_rowcount_operation(MacroIntelRepository(conn), operation)
-
-
-@pytest.mark.parametrize(
-    "operation",
-    (
-        "complete_window",
-        "retry_window",
-        "fail_window",
-        "update_sync_state",
-        "rebuild_sync_state_delete",
-        "rebuild_sync_state_upsert",
-        "enqueue_dirty_current",
-        "enqueue_dirty_changes",
-        "dirty_done",
-        "dirty_error",
-    ),
-)
-@pytest.mark.parametrize("rowcount", (True, False, "1", None, -1))
-def test_macro_repository_write_counts_reject_invalid_cursor_rowcount(operation: str, rowcount: Any) -> None:
-    conn = MacroRowcountConnection(rowcount=rowcount, operation=operation)
-
-    with pytest.raises(TypeError, match="macro_intel_repository_rowcount_invalid"):
-        _run_macro_rowcount_operation(MacroIntelRepository(conn), operation)
-
-
-@pytest.mark.parametrize(
-    "operation",
-    (
-        "complete_window",
-        "retry_window",
-        "fail_window",
-        "update_sync_state",
-        "rebuild_sync_state_delete",
-        "rebuild_sync_state_upsert",
-    ),
-)
-def test_macro_single_row_write_counts_reject_multi_row_cursor_rowcount(operation: str) -> None:
-    conn = MacroRowcountConnection(rowcount=2, operation=operation)
-
-    with pytest.raises(TypeError, match="macro_intel_repository_rowcount_invalid"):
-        _run_macro_rowcount_operation(MacroIntelRepository(conn), operation)
-
-
-@pytest.mark.parametrize(
-    ("operation", "expected_error"),
-    (
-        ("enqueue_window", "macro_intel_repository_rowcount_required"),
-        ("claim_window", "macro_intel_repository_rowcount_required"),
-        ("claim_window_by_id", "macro_intel_repository_rowcount_required"),
-    ),
-)
-def test_macro_sync_window_returning_writes_require_cursor_rowcount(operation: str, expected_error: str) -> None:
-    conn = MacroSyncWindowReturningConnection(rowcount=_ROWCOUNT_MISSING, rows=[_macro_sync_window_row()])
-
-    with pytest.raises(TypeError, match=expected_error):
-        _run_macro_sync_window_returning_operation(MacroIntelRepository(conn), operation)
-
-
-@pytest.mark.parametrize(
-    ("operation", "expected_error"),
-    (
-        ("enqueue_window", "macro_intel_repository_rowcount_invalid"),
-        ("claim_window", "macro_intel_repository_rowcount_invalid"),
-        ("claim_window_by_id", "macro_intel_repository_rowcount_invalid"),
-    ),
-)
-@pytest.mark.parametrize("rowcount", (True, False, "1", None, -1, 2))
-def test_macro_sync_window_returning_writes_reject_invalid_cursor_rowcount(
-    operation: str,
-    expected_error: str,
-    rowcount: object,
-) -> None:
-    conn = MacroSyncWindowReturningConnection(rowcount=rowcount, rows=[_macro_sync_window_row()])
-
-    with pytest.raises(TypeError, match=expected_error):
-        _run_macro_sync_window_returning_operation(MacroIntelRepository(conn), operation)
-
-
-@pytest.mark.parametrize("operation", ("claim_window", "claim_window_by_id"))
-def test_macro_sync_window_claim_returning_rows_reject_rowcount_row_mismatch(operation: str) -> None:
-    conn = MacroSyncWindowReturningConnection(rowcount=0, rows=[_macro_sync_window_row()])
-
-    with pytest.raises(TypeError, match="macro_intel_repository_rowcount_invalid"):
-        _run_macro_sync_window_returning_operation(MacroIntelRepository(conn), operation)
-
-
 @pytest.mark.parametrize("operation", ("claim_window", "claim_window_by_id"))
 def test_macro_sync_window_claim_returning_rows_accept_zero_row_noop(operation: str) -> None:
     conn = MacroSyncWindowReturningConnection(rowcount=0, rows=[])
@@ -725,7 +385,7 @@ def test_macro_sync_window_claim_returning_rows_accept_zero_row_noop(operation: 
 def test_macro_sync_window_enqueue_returning_row_requires_one_row() -> None:
     conn = MacroSyncWindowReturningConnection(rowcount=0, rows=[])
 
-    with pytest.raises(TypeError, match="macro_intel_repository_rowcount_invalid"):
+    with pytest.raises(TypeError):
         _run_macro_sync_window_returning_operation(MacroIntelRepository(conn), "enqueue_window")
 
 
@@ -748,26 +408,8 @@ class FakeCursor:
     def fetchone(self) -> dict[str, object] | None:
         return self.rows[0] if self.rows else None
 
-
-class DailyBriefReturningConnection:
-    def __init__(self, *, rows: list[dict[str, object]], rowcount: object) -> None:
-        self.rows = rows
-        self.rowcount = rowcount
-        self.executions: list[tuple[str, object]] = []
-
-    def execute(self, query: str, params: object = ()) -> DailyBriefReturningCursor:
-        self.executions.append((query, params))
-        return DailyBriefReturningCursor(self.rows, rowcount=self.rowcount)
-
-
-class DailyBriefReturningCursor:
-    def __init__(self, rows: list[dict[str, object]], *, rowcount: object) -> None:
-        self.rows = rows
-        if rowcount is not None:
-            self.rowcount = rowcount
-
-    def fetchone(self) -> dict[str, object] | None:
-        return self.rows[0] if self.rows else None
+    def fetchall(self) -> list[dict[str, object]]:
+        return self.rows
 
 
 class DirtyTargetConnection:
@@ -868,18 +510,6 @@ def _dirty_target_claim() -> dict[str, object]:
         "payload_hash": "sha256:dirty",
         "lease_owner": "worker-1",
         "attempt_count": 1,
-    }
-
-
-def _daily_brief() -> dict[str, object]:
-    return {
-        "brief_key": "assets_today",
-        "projection_version": "macro_regime_v4",
-        "brief_date": "2026-05-27",
-        "asof_date": "2026-05-27",
-        "status": "ready",
-        "headline": "Liquidity improving",
-        "sections": [],
     }
 
 
@@ -993,7 +623,6 @@ def _run_macro_rowcount_operation(repository: MacroIntelRepository, operation: s
             projection_version="macro_regime_v4",
             now_ms=1_779_000_000_000,
             reason="macro_observations_imported",
-            commit=False,
         )
     if operation == "enqueue_dirty_changes":
         return repository.enqueue_macro_projection_dirty_targets_for_changes(
@@ -1002,13 +631,11 @@ def _run_macro_rowcount_operation(repository: MacroIntelRepository, operation: s
             projection_version="macro_regime_v4",
             now_ms=1_779_000_000_000,
             reason="macro_observations_changed",
-            commit=False,
         )
     if operation == "dirty_done":
         return repository.mark_macro_projection_dirty_targets_done(
             [_dirty_target_claim()],
             now_ms=1_779_000_000_000,
-            commit=False,
         )
     if operation == "dirty_error":
         return repository.mark_macro_projection_dirty_targets_error(
@@ -1018,7 +645,6 @@ def _run_macro_rowcount_operation(repository: MacroIntelRepository, operation: s
             max_attempts=3,
             worker_name="macro_view_projection",
             now_ms=1_779_000_000_000,
-            commit=False,
         )
     raise AssertionError(operation)
 

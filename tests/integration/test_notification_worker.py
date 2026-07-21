@@ -3,12 +3,12 @@ from types import SimpleNamespace
 
 import pytest
 
-from parallax.app.runtime.worker_result import WorkerResult
 from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
 from parallax.domains.notifications.runtime.notification_delivery import NotificationDeliveryWorker
 from parallax.domains.notifications.runtime.notification_worker import NotificationWorker
 from parallax.domains.notifications.types import NotificationCandidate
 from parallax.platform.config.settings import NotificationChannelConfig
+from parallax.platform.runtime.worker_result import WorkerResult
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 
@@ -129,6 +129,7 @@ def open_worker(tmp_path, *, candidates, publisher=None, delivery_channels=None,
         publisher=publisher,
         delivery_channels=delivery_channels or {},
         delivery_max_attempts=5,
+        retention_days=30,
         delivery_wake=delivery_wake,
     )
     return conn, repo, worker

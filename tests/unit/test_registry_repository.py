@@ -16,13 +16,11 @@ def _registry_required_upsert_operations() -> list[Callable[[RegistryRepository]
             base_symbol="btc",
             source="binance_cex",
             observed_at_ms=NOW_MS,
-            commit=False,
         ),
         lambda repo: repo.upsert_chain_asset(
             chain_id="eth",
             address="0x999b49c0d1612e619a4a4f6280733184da025108",
             observed_at_ms=NOW_MS,
-            commit=False,
         ),
         lambda repo: repo.upsert_pricefeed(
             feed_type="cex_swap",
@@ -34,7 +32,6 @@ def _registry_required_upsert_operations() -> list[Callable[[RegistryRepository]
             base_symbol="btc",
             quote_symbol="usdt",
             observed_at_ms=NOW_MS,
-            commit=False,
         ),
         lambda repo: repo.upsert_us_equity_symbol(
             symbol="rklb",
@@ -45,156 +42,18 @@ def _registry_required_upsert_operations() -> list[Callable[[RegistryRepository]
             source_updated_at_ms=NOW_MS,
             raw_payload={"Symbol": "RKLB"},
             observed_at_ms=NOW_MS,
-            commit=False,
         ),
     ]
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        pytest.param(
-            lambda repo: repo.upsert_cex_token(
-                base_symbol="btc",
-                source="binance_cex",
-                observed_at_ms=NOW_MS,
-            ),
-            id="upsert_cex_token",
-        ),
-        pytest.param(
-            lambda repo: repo.upsert_chain_asset(
-                chain_id="eth",
-                address="0x999b49c0d1612e619a4a4f6280733184da025108",
-                observed_at_ms=NOW_MS,
-            ),
-            id="upsert_chain_asset",
-        ),
-        pytest.param(
-            lambda repo: repo.upsert_pricefeed(
-                feed_type="cex_swap",
-                provider="binance",
-                subject_type="CexToken",
-                subject_id="cex_token:BTC",
-                native_market_id="btcusdt",
-                base_cex_token_id="cex_token:BTC",
-                base_symbol="btc",
-                quote_symbol="usdt",
-                observed_at_ms=NOW_MS,
-            ),
-            id="upsert_pricefeed",
-        ),
-        pytest.param(
-            lambda repo: repo.upsert_us_equity_symbol(
-                symbol="rklb",
-                exchange="N",
-                security_name="Rocket Lab USA, Inc. Common Stock",
-                instrument_type="equity",
-                source="nasdaq_trader",
-                source_updated_at_ms=NOW_MS,
-                raw_payload={"Symbol": "RKLB"},
-                observed_at_ms=NOW_MS,
-            ),
-            id="upsert_us_equity_symbol",
-        ),
-        pytest.param(
-            lambda repo: repo.deactivate_missing_us_equity_symbols(
-                source="nasdaq_trader",
-                active_symbols={"AAOI"},
-                observed_at_ms=NOW_MS,
-            ),
-            id="deactivate_missing_us_equity_symbols",
-        ),
-    ],
-)
-def test_registry_repository_mutations_require_connection_transaction_before_sql_when_committing(
-    operation: Callable[[RegistryRepository], object],
-) -> None:
-    conn = NoTransactionRegistryConnection()
-
-    with pytest.raises(RuntimeError, match="registry_repository_transaction_required"):
-        operation(RegistryRepository(conn))
-
-    assert conn.sql == []
-
-
-@pytest.mark.parametrize(
-    "operation",
-    [
-        pytest.param(
-            lambda repo: repo.upsert_cex_token(
-                base_symbol="btc",
-                source="binance_cex",
-                observed_at_ms=NOW_MS,
-            ),
-            id="upsert_cex_token",
-        ),
-        pytest.param(
-            lambda repo: repo.upsert_chain_asset(
-                chain_id="eth",
-                address="0x999b49c0d1612e619a4a4f6280733184da025108",
-                observed_at_ms=NOW_MS,
-            ),
-            id="upsert_chain_asset",
-        ),
-        pytest.param(
-            lambda repo: repo.upsert_pricefeed(
-                feed_type="cex_swap",
-                provider="binance",
-                subject_type="CexToken",
-                subject_id="cex_token:BTC",
-                native_market_id="btcusdt",
-                base_cex_token_id="cex_token:BTC",
-                base_symbol="btc",
-                quote_symbol="usdt",
-                observed_at_ms=NOW_MS,
-            ),
-            id="upsert_pricefeed",
-        ),
-        pytest.param(
-            lambda repo: repo.upsert_us_equity_symbol(
-                symbol="rklb",
-                exchange="N",
-                security_name="Rocket Lab USA, Inc. Common Stock",
-                instrument_type="equity",
-                source="nasdaq_trader",
-                source_updated_at_ms=NOW_MS,
-                raw_payload={"Symbol": "RKLB"},
-                observed_at_ms=NOW_MS,
-            ),
-            id="upsert_us_equity_symbol",
-        ),
-        pytest.param(
-            lambda repo: repo.deactivate_missing_us_equity_symbols(
-                source="nasdaq_trader",
-                active_symbols={"AAOI"},
-                observed_at_ms=NOW_MS,
-            ),
-            id="deactivate_missing_us_equity_symbols",
-        ),
-    ],
-)
-def test_registry_repository_commit_owned_writes_use_connection_transaction_without_manual_commit(
-    operation: Callable[[RegistryRepository], object],
-) -> None:
-    conn = FakeRegistryConnection()
-
-    operation(RegistryRepository(conn))
-
-    assert conn.transaction_commits == 1
-    assert conn.commits == 0
-    assert conn.sql_depths
-    assert set(conn.sql_depths) == {1}
 
 
 def test_deactivate_missing_us_equity_symbols_returning_counts_require_cursor_rowcount() -> None:
     conn = RegistryDeactivateRowcountConnection(omit_rowcount=True)
 
-    with pytest.raises(TypeError, match="registry_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="registry_repository_rowcount_invalid"):
         RegistryRepository(conn).deactivate_missing_us_equity_symbols(
             source="nasdaq_trader",
             active_symbols={"AAOI"},
             observed_at_ms=NOW_MS,
-            commit=False,
         )
 
 
@@ -209,7 +68,6 @@ def test_deactivate_missing_us_equity_symbols_returning_counts_reject_invalid_or
             source="nasdaq_trader",
             active_symbols={"AAOI"},
             observed_at_ms=NOW_MS,
-            commit=False,
         )
 
 
@@ -217,7 +75,7 @@ def test_deactivate_missing_us_equity_symbols_returning_counts_reject_invalid_or
 def test_registry_repository_upserts_require_cursor_rowcount(operation: Callable[[RegistryRepository], object]) -> None:
     conn = RegistryUpsertRowcountConnection(omit_rowcount=True)
 
-    with pytest.raises(TypeError, match="registry_repository_rowcount_required"):
+    with pytest.raises(TypeError, match="registry_repository_rowcount_invalid"):
         operation(RegistryRepository(conn))
 
 

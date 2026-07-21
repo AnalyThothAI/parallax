@@ -38,7 +38,8 @@ def open_ingest(tmp_path):
         enriched_events=repos.enriched_events,
         event_anchor_jobs=repos.event_anchor_jobs,
         token_intent_lookup=repos.token_intent_lookup,
-        token_radar_source_dirty_events=repos.token_radar_source_dirty_events,
+        token_radar_dirty_targets=repos.token_radar_dirty_targets,
+        transaction=repos.transaction,
         event_anchor_active_window_ms=300_000,
     )
     return conn, repos, ingest

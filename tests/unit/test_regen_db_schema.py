@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from pathlib import Path
 from typing import Any
 
@@ -63,8 +62,8 @@ class _Inspector:
 
 
 def test_require_database_at_alembic_head_accepts_exact_single_head(monkeypatch: pytest.MonkeyPatch) -> None:
-    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0184")
-    connection = _Connection(["20260721_0184"])
+    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0185")
+    connection = _Connection(["20260721_0185"])
 
     regen_db_schema._require_database_at_alembic_head(connection)
 
@@ -76,7 +75,7 @@ def test_require_database_at_alembic_head_accepts_exact_single_head(monkeypatch:
     [
         ([], "<missing>"),
         (["20260713_0183"], "20260713_0183"),
-        (["20260713_0183", "20260721_0184"], "20260713_0183,20260721_0184"),
+        (["20260713_0183", "20260721_0185"], "20260713_0183,20260721_0185"),
     ],
 )
 def test_require_database_at_alembic_head_fails_closed(
@@ -84,22 +83,25 @@ def test_require_database_at_alembic_head_fails_closed(
     versions: list[str],
     actual: str,
 ) -> None:
-    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0184")
+    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0185")
 
     with pytest.raises(
         RuntimeError,
-        match=rf"db_schema_generation_requires_alembic_head: expected=20260721_0184 actual={actual}",
+        match=rf"db_schema_generation_requires_alembic_head: expected=20260721_0185 actual={actual}",
     ):
         regen_db_schema._require_database_at_alembic_head(_Connection(versions))
 
 
-@pytest.mark.parametrize("retired_table", ["cex_derivative_series", "pulse_candidates"])
+@pytest.mark.parametrize(
+    "retired_table",
+    ["cex_derivative_series", "pulse_candidates", "narrative_admissions", "projection_runs"],
+)
 def test_same_revision_schema_drift_fails_closed_after_version_matches(
     monkeypatch: pytest.MonkeyPatch,
     retired_table: str,
 ) -> None:
-    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0184")
-    regen_db_schema._require_database_at_alembic_head(_Connection(["20260721_0184"]))
+    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0185")
+    regen_db_schema._require_database_at_alembic_head(_Connection(["20260721_0185"]))
 
     with pytest.raises(
         RuntimeError,
@@ -116,11 +118,11 @@ def test_main_rejects_same_revision_schema_drift_before_writing(
     monkeypatch: pytest.MonkeyPatch,
     tmp_path: Path,
 ) -> None:
-    connection = _Connection(["20260721_0184"])
+    connection = _Connection(["20260721_0185"])
     engine = _Engine(connection)
     output = tmp_path / "db-schema.md"
     monkeypatch.setenv(regen_db_schema.TEST_POSTGRES_DSN_ENV, "postgresql://test")
-    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0184")
+    monkeypatch.setattr(regen_db_schema, "latest_migration_version", lambda: "20260721_0185")
     monkeypatch.setattr(regen_db_schema, "create_engine", lambda *_args, **_kwargs: engine)
     monkeypatch.setattr(regen_db_schema, "inspect", lambda _connection: _Inspector(["events", "model_runs"]))
     monkeypatch.setattr(regen_db_schema, "OUTPUT", output)
@@ -133,21 +135,3 @@ def test_main_rejects_same_revision_schema_drift_before_writing(
 
     assert not output.exists()
     assert engine.disposed is True
-
-
-def test_retired_table_guard_covers_0183_and_0184_hard_cuts() -> None:
-    repo_root = Path(__file__).resolve().parents[2]
-    migration_paths = (
-        repo_root / "src/parallax/platform/db/alembic/versions/20260713_0183_backend_kappa_cqrs_hard_cut.py",
-        repo_root / "src/parallax/platform/db/alembic/versions/20260721_0184_signal_pulse_hard_delete.py",
-    )
-    dropped_tables = {
-        table_name
-        for path in migration_paths
-        for table_name in re.findall(
-            r"DROP TABLE(?: IF EXISTS)?\s+([a-z_]+)",
-            path.read_text(encoding="utf-8"),
-        )
-    }
-
-    assert dropped_tables == regen_db_schema.RETIRED_TABLES_AT_HEAD

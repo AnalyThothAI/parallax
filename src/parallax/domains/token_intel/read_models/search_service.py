@@ -11,6 +11,7 @@ from parallax.domains.token_intel.services.search_aliases import (
     fuzzy_canonical_symbol_for_query,
     target_symbols_for_or_query,
 )
+from parallax.platform.validation import require_nonnegative_int
 
 from .asset_flow_service import WINDOW_MS
 
@@ -68,7 +69,7 @@ class SearchService:
         cursor: str | None = None,
         now_ms: int | None = None,
     ) -> SearchPage:
-        requested_limit = _required_nonnegative_int(limit, "search_limit_required")
+        requested_limit = require_nonnegative_int(limit, error_code="search_limit_required")
         watched_only = _watched_only(scope)
         since_ms = _since_ms(window=window, now_ms=now_ms)
         intent = parse_search_query(query, scope=scope)
@@ -297,14 +298,6 @@ def _fused_page(items: list[dict[str, Any]], limit: int, *, has_more: bool) -> d
         "has_more": has_more,
         "next_cursor": next_cursor,
     }
-
-
-def _required_nonnegative_int(value: Any, error_code: str) -> int:
-    if isinstance(value, bool) or not isinstance(value, int):
-        raise ValueError(error_code)
-    if value < 0:
-        raise ValueError(error_code)
-    return int(value)
 
 
 def _public_item(item: dict[str, Any]) -> dict[str, Any]:

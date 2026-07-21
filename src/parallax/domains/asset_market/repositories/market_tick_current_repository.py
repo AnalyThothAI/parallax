@@ -6,6 +6,7 @@ from typing import Any, cast
 from psycopg.types.json import Jsonb
 
 from parallax.platform.db.json_safety import postgres_safe_json
+from parallax.platform.db.write_contract import returning_mutation_count
 
 
 class MarketTickCurrentRepository:
@@ -150,22 +151,6 @@ def _current_params(tick_row: Mapping[str, Any], *, now_ms: int) -> dict[str, An
     }
 
 
-def _cursor_rowcount(cursor: Any) -> int:
-    try:
-        rowcount: object = cursor.rowcount
-    except AttributeError as exc:
-        raise TypeError("market_tick_current_repository_rowcount_required") from exc
-    if isinstance(rowcount, bool) or not isinstance(rowcount, int):
-        raise TypeError("market_tick_current_repository_rowcount_invalid")
-    if rowcount < 0:
-        raise TypeError("market_tick_current_repository_rowcount_invalid")
-    return rowcount
-
-
 def _single_returning_changed(cursor: Any, row: Any | None) -> bool:
-    count = _cursor_rowcount(cursor)
-    if count not in (0, 1):
-        raise TypeError("market_tick_current_repository_rowcount_invalid")
-    if count != (1 if row is not None else 0):
-        raise TypeError("market_tick_current_repository_rowcount_invalid")
+    returning_mutation_count(cursor, row, error_code="market_tick_current_repository_rowcount_invalid")
     return row is not None and bool(row.get("changed", True))
