@@ -305,3 +305,8 @@ bundle are represented as structured partial coverage, reason codes, and data
 gaps. If FRED public CSV times out or no optional FRED API key is configured,
 that is a source-health/data-quality gap and should leave affected pages
 `partial`; it is not a frontend issue and must not be hidden behind `ready`.
+The pinned macrodata contract exposes `ok`, `stale`, `partial`, and
+`unavailable` data quality. Macro sync persists `ok` as an `ok` run and maps
+the other three explicit quality states to `partial`; retired `empty` and
+unknown values fail the import contract instead of becoming compatibility
+successes.

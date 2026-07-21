@@ -60,9 +60,11 @@ def test_sync_success_status_requires_import_status() -> None:
 
     assert _sync_success_status("ok") == "ok"
     assert _sync_success_status("partial") == "partial"
-    assert _sync_success_status("empty") == "partial"
-    with pytest.raises(ValueError, match="macro_sync_import_status_invalid"):
-        _sync_success_status("unknown")
+    assert _sync_success_status("stale") == "partial"
+    assert _sync_success_status("unavailable") == "partial"
+    for invalid_status in ("empty", "unknown"):
+        with pytest.raises(ValueError, match="macro_sync_import_status_invalid"):
+            _sync_success_status(invalid_status)
 
 
 def test_sync_service_idle_claims_no_window_and_does_not_call_runner() -> None:
@@ -249,14 +251,14 @@ def test_sync_service_import_success_writes_facts_completes_window_and_wakes_pro
     assert events.index("transaction-commit") < events.index("wake")
 
 
-def test_sync_service_empty_import_does_not_enqueue_projection_dirty_target() -> None:
+def test_sync_service_unavailable_import_does_not_enqueue_projection_dirty_target() -> None:
     from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window())
     service = MacroSyncService(
         settings=FakeSettings(),
         repository_factory=FakeRepositoryFactory(repo),
-        runner=FakeRunner(envelope=_empty_envelope()),
+        runner=FakeRunner(envelope=_unavailable_envelope()),
         wake_emitter=FakeWakeBus(),
         clock_ms=lambda: NOW_MS,
     )
@@ -689,7 +691,7 @@ def _window() -> dict[str, object]:
     }
 
 
-def _empty_envelope() -> dict[str, object]:
+def _unavailable_envelope() -> dict[str, object]:
     return {
         "ok": True,
         "data": {
@@ -700,7 +702,7 @@ def _empty_envelope() -> dict[str, object]:
                 "coverage": {"requested": 1, "available": 0},
                 "missing_series": ["nyfed:SOFR"],
                 "series_errors": [],
-                "data_quality": "empty",
+                "data_quality": "unavailable",
                 "reason_codes": ["no_observations"],
             }
         },

@@ -590,9 +590,9 @@ def _sync_success_status(status: object) -> str:
     if not isinstance(status, str) or not status.strip():
         raise ValueError("macro_sync_import_status_required")
     raw_status = status.strip().lower()
-    if raw_status in {"ok", "partial"}:
-        return raw_status
-    if raw_status == "empty":
+    if raw_status == "ok":
+        return "ok"
+    if raw_status in {"partial", "stale", "unavailable"}:
         return "partial"
     raise ValueError("macro_sync_import_status_invalid")
 
