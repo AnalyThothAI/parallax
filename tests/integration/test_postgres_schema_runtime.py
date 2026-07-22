@@ -97,6 +97,14 @@ def test_current_postgres_schema_has_one_kappa_truth_and_compact_read_models(tmp
                 """
             ).fetchall()
         }
+        news_fetch_run_fk_index = conn.execute(
+            """
+            SELECT index_state.indisvalid, index_state.indisready
+            FROM pg_index AS index_state
+            JOIN pg_class AS index_class ON index_class.oid = index_state.indexrelid
+            WHERE index_class.relname = 'idx_news_provider_items_fetch_run_id'
+            """
+        ).fetchone()
         version = conn.execute("SELECT version_num FROM alembic_version").fetchone()["version_num"]
     finally:
         conn.close()
@@ -129,7 +137,8 @@ def test_current_postgres_schema_has_one_kappa_truth_and_compact_read_models(tmp
     assert "module_views_json" in macro_snapshot_columns
     assert "assets_brief_json" not in macro_snapshot_columns
     assert {"raw_payload_json", "payload_hash"}.isdisjoint(market_current_columns)
-    assert version == latest_migration_version() == "20260722_0186"
+    assert news_fetch_run_fk_index == {"indisvalid": True, "indisready": True}
+    assert version == latest_migration_version() == "20260722_0187"
 
 
 def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
@@ -161,6 +170,13 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
             INSERT INTO news_fetch_runs(
               fetch_run_id, source_id, started_at_ms, finished_at_ms, status
             ) VALUES ('fetch-old', 'source-1', 1, 2, 'success');
+            INSERT INTO news_provider_items(
+              provider_item_id, source_id, fetch_run_id, source_item_key, canonical_url,
+              payload_hash, raw_payload_json, fetched_at_ms
+            ) VALUES (
+              'provider-item-old', 'source-1', 'fetch-old', 'source-item-old',
+              'https://example.test/item-old', 'payload-old', '{}'::jsonb, 2
+            );
 
             INSERT INTO token_radar_dirty_targets(
               target_type_key, identity_id, dirty_reason, payload_hash, due_at_ms,
@@ -266,6 +282,13 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
             """
         ).fetchone()
         old_fetch = conn.execute("SELECT fetch_run_id FROM news_fetch_runs WHERE fetch_run_id = 'fetch-old'").fetchone()
+        retained_provider_item = conn.execute(
+            """
+            SELECT fetch_run_id
+            FROM news_provider_items
+            WHERE provider_item_id = 'provider-item-old'
+            """
+        ).fetchone()
     finally:
         conn.close()
 
@@ -294,6 +317,7 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
         "attempt_count": 0,
     }
     assert old_fetch is None
+    assert retained_provider_item == {"fetch_run_id": None}
 
 
 def test_runtime_hard_cut_reconciles_nonempty_0185_backlog(tmp_path) -> None:

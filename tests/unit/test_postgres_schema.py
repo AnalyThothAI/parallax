@@ -10,6 +10,7 @@ from parallax.platform.db.postgres_migrations import alembic_config
 VERSIONS = Path("src/parallax/platform/db/alembic/versions")
 HARD_CUT = VERSIONS / "20260721_0185_backend_kiss_hard_cut.py"
 RUNTIME_HARD_CUT = VERSIONS / "20260722_0186_runtime_projection_hard_cut.py"
+NEWS_FETCH_RUN_FK_INDEX = VERSIONS / "20260722_0187_news_fetch_run_fk_index.py"
 
 
 def _assignment(path: Path, name: str) -> str | None:
@@ -29,7 +30,7 @@ def test_alembic_graph_has_one_current_head_and_unique_revisions() -> None:
 
     assert None not in revisions
     assert len(revisions) == len(set(revisions))
-    assert script.get_heads() == ["20260722_0186"]
+    assert script.get_heads() == ["20260722_0187"]
 
 
 def test_backend_kiss_hard_cut_is_fail_closed_and_irreversible() -> None:
@@ -82,6 +83,18 @@ def test_runtime_projection_hard_cut_is_fail_closed_and_irreversible() -> None:
         "feeds.status = 'canonical'",
     ):
         assert cex_route_filter in text
+
+
+def test_news_fetch_run_fk_index_is_canonical_and_reversible() -> None:
+    text = NEWS_FETCH_RUN_FK_INDEX.read_text(encoding="utf-8")
+
+    assert 'revision = "20260722_0187"' in text
+    assert 'down_revision = "20260722_0186"' in text
+    assert "CREATE INDEX idx_news_provider_items_fetch_run_id" in text
+    assert "ON news_provider_items(fetch_run_id)" in text
+    assert "DROP INDEX idx_news_provider_items_fetch_run_id" in text
+    assert "IF EXISTS" not in text
+    assert "CONCURRENTLY" not in text
 
 
 def test_backend_kiss_hard_cut_removes_only_the_audited_control_planes() -> None:
