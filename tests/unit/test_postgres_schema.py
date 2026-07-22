@@ -11,6 +11,7 @@ VERSIONS = Path("src/parallax/platform/db/alembic/versions")
 HARD_CUT = VERSIONS / "20260721_0185_backend_kiss_hard_cut.py"
 RUNTIME_HARD_CUT = VERSIONS / "20260722_0186_runtime_projection_hard_cut.py"
 NEWS_FETCH_RUN_FK_INDEX = VERSIONS / "20260722_0187_news_fetch_run_fk_index.py"
+TOKEN_RADAR_FACTOR_CACHE_HARD_CUT = VERSIONS / "20260722_0188_token_radar_factor_cache_hard_cut.py"
 
 
 def _assignment(path: Path, name: str) -> str | None:
@@ -30,7 +31,7 @@ def test_alembic_graph_has_one_current_head_and_unique_revisions() -> None:
 
     assert None not in revisions
     assert len(revisions) == len(set(revisions))
-    assert script.get_heads() == ["20260722_0187"]
+    assert script.get_heads() == ["20260722_0188"]
 
 
 def test_backend_kiss_hard_cut_is_fail_closed_and_irreversible() -> None:
@@ -95,6 +96,26 @@ def test_news_fetch_run_fk_index_is_canonical_and_reversible() -> None:
     assert "DROP INDEX idx_news_provider_items_fetch_run_id" in text
     assert "IF EXISTS" not in text
     assert "CONCURRENTLY" not in text
+
+
+def test_token_radar_factor_cache_hard_cut_requeues_before_truncate() -> None:
+    text = TOKEN_RADAR_FACTOR_CACHE_HARD_CUT.read_text(encoding="utf-8")
+    downgrade = text.split("def downgrade() -> None:", maxsplit=1)[1]
+
+    assert 'revision = "20260722_0188"' in text
+    assert 'down_revision = "20260722_0187"' in text
+    assert "SET LOCAL lock_timeout = '5s'" in text
+    assert "SET LOCAL statement_timeout = '30min'" in text
+    assert "token_radar_target_features" in text
+    assert "token_radar_current_rows" in text
+    assert "token_radar_rank_source_events" in text
+    assert "INSERT INTO token_radar_dirty_targets" in text
+    assert "repair_dirty = true" in text
+    assert text.index("INSERT INTO token_radar_dirty_targets") < text.index(
+        'op.execute("TRUNCATE TABLE token_radar_target_features")'
+    )
+    assert "jsonb_set" not in text
+    assert "RuntimeError" in downgrade
 
 
 def test_backend_kiss_hard_cut_removes_only_the_audited_control_planes() -> None:

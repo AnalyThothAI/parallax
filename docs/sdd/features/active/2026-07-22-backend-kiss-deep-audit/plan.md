@@ -1,6 +1,6 @@
 # Plan — Backend KISS whole-chain simplification
 
-**Status**: In Progress
+**Status**: Review
 **Date**: 2026-07-22
 **Owning spec**: `docs/sdd/features/active/2026-07-22-backend-kiss-deep-audit/spec.md`
 **Worktree**: `.worktrees/backend-kiss-deep-audit/`
@@ -55,7 +55,16 @@ The implementation only consolidates or deletes existing paths. It introduces no
 
 ### Storage / migrations
 
-- No schema or migration change is planned. Revisions `20260721_0185`, `20260722_0186`, and `20260722_0187` are in the conflict set and remain unchanged.
+- Revisions `20260721_0185`, `20260722_0186`, and `20260722_0187` remain unchanged.
+- Post-merge real-data validation found that `0186` introduced the strict
+  `normalization.cohort_status` producer/validator contract without invalidating
+  the already-persisted private `token_radar_target_features` cache. Add
+  `20260722_0188_token_radar_factor_cache_hard_cut.py` to requeue every identity
+  present in feature/current/rank-source state, clear leases/errors, and truncate
+  only the rebuildable feature cache. Material facts, current rows, publication
+  state, first-seen state, rank-source edges, and the existing dirty queue remain.
+  No malformed JSON backfill, compatibility default, or validator weakening is
+  permitted.
 
 ### Tests
 
@@ -85,7 +94,7 @@ The implementation only consolidates or deletes existing paths. It introduces no
 
 ## Rollback
 
-Before commit, each slice is recoverable by reverting only this branch's diff; unrelated work is never touched. No destructive database operation is planned. If a cut changes a released public or persistence contract unexpectedly, stop before implementation and revise the spec rather than add a compatibility path.
+Before commit, each code slice is recoverable by reverting only this feature's diff; unrelated work is never touched. Revision `0188` is deliberately irreversible because it truncates only a rebuildable private feature cache after first enqueuing every affected identity. Material facts and serving rows are preserved, and rollback is forward repair rather than migration downgrade. If another cut changes a released public or persistence contract unexpectedly, stop and revise the spec rather than add a compatibility path.
 
 ## Acceptance test commands
 
@@ -97,4 +106,4 @@ Before commit, each slice is recoverable by reverting only this branch's diff; u
 
 ## Verification
 
-Verification evidence lives in `docs/sdd/features/active/2026-07-22-backend-kiss-deep-audit/verification.md`. The feature remains In Progress until the plan is narrowed, all tasks are complete, and exact evidence is recorded.
+Verification evidence lives in `docs/sdd/features/active/2026-07-22-backend-kiss-deep-audit/verification.md`. The feature remains in Review because the user explicitly omitted the complete `check-all` lane; executed and omitted evidence is recorded exactly.

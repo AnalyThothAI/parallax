@@ -489,10 +489,64 @@ provider input
 - mypy repair behavior suites：261 passed，复核子集 165 passed；
 - Ruff、format、`git diff --check`、SDD/report validators。
 
-`make check-all` 没有完成：Python Ruff/format/mypy 阶段已通过，随后 frontend typecheck 因当前 worktree 没有安装锁文件依赖而报 `vitest/globals` 缺失，并使用了不匹配的 TypeScript 6。用户随后明确要求停止完整 `check-all`，改为合并 `main` 后 build/start 验证真实链路。因此不得把 integration、E2E、golden、coverage 或完整 frontend gate 写成已通过；真实 Docker 结果在合并部署后补录。
+`make check-all` 没有完成：Python Ruff/format/mypy 阶段已通过，随后 frontend typecheck 因当前 worktree 没有安装锁文件依赖而报 `vitest/globals` 缺失，并使用了不匹配的 TypeScript 6。用户随后明确要求停止完整 `check-all`，改为合并 `main` 后 build/start 验证真实链路。因此 integration、E2E、golden、coverage 和完整 frontend gate 都没有被写成已通过。`tests/integration/test_api_websocket.py` 的单独尝试又在首个 in-process `TestClient` shutdown 卡住，185.98 秒后中止，零测试完成。
+
+合并到 `main@a7ad09df` 后，两轮 `make docker-up` 都成功构建 Python/Playwright/React production image、执行 migration 并启动健康容器；第二轮将真实数据库从 `0187` 升到新增的 `0188`。最终 `make docker-status` exit 0，app/PostgreSQL healthy，`/readyz` 为 true，当前与期望 revision 均为 `20260722_0188`。Docker 内的 React production build 已通过，但这不等价于完整 frontend lint/type/test gate。
 
 ### 12.8 继续审计最终判断
 
 当前后端仍有真实业务复杂度，但没有发现需要再引入架构层的理由。第二轮最有效的简化不是拆大文件，而是删掉零消费者接口、重复读取/调度、伪状态、错误目录所有权和测试墓地。
 
 Kappa/CQRS 的维护边界现在更清晰：事实只写一次，current 只有一个 owner，恢复通过 bounded fact/target replay，外部副作用保留 ledger，operator query 不再冒充 runtime composition。剩余高复杂度应由真实 provider/PostgreSQL 证据或新的产品责任触发，而不能由 LOC/C90 单独触发。
+
+### 12.9 合并后真实链路暴露的两个缺口
+
+静态测试全部通过并不等于真实 PostgreSQL 行量与历史状态正确。合并启动后的真实探针暴露了两个不属于本轮删减回归、但必须在交付前硬切的问题。
+
+#### Recent / WebSocket replay 的 tick join 与 fallback
+
+`EventTokenProjectionQuery` 对 event capture 的 immutable `market_ticks` join 少了分区主键中的 `observed_at_ms`；latest fallback 又扫描约 685 万行的 append-only fact tape，而不是已有的 `market_tick_current`。真实查询因此出现 timeout，影响 `/api/recent` 和 WebSocket replay。
+
+修复没有添加 index、cache 或另一个 projection：
+
+- captured tick 继续读 immutable fact，但按完整 composite key join；
+- 没有 event capture 时，latest fallback 直接读现有 stable current model `market_tick_current`；
+- 正向单测固定完整 key 与 current authority，不固定 SQL 私有排版。
+
+修复后真实 `/api/recent?limit=20` 连续耗时 89/33/34/23/22 ms，WebSocket replay 20 条最终为 259 ms、100 条为 312 ms。
+
+#### Radar private factor cache 的历史 contract 漂移
+
+`0186` 已要求新 producer/validator 生成 `normalization.cohort_status`，但没有清理之前落盘的 private `token_radar_target_features`。真实库中发现 1,806 个无效 cache row、覆盖 1,025 个 target；material facts、rank-source edges 和 public current rows 都没有损坏。
+
+新增不可逆 `0188`，只做 Kappa rebuild hard cut：
+
+```text
+feature/current/rank-source identities
+  -> existing token_radar_dirty_targets(repair_dirty=true)
+  -> truncate rebuildable token_radar_target_features
+  -> existing bounded projection worker rebuilds from PostgreSQL facts
+```
+
+它不回填 malformed JSON、不放宽 validator、不改 `0185`-`0187`，也不删除 current/publication/first-seen/rank edge。`0187 -> 0188` 非空 PostgreSQL integration 通过；最终采样已有 1,360 个新 feature row，缺失 `cohort_status` 为 0，dirty/repair queue 均已排空，48 个 publication set 全部 `ready` 且 error 为 0。恢复完全由正常 worker 有界完成，这比 migration 内做第二套 projection/backfill 更符合 Kappa/KISS。
+
+### 12.10 最终真实证据与未掩盖风险
+
+最终 production image 上观察到一条非 synthetic GMGN direct-WebSocket event：
+
+```text
+gmgn direct_ws
+  -> events(event_id=gmgn:twitter_monitor_basic:8fd4eb6d-d10f-47f6-80c8-b761a340a02a)
+  -> authenticated /api/recent HTTP 200 (61 ms)
+  -> authenticated /ws ready + replay 20 (259 ms)
+```
+
+HTTP、WebSocket 与 PostgreSQL 中的 event identity、provider、transport、channel 和 `received_at_ms=1784693966537` 一致。`/api/token-radar` 从 `token_radar_current_rows` 返回 HTTP 200、`fresh`、20 个 serving row、72 个 source row；GMGN runtime state 为 `streaming`。
+
+真实运行也保留了三项明确 warning，而不是用 compatibility/default 修绿：
+
+- `resolution_refresh` 和 `news_fetch` running but degraded，provider diagnostic 曾返回 HTTP 402；
+- OKX DEX WebSocket 以 provider code `60029` 持续重连，采样时没有 ack subscription；
+- `/api/news/sources/status` 在 5,208 ms 后 HTTP 500，日志确认 PostgreSQL statement timeout。
+
+它们分别属于外部 entitlement/authorization 和 News 物理查询治理，不证明 KISS hard cut 回归，也不能由 `/readyz`、fallback payload 或 `disabled` 语义掩盖。最终结论因此是：本轮代码与目录简化可以交付，真实链路和 Radar hard cut 已验证；完整 `check-all`、正式 full integration/E2E/golden、coverage 与完整 frontend gate 仍明确未验证，News source-status 与 OKX/provider entitlement 是后续独立问题。

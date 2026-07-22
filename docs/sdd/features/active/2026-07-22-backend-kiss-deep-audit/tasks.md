@@ -1,6 +1,6 @@
 # Tasks — Backend KISS whole-chain simplification
 
-**Status**: In Progress
+**Status**: Review
 **Owning plan**: `docs/sdd/features/active/2026-07-22-backend-kiss-deep-audit/plan.md`
 **Worktree**: `.worktrees/backend-kiss-deep-audit/`
 **Branch**: `codex/backend-kiss-deep-audit`
@@ -211,16 +211,16 @@
 
 ### Task 10 — Verify, independently validate, document, and close
 
-- **File(s)**: `docs/sdd/features/active/2026-07-22-backend-kiss-deep-audit`; `docs/reviews/backend-kiss-hard-cut-implementation-audit-zh-2026-07-22.md`; `docs/DESIGN_DISCIPLINE.md`; `docs/references/POSTGRES_PERFORMANCE.md`; `docs/generated/sdd-work-index.md`; `docs/generated/cli-help.md`
+- **File(s)**: `src/parallax/domains/token_intel/queries/event_token_projection_query.py`; `src/parallax/platform/db/alembic/versions/20260722_0188_token_radar_factor_cache_hard_cut.py`; `tests/unit/test_event_token_projection.py`; `tests/unit/test_postgres_schema.py`; `tests/integration/test_postgres_schema_runtime.py`; `docs/sdd/features/active/2026-07-22-backend-kiss-deep-audit`; `docs/reviews/backend-kiss-hard-cut-implementation-audit-zh-2026-07-22.md`; `docs/DESIGN_DISCIPLINE.md`; `docs/references/POSTGRES_PERFORMANCE.md`; `docs/generated/sdd-work-index.md`; `docs/generated/cli-help.md`; `docs/generated/subagent-handoffs/backend-kiss-deep-audit-task-10.md`; `docs/generated/subagent-reports/backend-kiss-deep-audit-task-10.md`
 - **Owner**: parent plus independent review-only validator
 - **Depends on**: Task 6-9
-- **Touch set**: `docs/sdd/features/active/2026-07-22-backend-kiss-deep-audit`; `docs/reviews/backend-kiss-hard-cut-implementation-audit-zh-2026-07-22.md`; `docs/DESIGN_DISCIPLINE.md`; `docs/references/POSTGRES_PERFORMANCE.md`; `docs/generated/sdd-work-index.md`; `docs/generated/cli-help.md`
-- **Conflict set**: `web/**`; `.agents/skills`; `docs/sdd/features/active/2026-07-22-docker-build-contract-fix`; `docs/sdd/features/active/2026-07-22-news-fetch-retention-index`; `src/parallax/platform/db/alembic/versions`
+- **Touch set**: `src/parallax/domains/token_intel/queries/event_token_projection_query.py`; `src/parallax/platform/db/alembic/versions/20260722_0188_token_radar_factor_cache_hard_cut.py`; `tests/unit/test_event_token_projection.py`; `tests/unit/test_postgres_schema.py`; `tests/integration/test_postgres_schema_runtime.py`; `docs/sdd/features/active/2026-07-22-backend-kiss-deep-audit`; `docs/reviews/backend-kiss-hard-cut-implementation-audit-zh-2026-07-22.md`; `docs/DESIGN_DISCIPLINE.md`; `docs/references/POSTGRES_PERFORMANCE.md`; `docs/generated/sdd-work-index.md`; `docs/generated/cli-help.md`; `docs/generated/subagent-handoffs/backend-kiss-deep-audit-task-10.md`; `docs/generated/subagent-reports/backend-kiss-deep-audit-task-10.md`
+- **Conflict set**: `web/**`; `.agents/skills`; `docs/sdd/features/active/2026-07-22-docker-build-contract-fix`; `src/parallax/platform/db/alembic/versions/20260721_0185_backend_kiss_hard_cut.py`; `src/parallax/platform/db/alembic/versions/20260722_0186_runtime_projection_hard_cut.py`; `src/parallax/platform/db/alembic/versions/20260722_0187_news_fetch_run_fk_index.py`; coordinate with 2026-07-22-news-fetch-retention-index for tests/unit/test_postgres_schema.py and tests/integration/test_postgres_schema_runtime.py
 - **Failing test first**: `uv run pytest -q tests/architecture/test_kiss_runtime_invariants.py` — final integration must preserve the compact root architecture contract.
-- **Subagent handoff**: not delegated
-- **Subagent report**: not delegated
-- **Review result**: not delegated
-- **Implementation**: run the authorized targeted/static gates, audit the final diff and LOC, merge to `main`, build/start the Docker stack, verify real runtime/database/HTTP/WS evidence, obtain a PASS/WARN/FAIL implementation validation, and record every omitted `make check-all` lane without weakening the gate.
+- **Subagent handoff**: `docs/generated/subagent-handoffs/backend-kiss-deep-audit-task-10.md`
+- **Subagent report**: `docs/generated/subagent-reports/backend-kiss-deep-audit-task-10.md`
+- **Review result**: accepted
+- **Implementation**: run the authorized targeted/static gates, audit the final diff and LOC, merge to `main`, build/start the Docker stack, verify real runtime/database/HTTP/WS evidence, repair the two live-only read/cache defects without compatibility glue, obtain a PASS/WARN/FAIL implementation validation, and record every omitted `make check-all` lane without weakening the gate.
 - **Verification**: `make docker-status`
 - **Review owner**: independent validator then parent
 - **Factory lane**: Final integration
@@ -228,4 +228,4 @@
 - **On-demand context**: spec/plan/diff/test output and implementation audit.
 - **Kill/defer criteria**: unresolved required regression prevents completion; unavailable live/physical evidence is explicitly recorded rather than fabricated.
 - **Eval/repair signal**: final validator result and exact completion-gate evidence.
-- **Status**: [ ]
+- **Status**: [x]

@@ -138,7 +138,7 @@ def test_current_postgres_schema_has_one_kappa_truth_and_compact_read_models(tmp
     assert "assets_brief_json" not in macro_snapshot_columns
     assert {"raw_payload_json", "payload_hash"}.isdisjoint(market_current_columns)
     assert news_fetch_run_fk_index == {"indisvalid": True, "indisready": True}
-    assert version == latest_migration_version() == "20260722_0187"
+    assert version == latest_migration_version() == "20260722_0188"
 
 
 def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
@@ -579,3 +579,96 @@ def test_postgres_migrations_are_idempotent_at_current_head(tmp_path) -> None:
         conn.close()
 
     assert [row["version_num"] for row in rows] == [latest_migration_version()]
+
+
+def test_token_radar_factor_cache_hard_cut_requeues_and_clears_private_cache(tmp_path) -> None:
+    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
+    try:
+        conn.execute("DROP SCHEMA IF EXISTS public CASCADE")
+        conn.execute("CREATE SCHEMA public")
+        conn.execute("GRANT ALL ON SCHEMA public TO public")
+        conn.commit()
+        config = alembic_config()
+        config.attributes["database_url"] = _test_postgres_dsn()
+        command.upgrade(config, "20260722_0187")
+
+        conn.execute(
+            """
+            INSERT INTO token_radar_target_features(
+              projection_version, "window", scope, lane, target_type_key, identity_id,
+              target_type, target_id, latest_event_received_at_ms, factor_snapshot_json,
+              source_event_ids_json, source_intent_ids_json, source_resolution_ids_json,
+              payload_hash, last_scored_at_ms, created_at_ms, updated_at_ms,
+              intent_json, resolution_json
+            ) VALUES (
+              'token-radar-v13-social-attention', '24h', 'all', 'resolved',
+              'Asset', 'asset:feature', 'Asset', 'asset:feature', 100, '{}'::jsonb,
+              '["event-feature"]'::jsonb, '["intent-feature"]'::jsonb,
+              '["resolution-feature"]'::jsonb, 'old-feature-hash', 100, 100, 100,
+              '{"intent_id":"intent-feature","event_id":"event-feature"}'::jsonb,
+              '{"status":"EXACT","reason_codes":[],"candidate_ids":[],"lookup_keys":[]}'::jsonb
+            );
+            INSERT INTO token_radar_rank_source_events(
+              projection_version, target_type_key, identity_id, source_kind, source_id,
+              event_received_at_ms, projected_at_ms, source_payload_hash
+            ) VALUES (
+              'token-radar-v13-social-attention', 'CexToken', 'cex_token:EDGE',
+              'resolution', 'resolution-edge', 100, 100, 'edge-hash'
+            );
+            INSERT INTO token_radar_dirty_targets(
+              target_type_key, identity_id, dirty_reason, market_dirty, repair_dirty,
+              payload_hash, due_at_ms, leased_until_ms, lease_owner, attempt_count,
+              last_error, first_dirty_at_ms, updated_at_ms
+            ) VALUES (
+              'Asset', 'asset:feature', 'market_tick_written', true, false,
+              'old-dirty-hash', 50, 999, 'old-worker', 7, 'old-error', 10, 20
+            );
+            """
+        )
+        conn.commit()
+
+        command.upgrade(config, "20260722_0188")
+
+        feature_count = conn.execute("SELECT count(*) AS count FROM token_radar_target_features").fetchone()
+        dirty_rows = conn.execute(
+            """
+            SELECT target_type_key, identity_id, dirty_reason, market_dirty, repair_dirty,
+                   due_at_ms, leased_until_ms, lease_owner, attempt_count, last_error
+            FROM token_radar_dirty_targets
+            WHERE (target_type_key, identity_id) IN (
+              ('Asset', 'asset:feature'), ('CexToken', 'cex_token:EDGE')
+            )
+            ORDER BY target_type_key, identity_id
+            """
+        ).fetchall()
+        rank_source_count = conn.execute("SELECT count(*) AS count FROM token_radar_rank_source_events").fetchone()
+    finally:
+        conn.close()
+
+    assert feature_count == {"count": 0}
+    assert dirty_rows[0] == {
+        "target_type_key": "Asset",
+        "identity_id": "asset:feature",
+        "dirty_reason": "mixed",
+        "market_dirty": True,
+        "repair_dirty": True,
+        "due_at_ms": 50,
+        "leased_until_ms": None,
+        "lease_owner": None,
+        "attempt_count": 0,
+        "last_error": None,
+    }
+    edge_due_at_ms = dirty_rows[1].pop("due_at_ms")
+    assert edge_due_at_ms > 100
+    assert dirty_rows[1] == {
+        "target_type_key": "CexToken",
+        "identity_id": "cex_token:EDGE",
+        "dirty_reason": "schema_hard_cut_0188",
+        "market_dirty": False,
+        "repair_dirty": True,
+        "leased_until_ms": None,
+        "lease_owner": None,
+        "attempt_count": 0,
+        "last_error": None,
+    }
+    assert rank_source_count == {"count": 1}

@@ -44,7 +44,7 @@ class EventTokenProjectionQuery:
               price_feeds.quote_symbol AS quote_symbol,
               COALESCE(event_tick.tick_id, latest_tick.tick_id) AS market_tick_id,
               COALESCE(event_tick.source_provider, latest_tick.source_provider) AS market_tick_provider,
-              COALESCE(event_tick.observed_at_ms, latest_tick.observed_at_ms) AS market_tick_observed_at_ms,
+              COALESCE(event_tick.observed_at_ms, latest_tick.tick_observed_at_ms) AS market_tick_observed_at_ms,
               COALESCE(event_tick.price_usd, latest_tick.price_usd) AS price_usd,
               NULL::numeric AS price_quote,
               NULL::text AS price_quote_symbol,
@@ -55,7 +55,7 @@ class EventTokenProjectionQuery:
               COALESCE(
                 CASE WHEN event_tick.tick_id IS NOT NULL THEN event_market_capture.tick_lag_ms ELSE NULL END,
                 CASE
-                  WHEN latest_tick.tick_id IS NOT NULL THEN ABS(latest_tick.observed_at_ms - events.received_at_ms)
+                  WHEN latest_tick.tick_id IS NOT NULL THEN ABS(latest_tick.tick_observed_at_ms - events.received_at_ms)
                   ELSE NULL
                 END
               ) AS market_tick_lag_ms
@@ -126,21 +126,18 @@ class EventTokenProjectionQuery:
                 END AS target_id
             ) market_target ON true
             LEFT JOIN market_ticks event_tick
-              ON event_tick.tick_id = event_market_capture.tick_id
+              ON event_tick.observed_at_ms = event_market_capture.tick_observed_at_ms
+             AND event_tick.tick_id = event_market_capture.tick_id
              AND event_tick.target_type = market_target.target_type
              AND event_tick.target_id = market_target.target_id
              AND event_tick.source_provider = CASE
                 WHEN tir.target_type = 'CexToken' THEN 'binance_cex_rest'
                 ELSE event_tick.source_provider
               END
-            LEFT JOIN LATERAL (
-              SELECT market_ticks.*
-              FROM market_ticks
-              WHERE market_ticks.target_type = market_target.target_type
-                AND market_ticks.target_id = market_target.target_id
-              ORDER BY market_ticks.observed_at_ms DESC, market_ticks.received_at_ms DESC, market_ticks.tick_id DESC
-              LIMIT 1
-            ) latest_tick ON event_tick.tick_id IS NULL
+            LEFT JOIN market_tick_current latest_tick
+              ON event_tick.tick_id IS NULL
+             AND latest_tick.target_type = market_target.target_type
+             AND latest_tick.target_id = market_target.target_id
             ORDER BY requested_events.request_rank, tir.decision_time_ms, tir.resolution_id
             """,
             (list(ids),),

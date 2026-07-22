@@ -1,6 +1,6 @@
 # Spec — Backend KISS whole-chain simplification
 
-**Status**: In Progress
+**Status**: Review
 **Date**: 2026-07-22
 **Owner**: Codex
 **Approved by**: delegated `/goal` for whole-architecture KISS review and implementation
@@ -29,6 +29,7 @@ The previous implementation audit established a simpler target architecture, but
 | Is the `events.raw_json` / `events.event_json` safety hold in scope? | No; do not remove it without verified provenance coverage. | canonical architecture safety boundary | 2026-07-22 |
 | May this feature absorb the active Docker/frontend or News FK-index records? | No; their touch sets and current main changes remain separate. | parent coordination review | 2026-07-22 |
 | Must the final `make check-all` complete before merge? | No. After the second attempt reached a missing frontend dependency/toolchain mismatch, the user explicitly stopped the full gate and requested merge to `main`, Docker build/start, real-chain checks, and an exact omission report. | user | 2026-07-22 |
+| May a new migration be added after the static hard cut? | Only when the merged real stack exposes a persisted derived-cache contract defect. Revision `0188` is authorized as an irreversible hard cut of the private Token Radar factor cache plus bounded dirty-target requeue; it does not rewrite `0185`-`0187`, backfill malformed JSON, or alter material facts/current-row identity. | real-chain validation under the delegated goal | 2026-07-22 |
 
 ## Requirement Checklist
 
@@ -38,7 +39,7 @@ The previous implementation audit established a simpler target architecture, but
 | Identify accidental complexity without deleting necessary correctness. | Every proposed cut names the current consumer, truth owner, failure/recovery boundary, replacement behavior, and verification evidence. |
 | Simplify runtime code and tests with no compatibility glue. | The final diff is net-negative in the targeted production/test scope and introduces no alias, fallback, duplicate writer, table, worker, or generic framework. |
 | Keep tests focused on behavior and durable architecture. | Removed private/source-shape tripwires are either redundant or replaced by the smallest positive behavior/AST invariant. |
-| Preserve concurrent work. | The feature does not edit `.agents/skills/**`, `web/**`, revisions `0185`–`0187`, or the two existing active SDD records. |
+| Preserve concurrent work. | The feature does not edit `.agents/skills/**`, `web/**`, revisions `0185`–`0187`, or absorb either active feature. The existing News-index record receives only reciprocal coordination metadata for the two shared schema-head tests; the new `0188` revision is owned by this feature. |
 
 ## First principles
 

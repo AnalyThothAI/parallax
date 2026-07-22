@@ -85,7 +85,7 @@ def test_event_token_projection_returns_lean_symbol_and_price_payload() -> None:
     }
 
 
-def test_event_token_projection_falls_back_to_latest_market_tick_when_event_capture_is_missing() -> None:
+def test_event_token_projection_falls_back_to_market_tick_current_when_event_capture_is_missing() -> None:
     conn = _FakeConn(
         [
             {
@@ -115,7 +115,7 @@ def test_event_token_projection_falls_back_to_latest_market_tick_when_event_capt
 
     resolution = EventTokenProjectionQuery(conn).for_event("event-1")[0]
 
-    assert "latest_market_tick" in conn.sql
+    assert "LEFT JOIN market_tick_current latest_tick" in conn.sql
     assert "COALESCE(event_tick.tick_id, latest_tick.tick_id)" in conn.sql
     assert resolution["price"] == {
         "status": "ready",
@@ -138,8 +138,10 @@ def test_event_token_projection_uses_sargable_market_target_for_latest_tick() ->
 
     assert "requested_events(event_id, request_rank)" in conn.sql
     assert "market_target" in conn.sql
-    assert "market_ticks.target_type = market_target.target_type" in conn.sql
-    assert "market_ticks.target_id = market_target.target_id" in conn.sql
+    assert "event_tick.observed_at_ms = event_market_capture.tick_observed_at_ms" in conn.sql
+    assert "latest_tick.target_type = market_target.target_type" in conn.sql
+    assert "latest_tick.target_id = market_target.target_id" in conn.sql
+    assert "FROM market_ticks\n              WHERE" not in conn.sql
     assert "OR (" not in conn.sql
 
 
