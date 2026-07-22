@@ -1,6 +1,6 @@
 # Spec — Docker build contract repair
 
-**Status**: In Progress
+**Status**: Review
 **Date**: 2026-07-22
 **Owner**: Codex
 **Approved by**: user request to build and start the image

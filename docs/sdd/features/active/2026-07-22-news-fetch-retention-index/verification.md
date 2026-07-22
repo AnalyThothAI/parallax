@@ -1,6 +1,6 @@
 # Verification — News fetch retention foreign-key index
 
-**Status**: In Progress
+**Status**: Review
 **Date**: 2026-07-22
 **Owning spec**: `docs/sdd/features/active/2026-07-22-news-fetch-retention-index/spec.md`
 **Owning plan**: `docs/sdd/features/active/2026-07-22-news-fetch-retention-index/plan.md`
@@ -8,7 +8,7 @@
 **Worktree**: `.worktrees/news-fetch-retention-index/`
 **Approved by**: delegated Docker startup and backend optimization goal
 **Approved at**: 2026-07-22
-**Diff**: pending
+**Diff**: commit `0c4a4c59` — 8 files changed, 411 insertions, 3 deletions.
 
 ## Spec compliance
 
@@ -16,7 +16,7 @@
 |----------------------|--------|----------|
 | AC1 - canonical schema | Pass | Unit schema contract: 9 passed. |
 | AC2 - nonempty upgrade | Pass | PostgreSQL migration integration: 4 passed. |
-| AC3 - live startup | In Progress | Baseline migration was safely stopped and rolled back to 0184. |
+| AC3 - live startup | Pass | Migration reached 0187; app/PostgreSQL are healthy and readiness reports no reasons. |
 
 Deviations from spec:
 
@@ -49,9 +49,9 @@ Not measured by a repository-wide completion run.
 
 ## E2E golden path
 
-- [ ] `/readyz` returned 200
-- [ ] migration reached current head
-- [ ] canonical FK lookup uses an index
+- [x] `/readyz` returned 200
+- [x] migration reached current head
+- [x] canonical FK lookup uses an index
 
 No broad E2E is in scope.
 
@@ -76,6 +76,22 @@ exit code: 0
 $ uv run pytest tests/unit/domains/news_intel/test_news_retention.py -q
 2 passed
 exit code: 0
+
+$ make docker-up
+final app and migrate images built; migration completed; app started
+exit code: 0
+
+$ make docker-status
+app and PostgreSQL healthy; migration 20260722_0187 ready
+exit code: 0
+
+$ curl --fail --silent http://127.0.0.1:8765/healthz
+ok
+exit code: 0
+
+$ curl --fail --silent http://127.0.0.1:8765/readyz
+ok=true; reasons=[]; migration_status=ready
+exit code: 0
 ```
 
 ## Diff summary
@@ -85,7 +101,9 @@ exit code: 0
 
 Migrations applied:
 
-- None yet.
+- `20260721_0185` — backend KISS hard cut.
+- `20260722_0186` — runtime projection hard cut.
+- `20260722_0187` — canonical news provider-item fetch-run FK index.
 
 Schema or contract changes:
 
@@ -94,6 +112,7 @@ Schema or contract changes:
 ## Risks observed
 
 - PostgreSQL table statistics substantially underestimated news row counts, so catalog estimates alone were insufficient; exact bounded counts and query plans exposed the issue.
+- The final Docker layer reinstalls Playwright OS/browser assets after any Python source change; this is a separate build-cache optimization candidate.
 
 ## Follow-ups
 

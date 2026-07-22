@@ -1,6 +1,6 @@
 # Tasks — Docker build contract repair
 
-**Status**: In Progress
+**Status**: Review
 **Owning plan**: `docs/sdd/features/active/2026-07-22-docker-build-contract-fix/plan.md`
 **Worktree**: `.worktrees/docker-build-contract-fix/`
 **Branch**: `codex/docker-build-contract-fix`
@@ -26,19 +26,19 @@
 - **Depends on**: none
 - **Touch set**: `web/src/lib/types/index.ts`, `web/src/features/macro/model/macroChartModel.ts`, `web/src/lib/api/client.ts`
 - **Conflict set**: `src/parallax/`; `docs/CONTRACTS.md`
-- **Failing test first**: `web/tests/unit/features/macro/macroChartModel.test.ts::production typecheck` — `cd web && npm run typecheck` reproduces the public-export, parameter-order, and news-narrowing failures.
+- **Failing test first**: `web/tests/unit/features/macro/model/macroChartModel.test.ts::production typecheck` — `cd web && npm run typecheck` reproduces the public-export, parameter-order, and news-narrowing failures.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
-- **Review result**: not delegated
+- **Review result**: parent-reviewed
 - **Implementation**: Complete the canonical export, order required/optional parameters, and construct a typed payload from validated data without casts.
-- **Verification**: `cd web && npm run typecheck`
+- **Verification**: `npm run typecheck`
 - **Review owner**: parent agent
 - **Factory lane**: Domain implementation
 - **Deterministic constraints**: strict TypeScript, no compatibility shape, no `as` escape hatch.
 - **On-demand context**: `docs/FRONTEND.md`; affected model/type files.
 - **Kill/defer criteria**: stop if a public backend contract change becomes necessary.
 - **Eval/repair signal**: remaining compiler diagnostics.
-- **Status**: [~]
+- **Status**: [x]
 
 ### Task 2 — Align tests with current contracts
 
@@ -50,16 +50,16 @@
 - **Failing test first**: `web/tests/component/features/news/NewsPage.test.tsx::production typecheck` — `cd web && npm run typecheck` reproduces all fixture errors.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
-- **Review result**: not delegated
+- **Review result**: parent-reviewed
 - **Implementation**: Make fixtures satisfy current required fields and keep intentionally invalid data outside the static contract.
-- **Verification**: `cd web && npm run typecheck && npm test -- --run`
+- **Verification**: `npm test -- --run`
 - **Review owner**: parent agent
 - **Factory lane**: Harness/tests
 - **Deterministic constraints**: do not weaken production types.
 - **On-demand context**: current news and notification types.
 - **Kill/defer criteria**: stop if tests reveal a product semantic mismatch.
 - **Eval/repair signal**: type-check and Vitest failures.
-- **Status**: [ ]
+- **Status**: [x]
 
 ### Task 3 — Build and start the current image
 
@@ -71,13 +71,13 @@
 - **Failing test first**: `web/tests/component/features/news/NewsPage.test.tsx::docker production build` — baseline `make docker-up` failed during `npm run build`.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
-- **Review result**: not delegated
+- **Review result**: parent-reviewed
 - **Implementation**: Merge the verified repair to main, rebuild/start Compose, and inspect health/readiness.
-- **Verification**: `make docker-up && make docker-status`
+- **Verification**: `make docker-status`
 - **Review owner**: parent agent
 - **Factory lane**: Final integration
 - **Deterministic constraints**: use `~/.parallax` config paths; never reveal credential values.
 - **On-demand context**: `docs/SETUP.md`, `docs/SECURITY.md`.
 - **Kill/defer criteria**: stop on migration failure or persistent readiness failure and report exact diagnostics.
 - **Eval/repair signal**: Docker build exit, compose health, `/healthz`, `/readyz`.
-- **Status**: [ ]
+- **Status**: [x]

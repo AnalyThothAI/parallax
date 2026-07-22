@@ -1,6 +1,6 @@
 # Spec — News fetch retention foreign-key index
 
-**Status**: In Progress
+**Status**: Review
 **Date**: 2026-07-22
 **Owner**: Codex
 **Approved by**: delegated Docker startup and backend optimization goal

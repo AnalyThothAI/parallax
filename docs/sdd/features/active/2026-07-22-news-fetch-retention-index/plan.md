@@ -1,6 +1,6 @@
 # Plan — News fetch retention foreign-key index
 
-**Status**: In Progress
+**Status**: Review
 **Date**: 2026-07-22
 **Owning spec**: `docs/sdd/features/active/2026-07-22-news-fetch-retention-index/spec.md`
 **Worktree**: `.worktrees/news-fetch-retention-index/`
@@ -68,7 +68,7 @@ Code rollback reverts the atomic commit. Before migration completion, the prefli
 
 - AC1: `uv run pytest tests/unit/test_postgres_schema.py -x`
 - AC2: `uv run pytest tests/integration/test_postgres_schema_runtime.py -x`
-- AC3: `make docker-up && make docker-status && curl --fail http://localhost:8080/healthz && curl --fail http://localhost:8080/readyz`
+- AC3: `make docker-up && make docker-status && curl --fail http://localhost:8765/healthz && curl --fail http://localhost:8765/readyz`
 
 ## Verification
 

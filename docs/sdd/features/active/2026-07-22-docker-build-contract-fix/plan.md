@@ -1,6 +1,6 @@
 # Plan — Docker build contract repair
 
-**Status**: In Progress
+**Status**: Review
 **Date**: 2026-07-22
 **Owning spec**: `docs/sdd/features/active/2026-07-22-docker-build-contract-fix/spec.md`
 **Worktree**: `.worktrees/docker-build-contract-fix/`
@@ -70,7 +70,7 @@ Revert the atomic commit and rebuild the previous image. There are no migrations
 
 - AC1: `cd web && npm run typecheck && npm run build`
 - AC2: `cd web && npm run lint && npm run test:architecture && npm test -- --run`
-- AC3: `make docker-up && make docker-status && curl --fail http://localhost:8080/healthz && curl --fail http://localhost:8080/readyz`
+- AC3: `make docker-up && make docker-status && curl --fail http://localhost:8765/healthz && curl --fail http://localhost:8765/readyz`
 
 ## Verification
 

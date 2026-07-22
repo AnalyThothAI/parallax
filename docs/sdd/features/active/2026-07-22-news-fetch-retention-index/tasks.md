@@ -1,6 +1,6 @@
 # Tasks — News fetch retention foreign-key index
 
-**Status**: In Progress
+**Status**: Review
 **Owning plan**: `docs/sdd/features/active/2026-07-22-news-fetch-retention-index/plan.md`
 **Worktree**: `.worktrees/news-fetch-retention-index/`
 **Branch**: `codex/news-fetch-retention-index`
@@ -50,13 +50,13 @@
 - **Failing test first**: `tests/integration/test_postgres_schema_runtime.py::test_backend_kiss_hard_cut_migrates_nonempty_0184_state` — proves nonempty upgrade and index presence.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
-- **Review result**: not delegated
+- **Review result**: parent-reviewed
 - **Implementation**: Use one temporary concurrent preflight index for the already-stopped 0184 database, deploy the corrected migration image, remove the temporary duplicate, and inspect readiness/plan.
-- **Verification**: `make docker-up && make docker-status`
+- **Verification**: `make docker-status`
 - **Review owner**: parent agent
 - **Factory lane**: Final integration
 - **Deterministic constraints**: never reveal credentials; no E2E; preserve database data.
 - **On-demand context**: `docs/SETUP.md`, `docs/SECURITY.md`, live catalog/plan output.
 - **Kill/defer criteria**: stop on rollback failure, migration error, or readiness failure.
 - **Eval/repair signal**: migration duration, index plan, container health.
-- **Status**: [~]
+- **Status**: [x]
