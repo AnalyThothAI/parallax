@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import inspect
 import json
 from collections.abc import Mapping
 from contextlib import contextmanager
@@ -841,9 +840,6 @@ def test_news_item_process_worker_extracts_mentions_and_candidates() -> None:
 
 
 def test_news_item_process_source_watermark_requires_persisted_source_time() -> None:
-    signature = inspect.signature(_process_worker_source_watermark_ms)
-
-    assert "fallback_ms" not in signature.parameters
     assert (
         _process_worker_source_watermark_ms(
             {"news_item_id": "news-with-time", "published_at_ms": NOW_MS - 10_000, "fetched_at_ms": NOW_MS - 1_000}

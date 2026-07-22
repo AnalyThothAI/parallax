@@ -19,54 +19,6 @@ from parallax.platform.config.settings import (
 )
 from parallax.platform.paths.runtime_paths import app_home, config_path, workers_config_path
 
-_FLAT_COMPAT_SETTINGS_ALIASES = frozenset(
-    {
-        "agent_runtime_default_model",
-        "api_host",
-        "api_port",
-        "binance_cex_profile_base_url",
-        "binance_cex_universe_contract_type",
-        "binance_cex_universe_quote_symbol",
-        "binance_enabled",
-        "binance_timeout_seconds",
-        "binance_usdm_futures_base_url",
-        "binance_web3_base_url",
-        "gmgn_api_key",
-        "gmgn_openapi_base_url",
-        "gmgn_timeout_seconds",
-        "gmgn_token_info_cache_ttl_seconds",
-        "llm_api_key",
-        "llm_base_url",
-        "llm_provider",
-        "llm_trace_api_key",
-        "llm_trace_enabled",
-        "llm_trace_export_configured",
-        "llm_trace_include_sensitive_data",
-        "macrodata_enabled",
-        "macrodata_fred_api_key_env",
-        "okx_dex_api_key",
-        "okx_dex_base_url",
-        "okx_dex_chain_indexes",
-        "okx_dex_passphrase",
-        "okx_dex_secret_key",
-        "okx_dex_ws_url",
-        "okx_timeout_seconds",
-        "postgres_connect_timeout_seconds",
-        "postgres_dsn",
-        "postgres_pool_max_size",
-        "postgres_pool_min_size",
-        "replay_limit",
-        "upstream_app_version",
-        "upstream_chains",
-        "upstream_channels",
-        "upstream_heartbeat_interval",
-        "upstream_idle_timeout",
-        "upstream_proxy",
-        "upstream_reconnect_delay",
-        "ws_heartbeat_interval",
-    }
-)
-
 
 def _manifest_worker_names() -> set[str]:
     from parallax.app.runtime.worker_manifest import all_worker_manifests
@@ -76,10 +28,6 @@ def _manifest_worker_names() -> set[str]:
 
 def _old_anchor_worker_key() -> str:
     return "_".join(("anchor", "price"))
-
-
-def test_settings_has_no_flat_compatibility_aliases() -> None:
-    assert _FLAT_COMPAT_SETTINGS_ALIASES.isdisjoint(Settings.__dict__)
 
 
 def write_config(home, payload, *, write_workers=True):

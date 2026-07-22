@@ -18,7 +18,7 @@ Before writing any new service or scoring scheme:
 
 1. List all files in the relevant `src/parallax/<area>/` and `tests/` directories.
 2. Read existing `*_service.py` candidates end to end. Most "new" features here are 80 % covered by an existing service plus a few missing joins.
-3. Trace the data flow from `collector → ingest → enrichment → retrieval → api/http.py → web/`. Cite the actual files and line ranges as evidence in the spec, not as instructions.
+3. Trace the current data flow from provider input through PostgreSQL material facts, durable targets or transactionally maintained current rows, the owning projection/read model, and the concrete HTTP/CLI/WebSocket consumer. Cite actual files and line ranges as evidence in the spec, not as instructions.
 4. Identify fields already in the DB but unconsumed by retrieval services. These are usually the cheapest wins.
 
 If a spec's background section cannot cite specific existing files, the design is ungrounded — fix that before proposing changes.
@@ -32,7 +32,7 @@ Default to extending an existing service, deriving on demand, and extending exis
 The following additions require explicit justification (cite a current pain or a measured number) before appearing in any spec:
 
 - New PostgreSQL tables, materialised views, or background workers.
-- LLM calls outside the existing `enrichment_worker` boundary.
+- LLM calls outside the current audited execution boundary. Today the product boundary is the durable `news.story_brief` worker path; a second model stage requires its own cost, retry, ledger, and consumer evidence.
 - Bayesian / probabilistic outputs.
 - Ground-truth datasets, human annotation workflows, dual-annotator review.
 - Statistical inference on small samples (N < 200).

@@ -12,7 +12,6 @@ from parallax.domains.token_intel.queries.event_rebuild_query import EventRebuil
 from parallax.domains.token_intel.services.token_evidence_builder import build_token_evidence
 from parallax.domains.token_intel.services.token_intent_builder import build_token_intents
 from parallax.domains.token_intel.services.token_intent_resolver import TokenIntentResolver
-from parallax.domains.token_intel.services.token_resolution_refresh import deferred_token_radar_projection
 
 
 def rebuild_recent_token_intents(
@@ -21,7 +20,6 @@ def rebuild_recent_token_intents(
     now_ms: int,
     window: str,
     limit: int,
-    projection_limit: int,
 ) -> dict[str, Any]:
     since_ms = int(now_ms) - WINDOW_MS[window]
     rows = EventRebuildQuery(repos.conn).recent_events(since_ms=since_ms, limit=limit)
@@ -42,8 +40,6 @@ def rebuild_recent_token_intents(
         "events_rebuilt": rebuilt_events,
         "intents_written": intents_written,
         "resolved_intents": resolved_intents,
-        "projection": deferred_token_radar_projection(),
-        "projection_limit": projection_limit,
     }
 
 

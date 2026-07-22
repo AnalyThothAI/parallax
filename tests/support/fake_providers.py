@@ -91,10 +91,6 @@ class FakeCexQuoteProvider:
         self.requests.append(inst_id)
         return next((ticker for ticker in self._tickers if ticker.inst_id == inst_id), None)
 
-    def candles(self, *, inst_id: str, bar: str, limit: int) -> list[Any]:
-        self.requests.append(f"{inst_id}:{bar}:{limit}")
-        return []
-
 
 @dataclass
 class RecordingNotificationProvider:

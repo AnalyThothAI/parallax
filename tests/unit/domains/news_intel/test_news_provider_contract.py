@@ -232,16 +232,6 @@ class FakeConstraintConn:
         return SimpleNamespace(fetchone=lambda: {"constraint_def": self.constraint_def})
 
 
-class FakeRegistryProvider:
-    provider_type = "registry"
-
-    def __init__(self, *, supported_provider_types: tuple[str, ...]) -> None:
-        self._supported_provider_types = supported_provider_types
-
-    def supported_provider_types(self) -> tuple[str, ...]:
-        return self._supported_provider_types
-
-
 class FakeCapabilityProbeProvider:
     provider_type = "fake"
 

@@ -1,7 +1,5 @@
 from __future__ import annotations
 
-from typing import Any
-
 import pytest
 
 from parallax.domains.macro_intel.repositories.macro_intel_repository import (
@@ -413,13 +411,6 @@ class CurrentRefreshConnection:
         return NullContext()
 
 
-class CurrentRefreshConnectionWithoutTransaction(CurrentRefreshConnection):
-    def __getattribute__(self, name: str) -> Any:
-        if name == "transaction":
-            raise AttributeError(name)
-        return super().__getattribute__(name)
-
-
 class CurrentRefreshConnectionWithNonCallableTransaction(CurrentRefreshConnection):
     transaction = None
 
@@ -468,17 +459,6 @@ class SnapshotConnection:
 
     def commit(self) -> None:
         self.commit_count += 1
-
-
-class SnapshotReturningConnection:
-    def __init__(self, *, rows: list[dict[str, object]], rowcount: object) -> None:
-        self.rows = rows
-        self.rowcount = rowcount
-        self.executions: list[tuple[str, tuple[object, ...]]] = []
-
-    def execute(self, query: str, params: tuple[object, ...]) -> Cursor:
-        self.executions.append((query, params))
-        return Cursor(self.rows, rowcount=self.rowcount)
 
 
 class NullContext:

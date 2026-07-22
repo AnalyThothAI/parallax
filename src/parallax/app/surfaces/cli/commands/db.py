@@ -3,10 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from parallax.app.runtime.repository_session import postgres_connection
-from parallax.domains.token_intel.interfaces import (
-    TOKEN_FACTOR_SNAPSHOT_VERSION,
-    TOKEN_RADAR_PROJECTION_VERSION,
-)
+from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSION
 from parallax.platform.config.settings import load_settings
 from parallax.platform.db.postgres_audit import PostgresOperationalAudit, PostgresQueryAudit
 from parallax.platform.db.postgres_client import (
@@ -41,7 +38,6 @@ def handle_db(args: object) -> tuple[int, dict[str, Any]]:
             audit = PostgresQueryAudit(
                 conn,
                 token_radar_projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                token_factor_version=TOKEN_FACTOR_SNAPSHOT_VERSION,
             ).run(analyze=bool(args.analyze))
         return (0 if audit.get("ok") else 1), {"ok": bool(audit.get("ok")), "data": audit}
 

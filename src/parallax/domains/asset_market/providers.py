@@ -13,7 +13,6 @@ class MarketCapability(StrEnum):
     SEARCH_DEX = "search_dex"
     PROFILE_CEX = "profile_cex"
     PROFILE_DEX_EXACT = "profile_dex_exact"
-    CANDLES_DEX_EXACT = "candles_dex_exact"
 
 
 @dataclass(frozen=True, slots=True)
@@ -95,20 +94,6 @@ class DexProfileSource:
 
 
 @dataclass(frozen=True, slots=True)
-class MarketCandle:
-    time_ms: int
-    open: float | None
-    high: float | None
-    low: float | None
-    close: float | None
-    volume: float | None
-    volume_quote: float | None
-    volume_usd: float | None
-    confirmed: bool | None
-    raw: dict[str, Any] | list[Any] | None = None
-
-
-@dataclass(frozen=True, slots=True)
 class DexMarketStreamTarget:
     chain_id: str
     address: str
@@ -136,8 +121,6 @@ class CexMarketProvider(Protocol):
 
     def ticker(self, *, inst_id: str) -> CexTicker | None: ...
 
-    def candles(self, *, inst_id: str, bar: str, limit: int) -> list[MarketCandle]: ...
-
     def close(self) -> None: ...
 
 
@@ -149,12 +132,6 @@ class DexTokenDiscoveryProvider(Protocol):
 
 class DexTokenQuoteProvider(Protocol):
     def token_quotes(self, tokens: list[DexTokenQuoteRequest]) -> list[DexTokenQuote]: ...
-
-    def close(self) -> None: ...
-
-
-class DexTokenCandleProvider(Protocol):
-    def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int) -> list[MarketCandle]: ...
 
     def close(self) -> None: ...
 
@@ -190,14 +167,12 @@ __all__ = [
     "DexProfileSource",
     "DexProviderTemporarilyUnavailable",
     "DexTokenCandidate",
-    "DexTokenCandleProvider",
     "DexTokenDiscoveryProvider",
     "DexTokenProfile",
     "DexTokenProfileProvider",
     "DexTokenQuote",
     "DexTokenQuoteProvider",
     "DexTokenQuoteRequest",
-    "MarketCandle",
     "MarketCapability",
     "ProviderHealth",
 ]

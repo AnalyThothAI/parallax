@@ -11,8 +11,6 @@ from curl_cffi import CurlOpt
 from curl_cffi import requests as curl_requests
 from eth_utils import is_address
 
-from parallax.platform.validation import require_positive_int
-
 CURL_IPRESOLVE_V4 = 1
 DEFAULT_CURL_IMPERSONATE = "chrome142"
 
@@ -44,18 +42,6 @@ class GmgnTokenInfo:
     dev: dict[str, Any] | None
     stat: dict[str, Any] | None
     link: dict[str, Any] | None
-    raw: dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class GmgnTokenKlineCandle:
-    time_ms: int
-    open: float | None
-    high: float | None
-    low: float | None
-    close: float | None
-    volume: float | None
-    volume_usd: float | None
     raw: dict[str, Any]
 
 
@@ -122,44 +108,6 @@ class GmgnOpenApiClient:
         data = self._request("GET", "/v1/token/info", {"chain": api_chain, "address": api_address})
         info = _token_info_from_response(chain=chain, address=api_address, data=data)
         return GmgnTokenInfoLookup(info=info, cache_status="miss")
-
-    def token_kline(
-        self,
-        *,
-        chain: str,
-        address: str,
-        resolution: str,
-        limit: int,
-        now_ms: int | None = None,
-    ) -> list[GmgnTokenKlineCandle]:
-        api_chain = _api_chain(chain)
-        api_address = _api_address(chain=api_chain, address=address)
-        to_seconds = int((now_ms if now_ms is not None else time.time() * 1000) // 1000)
-        parsed_limit = require_positive_int(
-            limit,
-            error_code="gmgn_openapi_token_kline_limit_required",
-        )
-        from_seconds = to_seconds - _resolution_seconds(resolution) * parsed_limit
-        data = self._request(
-            "GET",
-            "/v1/market/token_kline",
-            {
-                "chain": api_chain,
-                "address": api_address,
-                "resolution": _api_resolution(resolution),
-                "from": str(from_seconds),
-                "to": str(to_seconds),
-            },
-        )
-        rows = data.get("list") if isinstance(data, dict) else data
-        if not isinstance(rows, list):
-            return []
-        candles: list[GmgnTokenKlineCandle] = []
-        for row in rows:
-            candle = _kline_candle_from_response(row)
-            if candle is not None:
-                candles.append(candle)
-        return candles
 
     def _request(self, method: str, path: str, params: dict[str, str]) -> Any:
         query = {
@@ -411,42 +359,3 @@ def _link_string(link: dict[str, Any] | None, key: str) -> str | None:
     if link is None:
         return None
     return _string(link.get(key))
-
-
-def _api_resolution(value: str) -> str:
-    text = str(value or "").strip()
-    return text.lower() or "1m"
-
-
-def _resolution_seconds(value: str) -> int:
-    text = _api_resolution(value)
-    unit = text[-1:]
-    try:
-        amount = int(text[:-1])
-    except ValueError:
-        return 60
-    if unit == "m":
-        return amount * 60
-    if unit == "h":
-        return amount * 60 * 60
-    if unit == "d":
-        return amount * 24 * 60 * 60
-    return 60
-
-
-def _kline_candle_from_response(row: Any) -> GmgnTokenKlineCandle | None:
-    if not isinstance(row, dict):
-        return None
-    time_ms = _int_or_none(row.get("time") or row.get("time_ms"))
-    if time_ms is None:
-        return None
-    return GmgnTokenKlineCandle(
-        time_ms=time_ms,
-        open=_float_or_none(row.get("open")),
-        high=_float_or_none(row.get("high")),
-        low=_float_or_none(row.get("low")),
-        close=_float_or_none(row.get("close")),
-        volume=_float_or_none(row.get("amount")),
-        volume_usd=_float_or_none(row.get("volume")),
-        raw=dict(row),
-    )

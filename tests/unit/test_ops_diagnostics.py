@@ -5,7 +5,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-from parallax.app.runtime.ops_diagnostics import (
+from parallax.app.operations.diagnostics import (
     INVALID_QUEUE,
     _asset_market_provider_health,
     _config_payload,
@@ -424,20 +424,31 @@ class FakeConn:
         self.executed.append(sql)
         if "SELECT version_num FROM alembic_version" in sql:
             return FakeRows([{"version_num": latest_migration_version()}])
+        if "FROM worker_queue_terminal_events" in sql:
+            if "GROUP BY final_reason_bucket" in sql:
+                return FakeRows([])
+            return FakeRows([{"terminal_count": 0, "unresolved_terminal_count": 0}])
         if "COUNT(*)" in sql and "GROUP BY status" in sql:
             return FakeRows(self.queue_rows)
         if "oldest_due_at_ms" in sql:
+            counts = {str(row["status"]): int(row["count"]) for row in self.queue_rows}
             return FakeRows(
                 [
                     {
+                        "total_count": sum(counts.values()),
+                        "active_count": sum(counts.get(status, 0) for status in ("pending", "failed", "running")),
                         "due_count": 0,
-                        "running_count": 0,
-                        "dead_count": sum(int(row["count"]) for row in self.queue_rows if row["status"] == "dead"),
+                        "running_count": counts.get("running", 0),
+                        "failed_count": counts.get("failed", 0),
+                        "source_terminal_count": counts.get("dead", 0),
                         "oldest_due_at_ms": None,
                         "oldest_running_at_ms": None,
+                        "max_attempt_count": None,
                     }
                 ]
             )
+        if "SELECT *" in sql and "FROM notification_deliveries" in sql:
+            return FakeRows([])
         if "FROM token_radar_publication_state" in sql:
             return FakeRows(
                 [

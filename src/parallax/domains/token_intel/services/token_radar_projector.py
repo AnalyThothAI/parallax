@@ -788,7 +788,7 @@ def _rank_input_number(row: Mapping[str, Any], column: str) -> float:
 
 def _rank_input_nonnegative_int(row: Mapping[str, Any], column: str) -> int:
     try:
-        value = row[column]
+        value: object = row[column]
     except KeyError as exc:
         raise RuntimeError(f"token_radar_rank_input_required:{column}") from exc
     if value is None:

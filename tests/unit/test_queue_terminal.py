@@ -290,7 +290,7 @@ def test_inspect_terminal_events_filters_unresolved_terminal_rows() -> None:
         _terminal_row(
             "terminal-2",
             worker_name="resolution_refresh",
-            source_table="other",
+            source_table="lookup",
             target_key="b",
             operator_action="archive",
         ),
@@ -301,7 +301,6 @@ def test_inspect_terminal_events_filters_unresolved_terminal_rows() -> None:
         conn,
         worker_name="resolution_refresh",
         source_table="lookup",
-        status="terminal",
         limit=10,
     )
 
@@ -333,7 +332,6 @@ def test_inspect_terminal_events_filters_by_reason_bucket() -> None:
         conn,
         worker_name="resolution_refresh",
         source_table="lookup",
-        status="terminal",
         reason_bucket="llm_provider_522",
         limit=10,
     )
@@ -386,38 +384,6 @@ def test_list_terminal_event_ids_filters_unresolved_bucket() -> None:
     )
 
     assert terminal_ids == ["terminal-1"]
-
-
-def test_inspect_terminal_events_excludes_quarantine_from_unresolved_terminal_rows() -> None:
-    conn = _FakeTerminalConnection()
-    conn.rows = [
-        _terminal_row(
-            "terminal-1",
-            worker_name="resolution_refresh",
-            source_table="lookup",
-            target_key="a",
-            operator_action="quarantine",
-        )
-    ]
-
-    unresolved = inspect_terminal_events(
-        conn,
-        worker_name="resolution_refresh",
-        source_table="lookup",
-        status="terminal",
-        limit=10,
-    )
-    active = inspect_terminal_events(
-        conn,
-        worker_name="resolution_refresh",
-        source_table="lookup",
-        status="active",
-        limit=10,
-    )
-
-    assert unresolved["count"] == 0
-    assert active["count"] == 1
-    assert active["items"][0]["operator_action"] == "quarantine"
 
 
 def test_resolve_terminal_event_retry_marks_action_before_transition_and_uses_snapshot() -> None:

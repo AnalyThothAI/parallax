@@ -11,7 +11,6 @@ from parallax.platform.db.json_safety import postgres_safe_json
 from parallax.platform.db.write_contract import mutation_count, returning_mutation_count
 
 TERMINAL_ACTIONS = frozenset(("retry", "archive", "quarantine"))
-TERMINAL_STATUSES = frozenset(("terminal", "active"))
 _RESOLVED_RETENTION_MS = 30 * 24 * 60 * 60 * 1_000
 _RESOLVED_PRUNE_LIMIT = 500
 
@@ -155,13 +154,11 @@ def inspect_terminal_events(
     *,
     worker_name: str | None = None,
     source_table: str | None = None,
-    status: str = "terminal",
     reason_bucket: str | None = None,
     limit: int = 50,
 ) -> dict[str, Any]:
-    normalized_status = _status(status)
     parsed_limit = max(1, min(500, int(limit)))
-    where = ["TRUE"]
+    where = ["operator_action IS NULL"]
     params: dict[str, Any] = {"limit": parsed_limit}
     if worker_name:
         where.append("worker_name = %(worker_name)s")
@@ -172,8 +169,6 @@ def inspect_terminal_events(
     if reason_bucket:
         where.append("final_reason_bucket = %(reason_bucket)s")
         params["reason_bucket"] = _required_text(reason_bucket, "reason_bucket")
-    if normalized_status == "terminal":
-        where.append("operator_action IS NULL")
     rows = conn.execute(
         f"""
         SELECT *
@@ -186,7 +181,7 @@ def inspect_terminal_events(
     ).fetchall()
     items = [_row_dict(row) for row in rows]
     return {
-        "status": normalized_status,
+        "status": "terminal",
         "worker": worker_name or None,
         "source_table": source_table or None,
         "reason_bucket": reason_bucket or None,
@@ -516,10 +511,3 @@ def _action(value: str) -> str:
     if action not in TERMINAL_ACTIONS:
         raise ValueError(f"unsupported_terminal_action:{action}")
     return action
-
-
-def _status(value: str) -> str:
-    status = str(value or "").strip() or "terminal"
-    if status not in TERMINAL_STATUSES:
-        raise ValueError(f"unsupported_terminal_status:{status}")
-    return status

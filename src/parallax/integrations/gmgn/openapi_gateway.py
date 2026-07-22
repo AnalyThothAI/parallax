@@ -13,7 +13,6 @@ from parallax.integrations.gmgn.openapi_client import (
     GmgnOpenApiTransientError,
     GmgnTokenInfo,
     GmgnTokenInfoLookup,
-    GmgnTokenKlineCandle,
 )
 from parallax.platform.validation import (
     require_nonnegative_float,
@@ -32,7 +31,6 @@ class GmgnOpenApiRoute:
 
 
 TOKEN_INFO_ROUTE = GmgnOpenApiRoute(name="token_info", weight=1.0)
-TOKEN_KLINE_ROUTE = GmgnOpenApiRoute(name="token_kline", weight=1.0)
 
 
 class GmgnOpenApiGateway:
@@ -107,26 +105,6 @@ class GmgnOpenApiGateway:
         if self._token_info_cache_ttl_seconds > 0:
             self._token_info_cache[key] = (self._clock() + self._token_info_cache_ttl_seconds, lookup.info)
         return GmgnTokenInfoLookup(info=lookup.info, cache_status="miss")
-
-    def token_kline(
-        self,
-        *,
-        chain: str,
-        address: str,
-        resolution: str,
-        limit: int,
-        now_ms: int | None = None,
-    ) -> list[GmgnTokenKlineCandle]:
-        return self._execute(
-            TOKEN_KLINE_ROUTE,
-            lambda: self._client.token_kline(
-                chain=chain,
-                address=address,
-                resolution=resolution,
-                limit=limit,
-                now_ms=now_ms,
-            ),
-        )
 
     def close(self) -> None:
         self._client.close()

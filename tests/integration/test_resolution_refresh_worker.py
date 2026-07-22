@@ -156,7 +156,6 @@ def test_resolution_refresh_worker_resolves_recent_symbol_and_defers_projection(
     assert result["search_hits"] == 1
     assert result["assets_written"] == 1
     assert result["reprocessed_intents"] == 1
-    assert result["projection"]["status"] == "deferred_to_worker"
     assert result["discovery_result_counts"] == {"found": 1}
     assert after["resolution_status"] == "UNIQUE_BY_CONTEXT"
     assert after["target_type"] == "Asset"
@@ -303,9 +302,6 @@ def test_resolution_refresh_worker_retries_hot_not_found_before_default_ttl(tmp_
     assert second["lookups_done"] == 1
     assert second["search_hits"] == 1
     assert second["reprocessed_intents"] == 1
-    assert second["anchor"] is None
-    assert second["projection"]["status"] == "deferred_to_worker"
-    assert second["projection"]["rows_written"] == 0
     assert after["resolution_status"] == "UNIQUE_BY_CONTEXT"
     assert after["target_id"] == f"asset:eip155:1:erc20:{address}"
 

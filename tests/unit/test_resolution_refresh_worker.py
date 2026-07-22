@@ -115,8 +115,6 @@ def test_resolution_refresh_worker_commits_resolution_and_defers_projection(monk
 
     assert result["reprocessed_intents"] == 1
     assert result["affected_lookup_keys"] == ["symbol:ABC"]
-    assert result["anchor"] is None
-    assert result["projection"]["status"] == "deferred_to_worker"
     assert repos.discovery.claim_calls[0]["limit"] == 50
     assert reprocess_calls[0]["limit"] == 500
     assert db.session_names == [

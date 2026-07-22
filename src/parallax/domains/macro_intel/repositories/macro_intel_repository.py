@@ -4,7 +4,7 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from datetime import date
-from typing import Any, NotRequired, TypedDict
+from typing import Any, NotRequired, TypedDict, cast
 
 from psycopg.types.json import Jsonb
 
@@ -1983,7 +1983,7 @@ def _macro_snapshot_payload(snapshot: Mapping[str, Any]) -> dict[str, Any]:
 
 
 def _macro_snapshot_hash_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-    return _without_lifecycle_clocks(payload)
+    return cast("dict[str, Any]", _without_lifecycle_clocks(payload))
 
 
 def _required_module_views(snapshot: Mapping[str, Any]) -> dict[str, Any]:

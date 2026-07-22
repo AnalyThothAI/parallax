@@ -31,7 +31,6 @@ def test_rebuild_recent_token_intents_uses_current_builder_policy():
             now_ms=event.received_at_ms + 1_000,
             window="5m",
             limit=10,
-            projection_limit=10,
         )
 
         intents = repositories_for_connection(

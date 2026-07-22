@@ -6,8 +6,8 @@ from typing import Any
 
 import pytest
 
-from parallax.app.runtime.ops_cli_queries import token_profile_image_repair_targets, token_radar_publication_status
-from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
+from parallax.app.operations.news import enqueue_projection_dirty_targets
+from parallax.app.operations.token_intel import token_profile_image_repair_targets, token_radar_publication_status
 from parallax.app.surfaces.cli.parser import build_parser
 from parallax.domains.news_intel._constants import NEWS_STORY_IDENTITY_VERSION
 
@@ -19,15 +19,14 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
 
     result = enqueue_projection_dirty_targets(
         repos,
-        domain="all",
         execute=False,
         now_ms=NOW_MS,
         projection="all",
     )
 
     assert result["execute"] is False
-    assert result["news"]["news_item_ids"] == 3
-    assert result["news"]["news_item_targets"] == 5
+    assert result["news_item_ids"] == 3
+    assert result["news_item_targets"] == 5
     assert repos.news_dirty.enqueued == []
     assert repos.conn.transactions == 0
     assert all("analysis_admission" not in sql for sql, _params in repos.conn.statements)
@@ -38,7 +37,6 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
 
     result = enqueue_projection_dirty_targets(
         repos,
-        domain="all",
         execute=True,
         now_ms=NOW_MS,
         projection="all",
@@ -91,7 +89,6 @@ def test_enqueue_projection_dirty_targets_execute_requires_transaction_before_re
     with pytest.raises(AttributeError):
         enqueue_projection_dirty_targets(
             repos,
-            domain="news",
             execute=True,
             now_ms=NOW_MS,
             projection="page",
@@ -106,8 +103,6 @@ def test_enqueue_projection_dirty_targets_parser_requires_explicit_mode() -> Non
         [
             "ops",
             "enqueue-projection-dirty-targets",
-            "--domain",
-            "news",
             "--projection",
             "story_brief",
             "--since-hours",
@@ -118,7 +113,6 @@ def test_enqueue_projection_dirty_targets_parser_requires_explicit_mode() -> Non
 
     assert args.command == "ops"
     assert args.ops_command == "enqueue-projection-dirty-targets"
-    assert args.domain == "news"
     assert args.projection == "story_brief"
     assert args.since_hours == 24
     assert args.dry_run is True
@@ -131,7 +125,6 @@ def test_enqueue_projection_dirty_targets_execute_requires_bounded_brief_repair(
     try:
         enqueue_projection_dirty_targets(
             repos,
-            domain="all",
             execute=True,
             now_ms=NOW_MS,
             projection="all",
@@ -147,14 +140,13 @@ def test_enqueue_projection_dirty_targets_page_repair_can_run_unbounded_for_page
 
     result = enqueue_projection_dirty_targets(
         repos,
-        domain="news",
         execute=True,
         now_ms=NOW_MS,
         projection="page",
     )
 
     assert result["projection"] == "page"
-    assert result["news"]["news_item_targets"] == 3
+    assert result["news_item_targets"] == 3
     assert repos.news_dirty.enqueued[0]["rows"] == [
         {
             "projection_name": "page",
@@ -302,7 +294,6 @@ def test_enqueue_projection_dirty_targets_can_scope_story_brief_repair() -> None
 
     result = enqueue_projection_dirty_targets(
         repos,
-        domain="news",
         execute=True,
         now_ms=NOW_MS,
         projection="story_brief",
@@ -310,7 +301,7 @@ def test_enqueue_projection_dirty_targets_can_scope_story_brief_repair() -> None
     )
 
     assert result["projection"] == "story_brief"
-    assert result["news"]["news_item_targets"] == 2
+    assert result["news_item_targets"] == 2
     assert repos.news_dirty.enqueued[0]["rows"] == [
         {
             "projection_name": "story_brief",

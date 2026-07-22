@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import argparse
 
-from parallax.app.runtime.projection_dirty_targets import DOMAIN_CHOICES, PROJECTION_CHOICES
+from parallax.app.operations.news import PROJECTION_CHOICES
 
 
 def _positive_int(value: str) -> int:
@@ -159,7 +159,6 @@ def build_parser() -> argparse.ArgumentParser:
         "enqueue-projection-dirty-targets",
         help="enqueue dirty targets for rebuildable News projections",
     )
-    enqueue_projection_dirty_targets.add_argument("--domain", choices=DOMAIN_CHOICES, default="all")
     enqueue_projection_dirty_targets.add_argument("--projection", choices=PROJECTION_CHOICES, default="all")
     enqueue_projection_dirty_targets.add_argument("--since-hours", type=_positive_float, default=None)
     enqueue_projection_dirty_targets_mode = enqueue_projection_dirty_targets.add_mutually_exclusive_group(required=True)

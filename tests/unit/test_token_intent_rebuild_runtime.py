@@ -29,14 +29,14 @@ def test_rebuild_recent_token_intents_uses_session_transaction(monkeypatch) -> N
         now_ms=now_ms,
         window="5m",
         limit=7,
-        projection_limit=11,
     )
 
     assert query_calls == [{"since_ms": now_ms - token_intent_rebuild.WINDOW_MS["5m"], "limit": 7}]
     assert result["events_rebuilt"] == 1
     assert result["intents_written"] == 1
     assert result["resolved_intents"] == 1
-    assert result["projection_limit"] == 11
+    assert "projection" not in result
+    assert "projection_limit" not in result
     assert repos.transaction_entries == 1
     assert repos.transaction_exits == ["ok"]
     assert repos.required_operations == ["token_intent_rebuild"]

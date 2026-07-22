@@ -98,6 +98,24 @@ def test_page_and_story_enqueues_use_stable_semantic_targets() -> None:
     ]
 
 
+def test_page_enqueue_preserves_repository_attribute_error() -> None:
+    repos = FakeRepos()
+
+    def fail(_news_item_ids):
+        raise AttributeError("repository query failed")
+
+    repos.news_items.servable_news_item_ids = fail
+
+    with pytest.raises(AttributeError, match="repository query failed"):
+        enqueue_page_reprojection(
+            repos,
+            news_item_ids=["news-1"],
+            source_watermark_ms_by_news_item_id={"news-1": NOW_MS - 100},
+            reason="fact_changed",
+            now_ms=NOW_MS,
+        )
+
+
 @pytest.mark.parametrize(
     ("call", "error"),
     [

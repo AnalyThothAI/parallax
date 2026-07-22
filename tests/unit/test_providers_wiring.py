@@ -71,7 +71,6 @@ def test_asset_market_wires_okx_quote_separately_from_discovery_and_gmgn_exact_r
     assert providers.dex_discovery_market is not None
     assert providers.dex_quote_market is not None
     assert isinstance(providers.dex_quote_market, asset_market_wiring.FallbackDexQuoteProvider)
-    assert providers.dex_candle_market is gmgn_created[0]
     assert [(source.provider, source.market) for source in providers.dex_profile_sources] == [
         ("gmgn_dex_profile", gmgn_created[0]),
         ("binance_web3_profile", binance_created[0]),
@@ -303,8 +302,9 @@ def test_asset_market_providers_close_composite_dependencies_once() -> None:
         primary = CloseCountingDexQuoteProvider()
         fallback = CloseCountingDexQuoteProvider()
         providers = providers_wiring.AssetMarketProviders(
+            cex_market=primary,
+            dex_discovery_market=primary,
             dex_quote_market=asset_market_wiring.FallbackDexQuoteProvider(primary=primary, fallback=fallback),
-            dex_candle_market=primary,
         )
 
         await providers.aclose()
@@ -376,26 +376,6 @@ def test_asset_market_wiring_preserves_gmgn_error_when_partial_cleanup_fails(mon
     assert "cex close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
     assert "close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
     assert "quote close failed" in "\n".join(getattr(exc_info.value, "__notes__", []))
-
-
-def test_asset_market_wiring_records_malformed_okx_bundle_fields_during_partial_cleanup(monkeypatch) -> None:
-    okx_provider = CloseCountingDexDiscoveryProvider()
-    malformed_okx_bundle = SimpleNamespace(dex_discovery_market=okx_provider)
-
-    monkeypatch.setattr(okx_wiring, "wire_okx_provider_bundle", lambda settings: malformed_okx_bundle)
-
-    def fail_gmgn(settings: Settings):
-        raise RuntimeError("gmgn failed")
-
-    monkeypatch.setattr(gmgn_wiring, "gmgn_dex_market", fail_gmgn)
-
-    with pytest.raises(RuntimeError, match="gmgn failed") as exc_info:
-        asset_market_wiring.wire_asset_market(_settings_with_okx_and_gmgn())
-
-    notes = "\n".join(getattr(exc_info.value, "__notes__", []))
-    assert okx_provider.close_count == 1
-    assert "okx_bundle.dex_quote_market" in notes
-    assert "okx_bundle.stream_dex_market" in notes
 
 
 def test_okx_bundle_wiring_closes_discovery_and_quote_when_stream_wiring_fails(monkeypatch) -> None:
@@ -748,9 +728,6 @@ class FakeGmgnDexMarketProvider:
         requested = {(token.chain_id, token.address.lower()) for token in tokens}
         return [quote for quote in self.quotes if (quote.chain_id, quote.address.lower()) in requested]
 
-    def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int):
-        return []
-
     def token_profile(self, *, chain_id: str, address: str):
         return None
 
@@ -770,9 +747,6 @@ class GmgnWithoutTokenQuotesProvider:
     def __init__(self) -> None:
         self.close_count = 0
 
-    def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int):
-        return []
-
     def token_profile(self, *, chain_id: str, address: str):
         return None
 
@@ -785,9 +759,6 @@ class GmgnWithoutTokenProfileProvider:
         self.close_count = 0
 
     def token_quotes(self, tokens):
-        return []
-
-    def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int):
         return []
 
     def close(self) -> None:

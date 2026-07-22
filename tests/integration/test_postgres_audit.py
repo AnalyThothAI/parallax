@@ -71,7 +71,6 @@ def test_query_audit_binds_caller_supplied_token_radar_projection_version():
     payload = PostgresQueryAudit(
         conn,
         token_radar_projection_version="token-radar-custom",
-        token_factor_version="token-factor-custom",
     ).run(analyze=False)
 
     assert payload["ok"] is True

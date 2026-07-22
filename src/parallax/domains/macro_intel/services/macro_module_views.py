@@ -71,7 +71,7 @@ def build_macro_module_view(
             observations=observations,
         )
     )
-    payload = {
+    payload: dict[str, Any] = {
         "snapshot": _snapshot_header(config=config, snapshot=snapshot),
         "tiles": build_tiles(concept_keys, feature_map),
         "primary_chart": primary_chart,

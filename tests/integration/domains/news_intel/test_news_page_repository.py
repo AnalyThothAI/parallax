@@ -8,7 +8,7 @@ from tests.postgres_test_utils import reset_postgres_schema as migrate
 NOW_MS = 1_779_000_000_000
 
 
-def test_unchanged_page_projection_writes_zero_serving_rows(tmp_path) -> None:
+def test_page_projection_is_idempotent_and_does_not_filter_low_scores(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -96,7 +96,7 @@ def _page_row(news_item_id: str) -> dict[str, object]:
         "content_classification": {"policy_version": "news_content_classification_v1"},
         "source": {"source_id": "page-source", "source_role": "specialist_media", "trust_tier": "standard"},
         "signal": {
-            "display_signal": {"direction": "neutral", "status": "partial"},
+            "display_signal": {"direction": "neutral", "status": "partial", "score": 0},
             "agent_signal": {"status": "pending"},
             "alert_eligibility": {
                 "agent_status": "pending",
@@ -114,7 +114,7 @@ def _page_row(news_item_id: str) -> dict[str, object]:
                 "external_push_block_reason": "agent_brief_not_ready",
             },
         },
-        "provider_rating": {"status": "ready", "score": 80},
+        "provider_rating": {"status": "ready", "score": 0},
         "agent_brief": {"status": "pending"},
         "agent_status": "pending",
         "agent_brief_computed_at_ms": None,

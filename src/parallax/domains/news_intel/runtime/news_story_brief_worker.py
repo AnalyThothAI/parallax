@@ -44,6 +44,8 @@ _STORY_AGENT_RUN_RETENTION_LIMIT = 500
 
 
 class NewsStoryBriefWorker(WorkerBase):
+    settings: NewsStoryBriefWorkerSettings
+
     def __init__(
         self,
         *,

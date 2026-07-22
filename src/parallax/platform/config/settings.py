@@ -648,7 +648,6 @@ class NewsIntelSettings(BaseModel):
 class BackoffPolicy(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    kind: Literal["exponential"] = "exponential"
     base_ms: int = Field(default=1000, ge=0)
     max_ms: int = Field(default=60_000, ge=0)
 
@@ -658,11 +657,6 @@ class PerWorkerSettings(BaseModel):
 
     enabled: bool = True
     interval_seconds: float = Field(default=5.0, ge=0)
-    concurrency: int = Field(default=1, ge=1)
-    batch_size: int = Field(default=100, ge=1)
-    max_attempts: int = Field(default=3, ge=1)
-    lease_ms: int = Field(default=120_000, ge=1)
-    statement_timeout_seconds: float = Field(default=30.0, ge=0)
     backoff: BackoffPolicy = Field(default_factory=BackoffPolicy)
 
 
@@ -690,6 +684,9 @@ class EventAnchorBackfillWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=1.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
     concurrency: int = Field(default=8, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
     min_age_ms: int = Field(default=250, ge=0)
     active_window_ms: int = Field(default=300_000, ge=1)
     max_anchor_lag_ms: int = Field(default=60_000, ge=1)
@@ -698,6 +695,7 @@ class EventAnchorBackfillWorkerSettings(PerWorkerSettings):
 class ResolutionRefreshWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=30.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
     lease_ms: int = Field(default=300_000, ge=1)
     hot_not_found_retry_ms: int = Field(default=60_000, ge=1)
     reprocess_limit: int = Field(default=500, ge=1)
@@ -712,6 +710,7 @@ class ResolutionRefreshWorkerSettings(PerWorkerSettings):
 class AssetProfileRefreshWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=50, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
     provider_retry_ms: int = Field(default=300_000, ge=1)
     ready_refresh_ms: int = Field(default=21_600_000, ge=1)
     missing_refresh_ms: int = Field(default=900_000, ge=1)
@@ -722,6 +721,7 @@ class AssetProfileRefreshWorkerSettings(PerWorkerSettings):
 class TokenImageMirrorWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
     source_limit: int = Field(default=5000, ge=0)
     retry_ms: int = Field(default=300_000, ge=1)
     max_attempts: int = Field(default=3, ge=1)
@@ -731,12 +731,17 @@ class TokenImageMirrorWorkerSettings(PerWorkerSettings):
 class TokenProfileCurrentWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=60.0, ge=0)
     batch_size: int = Field(default=500, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
+    statement_timeout_seconds: float = Field(default=30.0, ge=0)
     retry_ms: int = Field(default=30_000, ge=1)
 
 
 class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
     batch_size: int = Field(default=100, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
+    lease_ms: int = Field(default=120_000, ge=1)
     retry_ms: int = Field(default=30_000, ge=1)
     private_cache_retention_ms: int = Field(default=172_800_000, ge=1)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
@@ -829,6 +834,7 @@ class NewsStoryBriefWorkerSettings(PerWorkerSettings):
     interval_seconds: float = Field(default=10.0, ge=0)
     batch_size: int = Field(default=5, ge=1)
     lease_ms: int = Field(default=120_000, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
     retry_ms: int = Field(default=60_000, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
     backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
@@ -837,6 +843,7 @@ class NewsStoryBriefWorkerSettings(PerWorkerSettings):
 class NewsPageProjectionWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=100, ge=1)
     lease_ms: int = Field(default=120_000, ge=1)
+    max_attempts: int = Field(default=3, ge=1)
     retry_ms: int = Field(default=30_000, ge=1)
     statement_timeout_seconds: float = Field(default=30.0, ge=0)
 
@@ -1117,15 +1124,6 @@ def default_workers_yaml() -> str:
     payload = WorkersSettings().model_dump(mode="json")
     rendered = yaml.safe_dump(payload, sort_keys=False)
     return f"# Parallax worker runtime\n{rendered}"
-
-
-def write_default_workers_config(*, force: bool = False) -> Path:
-    home = app_home()
-    path = workers_config_path(home)
-    home.mkdir(parents=True, exist_ok=True)
-    if force or not path.exists():
-        path.write_text(default_workers_yaml(), encoding="utf-8")
-    return path
 
 
 def _load_yaml_mapping(path: Path) -> Mapping[str, Any]:

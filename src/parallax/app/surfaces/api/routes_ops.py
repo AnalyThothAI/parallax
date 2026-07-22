@@ -5,7 +5,7 @@ from typing import Annotated
 from fastapi import APIRouter, Query, Request
 from fastapi.responses import JSONResponse
 
-from parallax.app.runtime.ops_diagnostics import (
+from parallax.app.operations.diagnostics import (
     INVALID_QUEUE,
     INVALID_STATUS,
     ops_diagnostics_payload,

@@ -25,7 +25,6 @@ def handle_queue_inspect(args: Any, repos: Any) -> tuple[int, dict[str, Any]]:
         _conn(repos),
         worker_name=args.worker or None,
         source_table=args.source_table or None,
-        status=args.status,
         reason_bucket=args.reason_bucket or None,
         limit=limit,
     )

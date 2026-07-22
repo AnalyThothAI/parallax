@@ -12,10 +12,6 @@ QUOTE_SYMBOL = "USDT"
 
 _EXCHANGE_INFO_PATH = "/fapi/v1/exchangeInfo"
 _TICKER_24HR_PATH = "/fapi/v1/ticker/24hr"
-_PREMIUM_INDEX_PATH = "/fapi/v1/premiumIndex"
-_OPEN_INTEREST_HIST_PATH = "/futures/data/openInterestHist"
-_TICKER_PRICE_PATH = "/fapi/v1/ticker/price"
-_KLINES_PATH = "/fapi/v1/klines"
 
 
 class BinanceUsdmFuturesClientError(RuntimeError):
@@ -43,53 +39,6 @@ class BinanceUsdmTicker24hr:
     open_time_ms: int | None
     close_time_ms: int | None
     raw: dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class BinanceUsdmPremiumIndex:
-    symbol: str
-    mark_price: float | None
-    index_price: float | None
-    last_funding_rate: float | None
-    next_funding_time_ms: int | None
-    time_ms: int | None
-    raw: dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class BinanceUsdmOpenInterestHist:
-    symbol: str
-    period: str
-    open_interest: float | None
-    open_interest_value: float | None
-    time_ms: int | None
-    raw: dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class BinanceUsdmTicker:
-    symbol: str
-    price: float | None
-    time_ms: int | None
-    raw: dict[str, Any]
-
-
-@dataclass(frozen=True, slots=True)
-class BinanceUsdmCandle:
-    symbol: str
-    interval: str
-    open_time_ms: int
-    open: float | None
-    high: float | None
-    low: float | None
-    close: float | None
-    volume: float | None
-    close_time_ms: int | None
-    quote_volume: float | None
-    trade_count: int | None
-    taker_buy_base_volume: float | None
-    taker_buy_quote_volume: float | None
-    raw: list[Any]
 
 
 class BinanceUsdmFuturesClient:
@@ -133,53 +82,6 @@ class BinanceUsdmFuturesClient:
         if isinstance(payload, dict):
             return _ticker_24hr_from_row(payload)
         raise BinanceUsdmFuturesClientError("Binance ticker/24hr returned invalid payload")
-
-    def premium_index(
-        self,
-        symbol: str | None = None,
-    ) -> BinanceUsdmPremiumIndex | list[BinanceUsdmPremiumIndex]:
-        payload = self._get_json(_PREMIUM_INDEX_PATH, params=_optional_symbol_params(symbol))
-        if isinstance(payload, list):
-            return [_premium_index_from_row(row) for row in payload if isinstance(row, dict)]
-        if isinstance(payload, dict):
-            return _premium_index_from_row(payload)
-        raise BinanceUsdmFuturesClientError("Binance premiumIndex returned invalid payload")
-
-    def open_interest_hist(self, symbol: str, period: str, limit: int) -> list[BinanceUsdmOpenInterestHist]:
-        normalized_period = _period(period)
-        params = {
-            "symbol": _symbol(symbol),
-            "period": normalized_period,
-            "limit": str(_limit(limit, maximum=500)),
-        }
-        payload = self._get_json(_OPEN_INTEREST_HIST_PATH, params=params)
-        if not isinstance(payload, list):
-            raise BinanceUsdmFuturesClientError("Binance openInterestHist returned invalid payload")
-        return [_open_interest_hist_from_row(row, period=normalized_period) for row in payload if isinstance(row, dict)]
-
-    def ticker(self, symbol: str) -> BinanceUsdmTicker:
-        payload = self._get_json(_TICKER_PRICE_PATH, params={"symbol": _symbol(symbol)})
-        if not isinstance(payload, dict):
-            raise BinanceUsdmFuturesClientError("Binance ticker/price returned invalid payload")
-        return _ticker_from_row(payload)
-
-    def candles(self, symbol: str, interval: str, limit: int) -> list[BinanceUsdmCandle]:
-        normalized_symbol = _symbol(symbol)
-        normalized_interval = _interval(interval)
-        params = {
-            "symbol": normalized_symbol,
-            "interval": normalized_interval,
-            "limit": str(_limit(limit, maximum=1500)),
-        }
-        payload = self._get_json(_KLINES_PATH, params=params)
-        if not isinstance(payload, list):
-            raise BinanceUsdmFuturesClientError("Binance klines returned invalid payload")
-        candles: list[BinanceUsdmCandle] = []
-        for row in payload:
-            candle = _candle_from_row(row, symbol=normalized_symbol, interval=normalized_interval)
-            if candle is not None:
-                candles.append(candle)
-        return candles
 
     def _get_json(self, path: str, *, params: dict[str, str] | None = None) -> Any:
         response = self._client.get(path, params=params)
@@ -225,62 +127,6 @@ def _ticker_24hr_from_row(row: dict[str, Any]) -> BinanceUsdmTicker24hr:
     )
 
 
-def _premium_index_from_row(row: dict[str, Any]) -> BinanceUsdmPremiumIndex:
-    return BinanceUsdmPremiumIndex(
-        symbol=_symbol(row.get("symbol")),
-        mark_price=_float(row.get("markPrice")),
-        index_price=_float(row.get("indexPrice")),
-        last_funding_rate=_float(row.get("lastFundingRate")),
-        next_funding_time_ms=_int(row.get("nextFundingTime")),
-        time_ms=_int(row.get("time")),
-        raw=dict(row),
-    )
-
-
-def _open_interest_hist_from_row(row: dict[str, Any], *, period: str) -> BinanceUsdmOpenInterestHist:
-    return BinanceUsdmOpenInterestHist(
-        symbol=_symbol(row.get("symbol")),
-        period=period,
-        open_interest=_float(row.get("sumOpenInterest")),
-        open_interest_value=_float(row.get("sumOpenInterestValue")),
-        time_ms=_int(row.get("timestamp")),
-        raw=dict(row),
-    )
-
-
-def _ticker_from_row(row: dict[str, Any]) -> BinanceUsdmTicker:
-    return BinanceUsdmTicker(
-        symbol=_symbol(row.get("symbol")),
-        price=_float(row.get("price")),
-        time_ms=_int(row.get("time")),
-        raw=dict(row),
-    )
-
-
-def _candle_from_row(row: Any, *, symbol: str, interval: str) -> BinanceUsdmCandle | None:
-    if not isinstance(row, (list, tuple)) or len(row) < 11:
-        return None
-    open_time_ms = _int(row[0])
-    if open_time_ms is None:
-        return None
-    return BinanceUsdmCandle(
-        symbol=symbol,
-        interval=interval,
-        open_time_ms=open_time_ms,
-        open=_float(row[1]),
-        high=_float(row[2]),
-        low=_float(row[3]),
-        close=_float(row[4]),
-        volume=_float(row[5]),
-        close_time_ms=_int(row[6]),
-        quote_volume=_float(row[7]),
-        trade_count=_int(row[8]),
-        taker_buy_base_volume=_float(row[9]),
-        taker_buy_quote_volume=_float(row[10]),
-        raw=list(row),
-    )
-
-
 def _optional_symbol_params(symbol: str | None) -> dict[str, str] | None:
     return {"symbol": _symbol(symbol)} if symbol is not None else None
 
@@ -290,28 +136,6 @@ def _symbol(value: Any) -> str:
     if not text:
         raise BinanceUsdmFuturesClientError("Binance symbol is required")
     return text
-
-
-def _period(value: Any) -> str:
-    text = str(value or "").strip()
-    if not text:
-        raise BinanceUsdmFuturesClientError("Binance open-interest period is required")
-    return text
-
-
-def _interval(value: Any) -> str:
-    text = str(value or "").strip()
-    if not text:
-        raise BinanceUsdmFuturesClientError("Binance candle interval is required")
-    return text
-
-
-def _limit(value: Any, *, maximum: int) -> int:
-    try:
-        parsed = int(value)
-    except (TypeError, ValueError):
-        parsed = 100
-    return max(1, min(maximum, parsed))
 
 
 def _text(value: Any) -> str | None:

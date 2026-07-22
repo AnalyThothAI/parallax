@@ -4,6 +4,7 @@ from threading import Lock
 from typing import Any, Protocol, cast
 
 from parallax.app.runtime.provider_wiring.types import OkxProviderBundle
+from parallax.domains.asset_market.chain_identity import canonical_chain_address, canonical_chain_id
 from parallax.domains.asset_market.providers import (
     DexMarketFactUpdate,
     DexMarketStreamProvider,
@@ -17,7 +18,7 @@ from parallax.domains.asset_market.providers import (
     ProviderHealth,
 )
 from parallax.integrations.okx.chains import OKX_CHAIN_INDEX_TO_CHAIN, OKX_CHAIN_TO_CHAIN_INDEX
-from parallax.integrations.okx.dex_client import EVM_ADDRESS_RE, OkxDexClient
+from parallax.integrations.okx.dex_client import OkxDexClient
 from parallax.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
 from parallax.integrations.okx.http_utils import OkxPaymentRequiredError
 from parallax.platform.config.settings import Settings
@@ -58,7 +59,7 @@ class OkxDexQuoteProvider:
             request_items.append(
                 {
                     "chainIndex": chain_index,
-                    "tokenContractAddress": _normalize_address(token.address),
+                    "tokenContractAddress": canonical_chain_address(token.chain_id, token.address),
                 }
             )
         if not request_items:
@@ -67,20 +68,7 @@ class OkxDexQuoteProvider:
             prices = self._client.token_prices(request_items)
         except OkxPaymentRequiredError as exc:
             raise DexProviderTemporarilyUnavailable(str(exc)) from exc
-        return [
-            DexTokenQuote(
-                chain_id=okx_index_to_chain_id(price.chain_index) or str(price.chain_index),
-                address=_normalize_address(price.address),
-                observed_at_ms=price.observed_at_ms,
-                price_usd=price.price_usd,
-                raw=price.raw,
-                market_cap_usd=None,
-                liquidity_usd=None,
-                volume_24h_usd=None,
-                holders=None,
-            )
-            for price in prices
-        ]
+        return [_dex_token_quote(price) for price in prices]
 
     def close(self) -> None:
         self._client.close()
@@ -117,7 +105,7 @@ class OkxDexWebSocketMarketProviderAdapter:
             mapped_targets.append(
                 {
                     "chainIndex": chain_index,
-                    "tokenContractAddress": _normalize_address(target.address),
+                    "tokenContractAddress": canonical_chain_address(target.chain_id, target.address),
                 }
             )
         await self._provider.replace_subscriptions(mapped_targets)
@@ -219,7 +207,7 @@ def okx_index_to_chain_id(value: str) -> str | None:
     if normalized.startswith("eip155:"):
         return normalized
     chain = OKX_CHAIN_INDEX_TO_CHAIN.get(normalized, normalized)
-    return _domain_chain_id(chain)
+    return canonical_chain_id(chain)
 
 
 def okx_chain_index(chain_id: Any) -> str | None:
@@ -234,9 +222,10 @@ def okx_chain_index(chain_id: Any) -> str | None:
 
 
 def _dex_token_candidate(candidate: Any) -> DexTokenCandidate:
+    chain_id = okx_index_to_chain_id(candidate.chain_index) or str(candidate.chain_index)
     return DexTokenCandidate(
-        chain_id=okx_index_to_chain_id(candidate.chain_index) or str(candidate.chain_index),
-        address=_normalize_address(candidate.address),
+        chain_id=chain_id,
+        address=canonical_chain_address(chain_id, candidate.address),
         symbol=candidate.symbol,
         name=candidate.name,
         price_usd=candidate.price_usd,
@@ -248,10 +237,26 @@ def _dex_token_candidate(candidate: Any) -> DexTokenCandidate:
     )
 
 
+def _dex_token_quote(price: Any) -> DexTokenQuote:
+    chain_id = okx_index_to_chain_id(price.chain_index) or str(price.chain_index)
+    return DexTokenQuote(
+        chain_id=chain_id,
+        address=canonical_chain_address(chain_id, price.address),
+        observed_at_ms=price.observed_at_ms,
+        price_usd=price.price_usd,
+        raw=price.raw,
+        market_cap_usd=None,
+        liquidity_usd=None,
+        volume_24h_usd=None,
+        holders=None,
+    )
+
+
 def _domain_dex_market_fact_update(update: Any) -> DexMarketFactUpdate:
+    chain_id = okx_index_to_chain_id(update.chain_id) or update.chain_id
     return DexMarketFactUpdate(
-        chain_id=okx_index_to_chain_id(update.chain_id) or update.chain_id,
-        address=_normalize_address(update.address),
+        chain_id=chain_id,
+        address=canonical_chain_address(chain_id, update.address),
         observed_at_ms=update.observed_at_ms,
         price_usd=update.price_usd,
         market_cap_usd=update.market_cap_usd,
@@ -261,30 +266,6 @@ def _domain_dex_market_fact_update(update: Any) -> DexMarketFactUpdate:
         holders=update.holders,
         raw=update.raw,
     )
-
-
-def _domain_chain_id(value: Any) -> str | None:
-    normalized = str(value or "").strip().lower()
-    if not normalized:
-        return None
-    if normalized.startswith("eip155:"):
-        return normalized
-    if normalized in {"eth", "ethereum"}:
-        return "eip155:1"
-    if normalized in {"bsc", "bnb", "bnb_chain"}:
-        return "eip155:56"
-    if normalized == "base":
-        return "eip155:8453"
-    if normalized in {"sol", "solana"}:
-        return "solana"
-    if normalized in {"ton", "toncoin"}:
-        return "ton"
-    return normalized
-
-
-def _normalize_address(address: Any) -> str:
-    text = str(address or "").strip()
-    return text.lower() if EVM_ADDRESS_RE.match(text) else text
 
 
 def _close_partial_providers(error: BaseException, *providers: object | None) -> None:

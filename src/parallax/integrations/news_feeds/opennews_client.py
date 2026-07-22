@@ -6,7 +6,7 @@ import time
 from collections.abc import Awaitable, Callable, Coroutine, Mapping
 from datetime import UTC, datetime
 from typing import Any, Protocol
-from urllib.parse import parse_qsl, quote, urlsplit
+from urllib.parse import quote
 
 from parallax.domains.news_intel.services.opennews_provider_signal import (
     provider_signal_from_opennews_payload,
@@ -51,7 +51,7 @@ class OpenNewsFeedClient:
         if not self._token:
             raise ValueError("OpenNews token is not configured")
         policy = _source_fetch_policy(source or {})
-        subscription = _subscription_params(url, policy)
+        subscription = _subscription_params(policy)
         entries, next_cursor = _run_rest_fetch(
             self._fetch_rest_entries(
                 subscription=subscription,
@@ -191,24 +191,18 @@ def _source_fetch_policy(source: Mapping[str, Any]) -> dict[str, Any]:
     return {}
 
 
-def _subscription_params(url: str, policy: Mapping[str, Any]) -> dict[str, Any]:
+def _subscription_params(policy: Mapping[str, Any]) -> dict[str, Any]:
     params: dict[str, Any] = {}
     engine_types = _engine_types(policy.get("engineTypes"))
-    if not engine_types:
-        engine_types = _engine_types_from_url(url)
     if engine_types:
         params["engineTypes"] = engine_types
 
-    coins = _string_list(policy.get("coins")) or _csv_query_values(url, "coins")
+    coins = _string_list(policy.get("coins"))
     if coins:
         params["coins"] = coins
 
     if "hasCoin" in policy:
         params["hasCoin"] = _truthy(policy.get("hasCoin"))
-    else:
-        has_coin = _first_query_value(url, "hasCoin")
-        if has_coin is not None:
-            params["hasCoin"] = _truthy(has_coin)
     return params
 
 
@@ -221,19 +215,6 @@ def _engine_types(value: Any) -> dict[str, list[str]]:
         if not key:
             continue
         result[key] = _string_list(news_types)
-    return result
-
-
-def _engine_types_from_url(url: str) -> dict[str, list[str]]:
-    query = _query_params(url)
-    result: dict[str, list[str]] = {}
-    for key, values in query.items():
-        if not key.startswith("engine."):
-            continue
-        engine_type = key.removeprefix("engine.").strip()
-        if not engine_type:
-            continue
-        result[engine_type] = _split_csv_values(values)
     return result
 
 
@@ -446,36 +427,6 @@ def _keeps_existing_link(existing: Any, patch: Any) -> bool:
 
 def _is_fallback_link(value: str) -> bool:
     return value.startswith("opennews://item/")
-
-
-def _query_params(url: str) -> dict[str, list[str]]:
-    return {key: values for key, values in _raw_query_params(url).items()}
-
-
-def _raw_query_params(url: str) -> dict[str, list[str]]:
-    split = urlsplit(url)
-    params: dict[str, list[str]] = {}
-    for key, value in parse_qsl(split.query, keep_blank_values=True):
-        params.setdefault(key, []).append(value)
-    return params
-
-
-def _first_query_value(url: str, key: str) -> str | None:
-    values = _raw_query_params(url).get(key)
-    if not values:
-        return None
-    return values[0]
-
-
-def _csv_query_values(url: str, key: str) -> list[str]:
-    return _split_csv_values(_raw_query_params(url).get(key, []))
-
-
-def _split_csv_values(values: list[str]) -> list[str]:
-    result: list[str] = []
-    for value in values:
-        result.extend(_string_list(value))
-    return result
 
 
 def _string_list(value: Any) -> list[str]:

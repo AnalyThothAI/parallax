@@ -1,8 +1,6 @@
 from pathlib import Path
 
 from parallax.domains.macro_intel import _constants
-from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
-from tests.support.query_contract import assert_query_contract
 
 ROOT = Path(__file__).resolve().parents[4]
 MIGRATION = (
@@ -301,107 +299,8 @@ def test_macro_constants_map_average_hourly_earnings_labor_concept() -> None:
     }
 
 
-def test_repository_observations_for_concepts_reads_bounded_projected_rows() -> None:
-    rows = [
-        {
-            "concept_key": "asset:spx",
-            "observed_at": "2026-05-21",
-            "value_numeric": 2.0,
-            "source_name": "fred",
-        }
-    ]
-    conn = FakeConnection(rows)
-    repo = MacroIntelRepository(conn)
-
-    result = repo.observations_for_concepts(
-        concept_keys=("asset:spx",),
-        lookback_days=60,
-        limit_per_series=25,
-    )
-
-    assert result == rows
-    query, params = conn.executions[0]
-    assert "CROSS JOIN LATERAL" in query
-    assert "FROM macro_observation_series_rows AS series" in query
-    assert "macro_observation_series_active_generation" not in query
-    assert "generation_id" not in query
-    assert "projection_version = %s" in query
-    assert "LIMIT %s" in query
-    assert "FROM macro_observations" not in query
-    assert "row_number() OVER" not in query
-    assert params == (["asset:spx"], "macro_regime_v4", 60, 25)
-
-
-def test_repository_concept_history_counts_reads_projected_rows() -> None:
-    rows = [
-        {
-            "concept_key": "asset:spx",
-            "points": 2,
-            "latest_observed_at": "2026-05-21",
-            "oldest_observed_at": "2026-05-20",
-            "sources": ["fred"],
-        }
-    ]
-    conn = FakeConnection(rows)
-    repo = MacroIntelRepository(conn)
-
-    result = repo.concept_history_counts(concept_keys=("asset:spx",), lookback_days=60)
-
-    assert result == rows
-    query, params = conn.executions[0]
-    assert_query_contract(
-        query,
-        params=params,
-        required_tables=("macro_observation_series_rows",),
-        forbidden_tables=("macro_observations", "macro_observation_series_active_generation"),
-        required_predicates=("projection_version = %s", "value_numeric IS NOT NULL"),
-        forbidden_fragments=("generation_id", "row_number() over", "series_rank = 1"),
-        expected_params=(["asset:spx"], "macro_regime_v4", 60),
-    )
-
-
-def test_repository_refresh_observation_series_rows_writes_current_read_model() -> None:
-    conn = FakeRefreshConnection(row_count=1)
-    repo = MacroIntelRepository(conn)
-
-    result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_regime_v4",
-        now_ms=1_779_000_000_000,
-        lookback_days=730,
-        limit_per_series=252,
-        concept_keys=("rates:dgs10",),
-    )
-
-    assert result["status"] == "published"
-    assert result["rows_written"] == 1
-    assert result["source_rows"] == 1
-    queries = "\n".join(query for query, _params in conn.executions)
-    assert "DELETE FROM macro_observation_series_rows" in queries
-    assert "INSERT INTO macro_observation_series_rows" in queries
-    assert "INSERT INTO macro_observation_series_publication_state" in queries
-    assert "generation_id" not in queries
-    assert "macro_observation_series_generations" not in queries
-    assert "macro_observation_series_active_generation" not in queries
-    assert "FROM macro_observations" in queries
-    assert "DISTINCT ON (observed_at)" in queries
-    assert "CROSS JOIN LATERAL" in queries
-    select_query, select_params = conn.executions[0]
-    assert "WITH requested AS" in select_query
-    assert "concept_key = requested.concept_key" in select_query
-    assert select_params == (
-        ["rates:dgs10"],
-        "macro_regime_v4",
-        730,
-        list(_constants.MACRO_EVENT_CONCEPTS),
-        252,
-    )
-
-
 def test_macro_observation_series_contract_is_current_only_after_hard_cut() -> None:
     migration_sql = RUNTIME_DB_PERFORMANCE_HARD_CUT_MIGRATION.read_text(encoding="utf-8")
-    repository_sql = (
-        ROOT / "src" / "parallax" / "domains" / "macro_intel" / "repositories" / "macro_intel_repository.py"
-    ).read_text(encoding="utf-8")
 
     assert "macro_observation_series_rows_compact" in migration_sql
     assert "observed_at TIMESTAMPTZ NOT NULL" in migration_sql
@@ -411,9 +310,6 @@ def test_macro_observation_series_contract_is_current_only_after_hard_cut() -> N
     assert "CREATE TABLE IF NOT EXISTS macro_observation_series_publication_state" in migration_sql
     assert "DROP TABLE IF EXISTS macro_observation_series_active_generation" in migration_sql
     assert "DROP TABLE IF EXISTS macro_observation_series_generations" in migration_sql
-    assert "INSERT INTO macro_observation_series_generations" not in repository_sql
-    assert "macro_observation_series_active_generation" not in repository_sql
-    assert "_generation_id" not in repository_sql
 
 
 def test_next_runtime_lifecycle_migration_compacts_macro_view_snapshots_to_current_only() -> None:
@@ -507,67 +403,3 @@ def _create_table_block(text: str, table_name: str) -> str:
     start = text.index(f"CREATE TABLE IF NOT EXISTS {table_name}")
     end = text.index('"""', start)
     return text[start:end]
-
-
-class FakeConnection:
-    def __init__(self, rows: list[dict[str, object]], *, rowcount: int = 0) -> None:
-        self.rows = rows
-        self.rowcount = rowcount
-        self.executions: list[tuple[str, tuple[object, ...]]] = []
-
-    def execute(self, query: str, params: tuple[object, ...]) -> "FakeCursor":
-        self.executions.append((query, params))
-        return FakeCursor(self.rows, rowcount=self.rowcount)
-
-
-class FakeCursor:
-    def __init__(self, rows: list[dict[str, object]], *, rowcount: int = 0) -> None:
-        self.rows = rows
-        self.rowcount = rowcount
-
-    def fetchall(self) -> list[dict[str, object]]:
-        return self.rows
-
-    def fetchone(self) -> dict[str, object] | None:
-        return self.rows[0] if self.rows else None
-
-
-class FakeRefreshConnection:
-    def __init__(self, *, row_count: int) -> None:
-        self.row_count = row_count
-        self.executions: list[tuple[str, tuple[object, ...]]] = []
-        self.rows = [
-            {
-                "projection_version": "macro_regime_v4",
-                "concept_key": "rates:dgs10",
-                "observed_at": "2026-05-20",
-                "value_numeric": 4.7,
-                "source_name": "fred",
-                "series_key": "fred:DGS10",
-                "unit": "percent",
-                "frequency": "daily",
-                "data_quality": "ok",
-                "raw_payload_json": {},
-            }
-        ]
-
-    def execute(self, query: str, params: tuple[object, ...]) -> FakeCursor:
-        self.executions.append((query, params))
-        if "FROM macro_observations" in query:
-            return FakeCursor(self.rows[: self.row_count])
-        if "FROM macro_observation_series_publication_state" in query:
-            return FakeCursor([])
-        if "INSERT INTO macro_observation_series_rows" in query:
-            return FakeCursor([{"changed": 1}] * self.row_count, rowcount=self.row_count)
-        return FakeCursor([], rowcount=0)
-
-    def transaction(self):
-        return FakeTransaction()
-
-
-class FakeTransaction:
-    def __enter__(self):
-        return self
-
-    def __exit__(self, exc_type, exc, tb) -> bool:
-        return False

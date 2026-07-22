@@ -3,6 +3,7 @@ from __future__ import annotations
 from typing import Any
 
 from parallax.app.operations.market_current import rebuild_market_tick_current_batch
+from parallax.app.operations.news import enqueue_projection_dirty_targets
 from parallax.app.operations.reference_data_sync import (
     sync_binance_cex_profiles_once,
     sync_binance_usdt_perp_universe,
@@ -13,8 +14,7 @@ from parallax.app.operations.run_worker_once import (
     repair_token_profile_images_once,
     run_worker_once,
 )
-from parallax.app.runtime.ops_cli_queries import token_radar_publication_status
-from parallax.app.runtime.projection_dirty_targets import enqueue_projection_dirty_targets
+from parallax.app.operations.token_intel import token_radar_publication_status
 from parallax.app.runtime.repository_session import repositories
 from parallax.app.surfaces.cli.commands import queue_ops
 from parallax.domains.token_intel.interfaces import (
@@ -81,7 +81,6 @@ def handle_ops(args: object, _parser: object) -> tuple[int, dict[str, Any]]:
                 now_ms=now_ms,
                 window=args.window,
                 limit=args.limit,
-                projection_limit=args.projection_limit,
             )
         data["projection"] = run_worker_once(
             settings,
@@ -206,7 +205,6 @@ def handle_ops(args: object, _parser: object) -> tuple[int, dict[str, Any]]:
             since_ms = now_ms - int(float(args.since_hours) * 60 * 60 * 1000) if args.since_hours is not None else None
             data = enqueue_projection_dirty_targets(
                 repos,
-                domain=args.domain,
                 execute=bool(args.execute),
                 now_ms=now_ms,
                 projection=args.projection,

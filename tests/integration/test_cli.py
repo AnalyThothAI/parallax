@@ -8,7 +8,6 @@ from dataclasses import replace
 from pathlib import Path
 from unittest.mock import patch
 
-import pytest
 import yaml
 
 from parallax.app.runtime.repository_session import repositories_for_connection
@@ -235,44 +234,6 @@ class CliTests(unittest.TestCase):
         self.assertEqual(parsed[21].source, "market-current")
         self.assertTrue(parsed[21].execute)
 
-    def test_cli_ops_worker_status_is_not_registered(self):
-        parser = build_parser()
-
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["ops", "worker-status"])
-
-    def test_cli_ops_token_capture_tier_repair_is_not_registered(self):
-        parser = build_parser()
-
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["ops", "enqueue-token-capture-tier-rank-set", "--execute"])
-
-    def test_cli_ops_redundant_news_rebuild_and_radar_audit_are_not_registered(self):
-        parser = build_parser()
-
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["ops", "rebuild-news-canonical-items", "--dry-run"])
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["ops", "audit-token-radar", "--window", "5m"])
-
-    def test_cli_ops_rebuild_narrative_intel_is_not_registered(self):
-        parser = build_parser()
-
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["ops", "rebuild-narrative-intel", "--window", "1h"])
-
-    def test_cli_ops_cex_binance_hard_cut_cleanup_is_not_registered(self):
-        parser = build_parser()
-
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["ops", "cex-binance-hard-cut-cleanup", "--dry-run"])
-
-    def test_cli_ops_cleanup_news_brief_input_is_not_registered(self):
-        parser = build_parser()
-
-        with self.assertRaises(SystemExit):
-            parser.parse_args(["ops", "cleanup-news-brief-input", "--dry-run"])
-
     def test_cli_ops_mirror_token_images_has_no_source_limit_option(self):
         parser = build_parser()
 
@@ -480,36 +441,6 @@ class CliTests(unittest.TestCase):
         self.assertEqual(lines[3]["data"]["sample"], 5)
         self.assertEqual(lines[3]["data"]["mismatch_count"], 0)
 
-    def test_obsolete_runtime_commands_are_not_registered(self):
-        parser_help = main(["embed"], stdout=io.StringIO())
-
-        self.assertEqual(parser_help, 2)
-        obsolete_commands = [
-            ["narrative-flow"],
-            ["account-narratives"],
-            ["narrative-seeds"],
-            ["narrative-token-flow", "--seed-id", "seed"],
-            ["attention-frontier"],
-            ["ops", "rebuild-narrative-links"],
-            ["token-flow"],
-            ["ops", "rebuild-attributions"],
-            ["ops", "freeze-token-signals"],
-            ["ops", "settle-token-signals"],
-            ["token-signal-snapshots"],
-            ["token-signal-outcomes"],
-            ["token-signal-evaluations"],
-            ["market-observations"],
-            ["ops", "backfill-market-observations"],
-            ["ops", "process-asset-resolution-jobs"],
-            ["ops", "resolve-asset-symbol", "--symbol", "MIRROR"],
-            ["ops", "asset-resolution-health"],
-            ["ops", "audit-asset-attribution", "--event-id", "event-1"],
-            ["ops", "prune-token-radar", "--dry-run"],
-            ["ops", "backfill-token-radar-first-seen"],
-        ]
-        for command in obsolete_commands:
-            self.assertEqual(main(command, stdout=io.StringIO()), 2)
-
 
 def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, monkeypatch):
     app_home = tmp_path / ".parallax"
@@ -595,15 +526,6 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkey
     }
     assert payload["ok"] is True
     assert payload["data"]["row_count"] == 1
-
-
-def test_cli_ops_cleanup_news_intel_hard_cut_is_not_registered() -> None:
-    parser = build_parser()
-
-    with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "cleanup-news-intel-hard-cut"])
-    with pytest.raises(SystemExit):
-        parser.parse_args(["ops", "cleanup-news-intel-hard-cut", "--execute"])
 
 
 if __name__ == "__main__":

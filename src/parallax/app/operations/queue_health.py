@@ -335,7 +335,7 @@ def _optional_count(row: Mapping[str, Any], key: str) -> int | None:
     return int(value)
 
 
-def _age_ms(now_ms: int, started_at_ms: object) -> int | None:
+def _age_ms(now_ms: int, started_at_ms: int | None) -> int | None:
     if started_at_ms is None:
         return None
     return max(0, int(now_ms) - int(started_at_ms))

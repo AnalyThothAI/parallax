@@ -237,9 +237,7 @@ class TokenRadarProjectionWorker(WorkerBase):
             publication_state=publication_state,
             computed_at_ms=computed_at_ms,
         )
-        missing_items = self._missing_work_items(publication_state, computed_at_ms=computed_at_ms)
         work_items = list(hot_items)
-        work_items.extend(missing_items)
         if background_item is not None and background_item not in work_items:
             work_items.append(background_item)
         work_items = _dedupe_work_items(work_items)
@@ -293,34 +291,6 @@ class TokenRadarProjectionWorker(WorkerBase):
                     ):
                         due.append(item)
         return due
-
-    def _missing_work_items(
-        self,
-        publication_state: dict[tuple[str, str, str], dict[str, Any]],
-        *,
-        computed_at_ms: int,
-    ) -> list[tuple[str, str, str]]:
-        missing: list[tuple[str, str, str]] = []
-        for window in self.windows:
-            if window not in self.hot_windows:
-                continue
-            for scope in self.scopes:
-                for venue in self.venues:
-                    item = (window, scope, venue)
-                    item_state = publication_state.get(item, {})
-                    status = str(item_state.get("latest_attempt_status") or "")
-                    if status == "ready":
-                        continue
-                    interval_ms = self.hot_interval_ms if window in self.hot_windows else self.cold_interval_ms
-                    if not _publication_due(
-                        item_state or None,
-                        computed_at_ms=computed_at_ms,
-                        interval_ms=interval_ms,
-                        failed_retry_ms=self.cold_interval_ms,
-                    ):
-                        continue
-                    missing.append(item)
-        return missing
 
     @contextmanager
     def _worker_session(self) -> Iterator[Any]:

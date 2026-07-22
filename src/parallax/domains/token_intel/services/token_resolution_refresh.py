@@ -103,15 +103,6 @@ def _reprocess_recent_token_intents(
     }
 
 
-def deferred_token_radar_projection() -> dict[str, Any]:
-    return {
-        "status": "deferred_to_worker",
-        "rows_written": 0,
-        "source_rows": 0,
-        "windows": {},
-    }
-
-
 def _dirty_target_for_decision(decision: TokenIntentResolutionDecision) -> dict[str, Any] | None:
     if not isinstance(decision, TokenIntentResolutionDecision):
         raise RuntimeError("token_resolution_refresh_decision_contract_required")

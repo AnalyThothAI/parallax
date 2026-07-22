@@ -420,22 +420,6 @@ def _macro_view_projection_settings(**overrides: object) -> MacroViewProjectionW
     return MacroViewProjectionWorkerSettings(**overrides)
 
 
-def _raw_macro_view_projection_settings(**overrides: object) -> SimpleNamespace:
-    values = {
-        "enabled": True,
-        "interval_seconds": 60,
-        "statement_timeout_seconds": 30.0,
-        "batch_size": 250,
-        "lookback_days": 1095,
-        "limit_per_series": 800,
-        "lease_ms": 300_000,
-        "retry_ms": 300_000,
-        "max_attempts": 3,
-    }
-    values.update(overrides)
-    return SimpleNamespace(**values)
-
-
 def _dirty_target() -> dict[str, object]:
     return {
         "projection_name": "macro_view",

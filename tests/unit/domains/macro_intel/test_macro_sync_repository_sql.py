@@ -551,37 +551,6 @@ def _dirty_target_claim() -> dict[str, object]:
 _ROWCOUNT_MISSING = object()
 
 
-class MacroRowcountConnection:
-    def __init__(self, *, rowcount: object, operation: str) -> None:
-        self.rowcount = rowcount
-        self.operation = operation
-        self.execute_index = 0
-        self.executions: list[tuple[str, object]] = []
-
-    def execute(self, query: str, params: object = ()) -> MacroRowcountCursor:
-        self.execute_index += 1
-        self.executions.append((query, params))
-        row = self._row_for_query(query)
-        if self.rowcount is _ROWCOUNT_MISSING:
-            return MacroRowcountCursor([row] if row is not None else [])
-        return MacroRowcountCursor([row] if row is not None else [], rowcount=self.rowcount)
-
-    def _row_for_query(self, query: str) -> dict[str, object] | None:
-        if self.operation == "rebuild_sync_state_upsert" and "SELECT MAX" in query:
-            return {"max_observed_at": date(2026, 5, 20)}
-        return None
-
-
-class MacroRowcountCursor:
-    def __init__(self, rows: list[dict[str, object]], *, rowcount: object = _ROWCOUNT_MISSING) -> None:
-        self.rows = rows
-        if rowcount is not _ROWCOUNT_MISSING:
-            self.rowcount = rowcount
-
-    def fetchone(self) -> dict[str, object] | None:
-        return self.rows[0] if self.rows else None
-
-
 class MacroSyncWindowReturningConnection:
     def __init__(self, *, rowcount: object, rows: list[dict[str, object]]) -> None:
         self.rowcount = rowcount
@@ -601,87 +570,6 @@ class MacroSyncWindowReturningCursor:
 
     def fetchone(self) -> dict[str, object] | None:
         return self.rows[0] if self.rows else None
-
-
-def _run_macro_rowcount_operation(repository: MacroIntelRepository, operation: str) -> object:
-    if operation == "complete_window":
-        return repository.complete_macro_sync_window(
-            sync_window_id="window-1",
-            lease_owner="macro_sync",
-            attempt_count=1,
-            sync_run_id="run-1",
-            completed_at_ms=1_779_000_000_000,
-        )
-    if operation == "retry_window":
-        return repository.retry_macro_sync_window(
-            sync_window_id="window-1",
-            lease_owner="macro_sync",
-            attempt_count=1,
-            sync_run_id="run-1",
-            error_code="provider_error",
-            error_message="provider failed",
-            retry_delay_ms=30_000,
-            now_ms=1_779_000_000_000,
-        )
-    if operation == "fail_window":
-        return repository.fail_macro_sync_window(
-            sync_window_id="window-1",
-            lease_owner="macro_sync",
-            attempt_count=1,
-            sync_run_id="run-1",
-            error_code="provider_error",
-            error_message="provider failed",
-            now_ms=1_779_000_000_000,
-        )
-    if operation == "update_sync_state":
-        return repository.update_macro_sync_state(
-            source_name="macrodata-cli",
-            bundle_name="macro-core",
-            max_observed_at=date(2026, 5, 20),
-            now_ms=1_779_000_000_000,
-        )
-    if operation == "rebuild_sync_state_delete":
-        return repository.rebuild_macro_sync_state(
-            source_name="fred",
-            bundle_name="empty",
-            now_ms=1_779_000_000_000,
-        )
-    if operation == "rebuild_sync_state_upsert":
-        return repository.rebuild_macro_sync_state(
-            source_name="fred",
-            bundle_name="macro-core",
-            now_ms=1_779_000_000_000,
-        )
-    if operation == "enqueue_dirty_current":
-        return repository.enqueue_macro_projection_dirty_target(
-            projection_name="macro_view",
-            projection_version="macro_regime_v4",
-            now_ms=1_779_000_000_000,
-            reason="macro_observations_imported",
-        )
-    if operation == "enqueue_dirty_changes":
-        return repository.enqueue_macro_projection_dirty_targets_for_changes(
-            changed_observations=[{"concept_key": "rates:dgs10", "observed_at": "2026-05-20"}],
-            projection_name="macro_view",
-            projection_version="macro_regime_v4",
-            now_ms=1_779_000_000_000,
-            reason="macro_observations_changed",
-        )
-    if operation == "dirty_done":
-        return repository.mark_macro_projection_dirty_targets_done(
-            [_dirty_target_claim()],
-            now_ms=1_779_000_000_000,
-        )
-    if operation == "dirty_error":
-        return repository.mark_macro_projection_dirty_targets_error(
-            [_dirty_target_claim()],
-            error="projection failed",
-            retry_ms=30_000,
-            max_attempts=3,
-            worker_name="macro_view_projection",
-            now_ms=1_779_000_000_000,
-        )
-    raise AssertionError(operation)
 
 
 def _run_macro_sync_window_returning_operation(repository: MacroIntelRepository, operation: str) -> object:
@@ -711,14 +599,3 @@ def _run_macro_sync_window_returning_operation(repository: MacroIntelRepository,
             now_ms=1_779_000_000_000,
         )
     raise AssertionError(operation)
-
-
-def _macro_sync_window_row() -> dict[str, object]:
-    return {
-        "sync_window_id": "macro-sync-window:abc",
-        "source_name": "macrodata-cli",
-        "bundle_name": "macro-core",
-        "status": "running",
-        "attempt_count": 1,
-        "max_attempts": 8,
-    }

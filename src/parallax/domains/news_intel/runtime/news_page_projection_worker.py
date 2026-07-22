@@ -19,6 +19,8 @@ from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class NewsPageProjectionWorker(WorkerBase):
+    settings: NewsPageProjectionWorkerSettings
+
     def __init__(
         self,
         *,

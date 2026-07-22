@@ -186,7 +186,6 @@ def _complete_fake_asset_market(asset_market=None) -> SimpleNamespace:
     values.setdefault("cex_market", None)
     values.setdefault("dex_discovery_market", None)
     values.setdefault("dex_quote_market", None)
-    values.setdefault("dex_candle_market", None)
     values.setdefault("dex_profile_sources", ())
     values.setdefault("stream_dex_market", None)
     values.setdefault("discovery_chain_ids", ())
@@ -271,7 +270,6 @@ def fake_wired_providers(
             cex_market=None,
             dex_discovery_market=None,
             dex_quote_market=None,
-            dex_candle_market=None,
             dex_profile_sources=(),
             stream_dex_market=None,
             discovery_chain_ids=(),
@@ -636,7 +634,6 @@ def test_disabled_collector_does_not_create_upstream_client(monkeypatch, tmp_pat
         cex_market=object(),
         dex_discovery_market=None,
         dex_quote_market=None,
-        dex_candle_market=None,
         dex_profile_sources=(),
         stream_dex_market=object(),
         discovery_chain_ids=(),
@@ -673,7 +670,6 @@ def test_start_collector_false_only_disables_collector(monkeypatch, tmp_path):
         cex_market=object(),
         dex_discovery_market=object(),
         dex_quote_market=object(),
-        dex_candle_market=None,
         dex_profile_sources=(SimpleNamespace(provider="gmgn_dex_profile", market=object()),),
         stream_dex_market=object(),
         discovery_chain_ids=("solana",),

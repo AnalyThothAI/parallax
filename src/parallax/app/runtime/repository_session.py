@@ -186,20 +186,3 @@ def repositories(settings: Any) -> Iterator[RepositorySession]:
                 settings.workers.notification_delivery.stale_running_terminalization_batch_size
             ),
         )
-
-
-@contextmanager
-def repository_session(
-    pool: Any,
-    *,
-    notification_delivery_running_timeout_ms: int,
-    notification_delivery_stale_running_terminalization_batch_size: int,
-) -> Iterator[RepositorySession]:
-    with pool.connection() as conn:
-        yield repositories_for_connection(
-            conn,
-            notification_delivery_running_timeout_ms=notification_delivery_running_timeout_ms,
-            notification_delivery_stale_running_terminalization_batch_size=(
-                notification_delivery_stale_running_terminalization_batch_size
-            ),
-        )

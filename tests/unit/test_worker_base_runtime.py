@@ -181,6 +181,8 @@ def test_concurrent_entry_is_rejected() -> None:
 
         with pytest.raises(RuntimeError, match="already_running"):
             await worker.run_one_iteration()
+        with pytest.raises(RuntimeError, match="already_running"):
+            await worker.run()
 
         await worker.stop()
         release.set()

@@ -6,8 +6,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import asdict
 from typing import Any
 
-from parallax.app.runtime.job_queue import JOB_QUEUE_DESCRIPTORS, JobQueueDescriptor
-from parallax.app.runtime.ops_cli_queries import token_radar_publication_status
+from parallax.app.operations.queue_health import fetch_queue_table_health
+from parallax.app.operations.token_intel import token_radar_publication_status
 from parallax.app.runtime.runtime_snapshot import RuntimeSnapshot
 from parallax.app.runtime.worker_status import effective_worker_status
 from parallax.domains.asset_market.providers import ProviderHealth
@@ -38,8 +38,10 @@ SECRET_TOKEN_KEYS = (
     "session_token",
     "ws_token",
 )
-TERMINAL_SUCCESS_STATUSES = {"done", "delivered"}
 QUEUE_ALLOWED_STATUSES = {"pending", "running", "failed", "dead", "done", "delivered"}
+NOTIFICATION_QUEUE_NAME = "notification_deliveries"
+NOTIFICATION_QUEUE_TABLE = "notification_deliveries"
+NOTIFICATION_QUEUE_WORKER = "notification_delivery"
 AGENT_EXECUTION_RECENT_SIGNAL_MS = 5 * 60 * 1000
 DIAGNOSTIC_STATUSES = frozenset({"blocked", "degraded", "disabled", "failed", "idle", "ok", "unavailable", "unknown"})
 HEALTHY_CONNECTION_STATES = frozenset(
@@ -118,25 +120,24 @@ def ops_queue_payload(
     limit: int,
     now_ms: int | None = None,
 ) -> dict[str, Any]:
-    descriptor = JOB_QUEUE_DESCRIPTORS.get(str(queue_name or "").strip())
-    if descriptor is None:
+    normalized_queue_name = str(queue_name or "").strip()
+    if normalized_queue_name != NOTIFICATION_QUEUE_NAME:
         return INVALID_QUEUE
     normalized_status = str(status or "").strip() or None
     if normalized_status is not None and normalized_status not in QUEUE_ALLOWED_STATUSES:
         return INVALID_STATUS
     generated_at_ms = int(now_ms if now_ms is not None else _now_ms())
     with runtime.db.api_pool.connection() as conn:
-        summary = _queue_summary(conn, descriptor, now_ms=generated_at_ms)
+        summary = _queue_summary(conn, now_ms=generated_at_ms)
         items = _queue_items(
             conn,
-            descriptor,
             limit=max(0, min(int(limit), 200)),
             status=normalized_status,
         )
     return redact_diagnostics(
         {
             "schema_version": OPS_QUEUE_SCHEMA_VERSION,
-            "queue_name": descriptor.name,
+            "queue_name": NOTIFICATION_QUEUE_NAME,
             "status_filter": normalized_status,
             "counts_by_status": summary["counts_by_status"],
             "summary": summary,
@@ -359,65 +360,38 @@ def _worker_group(name: str) -> str:
 
 def _queues_payload(runtime: Any, *, now_ms: int) -> list[dict[str, Any]]:
     with runtime.db.api_pool.connection() as conn:
-        return [_queue_summary(conn, descriptor, now_ms=now_ms) for descriptor in JOB_QUEUE_DESCRIPTORS.values()]
+        return [_queue_summary(conn, now_ms=now_ms)]
 
 
-def _queue_summary(conn: Any, descriptor: JobQueueDescriptor, *, now_ms: int) -> dict[str, Any]:
-    counts = _queue_counts(conn, descriptor)
-    clocks = _queue_clocks(conn, descriptor, now_ms=now_ms)
+def _queue_summary(conn: Any, *, now_ms: int) -> dict[str, Any]:
+    health = fetch_queue_table_health(
+        conn,
+        NOTIFICATION_QUEUE_TABLE,
+        now_ms=now_ms,
+        worker_name=NOTIFICATION_QUEUE_WORKER,
+    )
+    if not health.get("available"):
+        raise RuntimeError(str(health.get("error_code") or "notification_queue_health_unavailable"))
+    counts = dict(health["counts_by_status"])
     dead_count = int(counts.get("dead", 0))
-    failed_count = int(counts.get("failed", 0))
-    running_count = int(clocks.get("running_count", 0))
-    due_count = int(clocks.get("due_count", 0))
-    status = _queue_status(counts=counts, due_count=due_count, running_count=running_count)
     return {
-        "queue_name": descriptor.name,
-        "table": descriptor.table,
-        "worker_name": _queue_worker_name(descriptor.name),
+        "queue_name": NOTIFICATION_QUEUE_NAME,
+        "table": NOTIFICATION_QUEUE_TABLE,
+        "worker_name": NOTIFICATION_QUEUE_WORKER,
         "counts_by_status": counts,
-        "due_count": due_count,
-        "running_count": running_count,
+        "due_count": int(health["due_count"]),
+        "running_count": int(health["running_count"]),
         "dead_count": dead_count,
-        "failed_count": failed_count,
-        "oldest_due_age_ms": _age_ms(now_ms, clocks.get("oldest_due_at_ms")),
-        "oldest_running_age_ms": _age_ms(now_ms, clocks.get("oldest_running_at_ms")),
-        "status": status,
-        "reason": _queue_reason(status=status, dead_count=dead_count, failed_count=failed_count, due_count=due_count),
+        "failed_count": int(health["failed_count"]),
+        "oldest_due_age_ms": health["oldest_due_age_ms"],
+        "oldest_running_age_ms": health["oldest_running_age_ms"],
+        "status": str(health["status"]),
+        "reason": str(health["reason"]),
     }
-
-
-def _queue_counts(conn: Any, descriptor: JobQueueDescriptor) -> dict[str, int]:
-    rows = conn.execute(f"SELECT status, COUNT(*) AS count FROM {descriptor.table} GROUP BY status").fetchall()
-    counts: dict[str, int] = {}
-    for row in rows:
-        item = dict(row)
-        counts[str(item.get("status"))] = int(item.get("count") or 0)
-    return counts
-
-
-def _queue_clocks(conn: Any, descriptor: JobQueueDescriptor, *, now_ms: int) -> dict[str, Any]:
-    row = conn.execute(
-        f"""
-        SELECT
-          COUNT(*) FILTER (
-            WHERE status = 'pending' AND {descriptor.next_run_column} <= %s
-          ) AS due_count,
-          COUNT(*) FILTER (WHERE status = 'running') AS running_count,
-          COUNT(*) FILTER (WHERE status = 'dead') AS dead_count,
-          MIN({descriptor.next_run_column}) FILTER (
-            WHERE status = 'pending' AND {descriptor.next_run_column} <= %s
-          ) AS oldest_due_at_ms,
-          MIN(updated_at_ms) FILTER (WHERE status = 'running') AS oldest_running_at_ms
-        FROM {descriptor.table}
-        """,
-        (int(now_ms), int(now_ms)),
-    ).fetchone()
-    return dict(row) if row else {}
 
 
 def _queue_items(
     conn: Any,
-    descriptor: JobQueueDescriptor,
     *,
     limit: int,
     status: str | None,
@@ -427,27 +401,27 @@ def _queue_items(
     rows = conn.execute(
         f"""
         SELECT *
-        FROM {descriptor.table}
+        FROM {NOTIFICATION_QUEUE_TABLE}
         {where}
         ORDER BY updated_at_ms DESC
         LIMIT %s
         """,
         params,
     ).fetchall()
-    return [_sanitized_job_row(dict(row), descriptor=descriptor) for row in rows]
+    return [_sanitized_job_row(dict(row)) for row in rows]
 
 
-def _sanitized_job_row(row: dict[str, Any], *, descriptor: JobQueueDescriptor) -> dict[str, Any]:
+def _sanitized_job_row(row: dict[str, Any]) -> dict[str, Any]:
     return {
-        "id": row.get(descriptor.id_column),
+        "id": row.get("delivery_id"),
         "status": row.get("status"),
         "attempt_count": row.get("attempt_count"),
         "max_attempts": row.get("max_attempts"),
         "created_at_ms": row.get("created_at_ms"),
         "updated_at_ms": row.get("updated_at_ms"),
-        "next_run_at_ms": row.get(descriptor.next_run_column),
-        "last_attempt_at_ms": row.get(descriptor.last_attempt_at_column) if descriptor.last_attempt_at_column else None,
-        "delivered_at_ms": row.get(descriptor.delivered_at_column) if descriptor.delivered_at_column else None,
+        "next_run_at_ms": row.get("next_run_at_ms"),
+        "last_attempt_at_ms": row.get("last_attempt_at_ms"),
+        "delivered_at_ms": row.get("delivered_at_ms"),
         "last_error_type": _error_type(row.get("last_error")),
         "last_error_preview": _preview_text(row.get("last_error")),
         "source": _job_source(row),
@@ -468,36 +442,6 @@ def _job_source(row: dict[str, Any]) -> dict[str, Any]:
         "channel",
     )
     return {key: row.get(key) for key in keys if row.get(key) is not None}
-
-
-def _queue_status(*, counts: dict[str, int], due_count: int, running_count: int) -> str:
-    if int(counts.get("dead", 0)) > 0:
-        return "blocked"
-    if int(counts.get("failed", 0)) > 0:
-        return "degraded"
-    if due_count > 0 or running_count > 0 or int(counts.get("pending", 0)) > 0:
-        return "ok"
-    if counts and any(status not in TERMINAL_SUCCESS_STATUSES for status in counts):
-        return "ok"
-    return "idle"
-
-
-def _queue_reason(*, status: str, dead_count: int, failed_count: int, due_count: int) -> str:
-    if dead_count > 0:
-        return "dead_jobs_present"
-    if failed_count > 0:
-        return "retryable_failures_present"
-    if due_count > 0:
-        return "due_work_present"
-    if status == "idle":
-        return "no_active_work"
-    return "fresh_work"
-
-
-def _queue_worker_name(queue_name: str) -> str:
-    return {
-        "notification_deliveries": "notification_delivery",
-    }.get(queue_name, queue_name)
 
 
 def _domains_payload(runtime: Any) -> dict[str, Any]:

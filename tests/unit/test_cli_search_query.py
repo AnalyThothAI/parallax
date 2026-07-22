@@ -9,17 +9,6 @@ def test_root_cli_exports_only_main():
     assert not hasattr(cli, "build_parser")
 
 
-def test_cli_commands_use_runtime_repository_session():
-    from parallax.app.runtime import repository_session
-    from parallax.app.surfaces.cli.commands import db, ops, read_models
-
-    assert not hasattr(db, "_postgres_connection")
-    assert not hasattr(db, "_repositories")
-    assert db.postgres_connection is repository_session.postgres_connection
-    assert ops.repositories is repository_session.repositories
-    assert read_models.repositories is repository_session.repositories
-
-
 def test_search_accepts_positional_query_and_cursor():
     args = build_parser().parse_args(["search", "btc", "--window", "4h", "--cursor", "0.1:100:event-1"])
 

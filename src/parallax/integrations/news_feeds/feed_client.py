@@ -92,9 +92,3 @@ class FeedClient:
 
     def close(self) -> None:
         self._client.close()
-
-    def __enter__(self) -> FeedClient:
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> None:
-        self.close()

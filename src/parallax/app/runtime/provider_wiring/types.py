@@ -8,7 +8,6 @@ from parallax.domains.asset_market.providers import (
     CexMarketProvider,
     DexMarketStreamProvider,
     DexProfileSource,
-    DexTokenCandleProvider,
     DexTokenDiscoveryProvider,
     DexTokenQuoteProvider,
     ProviderHealth,
@@ -40,7 +39,6 @@ class AssetMarketProviders:
     cex_market: CexMarketProvider | None = None
     dex_discovery_market: DexTokenDiscoveryProvider | None = None
     dex_quote_market: DexTokenQuoteProvider | None = None
-    dex_candle_market: DexTokenCandleProvider | None = None
     dex_profile_sources: tuple[DexProfileSource, ...] = ()
     stream_dex_market: DexMarketStreamProvider | None = None
     discovery_chain_ids: tuple[str, ...] = ()
@@ -52,7 +50,6 @@ class AssetMarketProviders:
         _close_sync_provider(errors, seen, self.cex_market)
         _close_sync_provider(errors, seen, self.dex_discovery_market)
         _close_sync_provider(errors, seen, self.dex_quote_market)
-        _close_sync_provider(errors, seen, self.dex_candle_market)
         for source in self.dex_profile_sources:
             _close_sync_provider(errors, seen, source.market)
         await _close_async_provider(errors, seen, self.stream_dex_market)

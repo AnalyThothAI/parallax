@@ -102,20 +102,30 @@ class FakeRows:
 
 class FakeConn:
     def execute(self, sql: str, params: object = ()) -> FakeRows:
+        if "FROM worker_queue_terminal_events" in sql:
+            if "GROUP BY final_reason_bucket" in sql:
+                return FakeRows([])
+            return FakeRows([{"terminal_count": 0, "unresolved_terminal_count": 0}])
         if "COUNT(*)" in sql and "GROUP BY status" in sql:
             return FakeRows([])
         if "oldest_due_at_ms" in sql:
             return FakeRows(
                 [
                     {
+                        "total_count": 0,
+                        "active_count": 0,
                         "due_count": 0,
                         "running_count": 0,
-                        "dead_count": 0,
+                        "failed_count": 0,
+                        "source_terminal_count": 0,
                         "oldest_due_at_ms": None,
                         "oldest_running_at_ms": None,
+                        "max_attempt_count": None,
                     }
                 ]
             )
+        if "SELECT *" in sql and "FROM notification_deliveries" in sql:
+            return FakeRows([])
         return FakeRows([{"ok": True, "probe": "postgres_liveness"}])
 
 

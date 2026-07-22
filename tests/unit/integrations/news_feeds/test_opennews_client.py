@@ -72,7 +72,7 @@ def test_opennews_client_rest_fetch_posts_to_news_search_and_reports_rest() -> N
     client = OpenNewsFeedClient(token="test-token", api_base_url="https://ai.6551.io/", post_json=fake_post_json)
 
     result = client.fetch(
-        "opennews://subscribe",
+        "opennews://subscribe?engine.social=legacy&coins=LEGACY&hasCoin=false",
         limit=5,
         source={
             "source_id": "opennews-news",

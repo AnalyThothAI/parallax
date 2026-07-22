@@ -63,7 +63,6 @@ def test_provider_health_describes_configured_capabilities(monkeypatch) -> None:
             {
                 MarketCapability.QUOTE_DEX_EXACT,
                 MarketCapability.PROFILE_DEX_EXACT,
-                MarketCapability.CANDLES_DEX_EXACT,
             }
         ),
         configured=True,
@@ -120,9 +119,6 @@ class FakeStreamProvider:
 
 class FakeGmgnProvider:
     def token_quotes(self, tokens):
-        return []
-
-    def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int):
         return []
 
     def token_profile(self, *, chain_id: str, address: str):

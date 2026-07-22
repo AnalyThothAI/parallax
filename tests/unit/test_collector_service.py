@@ -14,8 +14,7 @@ class MemoryStore:
         self.twitter_events = []
         self.raw_frames = []
         self.watched_flags = []
-        self.event_token_resolution_ids = []
-        self.projected_token_resolutions = []
+        self.token_resolutions = [{"target_id": "raw-resolution"}]
 
     def insert_raw_frame(self, **kwargs):
         self.raw_frames.append(kwargs)
@@ -30,13 +29,9 @@ class MemoryStore:
             entities=[],
             alerts=[],
             token_intents=[],
-            token_resolutions=[{"target_id": "raw-resolution"}],
+            token_resolutions=list(self.token_resolutions),
             inserted=True,
         )
-
-    def event_token_resolutions(self, event_id):
-        self.event_token_resolution_ids.append(event_id)
-        return list(self.projected_token_resolutions)
 
 
 class MemoryPublisher:
@@ -66,7 +61,7 @@ class CollectorServiceTests(unittest.TestCase):
     def test_handle_frame_stores_all_observed_events_and_publishes_only_matches(self):
         async def scenario():
             store = MemoryStore()
-            store.projected_token_resolutions = [{"target_id": "asset:voice", "symbol": "VOICE"}]
+            store.token_resolutions = [{"target_id": "asset:voice", "symbol": "VOICE"}]
             publisher = MemoryPublisher()
             service = CollectorService(
                 name="collector",
@@ -113,7 +108,6 @@ class CollectorServiceTests(unittest.TestCase):
             published_event = publisher.payloads[0]["event"]
             self.assertEqual(published_event["source_provider"], "gmgn")
             self.assertFalse({"author", "source", "content"} & set(published_event))
-            self.assertEqual(store.event_token_resolution_ids, ["gmgn:twitter_monitor_basic:keep"])
             self.assertEqual(
                 publisher.payloads[0]["token_resolutions"],
                 [{"target_id": "asset:voice", "symbol": "VOICE"}],

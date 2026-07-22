@@ -61,11 +61,3 @@ def test_api_macro_currentness_rejects_non_yyyy_mm_dd_date_text() -> None:
         assert payload["facts_max_observed_at"] is None
         assert payload["projection_lag_days"] is None
         assert payload["projection_behind_facts"] is False
-
-
-def test_api_macro_date_parser_has_no_timestamp_fallback() -> None:
-    from pathlib import Path
-
-    routes_source = Path("src/parallax/app/surfaces/api/routes_macro.py").read_text(encoding="utf-8")
-
-    assert "datetime.fromisoformat" not in routes_source

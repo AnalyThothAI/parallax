@@ -30,6 +30,8 @@ _SUCCESS_FETCH_RUN_RETENTION_LIMIT = 1_000
 
 
 class NewsFetchWorker(WorkerBase):
+    settings: NewsFetchWorkerSettings
+
     def __init__(
         self,
         *,

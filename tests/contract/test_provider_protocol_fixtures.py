@@ -201,12 +201,9 @@ class MemoryStore:
             entities=[],
             alerts=[],
             token_intents=[],
-            token_resolutions=[],
+            token_resolutions=[{"event_id": event.event_id, "target_id": "fixture:mirror"}],
             inserted=True,
         )
-
-    def event_token_resolutions(self, event_id: str) -> list[dict[str, Any]]:
-        return [{"event_id": event_id, "target_id": "fixture:mirror"}]
 
 
 class MemoryPublisher:

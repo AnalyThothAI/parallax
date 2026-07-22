@@ -373,10 +373,11 @@ def materialize_event(
             "token_snapshot": event_dict["token_snapshot"],
         }
     )
+    event_read_values: Mapping[str, object] = event_read
     sanitized: dict[str, Any] = _sanitize_postgres_value(
         {
             **{
-                key: event_read[key]
+                key: event_read_values[key]
                 for key in (
                     "event_id",
                     "logical_dedup_key",
@@ -532,7 +533,7 @@ def _required_positive_int(value: Any, *, field: str) -> int:
     return parsed
 
 
-def _required_nonnegative_int(value: Any, *, field: str) -> int:
+def _required_nonnegative_int(value: object, *, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise TypeError(f"event_read_{field}_nonnegative_int_required")
     return value

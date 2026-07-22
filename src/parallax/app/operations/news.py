@@ -13,7 +13,6 @@ from parallax.domains.news_intel.services.news_story_agent_policy import (
     news_story_brief_priority,
 )
 
-DOMAIN_CHOICES = ("all", "news")
 PROJECTION_CHOICES = ("all", "page", "story_brief")
 
 _NEWS_ITEM_PROJECTIONS = ("page", "story_brief")
@@ -22,40 +21,34 @@ _NEWS_ITEM_PROJECTIONS = ("page", "story_brief")
 def enqueue_projection_dirty_targets(
     repos: Any,
     *,
-    domain: str,
     execute: bool,
     now_ms: int,
     projection: str = "all",
     since_ms: int | None = None,
 ) -> dict[str, Any]:
-    normalized_domain = str(domain or "all").strip().lower()
-    if normalized_domain not in DOMAIN_CHOICES:
-        raise ValueError(f"unsupported projection dirty target domain: {normalized_domain}")
     normalized_projection = str(projection or "all").strip().lower()
     if normalized_projection not in PROJECTION_CHOICES:
         raise ValueError(f"unsupported projection dirty target projection: {normalized_projection}")
     if execute and normalized_projection in {"all", "story_brief"} and since_ms is None:
         raise ValueError("executing story_brief repair requires --since-hours to bound expensive agent work")
-    include_news = normalized_domain in {"all", "news"}
     result: dict[str, Any] = {
-        "domain": normalized_domain,
         "projection": normalized_projection,
         "execute": bool(execute),
         "now_ms": int(now_ms),
         "since_ms": int(since_ms) if since_ms is not None else None,
-        "news": {},
     }
 
     context = repos.transaction() if execute else nullcontext()
     with context:
-        if include_news:
-            result["news"] = _enqueue_news_targets(
+        result.update(
+            _enqueue_news_targets(
                 repos,
                 execute=execute,
                 now_ms=now_ms,
                 projection=normalized_projection,
                 since_ms=since_ms,
             )
+        )
     return result
 
 
@@ -211,4 +204,4 @@ def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, 
     return [dict(row) for row in rows if row["news_item_id"] is not None]
 
 
-__all__ = ["DOMAIN_CHOICES", "PROJECTION_CHOICES", "enqueue_projection_dirty_targets"]
+__all__ = ["PROJECTION_CHOICES", "enqueue_projection_dirty_targets"]

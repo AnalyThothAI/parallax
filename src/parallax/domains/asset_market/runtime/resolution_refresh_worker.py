@@ -11,7 +11,6 @@ from parallax.domains.asset_market.providers import DexProviderTemporarilyUnavai
 from parallax.domains.token_intel.interfaces import (
     TOKEN_REPROCESS_WINDOW,
     WINDOW_MS,
-    deferred_token_radar_projection,
     reprocess_recent_token_intents,
 )
 from parallax.platform.config.settings import ResolutionRefreshWorkerSettings
@@ -437,8 +436,6 @@ def _empty_result(now_ms: int) -> dict[str, Any]:
         "assets_written": 0,
         "reprocessed_intents": 0,
         "reprocess": None,
-        "anchor": None,
-        "projection": deferred_token_radar_projection(),
         "affected_lookup_keys": [],
         "discovery_result_counts": {},
         "errors": [],

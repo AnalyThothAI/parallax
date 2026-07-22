@@ -6,7 +6,6 @@ from parallax.platform.db.postgres_migrations import latest_migration_version
 from parallax.platform.validation import require_nonnegative_int
 
 TOKEN_RADAR_PROJECTION_VERSION_PARAM = "token_radar_projection_version"
-TOKEN_FACTOR_VERSION_PARAM = "token_factor_version"
 
 CORE_TABLES = (
     "raw_frames",
@@ -229,11 +228,9 @@ class PostgresQueryAudit:
         conn: Any,
         *,
         token_radar_projection_version: str | None = None,
-        token_factor_version: str | None = None,
     ):
         self.conn = conn
         self.token_radar_projection_version = token_radar_projection_version
-        self.token_factor_version = token_factor_version
 
     def run(self, *, analyze: bool = False) -> dict[str, Any]:
         queries = [self._explain(item, analyze=analyze) for item in HOT_QUERIES]
@@ -268,8 +265,6 @@ class PostgresQueryAudit:
         bound = dict(params)
         if TOKEN_RADAR_PROJECTION_VERSION_PARAM in bound:
             bound[TOKEN_RADAR_PROJECTION_VERSION_PARAM] = self.token_radar_projection_version
-        if TOKEN_FACTOR_VERSION_PARAM in bound:
-            bound[TOKEN_FACTOR_VERSION_PARAM] = self.token_factor_version
         return bound
 
 

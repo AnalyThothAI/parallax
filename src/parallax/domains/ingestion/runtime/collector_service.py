@@ -207,7 +207,6 @@ class CollectorService(WorkerBase):
             self.status.last_matched_event_at_ms = received_at_ms
             self.status.matched_twitter_events += 1
             self.status.events_published += 1
-            token_resolutions = await asyncio.to_thread(self.store.event_token_resolutions, event.event_id)
             await self.publisher.publish(
                 {
                     "type": "event",
@@ -215,7 +214,7 @@ class CollectorService(WorkerBase):
                     "entities": ingested.entities,
                     "alerts": ingested.alerts,
                     "token_intents": ingested.token_intents,
-                    "token_resolutions": token_resolutions,
+                    "token_resolutions": ingested.token_resolutions,
                 }
             )
 

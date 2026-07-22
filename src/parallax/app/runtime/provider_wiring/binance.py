@@ -1,12 +1,9 @@
 from __future__ import annotations
 
-import re
-from typing import Any
-
+from parallax.domains.asset_market.chain_identity import canonical_chain_address
 from parallax.domains.asset_market.providers import (
     CexTicker,
     DexTokenProfile,
-    MarketCandle,
     MarketCapability,
     ProviderHealth,
 )
@@ -16,8 +13,6 @@ from parallax.integrations.binance.usdm_futures_client import (
 )
 from parallax.integrations.binance.web3_token_client import BinanceWeb3TokenClient
 from parallax.platform.config.settings import Settings
-
-EVM_ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 
 
 class BinanceWeb3DexProfileProvider:
@@ -30,7 +25,7 @@ class BinanceWeb3DexProfileProvider:
             return None
         return DexTokenProfile(
             chain_id=metadata.chain_id,
-            address=_normalize_address(metadata.address),
+            address=canonical_chain_address(metadata.chain_id, metadata.address),
             symbol=metadata.symbol,
             name=metadata.name,
             logo_url=metadata.logo_url,
@@ -65,23 +60,6 @@ class BinanceUsdmFuturesMarketProvider:
             return _cex_ticker(ticker[0]) if ticker else None
         return _cex_ticker(ticker)
 
-    def candles(self, *, inst_id: str, bar: str, limit: int) -> list[MarketCandle]:
-        return [
-            MarketCandle(
-                time_ms=candle.open_time_ms,
-                open=candle.open,
-                high=candle.high,
-                low=candle.low,
-                close=candle.close,
-                volume=candle.volume,
-                volume_quote=candle.quote_volume,
-                volume_usd=candle.quote_volume,
-                confirmed=True,
-                raw=candle.raw,
-            )
-            for candle in self._client.candles(symbol=inst_id, interval=bar, limit=limit)
-        ]
-
     def close(self) -> None:
         self._client.close()
 
@@ -115,11 +93,6 @@ def binance_provider_health(settings: Settings) -> ProviderHealth:
         capabilities=capabilities,
         configured=settings.providers.binance.enabled,
     )
-
-
-def _normalize_address(address: Any) -> str:
-    text = str(address or "").strip()
-    return text.lower() if EVM_ADDRESS_RE.match(text) else text
 
 
 def _cex_ticker(ticker: BinanceUsdmTicker24hr) -> CexTicker:

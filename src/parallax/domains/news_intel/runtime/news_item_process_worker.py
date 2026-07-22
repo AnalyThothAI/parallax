@@ -32,6 +32,8 @@ from parallax.platform.runtime.worker_result import WorkerResult
 
 
 class NewsItemProcessWorker(WorkerBase):
+    settings: NewsItemProcessWorkerSettings
+
     def __init__(
         self,
         *,

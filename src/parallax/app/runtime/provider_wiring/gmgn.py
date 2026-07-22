@@ -1,17 +1,16 @@
 from __future__ import annotations
 
-import re
 import time
 from collections.abc import Awaitable, Callable
 from typing import Any
 
 from parallax.app.runtime.provider_wiring.types import UpstreamClientFactory
+from parallax.domains.asset_market.chain_identity import canonical_chain_address
 from parallax.domains.asset_market.providers import (
     DexProviderTemporarilyUnavailable,
     DexTokenProfile,
     DexTokenQuote,
     DexTokenQuoteRequest,
-    MarketCandle,
     MarketCapability,
     ProviderHealth,
 )
@@ -24,8 +23,6 @@ from parallax.integrations.gmgn.openapi_client import (
 )
 from parallax.integrations.gmgn.openapi_gateway import GmgnOpenApiGateway
 from parallax.platform.config.settings import Settings
-
-EVM_ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 
 
 class GmgnDexMarketProvider:
@@ -46,7 +43,7 @@ class GmgnDexMarketProvider:
             quotes.append(
                 DexTokenQuote(
                     chain_id=info.chain,
-                    address=_normalize_address(info.address),
+                    address=canonical_chain_address(info.chain, info.address),
                     observed_at_ms=observed_at_ms,
                     price_usd=info.price,
                     raw=raw,
@@ -63,34 +60,13 @@ class GmgnDexMarketProvider:
             )
         return quotes
 
-    def token_candles(self, *, chain_id: str, address: str, bar: str, limit: int) -> list[MarketCandle]:
-        try:
-            candles = self._gateway.token_kline(chain=chain_id, address=address, resolution=bar, limit=limit)
-        except GmgnOpenApiProviderUnavailableError as exc:
-            raise DexProviderTemporarilyUnavailable(str(exc)) from exc
-        return [
-            MarketCandle(
-                time_ms=candle.time_ms,
-                open=candle.open,
-                high=candle.high,
-                low=candle.low,
-                close=candle.close,
-                volume=candle.volume,
-                volume_quote=None,
-                volume_usd=candle.volume_usd,
-                confirmed=None,
-                raw=candle.raw,
-            )
-            for candle in candles
-        ]
-
     def token_profile(self, *, chain_id: str, address: str) -> DexTokenProfile | None:
         info = self._lookup_token_info(chain_id=chain_id, address=address).info
         if info is None:
             return None
         return DexTokenProfile(
             chain_id=info.chain,
-            address=_normalize_address(info.address),
+            address=canonical_chain_address(info.chain, info.address),
             symbol=info.symbol,
             name=info.name,
             logo_url=info.icon_url,
@@ -133,7 +109,6 @@ def gmgn_provider_health(settings: Settings) -> ProviderHealth:
             {
                 MarketCapability.QUOTE_DEX_EXACT,
                 MarketCapability.PROFILE_DEX_EXACT,
-                MarketCapability.CANDLES_DEX_EXACT,
             }
         )
         if settings.gmgn_configured
@@ -156,11 +131,6 @@ def gmgn_upstream_factory(settings: Settings) -> UpstreamClientFactory:
         )
 
     return factory
-
-
-def _normalize_address(address: Any) -> str:
-    text = str(address or "").strip()
-    return text.lower() if EVM_ADDRESS_RE.match(text) else text
 
 
 def _number_from_mapping(payload: dict[str, Any], *keys: str) -> float | None:

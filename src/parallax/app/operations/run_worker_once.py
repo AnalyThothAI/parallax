@@ -6,8 +6,8 @@ from collections.abc import Callable, Mapping
 from dataclasses import dataclass
 from typing import Any
 
+from parallax.app.operations.token_intel import token_profile_image_repair_targets
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
-from parallax.app.runtime.ops_cli_queries import token_profile_image_repair_targets
 from parallax.app.runtime.provider_wiring.asset_market import wire_asset_market
 from parallax.app.runtime.provider_wiring.types import AssetMarketProviders
 from parallax.app.runtime.telemetry import TelemetryRegistry

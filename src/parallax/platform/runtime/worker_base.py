@@ -56,7 +56,6 @@ class WorkerBase(ABC):
         self._iteration_duration_ms: list[float] = []
         self._consecutive_failures = 0
         self._closed = False
-        self._active_run_loops = 0
 
     async def on_start(self) -> None:
         return None
@@ -77,31 +76,19 @@ class WorkerBase(ABC):
             raise RuntimeError(f"worker:{self.name}:closed")
         if self.effective_status in {"disabled", "intentionally_not_started", "unavailable"}:
             return WorkerResult(skipped=1, notes={"reason": self.effective_status})
-        if self._active_run_loops > 0:
-            raise RuntimeError(f"worker:{self.name}:already_running")
 
         started = time.perf_counter()
         started_hook_completed = False
-        self._active_run_loops = 1
-        self.running = True
+        self._start_run()
         try:
             await self.on_start()
             started_hook_completed = True
-            self.last_started_at_ms = _now_ms()
-            result = _require_worker_result(self.name, await self.run_once())
-            self._consecutive_failures = 0
-            self.last_error = None
-            self.last_result = result
-            self._record_successful_iteration(started, result)
-            return result
+            return await self._run_iteration(started=started)
         except Exception as exc:
-            self._consecutive_failures += 1
-            self.last_error = _error_text(exc)
-            self.last_result = None
-            self._record_failed_iteration(started)
+            if not started_hook_completed:
+                self._record_iteration_failure(started, exc)
             raise
         finally:
-            self._active_run_loops = 0
             self.running = False
             if started_hook_completed:
                 await self.on_stop()
@@ -109,34 +96,20 @@ class WorkerBase(ABC):
     async def run(self) -> None:
         if not self.enabled:
             return
-        if self._active_run_loops > 0:
-            raise RuntimeError(f"worker:{self.name}:already_running")
-        self._active_run_loops = 1
-        self.running = True
+        self._start_run()
         try:
             await self.on_start()
             while not self._stop_event.is_set():
-                started = time.perf_counter()
-                self.last_started_at_ms = _now_ms()
                 try:
-                    result = _require_worker_result(self.name, await self.run_once())
-                except Exception as exc:
-                    self._consecutive_failures += 1
-                    self.last_error = _error_text(exc)
-                    self.last_result = None
-                    self._record_failed_iteration(started)
+                    await self._run_iteration()
+                except Exception:
                     await self._wait_for_next_iteration(self._backoff_seconds())
                     continue
 
-                self._consecutive_failures = 0
-                self.last_error = None
-                self.last_result = result
-                self._record_successful_iteration(started, result)
                 if self._stop_event.is_set():
                     break
                 await self._wait_for_next_iteration(self.interval_seconds)
         finally:
-            self._active_run_loops = 0
             self.running = False
             await self.on_stop()
 
@@ -194,6 +167,32 @@ class WorkerBase(ABC):
             await asyncio.wait_for(self._stop_event.wait(), timeout=timeout)
         except TimeoutError:
             return
+
+    def _start_run(self) -> None:
+        if self.running:
+            raise RuntimeError(f"worker:{self.name}:already_running")
+        self.running = True
+
+    async def _run_iteration(self, *, started: float | None = None) -> WorkerResult:
+        iteration_started = time.perf_counter() if started is None else started
+        self.last_started_at_ms = _now_ms()
+        try:
+            result = _require_worker_result(self.name, await self.run_once())
+        except Exception as exc:
+            self._record_iteration_failure(iteration_started, exc)
+            raise
+
+        self._consecutive_failures = 0
+        self.last_error = None
+        self.last_result = result
+        self._record_successful_iteration(iteration_started, result)
+        return result
+
+    def _record_iteration_failure(self, started: float, exc: BaseException) -> None:
+        self._consecutive_failures += 1
+        self.last_error = _error_text(exc)
+        self.last_result = None
+        self._record_failed_iteration(started)
 
     def _record_successful_iteration(self, started: float, result: WorkerResult) -> None:
         self.last_finished_at_ms = _now_ms()

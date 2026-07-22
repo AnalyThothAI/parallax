@@ -116,7 +116,7 @@ def _positive_int(value: Any, *, field: str) -> int:
     return parsed
 
 
-def _nonnegative_int(value: Any, *, field: str) -> int:
+def _nonnegative_int(value: object, *, field: str) -> int:
     if isinstance(value, bool) or not isinstance(value, int) or value < 0:
         raise ValueError(f"token_radar_narrative_admission_current_row_invalid:{field}")
     return value

@@ -104,7 +104,9 @@ class MarketTickPersistenceService:
         now_ms: int,
     ) -> dict[tuple[str, str], tuple[str, str]]:
         changed_targets = _target_keys(current_rows)
-        product_targets = self.repos.registry.product_targets_for_market_targets(changed_targets)
+        product_targets: dict[tuple[str, str], tuple[str, str]] = (
+            self.repos.registry.product_targets_for_market_targets(changed_targets)
+        )
         changed_product_targets = list(dict.fromkeys(product_targets.values()))
         if changed_product_targets:
             self.repos.token_radar_dirty_targets.enqueue_market_product_targets(

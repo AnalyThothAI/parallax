@@ -2,8 +2,8 @@
 
 > **Scope.** This is the living performance playbook for the local Docker
 > PostgreSQL production runtime. It covers query diagnosis, live migration
-> safety, worker queue pressure, PoWA/pgBadger usage, and the current
-> 2026-05-26 follow-up backlog.
+> safety, worker queue pressure, and PoWA/pgBadger usage. Dated runtime findings
+> belong in timestamped reviews, not in this living playbook.
 
 ## Why This Exists
 
@@ -19,9 +19,9 @@ these invariants:
   gates without a message-delivery dependency.
 - Runtime fixes must be observable through PostgreSQL evidence, not intuition.
 
-The 2026-05-26 hard cut proved the pattern: first make the pressure visible,
-then remove the exact hot SQL or retry loop. Do not hide backlog by weakening
-`/readyz`, reducing worker count, or deleting facts.
+The durable pattern is: first make pressure visible, then remove the exact hot
+SQL or retry loop. Do not hide backlog by weakening `/readyz`, reducing worker
+count, or deleting facts.
 
 ## Hot/Cold Lifecycle Contract
 
@@ -238,7 +238,7 @@ A worker loop with no due work must not scan broad facts or read models to prove
 nothing happened. Normal runtime work must be proportional to claimed dirty
 targets or leased jobs.
 
-LLM-backed workers must reserve lane capacity, circuit, and RPM before durable
+LLM-backed workers must reserve gateway capacity, circuit, and RPM before durable
 queue claim. Batch workers request explicit `rate_units` and then cap DB claims
 to the actual `reservation.rate_units` returned by the gateway; one reservation
 cannot cover multiple unreserved model calls. Capacity, circuit, or RPM
@@ -309,8 +309,9 @@ Window functions such as `row_number() OVER (...)` are fine in offline rebuilds
 or bounded projections. They are suspect in HTTP request paths when they scan
 wide fact windows or write temp blocks.
 
-The macro observation path is the current example. It should be projected into
-deduped latest rows before reads, not recomputed per request.
+The Macro request path must remain on the projected
+`macro_observation_series_rows`/`macro_view_snapshots` surfaces; do not restore
+request-time dedupe over `macro_observations`.
 
 ### Batch Writes Without Losing Idempotency
 
@@ -369,351 +370,16 @@ Partitioned audit/history tables need retention policy first, index cleanup
 second. Do not drop `idx_scan=0` indexes from a single short observation window.
 Confirm stats reset time, rare query paths, constraints, and operator class use.
 
-## Current Snapshot, 2026-05-26 17:40 Asia/Shanghai
-
-Fresh local Docker evidence after the `main` merge:
-
-- `docker compose ps`: `app` healthy, `postgres` healthy, `migrate` exited 0,
-  `powa-web` running.
-- `/readyz`: `ok=true`, 34 workers, 6 lanes.
-- No current blockers and no `idle in transaction` sessions.
-- PoWA: `powa_statements_history_current=1484`,
-  `powa_statements_history=7104`.
-- pgBadger latest report:
-  `~/.parallax/reports/pgbadger/pgbadger-latest.html`, about 3.4 MB.
-- New hot-path indexes have no invalid entries. `idx_token_intent_lookup_keys_intent_lookup`
-  already has non-zero scans.
-
-### What Improved
-
-1. **The old wide Token Radar rank-set query is gone from runtime code.**
-   `pg_stat_statements` now shows only compact/hydration/upsert/delete shapes
-   against `token_radar_target_features`, not the former wide `SELECT *` rank
-   refresh.
-
-2. **The lookup-key delete index is working.**
-   `idx_token_intent_lookup_keys_intent_lookup` had 842 scans in the fresh
-   snapshot, which means the low-risk missing-index fix is no longer theoretical.
-
-3. **Terminal queue evidence exists and is queryable.**
-   `worker_queue_terminal_events` now exposes historical dead/failed rows and
-   live `resolution_refresh` poison-key terminalization. Operators have one
-   inspect/resolve surface instead of scattered SQL.
-
-4. **Readiness semantics are cleaner.**
-   Ordinary backlog no longer makes the process unready; queue table
-   unavailability, adapter failure, or manifest mismatch does.
-
-## Root Cause Update, 2026-05-26 18:15 Asia/Shanghai
-
-Subagent and live PostgreSQL checks agree on the current shape: this is not a
-single bad SQL statement and not a general PostgreSQL outage. It is a layered
-problem where rollout ordering and projection architecture create unnecessary
-work, and a few query shapes and maintenance gaps amplify it.
-
-### Root Cause Split
-
-| Area | Severity | Diagnosis |
-| --- | --- | --- |
-| Retired Token Radar rebuild gate | Historical P0 | The compact rank-input rebuild gate was a transitional failure mode. The later publication-state hard cut removed runtime rank-input readiness/rebuild paths; Token Radar now uses durable dirty targets, due gates, and content-stable current-row publication. |
-| Token Radar source hydration | P0 | The old `TokenRadarTargetFeatureQuery.source_rows()` single-target family caused the Top SQL fingerprint. Runtime now uses batched source requests without the materialized CTE. |
-| Worker terminal backlog | P0/P1 | Most unresolved terminal rows are real provider/business outcomes, not DB lock symptoms. LLM `522`, no quote, no market data, stale TTL, and retry-budget exhaustion dominate. |
-| PostgreSQL maintenance hygiene | P1 | No invalid indexes exist, but several hot tables have stale statistics and high churn. The follow-up migration validates its concurrent index and analyzes affected hot tables. |
-| Kappa/CQRS boundary | P1 | Macro request-time dedupe moved into `macro_observation_series_rows`, written by `MacroViewProjectionWorker`; request paths read the projected table only. |
-
-### Fresh Evidence
-
-Runtime config is using operator-owned files:
-
-```text
-config_path: /Users/qinghuan/.parallax/config.yaml
-workers_config_path: /Users/qinghuan/.parallax/workers.yaml
-```
-
-Readiness is green, but queue health exposes pressure:
-
-```text
-/readyz ok=true
-identity_market_fact: blocked, queue_depth=28, unresolved_terminal=3174
-projection: degraded, queue_depth=696, failed=686, max_attempt=60
-agent: blocked, queue_depth=29, running=1, unresolved_terminal=2038
-```
-
-Historical Token Radar rebuild gate evidence from before the publication-state
-hard cut:
-
-```text
-token_radar_target_features:
-  legacy_needs_rebuild:      16,292
-  token-radar-rank-input-v1:    951
-
-token_radar_dirty_targets:
-  resolution_refresh:          402 total, 312 due, max_attempt=59
-  market_tick_current_changed: 188 total, 171 due, max_attempt=59
-  ingest_resolution:           106 total,  93 due, max_attempt=60
-  sample error: token_radar_rank_inputs_require_full_rebuild
-```
-
-Top SQL confirms the hotspot moved, not disappeared:
-
-```text
-WITH source_intents AS MATERIALIZED (...)
-calls: 3,601
-total_exec_time: 26,361 ms
-mean_exec_time: 7.321 ms
-shared_blks_read: 228,404
-temp_blks_written: 2,155
-```
-
-The request-time macro dedupe is still visible:
-
-```text
-WITH deduped AS (SELECT *, row_number() OVER (...))
-calls: 12
-mean_exec_time: 181.629 ms
-rows: 47,857
-temp_blks_written: 7,729
-```
-
-Terminal evidence by normalized reason:
-
-| Worker | Reason | Unresolved |
-| --- | --- | ---: |
-| `resolution_refresh` | `not_found_retry_budget_exhausted` | 1,536 |
-| `event_anchor_backfill` | `provider_no_quote` | 1,109 |
-| `mention_semantics` | `llm_provider_522` | 976 |
-| `enrichment` | `llm_provider_522` | 276 |
-| `event_anchor_backfill` | `no_market_data` | 262 |
-| `event_anchor_backfill` | `provider_error` | 229 |
-| `enrichment` | `timeout` | 127 |
-
-Statistics are stale enough to influence planner choices. Actual counts are
-far above `pg_stat_user_tables.n_live_tup` estimates until analyze runs:
-
-| Table | Actual Rows | Total Size | `n_live_tup` Estimate | Dead Pct Estimate |
-| --- | ---: | ---: | ---: | ---: |
-| `token_intent_lookup_keys` | 157,616 | 91 MB | 318 | 87.97% |
-| `token_intent_resolutions` | 147,522 | 185 MB | 825 | 46.29% |
-| `event_anchor_backfill_jobs` | 33,606 | 22 MB | 84 | 50.00% |
-| `token_radar_target_features` | 17,252 | 109 MB | 90 | 78.26% |
-
-There are no invalid indexes in the current database.
-
-## Historical Problems And Current Follow-Ups
-
-### Resolved: Token Radar Rank-Input Rebuild Gate Was Retired
-
-Historical evidence before the current-row hard cut:
-
-```text
-token_radar_target_features:
-  legacy_needs_rebuild:      16,731 rows
-  token-radar-rank-input-v1:    381 rows
-
-token_radar_dirty_targets:
-  241 active rows in the observed sample
-  max_attempt up to 31
-  sample last_error: token_radar_rank_inputs_require_full_rebuild
-```
-
-Current hard-cut state:
-
-- `rank_input_version`, `legacy_needs_rebuild`, and
-  `token_radar_rank_inputs_require_full_rebuild` are retired runtime concerns.
-- `TokenRadarProjectionWorker` does not run rank-input readiness or full-rebuild
-  gates before dirty-target claim.
-- Missed or stale work is repaired by explicit bounded
-  `ops enqueue-token-radar-dirty-targets`, not by a runtime rank-input rebuild
-  command.
-- The online leaderboard path is `token_radar_current_rows` plus
-  `token_radar_publication_state`; `token_radar_target_features` remains a
-  projection-private intermediate.
-
-### P0: Token Radar Source Hydration Was The Next Top Query
-
-Pre-fix `pg_stat_statements` Top 1:
-
-```text
-WITH source_intents AS MATERIALIZED (...)
-calls: 2,339
-total_exec_time: 29,644 ms
-mean_exec_time: 12.674 ms
-shared_blks_read: 268,585
-```
-
-Code path:
-
-```text
-src/parallax/domains/token_intel/queries/token_radar_target_feature_query.py
-TokenRadarTargetFeatureQuery.source_rows()
-```
-
-Diagnosis:
-
-After removing the wide rank-set read, the next expensive shape was per-target
-source hydration. It joined current resolutions, intents, events, account
-profiles, semantic extraction, asset identity, price feeds, enriched event
-capture, market tick facts, and current market rows once per target/window/scope.
-
-Hard cut:
-
-- `TokenRadarTargetFeatureBatchQuery.source_rows_for_requests(...)` accepts a
-  bounded request set and hydrates source rows once per chunk.
-- `rebuild_dirty_targets()` uses the batch path after claiming durable dirty
-  targets and passing due gates; broad fact-window repair is an explicit ops
-  enqueue path, not worker runtime scan.
-- The runtime source SQL no longer contains `WITH source_intents AS MATERIALIZED`.
-- Publication state and worker due gates control whether a rank set publishes;
-  stale or missed source work is repaired by explicit dirty-target enqueue.
-
-Verification:
-
-```bash
-rg -n "WITH source_intents AS MATERIALIZED|TokenRadarTargetFeatureQuery|source_rows\\(" \
-  src/parallax/domains/token_intel
-```
-
-Expected runtime result: no hits.
-
-### P0: Queue Backlog Is Now Visible, Not Solved
-
-Fresh unresolved terminal evidence:
-
-| Worker | Source | Status | Count | Main Reason |
-| --- | --- | ---: | ---: | --- |
-| `event_anchor_backfill` | `event_anchor_backfill_jobs` | `failed` | 1,586 | `provider_no_quote`, `no_market_data`, provider errors |
-| `mention_semantics` | `token_mention_semantics` | `semantic_unavailable` | 967 | LLM provider `522` |
-| `resolution_refresh` | `token_discovery_dirty_lookup_keys` | `not_found` | 622 | retry budget exhausted |
-| `enrichment` | `enrichment_jobs` | `dead` | 400 | LLM provider `522`, 120s timeout |
-| `resolution_refresh` | `token_discovery_dirty_lookup_keys` | `error` | 14 | provider error retry budget |
-| `event_anchor_backfill` | `event_anchor_backfill_jobs` | `expired` | 10 | `backfill_expired` |
-
-Diagnosis by domain:
-
-- `event_anchor_backfill` is mostly a market data/provider coverage issue, not
-  a PostgreSQL lock issue. `provider_no_quote` and `no_market_data` need market
-  target/quote availability diagnosis.
-- `mention_semantics` and `enrichment` are dominated by external LLM provider
-  `522` and provider timeouts. Treat this as provider/circuit/backpressure
-  behavior, not as database failure.
-- `resolution_refresh` is actively terminalizing poison lookup keys, but active
-  backlog still exists.
-
-Fresh active `token_discovery_dirty_lookup_keys`:
-
-```text
-total: 1,231
-due: 1,221
-running: 0
-max_attempt: 554
-oldest_due: 2026-05-25 04:15 UTC
-```
-
-The high active attempt counts are legacy rows being drained under the new
-budget. The worker has `max_attempts=3`, but terminalization happens when a row
-is claimed. With `concurrency=1` and `batch_size=50`, old rows will disappear
-gradually, not instantly.
-
-Next moves:
-
-- Let the new terminalizer drain, then re-check active max attempts.
-- Resolve obvious terminal rows by operator action, not table updates.
-- Add reason-level dashboards: provider outage, no quote, no market data,
-  stale TTL, retry budget exhausted.
-
-### P1: Macro Request-Time Dedupe Still Writes Temp Blocks
-
-Fresh `pg_stat_statements`:
-
-```text
-WITH deduped AS (
-  SELECT *, row_number() OVER (...)
-  FROM macro_observations
-)
-calls: 13
-mean_exec_time: 181.172 ms
-rows: 47,833
-temp_blks_written: 7,729
-```
-
-Diagnosis:
-
-The macro read path still computes deduped latest observations during requests.
-That is a CQRS smell. Reads should hit a projected read model.
-
-Next move:
-
-- Implement the plan's Phase 6 in a separate migration after `20260526_0100`.
-- Add `macro_observation_latest_rows` or extend `macro_view_snapshots`.
-- Delete request-time `row_number() OVER` from HTTP repository paths.
-- Verify temp blocks disappear from the Top mean-time report.
-
-### P1: Large Audit/Fact Tables Need Retention And Partition Discipline
-
-Fresh largest relations:
-
-| Relation | Total Size |
-| --- | ---: |
-| `market_ticks_default` | 2.1 GB |
-| `events` | 1.9 GB |
-| `raw_frames` | 835 MB |
-
-Diagnosis:
-
-This is expected for an append-heavy Kappa system, but it cannot be ignored.
-Token Radar audit/history and market tick facts need explicit retention,
-partition drop cadence, and index review.
-
-Next move:
-
-```bash
-uv run parallax ops ensure-postgres-partitions --dry-run
-uv run parallax ops drop-expired-postgres-partitions --dry-run
-```
-
-Only execute after confirming retention policy and expected product lookback.
-
-### P1: Control Tables Show High Dead Tuple Percentages
-
-Fresh examples:
-
-| Table | Dead Pct | Total Size |
-| --- | ---: | ---: |
-| `token_radar_target_features` | 93.77% | 108 MB |
-| `token_intent_lookup_keys` | 87.85% | 91 MB |
-| `token_intent_resolutions` | 46.35% | 183 MB |
-| `event_anchor_backfill_jobs` | 50.00% | 21 MB |
-
-Diagnosis:
-
-This is the cost of recent hard-cut backfills and high-churn queue updates. It
-does not mean the database is broken, but it does mean planner stats and heap
-visibility may lag during active churn.
-
-Next move:
-
-```sql
-VACUUM (ANALYZE) token_radar_target_features;
-VACUUM (ANALYZE) token_intent_lookup_keys;
-VACUUM (ANALYZE) token_intent_resolutions;
-VACUUM (ANALYZE) event_anchor_backfill_jobs;
-```
-
-Run after the current drain/rebuild wave, not while the same tables are being
-heavily rewritten.
-
-## Priority Order
-
-1. Verify post-deploy pg_stat deltas show no new
-   `WITH source_intents AS MATERIALIZED` calls.
-2. Drain and classify terminal queue evidence by `final_reason_bucket`; do not leave 4k+
-   unresolved terminal rows as background noise.
-3. Verify Macro API deltas show no request-time `row_number()` over
-   `macro_observations`; request paths should read `macro_observation_series_rows`.
-4. Schedule retention/partition review for Token Radar audit/history and
-   market ticks.
-5. Vacuum/analyze high-churn control tables after the current live drain.
-
+## Dated Evidence Is Not Current State
+
+Live row counts, queue depth, worker inventory, relation sizes, query timings,
+and readiness results belong in timestamped review or incident artifacts. They
+must not be copied into this living playbook as current truth.
+
+Before using an older snapshot, reopen the cited artifact and verify it against
+the operator-owned runtime with the Safe Baseline above. If live PostgreSQL is
+unavailable, label the physical state unknown and limit conclusions to static
+schema, query-shape, migration, and test evidence.
 ## Completion Checklist For Future Performance PRs
 
 - `uv run parallax config` confirms operator-owned runtime paths.

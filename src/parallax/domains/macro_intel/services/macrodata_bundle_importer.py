@@ -328,9 +328,9 @@ def _max_observed_at(observations: Sequence[Mapping[str, Any]]) -> date | str | 
     return cast("date | str | None", max(observed_dates) if observed_dates else None)
 
 
-def _min_observed_at(observations: Sequence[Mapping[str, Any]]) -> object | None:
+def _min_observed_at(observations: Sequence[Mapping[str, Any]]) -> date | str | None:
     observed_dates = [observation["observed_at"] for observation in observations if observation.get("observed_at")]
-    return min(observed_dates) if observed_dates else None
+    return cast("date | str | None", min(observed_dates) if observed_dates else None)
 
 
 def _count_outcomes(outcomes: Sequence[Mapping[str, Any]], status: str) -> int:

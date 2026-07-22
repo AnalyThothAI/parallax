@@ -1,6 +1,5 @@
 from __future__ import annotations
 
-import re
 from typing import Any, Protocol, cast
 
 from parallax.app.runtime.provider_wiring import binance, gmgn, okx
@@ -9,6 +8,7 @@ from parallax.app.runtime.provider_wiring.binance import (
     BinanceWeb3DexProfileProvider,
 )
 from parallax.app.runtime.provider_wiring.types import AssetMarketProviders, OkxProviderBundle
+from parallax.domains.asset_market.chain_identity import chain_address_key
 from parallax.domains.asset_market.providers import (
     DexProfileSource,
     DexTokenProfileProvider,
@@ -17,8 +17,6 @@ from parallax.domains.asset_market.providers import (
     DexTokenQuoteRequest,
 )
 from parallax.platform.config.settings import Settings
-
-EVM_ADDRESS_RE = re.compile(r"^0x[a-fA-F0-9]{40}$")
 
 
 class _SyncCloseProvider(Protocol):
@@ -83,7 +81,6 @@ def wire_asset_market(settings: Settings) -> AssetMarketProviders:
                 primary=gmgn_dex_market,
                 fallback=okx_bundle.dex_quote_market,
             ),
-            dex_candle_market=gmgn_dex_market,
             dex_profile_sources=dex_profile_sources,
             stream_dex_market=okx_bundle.stream_dex_market,
             discovery_chain_ids=okx.okx_chain_indexes_to_chain_ids(settings.providers.okx.dex_chain_indexes),
@@ -94,7 +91,15 @@ def wire_asset_market(settings: Settings) -> AssetMarketProviders:
             ),
         )
     except Exception as exc:
-        okx_cleanup_providers = _okx_bundle_cleanup_providers(exc, okx_bundle)
+        okx_cleanup_providers = (
+            (
+                okx_bundle.dex_discovery_market,
+                okx_bundle.dex_quote_market,
+                okx_bundle.stream_dex_market,
+            )
+            if okx_bundle is not None
+            else ()
+        )
         _close_partial_providers(
             exc,
             binance_cex_market,
@@ -153,45 +158,12 @@ def _require_token_profile_source(value: object) -> DexTokenProfileProvider:
     return cast(DexTokenProfileProvider, value)
 
 
-def _okx_bundle_cleanup_providers(
-    error: BaseException,
-    okx_bundle: OkxProviderBundle | None,
-) -> tuple[object | None, object | None, object | None]:
-    if okx_bundle is None:
-        return (None, None, None)
-    try:
-        dex_discovery_market = okx_bundle.dex_discovery_market
-    except AttributeError as exc:
-        _record_okx_bundle_cleanup_field_error(error, "okx_bundle.dex_discovery_market", exc)
-        dex_discovery_market = None
-    try:
-        dex_quote_market = okx_bundle.dex_quote_market
-    except AttributeError as exc:
-        _record_okx_bundle_cleanup_field_error(error, "okx_bundle.dex_quote_market", exc)
-        dex_quote_market = None
-    try:
-        stream_dex_market = okx_bundle.stream_dex_market
-    except AttributeError as exc:
-        _record_okx_bundle_cleanup_field_error(error, "okx_bundle.stream_dex_market", exc)
-        stream_dex_market = None
-    return (dex_discovery_market, dex_quote_market, stream_dex_market)
-
-
-def _record_okx_bundle_cleanup_field_error(error: BaseException, field: str, exc: AttributeError) -> None:
-    error.add_note(f"partial provider cleanup failed: AttributeError: {field}: {exc}")
-
-
 def _quote_key(chain_id: Any, address: Any) -> tuple[str, str]:
-    return (str(chain_id).strip(), _normalize_address(address))
+    return chain_address_key(chain_id, address)
 
 
 def _quote_has_price(quote: DexTokenQuote | None) -> bool:
     return quote is not None and quote.price_usd is not None
-
-
-def _normalize_address(address: Any) -> str:
-    text = str(address or "").strip()
-    return text.lower() if EVM_ADDRESS_RE.match(text) else text
 
 
 def _close_partial_providers(error: BaseException, *providers: object | None) -> None:

@@ -340,7 +340,7 @@ def _news_body(row: NewsNotificationCandidate, *, summary: str) -> str:
 
 def _required_source_timestamp_ms(row: Mapping[str, Any], field_name: str, *, rule_id: str) -> int:
     try:
-        value = row[field_name]
+        value: object = row[field_name]
     except KeyError as exc:
         raise ValueError(f"notification_source_timestamp_required:{rule_id}:{field_name}") from exc
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:

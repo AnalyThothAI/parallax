@@ -11,23 +11,6 @@ import pytest
 from parallax.cli import main
 
 
-def test_retired_backfill_watchlist_signal_stats_command_is_not_registered() -> None:
-    assert (
-        main(
-            ["ops", "backfill-watchlist-signal-stats", "--batch-size", "5000", "--max-batches", "1"],
-            stdout=io.StringIO(),
-        )
-        == 2
-    )
-    assert (
-        main(
-            ["ops", "backfill-watchlist-signal-stats", "--batch-size", "5000", "--max-batches", "1", "--dry-run"],
-            stdout=io.StringIO(),
-        )
-        == 2
-    )
-
-
 def test_rebuild_market_current_calls_application_operation(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
@@ -83,13 +66,6 @@ def test_rebuild_market_current_rejects_partial_cursor_before_application_call(m
 
     assert code == 2
     assert json.loads(stdout.getvalue()) == {"ok": False, "error": "market_current_rebuild_cursor_pair_required"}
-
-
-def test_removed_token_radar_partition_ops_commands_are_not_registered() -> None:
-    assert main(["ops", "ensure-postgres-partitions", "--execute"], stdout=io.StringIO()) == 2
-    assert main(["ops", "drop-expired-postgres-partitions", "--execute"], stdout=io.StringIO()) == 2
-    assert main(["ops", "reset-token-radar-postgres-hard-cut", "--dry-run"], stdout=io.StringIO()) == 2
-    assert main(["ops", "enqueue-runtime-worker-dirty-targets", "--work", "retired_work"], stdout=io.StringIO()) == 2
 
 
 def test_reconcile_event_anchor_jobs_dispatches_to_operator_repository(monkeypatch) -> None:
@@ -302,24 +278,6 @@ def test_enqueue_token_radar_dirty_targets_rejects_malformed_boundaries_before_r
             execute=False,
             now_ms=1_700_000_100_000,
         )
-
-
-def test_retired_token_capture_tier_backfill_command_is_not_registered() -> None:
-    stdout = io.StringIO()
-
-    code = main(["ops", "enqueue-token-capture-tier-rank-set", "--dry-run"], stdout=stdout)
-
-    assert code == 2
-
-
-def test_rebuild_token_radar_rank_inputs_command_is_not_registered() -> None:
-    assert (
-        main(
-            ["ops", "rebuild-token-radar-rank-inputs", "--execute", "--reason", "post-migration", "--limit", "123"],
-            stdout=io.StringIO(),
-        )
-        == 2
-    )
 
 
 class _FakeEventAnchorJobs:

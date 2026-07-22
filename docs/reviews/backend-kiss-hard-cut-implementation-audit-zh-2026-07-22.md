@@ -353,3 +353,146 @@ provider input -> material fact -> stable current/dirty target -> public read
 ```
 
 只有确实具有独立成本或外部副作用的阶段才保留 worker 和 ledger。这个边界比旧审计的保守 20-worker 目标更简单，也更符合第一性、KISS、Kappa 和 CQRS。
+
+## 12. 继续审计：全链路 KISS 复核与第二轮硬切
+
+> 继续审计基线：`main@c397affb`，2026-07-22。
+> 目标：在前述 17-worker hard cut 之后，继续检查真实调用图、目录职责、provider/DB 边界和测试形态；不以文件大小或 McCabe 数值自动授权拆分。
+
+### 12.1 更新后的判断
+
+第一轮已经删除了主要控制面，但代码中仍残留四类“实现完成后没有退场”的复杂度：
+
+1. 同一生命周期或状态在局部重复计算，例如 WorkerBase 的 one-shot/continuous iteration、ops queue health；
+2. 已无消费者的 provider capability、client method、CLI branch 和 settings field；
+3. application operation 仍放在 `app/runtime`，导致目录名表达错误的所有权；
+4. 只证明旧代码形状不存在、伪造 PostgreSQL 细节或读取 private source text 的测试墓地。
+
+本轮继续硬切这些残留，但没有改变 Kappa/CQRS 的业务拓扑：
+
+```text
+provider input
+  -> normalized evidence / material facts in PostgreSQL
+  -> durable target or transactionally maintained current row
+  -> one owning worker/projection/read operation
+  -> exact HTTP / CLI / WebSocket consumer
+```
+
+没有新增 service、table、worker、queue、ledger、feature flag、compatibility module 或第二写者。
+
+### 12.2 当前职责图
+
+| 层 | 唯一职责 | 本轮处理 |
+|---|---|---|
+| `integrations/**` | 外部协议、payload 解析、timeout/close、provider error | 删除零消费者 Candle 与 Binance 旁路接口；保留外部 alias、retry、unavailable 映射 |
+| `domains/**` | material fact、identity、dirty/current 规则、side-effect ledger | 复用 ingest commit 返回值；删除 placeholder result、重复 Radar scheduling；保留 fact/target/current/ledger |
+| `app/runtime/**` | composition、bootstrap、scheduler、provider wiring | 删除 operator query 与 dead descriptor；runtime Python 文件 28 -> 24 |
+| `app/operations/**` | operator/application use case | 接收 diagnostics、News repair、Token Intel queries；不保留旧路径 re-export |
+| `app/surfaces/**` | 参数解析、认证、exact payload | 删除伪造的 News `--domain` 分支；公共 payload 维持原结构 |
+| `platform/**` | worker kernel、typed config、DB primitives | 合并 iteration body；settings field 下沉到真实消费者；terminal inspect 只表达 terminal evidence |
+
+### 12.3 已实施的硬切
+
+#### Worker 与 settings
+
+- `WorkerBase.run()` 与 `run_one_iteration()` 共用一个 `_run_iteration()`；`running` 是唯一 re-entry 状态，不再维护同步的 `_active_run_loops`。
+- `PerWorkerSettings` 只保留所有 worker 真正共享的 `enabled`、`interval_seconds` 和 `backoff`；batch、lease、attempt、statement timeout 等字段下沉到实际消费者。
+- 删除从未产生第二种策略的 `BackoffPolicy.kind` 和无调用者的 `write_default_workers_config()`。
+- strict mypy 暴露的 `Any` 传播通过 concrete worker settings annotation 和边界局部类型收窄解决，没有把 WorkerBase 泛型化，也没有新增 Protocol 层。
+
+#### 数据流
+
+- Collector 直接发布同一事务已提交的 `IngestedEvent.token_resolutions`，删除 commit 后第二次 repository session/read。
+- token-intent rebuild 删除不驱动任何行为的 `projection_limit` 参数和 deferred projection placeholder；CLI 仍显式运行真正的 Radar worker，并返回其真实结果。
+- Resolution empty result 删除 `anchor=None` 与虚构 projection 状态。
+- Radar 删除与现有 hot/background due scheduler 重复的 `_missing_work_items()` pass；stable current identity、publication state 和失败事务隔离不变。
+- News reprojection 直接调用 required repository capability，不把 repository 内部 `AttributeError` 改写成误导性的 capability error。
+
+#### Provider 与 DB 私有面
+
+- 原子删除 `MarketCandle`、DEX candle protocol/capability/wiring、GMGN/OKX candle client 和 Binance candle endpoint。当前 `/market/candles` read service 原本就显式返回 unsupported，不存在被删除的 runtime writer 或 provider consumer。
+- 删除 Binance `premium_index`、`open_interest_hist`、simple ticker 三个零消费者接口；保留现行 `exchange_info` 与 `ticker_24hr`。
+- OpenNews 只接受 typed `fetch_policy_json`；删除 URL query 的第二解析策略。operator config 只做了不含 secret 的结构检查。
+- CryptoPanic 使用已有 RSS-like adapter；删除同构 wrapper、registry enumeration 和未使用的 context-manager methods。
+- terminal history 删除伪造的 `active` 状态；active queue 仍由 queue-health 查询，terminal ledger、reason classifier 和 operator resolve action 保留。
+- 删除 PostgreSQL audit 中没有任何 hot query placeholder 的 `token_factor_version` binding；不触碰 migration、CAS、JSON safety 或 transaction ownership。
+
+#### 目录与 operations
+
+- `ops_diagnostics.py`、`ops_cli_queries.py`、`projection_dirty_targets.py` 从 `app/runtime` 移到 `app/operations`，所有 import 直接切到新 authority，没有兼容 re-export。
+- 删除只包装 queue metadata 的 `job_queue.py`，diagnostics 直接复用 `operations.queue_health`。
+- News dirty-target operation 删除永远只有 News 的 `domain` 参数和嵌套结果分支。
+- 删除无调用者 `repository_session(pool, ...)` 和 stale Make target `token-radar-cex-recover`。
+- provider wiring 的 chain/address identity 统一使用 `domains.asset_market.chain_identity`；删除四套 EVM regex/chain alias helper。
+- 删除只为测试伪造 malformed internal `OkxProviderBundle` 服务的字段级 cleanup 防御；真实 typed bundle 的 partial close、去重和 error note 保留。
+
+#### 测试
+
+- 删除两个完整测试文件及一批 retired CLI、source-text、private-field、fake-SQL shape assertions。
+- Macro migration/schema 的真实 SQL contract 和 executable repository behavior 仍保留；没有把所有 source inspection 机械清零。
+- News page 的低分/无 standalone filter 行为改由真实 repository integration 覆盖。
+- provider、worker、ops、canonicalization 和 typed-config 使用正向行为测试守护。
+
+### 12.4 对上一版量化表的纠正
+
+上一版“private source-string positive assertions = 0”表述过强。全仓当前仍有 62 个 `inspect.getsource`/`read_text` 命中，分布在 17 个测试文件，主要是 migration 不可变性、architecture boundary 和 generated/static contract。正确结论不是“源码检查必须为零”，而是：
+
+- 有 executable behavior/SQL integration 替代的 private shape assertion 应删除；
+- 证明 migration blob、forbidden import、single writer 或 generated artifact 的静态 contract 可以保留；
+- 不以“测试 LOC 更少”为由删除唯一的事务、迁移或 public-contract 证据。
+
+本轮最终文件计数（含移动后的新文件）：
+
+| 指标 | `main@c397affb` | 本轮实现后 | 变化 |
+|---|---:|---:|---:|
+| runtime Python，排除 migrations | 80,192 | 79,417 | -775 |
+| Python tests | 85,871 | 84,744 | -1,127 |
+| `app/runtime` Python files | 28 | 24 | -4 |
+| `app/operations` Python files | 6 | 9 | +3（职责移动，不是新增 use case） |
+
+### 12.5 明确保留的复杂度
+
+以下复杂度经过调用图复核后保留，因为它们对应不同真相、失败边界或恢复责任，而不是“代码不够短”：
+
+- fact、dirty target、stable current、publication state 的分层；
+- provider `unavailable` 与 operator `disabled`/`intentionally_not_started` 的区分；
+- model run、notification delivery、terminal queue evidence ledger；
+- scheduler、worker manifest、typed RuntimeSnapshot、split DB pools；
+- 大型但内聚的 News/Macro repositories，以及 migration/static architecture tests；
+- MarketCandlesService 的 explicit unsupported public response；
+- provider external payload aliases、provider-local retry 和 terminal reason classifier。
+
+因此没有按 C90 或文件行数拆 repository/service，也没有引入 generic repository、event bus、DI framework 或新的抽象目录。
+
+### 12.6 延后项及证据门槛
+
+| 延后项 | 为什么不在本轮删除 | 下一步证据 |
+|---|---|---|
+| event `raw_json` / `event_json` 重复 | provenance coverage 尚未证明完整 | sealed raw-frame -> event coverage 与 replay test |
+| OKX payload aliases / retry | 外部 provider 漂移边界 | sealed live frames、retry/idempotency receipt |
+| News model pre-call ledger | 涉及 provider-start/cost audit语义 | failure injection 与 billing/audit requirement |
+| token image completion atomicity | 需要独立状态机正确性设计 | crash/replay integration |
+| PostgreSQL index/table/partition hard cut | 本轮没有当前物理证据 | operator `pg_stat*`、relation size、7-30 天 usage、EXPLAIN |
+
+这些延后项不是兼容层豁免；它们需要比静态调用图更强的真实证据。
+
+### 12.7 本轮验证边界
+
+已通过：
+
+- Worker/config targeted：93 passed；
+- ingest/resolution/Radar/News flow：43 passed；
+- provider/DB exact suite：101 passed；
+- ops/canonicalization/root architecture：91 passed；
+- resolution + News repository：30 passed；
+- strict mypy：543 source files clean；
+- mypy repair behavior suites：261 passed，复核子集 165 passed；
+- Ruff、format、`git diff --check`、SDD/report validators。
+
+`make check-all` 没有完成：Python Ruff/format/mypy 阶段已通过，随后 frontend typecheck 因当前 worktree 没有安装锁文件依赖而报 `vitest/globals` 缺失，并使用了不匹配的 TypeScript 6。用户随后明确要求停止完整 `check-all`，改为合并 `main` 后 build/start 验证真实链路。因此不得把 integration、E2E、golden、coverage 或完整 frontend gate 写成已通过；真实 Docker 结果在合并部署后补录。
+
+### 12.8 继续审计最终判断
+
+当前后端仍有真实业务复杂度，但没有发现需要再引入架构层的理由。第二轮最有效的简化不是拆大文件，而是删掉零消费者接口、重复读取/调度、伪状态、错误目录所有权和测试墓地。
+
+Kappa/CQRS 的维护边界现在更清晰：事实只写一次，current 只有一个 owner，恢复通过 bounded fact/target replay，外部副作用保留 ledger，operator query 不再冒充 runtime composition。剩余高复杂度应由真实 provider/PostgreSQL 证据或新的产品责任触发，而不能由 LOC/C90 单独触发。

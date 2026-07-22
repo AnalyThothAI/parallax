@@ -82,35 +82,6 @@ class RssLikeNewsFeedProvider:
         self._client.close()
 
 
-class CryptopanicNewsFeedProvider:
-    def __init__(self, client: NewsFeedClient) -> None:
-        self._client = client
-
-    def fetch(
-        self,
-        *,
-        feed_url: str,
-        provider_type: str,
-        etag: str | None = None,
-        last_modified: str | None = None,
-        source: Mapping[str, Any] | None = None,
-        cursor: Mapping[str, Any] | None = None,
-        since_ms: int | None = None,
-        limit: int | None = None,
-    ) -> FeedFetchResult:
-        del provider_type, cursor, since_ms, limit
-        return self._client.fetch(
-            feed_url,
-            etag=etag,
-            last_modified=last_modified,
-            provider_type="cryptopanic",
-            source=dict(source or {}),
-        )
-
-    def close(self) -> None:
-        self._client.close()
-
-
 class OpenNewsNewsFeedProvider:
     def __init__(self, client: OpenNewsClient) -> None:
         self._client = client
@@ -153,9 +124,6 @@ class NewsFeedProviderRegistry:
             return self._providers[str(provider_type)]
         except KeyError as exc:
             raise ValueError(f"unsupported news source provider: {provider_type}") from exc
-
-    def supported_provider_types(self) -> tuple[str, ...]:
-        return tuple(sorted(self._providers))
 
     def fetch(
         self,
@@ -208,7 +176,7 @@ def default_news_feed_provider_registry(
     opennews_client: OpenNewsClient | None = None,
 ) -> NewsFeedProviderRegistry:
     rss_provider = RssLikeNewsFeedProvider(rss_client or FeedClient())
-    cryptopanic_provider = CryptopanicNewsFeedProvider(cryptopanic_client or CryptopanicFeedClient())
+    cryptopanic_provider = RssLikeNewsFeedProvider(cryptopanic_client or CryptopanicFeedClient())
     opennews_provider = OpenNewsNewsFeedProvider(opennews_client or OpenNewsFeedClient())
     registry = NewsFeedProviderRegistry()
     for provider_type in ("rss", "atom", "json_feed"):
@@ -219,7 +187,6 @@ def default_news_feed_provider_registry(
 
 
 __all__ = [
-    "CryptopanicNewsFeedProvider",
     "NewsFeedProviderRegistry",
     "OpenNewsNewsFeedProvider",
     "RegistryNewsFeedProvider",

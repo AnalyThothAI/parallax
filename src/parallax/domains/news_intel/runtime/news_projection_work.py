@@ -16,7 +16,10 @@ def enqueue_page_reprojection(
     source_watermark_ms_by_news_item_id: Mapping[str, int] | None = None,
 ) -> int:
     watermarks = dict(source_watermark_ms_by_news_item_id or {})
-    valid_news_item_ids = _servable_news_item_ids(repos, news_item_ids)
+    item_ids = _unique(news_item_ids)
+    if not item_ids:
+        return 0
+    valid_news_item_ids = list(repos.news_items.servable_news_item_ids(item_ids))
     targets = [
         _news_item_target(PAGE_PROJECTION, news_item_id, watermarks=watermarks) for news_item_id in valid_news_item_ids
     ]
@@ -139,16 +142,6 @@ def _enqueue(repos: Any, targets: list[dict[str, Any]], *, reason: str, now_ms: 
             now_ms=now_ms,
         )
     )
-
-
-def _servable_news_item_ids(repos: Any, news_item_ids: Iterable[str]) -> list[str]:
-    item_ids = _unique(news_item_ids)
-    if not item_ids:
-        return []
-    try:
-        return list(repos.news_items.servable_news_item_ids(item_ids))
-    except AttributeError as exc:
-        raise ValueError("news repository must expose servable_news_item_ids for projection dirty targets") from exc
 
 
 def _news_item_target(
