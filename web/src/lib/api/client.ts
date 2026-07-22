@@ -258,10 +258,10 @@ function normalizeNewsSignal(raw: unknown): NewsSignalEnvelope {
       throw new Error(`news_current_contract:retired.signal.alert_eligibility.${fieldName}`);
     }
   }
-  requiredNewsString(agentPayload.status, "signal.agent_signal.status");
+  const agentStatus = requiredNewsString(agentPayload.status, "signal.agent_signal.status");
   return {
     display_signal: normalizeNewsSignalSummary(displayPayload),
-    agent_signal: agentPayload,
+    agent_signal: { ...agentPayload, status: agentStatus },
     alert_eligibility: {
       in_app_eligible: requiredNewsBoolean(
         alertPayload.in_app_eligible,

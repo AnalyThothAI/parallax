@@ -65,6 +65,17 @@ const rowWithBtcEth: NewsRow = {
   summary: "ETF desk activity stays elevated.",
   latest_at_ms: 1_779_000_000_000,
   source_domain: "6551.io",
+  source: {
+    provider_type: "opennews",
+    source_domain: "6551.io",
+    source_name: "OpenNews",
+    source_role: "aggregator",
+    trust_tier: "standard",
+    coverage_tags: [],
+    source_quality_status: "healthy",
+  },
+  content_tags: [],
+  content_classification: {},
   provider_rating: {
     provider: "opennews",
     status: "ready",
@@ -191,9 +202,10 @@ function newsSignalEnvelope(
   displaySignal: NewsSignalSummary,
   overrides: { alert_eligibility?: Record<string, unknown> } = {},
 ): NewsSignalEnvelope {
+  const agentStatus = overrides.alert_eligibility?.agent_status;
   return {
     display_signal: displaySignal,
-    agent_signal: { status: overrides.alert_eligibility?.agent_status ?? "pending" },
+    agent_signal: { status: typeof agentStatus === "string" ? agentStatus : "pending" },
     alert_eligibility: {
       in_app_eligible: true,
       external_push_ready: false,

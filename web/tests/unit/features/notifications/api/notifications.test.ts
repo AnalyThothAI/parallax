@@ -36,7 +36,7 @@ describe("notification API current contracts", () => {
     );
 
     const unknownItem = notificationsData();
-    unknownItem.items[0] = { ...unknownItem.items[0], retired_status: "legacy" };
+    Object.assign(unknownItem.items[0], { retired_status: "legacy" });
     vi.mocked(globalThis.fetch).mockResolvedValueOnce(
       jsonResponse({ ok: true, data: unknownItem }),
     );

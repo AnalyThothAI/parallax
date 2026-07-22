@@ -86,6 +86,7 @@ export type {
   SourceEventDetail,
   SourceEventsByIdsData,
   StatusData,
+  WorkerStatusData,
   StockRadarRow,
   StocksRadarData,
   TimelineBucket,

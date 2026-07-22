@@ -101,7 +101,7 @@ export function buildMacroTimeSeriesModel(
     statusLabel: stringValue(chart.status_label),
     series: chartSeries
       .map((series) =>
-        buildSeriesModel(series, seriesData?.series[conceptKey(series)], chartMinPoints(chart)),
+        buildSeriesModel(series, chartMinPoints(chart), seriesData?.series[conceptKey(series)]),
       )
       .filter((series): series is MacroChartSeriesModel => Boolean(series)),
   };
@@ -161,8 +161,8 @@ export function formatMacroChartValue(value: number, unit?: string | null): stri
 
 function buildSeriesModel(
   series: MacroSemanticRecord,
-  payload?: MacroSeriesPayload,
   minPoints: number,
+  payload?: MacroSeriesPayload,
 ): MacroChartSeriesModel | null {
   const key = conceptKey(series);
   if (!isCanonicalMacroConceptKey(key)) {

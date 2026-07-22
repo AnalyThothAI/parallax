@@ -34,7 +34,7 @@ describe("useNotificationsController", () => {
       ({ socketNotifications }: { socketNotifications: NotificationLivePayload[] }) =>
         useNotificationsController({ socketNotifications, token: "secret" }),
       {
-        initialProps: { socketNotifications: [] },
+        initialProps: { socketNotifications: [] as NotificationLivePayload[] },
         wrapper: wrapper(queryClient),
       },
     );
