@@ -9,7 +9,7 @@ ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "src/parallax/platform/db/alembic/versions/20260723_0192_macro_decision_workbench_hard_cut.py"
 
 
-def test_macro_decision_workbench_hard_cut_is_the_linear_head() -> None:
+def test_macro_decision_workbench_hard_cut_precedes_daily_macro_judgment_head() -> None:
     source = MIGRATION.read_text(encoding="utf-8")
     module = ast.parse(source)
     assignments = {
@@ -25,7 +25,7 @@ def test_macro_decision_workbench_hard_cut_is_the_linear_head() -> None:
         "revision": "20260723_0192",
         "down_revision": "20260723_0191",
     }
-    assert latest_migration_version() == "20260723_0192"
+    assert latest_migration_version() == "20260723_0193"
 
 
 def test_macro_decision_workbench_hard_cut_rebuilds_only_derived_state() -> None:

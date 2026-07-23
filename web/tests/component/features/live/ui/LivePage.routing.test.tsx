@@ -8,9 +8,7 @@ describe("LivePage", () => {
     render(
       <MemoryRouter initialEntries={["/"]}>
         <Routes>
-          <Route
-            element={<LivePage />}
-          >
+          <Route element={<LivePage />}>
             <Route index element={<div data-testid="child-content" />} />
           </Route>
         </Routes>

@@ -1,5 +1,6 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
 import {
+  dailyMacroJudgmentFixture,
   macroCreditFixture,
   macroCrossAssetFixture,
   macroGrowthLaborFixture,
@@ -59,9 +60,10 @@ describe("macro decision workbench routes", () => {
     );
   });
 
-  it("renders the complete fixed risk map from one Overview read", async () => {
+  it("renders the fixed risk map and persisted daily AI judgment", async () => {
     renderAppRoute("/macro");
 
+    expect(await screen.findByRole("heading", { name: "每日 AI 宏观研判" })).toBeInTheDocument();
     expect(await screen.findByRole("heading", { name: "八类风险暴露" })).toBeInTheDocument();
     for (const lane of [
       "美国股票",
@@ -82,11 +84,23 @@ describe("macro decision workbench routes", () => {
       apiMock.readApi.mock.calls.filter(([path]) => path === "/api/macro/overview"),
     ).toHaveLength(1);
     expect(
-      apiMock.readApi.mock.calls.some(
-        ([path]) => path.startsWith("/api/macro/") && path !== "/api/macro/overview",
+      apiMock.readApi.mock.calls.filter(([path]) => path === "/api/macro/daily-judgment"),
+    ).toHaveLength(1);
+    expect(
+      apiMock.readApi.mock.calls.filter(
+        ([path]) =>
+          path.startsWith("/api/macro/") &&
+          path !== "/api/macro/overview" &&
+          path !== "/api/macro/daily-judgment",
       ),
-    ).toBe(false);
-    expect(document.body.textContent).not.toMatch(/买入|卖出|仓位|position size|allocation|LLM/i);
+    ).toHaveLength(0);
+    expect(screen.getByText(/跨资产信号分化/)).toBeVisible();
+    expect(screen.getAllByText("不判断")).toHaveLength(2);
+    expect(screen.getByText("政策与实际利率")).toBeVisible();
+    expect(screen.getByText("已复核")).toBeVisible();
+    expect(document.body.textContent).not.toMatch(
+      /买入|卖出|仓位|position size|allocation|target price/i,
+    );
   });
 
   it.each([
@@ -108,6 +122,27 @@ describe("macro decision workbench routes", () => {
     expect(
       within(screen.getByRole("article", { name: "美国股票风险暴露" })).queryByText(/局部证据缺口/),
     ).toBeNull();
+  });
+
+  it("keeps an unpublished daily judgment explicit without hiding the risk map", async () => {
+    const pending = dailyMacroJudgmentFixture();
+    configureMacroApi(macroOverviewFixture(), {
+      ...pending,
+      publication: null,
+      state: "pending",
+      target_job: pending.target_job
+        ? {
+            ...pending.target_job,
+            status: "pending",
+          }
+        : null,
+    });
+    renderAppRoute("/macro");
+
+    expect(await screen.findByRole("heading", { name: "每日 AI 宏观研判" })).toBeInTheDocument();
+    expect(screen.getByText("今日研判等待生成")).toBeVisible();
+    expect(screen.getByText(/页面不会临时调用模型/)).toBeVisible();
+    expect(screen.getByRole("heading", { name: "八类风险暴露" })).toBeVisible();
   });
 
   it("keeps audit metadata collapsed until explicitly opened", async () => {
@@ -186,12 +221,16 @@ describe("macro decision workbench routes", () => {
   });
 });
 
-function configureMacroApi(overview: ReturnType<typeof macroOverviewFixture>) {
+function configureMacroApi(
+  overview: ReturnType<typeof macroOverviewFixture>,
+  dailyJudgment = dailyMacroJudgmentFixture(),
+) {
   setupAppRouteTest((mock) => {
     mockLiveRadarRoute(mock);
     const baseGetApi = mock.getApiImpl;
     mock.getApiImpl = async (path, options) => {
       if (path === "/api/macro/overview") return ok(overview);
+      if (path === "/api/macro/daily-judgment") return ok(dailyJudgment);
       if (path === "/api/macro/cross-asset") return ok(macroCrossAssetFixture());
       if (path === "/api/macro/rates-inflation") return ok(macroRatesInflationFixture());
       if (path === "/api/macro/growth-labor") return ok(macroGrowthLaborFixture());

@@ -1,4 +1,5 @@
 export {
+  useDailyMacroJudgmentQuery,
   useMacroCreditQuery,
   useMacroCrossAssetQuery,
   useMacroGrowthLaborQuery,

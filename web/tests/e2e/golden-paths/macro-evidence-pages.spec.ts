@@ -35,6 +35,9 @@ test("renders the fixed eight-lane decision map with evidence collapsed by defau
   await expect(
     page.getByRole("navigation", { name: "宏观分析维度" }).getByRole("link"),
   ).toHaveCount(6);
+  await expect(page.getByRole("heading", { name: "每日 AI 宏观研判" })).toBeVisible();
+  await expect(page.getByText("SPY 未来方向")).toBeVisible();
+  await expect(page.getByText("已复核")).toBeVisible();
   await expect(page.locator(".macro-risk-lane")).toHaveCount(8);
   for (const lane of riskLanes) {
     await expect(page.getByRole("article", { name: lane })).toBeVisible();
@@ -56,6 +59,7 @@ test("renders the fixed eight-lane decision map with evidence collapsed by defau
   await expectNoDocumentHorizontalOverflow(page);
   await expectNoNestedHorizontalOverflow(page, [
     ".macro-workbench",
+    ".macro-daily-analysis",
     ".macro-risk-lanes",
     ".macro-overview-action-band",
     ".macro-audit-body",

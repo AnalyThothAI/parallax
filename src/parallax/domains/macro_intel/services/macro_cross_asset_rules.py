@@ -77,6 +77,29 @@ def market_session_offset(day: date, *, sessions: int) -> date:
     return candidate
 
 
+def market_session_advance(day: date, *, sessions: int) -> date:
+    if isinstance(sessions, bool) or sessions < 0:
+        raise ValueError("macro_market_session_advance_invalid")
+    candidate = day
+    remaining = int(sessions)
+    while remaining:
+        candidate += timedelta(days=1)
+        if _is_us_market_session(candidate):
+            remaining -= 1
+    return candidate
+
+
+def market_session_close_ms(day: date) -> int:
+    if not _is_us_market_session(day):
+        raise ValueError(f"macro_market_session_required:{day.isoformat()}")
+    close = datetime.combine(day, _session_close(day), tzinfo=_NEW_YORK)
+    return int(close.astimezone(UTC).timestamp() * 1000)
+
+
+def is_us_market_session(day: date) -> bool:
+    return _is_us_market_session(day)
+
+
 def _is_us_market_session(day: date) -> bool:
     return day.weekday() < 5 and day not in _us_market_holidays(day.year)
 

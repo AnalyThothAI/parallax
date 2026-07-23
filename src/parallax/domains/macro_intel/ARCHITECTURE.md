@@ -17,9 +17,16 @@ documents or compact series and never call a provider.
 | `macro_observation_series_rows` | Rebuildable bounded-history read model | `MacroViewProjectionWorker` |
 | `macro_observation_series_publication_state` | Series attempt/currentness state | `MacroViewProjectionWorker` |
 | `macro_view_snapshots` | Stable current six-document snapshot | `MacroViewProjectionWorker` |
+| `macro_judgment_jobs` | Session control state plus frozen point-in-time EvidencePack | `DailyMacroJudgmentWorker` |
+| `macro_judgment_publications` | Immutable experimental SPY judgment history | `DailyMacroJudgmentWorker` |
+| `macro_judgment_outcomes` | Immutable 5/20-session realized returns | `DailyMacroJudgmentWorker` |
 
 `macro_sync_runs` is the only import/sync attempt ledger. Attempt identity and
 timestamps are audit metadata, not product identity.
+
+The judgment tables are an explicit derived-product exception, not material
+Macro truth and not a second current snapshot. Their product identity is the
+completed US session; latest is selected by query.
 
 ## Data flow
 
@@ -44,6 +51,18 @@ facts. A restart performs the same bounded PostgreSQL re-read; the in-memory
 bucket only suppresses duplicate work within one process and is not a
 correctness boundary. Provider frames and child-process output are inputs,
 never serving facts. Provider execution occurs outside database transactions.
+
+The independent judgment lane is:
+
+```text
+macro_observations + eligible official/high-quality persisted News text
+  -> deterministic availability/cutoff selection
+  -> complete frozen MacroEvidencePack with the same six document semantics
+  -> one DeepAgents Analyst -> native task -> isolated Reviewer
+  -> deterministic gates + fixed Chinese renderer
+  -> immutable DailyMacroJudgment for SPY 5/20 completed sessions
+  -> append-only close-to-close outcomes
+```
 
 The provider boundary returns one exact `MacrodataBundleRunResult` containing
 an envelope and redacted diagnostics. Runtime invokes the installed package
@@ -143,6 +162,49 @@ trustworthy official catalyst plus one nullable core invalidation. Conclusions
 contain no global score, percentage confidence, probability, positioning
 instruction, holdings analysis, trade output, or LLM result.
 
+## Daily Macro SPY Judgment
+
+`MacroEvidencePack` preserves the full immutable publication content:
+session/cutoff and seal time, compiler/selection versions, all six deterministic page
+documents, bounded selected material facts, eligible persisted official/high
+quality text, source/availability/ingestion timestamps, selection rules,
+content hashes, exclusions, health, and a canonical pack hash. Ingestion time
+does not establish public availability. Missing, unparseable, future, or
+post-seal lineage is excluded; no eligible evidence is a global block.
+The pack tool derives one deterministic `macro_agent_pack_view_v1`: the latest
+selected fact per concept and bounded eligible text remain visible, while
+prior comparison facts and repeated UI-oriented page series remain in the
+frozen pack and are represented to the Agent by the six pages' deterministic
+conclusions, freshness, compact domain summaries, and hashes. The view has a
+hard serialized-size bound; the full persisted pack remains the audit source.
+
+The strict minimal `DailyMacroJudgment` contains one macro-state summary, one
+to four pressure mechanisms, exactly two SPY calls, one to four key
+counterevidence observations, nested evidence-reference closure, and audit
+versions. Directions are `up`, `down`, `range`, and `no_call`. It has no score,
+probability, numeric confidence, position, sizing, entry, stop, target, trade
+instruction, or other-asset forecast.
+
+Parallax owns calendar, close cutoff, settle/catch-up, stable session identity,
+retries, leases, pack persistence, schema/reference/content/health gates,
+rendering, and outcomes. One real `create_deep_agent` Analyst receives only
+one idempotent pack-view read tool and one strongly typed draft-submit tool.
+The view exposes deterministic short citation IDs; the submit boundary alone
+expands them back to full frozen-pack references before validation and storage.
+Its only subagent is a declarative Reviewer
+invoked by native `task`; the default general-purpose subagent and
+filesystem/shell/search tools are excluded. Analyst and Reviewer have separate
+explicit model settings but share the one configured provider
+credential/endpoint boundary. One `revise` plus one closing `pass`/`block`
+review is the hard maximum. Model I/O is outside the database transaction;
+publication insertion and job completion are atomic.
+
+Global cutoff, lineage, empty-pack, schema, reference, Reviewer block, or
+renderer failure publishes nothing. Local degradation may publish with
+`data_health=degraded`, but affected horizons are forced to `no_call`.
+Published jobs, publications, and outcomes reject identity/content mutation
+or deletion. Same-session replay performs zero model calls and zero writes.
+
 ## Page-specific contracts
 
 - **Overview**: one shock state, the exact eight-lane decision map, up to three
@@ -194,7 +256,7 @@ freshness change replaces the same current identity.
 
 ## Public surfaces
 
-The only Macro HTTP reads are:
+The Macro HTTP reads are:
 
 ```text
 /api/macro/overview
@@ -204,13 +266,16 @@ The only Macro HTTP reads are:
 /api/macro/liquidity-funding
 /api/macro/credit
 /api/macro/series
+/api/macro/daily-judgment
 ```
 
 Each page endpoint selects its stored document directly. The series endpoint
-reads compact persisted rows independently. No request path scans wide
-observations, builds a page, invokes a worker/provider, joins News, or creates
-an intraday judgment. Unmatched Macro paths return the ordinary application
-`404`.
+reads compact persisted rows independently. The judgment endpoint reads
+persisted publication/job/outcome rows by latest or explicit `session_date`;
+it never invokes an Agent/provider, repairs state, or relabels a stale prior
+publication as the target session. No request path scans wide observations,
+builds a page, joins News, or creates an intraday judgment. Unmatched Macro
+paths return the ordinary application `404`.
 
 ## Runtime configuration
 
@@ -219,4 +284,7 @@ Live execution uses operator-owned `~/.parallax/config.yaml` and
 authority. `workers.macro_sync` owns bundle names, provider timeout, window,
 claim lease, retry cadence, and batch size. `workers.macro_view_projection`
 owns statement timeout, dirty-target batch/lease/retry policy, lookback, and
-per-series cap. Credentials are reported only as redacted configured state.
+per-series cap. `workers.daily_macro_judgment` owns settle/cadence,
+lease/retry/attempt limits, evidence bounds, model name/timeout, and output
+token limit; `config.yaml.llm` provides only the API key and base URL.
+Credentials are reported only as redacted configured state.

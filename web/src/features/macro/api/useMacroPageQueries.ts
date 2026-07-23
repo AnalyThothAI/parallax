@@ -3,6 +3,7 @@ import { queryKeys } from "@shared/query/queryKeys";
 import { useQuery } from "@tanstack/react-query";
 
 import type {
+  DailyMacroJudgmentReadData,
   MacroCreditData,
   MacroCrossAssetData,
   MacroGrowthLaborData,
@@ -13,6 +14,14 @@ import type {
 
 export function useMacroOverviewQuery({ token }: { token: string }) {
   return useMacroPageQuery<MacroOverviewData>("overview", "/api/macro/overview", token);
+}
+
+export function useDailyMacroJudgmentQuery({ token }: { token: string }) {
+  return useMacroPageQuery<DailyMacroJudgmentReadData>(
+    "daily_judgment",
+    "/api/macro/daily-judgment",
+    token,
+  );
 }
 
 export function useMacroCrossAssetQuery({ token }: { token: string }) {

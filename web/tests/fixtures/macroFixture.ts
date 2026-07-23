@@ -9,6 +9,7 @@ type MacroCreditData = components["schemas"]["MacroCreditData"];
 type MacroEvidenceData = components["schemas"]["MacroEvidenceData"];
 type MacroMetricData = components["schemas"]["MacroMetricData"];
 type MacroSeriesData = components["schemas"]["MacroSeriesData"];
+type DailyMacroJudgmentReadData = components["schemas"]["DailyMacroJudgmentReadData"];
 
 const SNAPSHOT = {
   computed_at_ms: Date.parse("2026-07-23T02:00:00Z"),
@@ -22,6 +23,119 @@ const SAMPLE = {
   end: "2026-07-22",
   start: "2026-04-29",
 };
+
+export function dailyMacroJudgmentFixture(): DailyMacroJudgmentReadData {
+  const marketCutoffMs = Date.parse("2026-07-22T20:00:00Z");
+  const evidencePackHash = "7".repeat(64);
+  return {
+    is_current: true,
+    publication: {
+      agent_audit: {
+        analyst_submissions: 1,
+        native_review_calls: 1,
+      },
+      compiler_version: "macro_evidence_pack_v1",
+      evidence_pack: {
+        evidence: [],
+        exclusions: [],
+        health: {
+          global_reasons: [],
+          local_reasons: ["overview_insufficient_evidence"],
+          no_call_horizons: [5, 20],
+          status: "degraded",
+        },
+        market_cutoff_ms: marketCutoffMs,
+        pages: {},
+        projection_version: "macro_decision_v2",
+        schema_version: "macro_evidence_pack_v1",
+        sealed_at_ms: marketCutoffMs + 60_000,
+        selection_policy_version: "macro_point_in_time_v1",
+        session_date: "2026-07-22",
+        texts: [],
+      },
+      evidence_pack_hash: evidencePackHash,
+      judgment: {
+        audit_versions: {
+          evidence_pack_hash: evidencePackHash,
+          prompt_version: "daily_macro_spy_v1",
+          schema_version: "daily_macro_judgment_v1",
+          workflow_version: "daily_macro_deepagent_v1",
+        },
+        counterevidence: [
+          {
+            evidence_refs: ["overview:asset:spy"],
+            statement: "SPY 与 BTC 的价格表现仍有支撑，不能形成单边风险结论。",
+          },
+          {
+            evidence_refs: ["credit:hy_oas"],
+            statement: "信用压力集中在尾部，整体利差尚未确认即时下行方向。",
+          },
+        ],
+        data_health: "degraded",
+        experimental_marker: "experimental_shadow_research",
+        macro_state:
+          "跨资产信号分化：SPY 与 BTC 偏强，但实际利率、尾部信用压力和波动率风险仍构成逆风。",
+        market_cutoff_ms: marketCutoffMs,
+        pressures: [
+          {
+            axis: "policy_real_rates",
+            evidence_refs: ["rates:real_10y"],
+            mechanism: "名义与实际利率维持高位，继续压制股票估值。",
+            state: "elevated",
+          },
+          {
+            axis: "credit",
+            evidence_refs: ["credit:hy_oas"],
+            mechanism: "高收益与 CCC 尾部利差压力抵消了股票价格的支撑。",
+            state: "elevated",
+          },
+        ],
+        session_date: "2026-07-22",
+        spy_20d: {
+          direction: "no_call",
+          evidence_refs: ["overview:asset:spy", "credit:hy_oas"],
+          horizon_sessions: 20,
+          thesis: "关键页面降级且跨资产条件分化，20 个交易日没有可靠方向。",
+        },
+        spy_5d: {
+          direction: "no_call",
+          evidence_refs: ["overview:asset:spy", "rates:real_10y"],
+          horizon_sessions: 5,
+          thesis: "价格支撑与实际利率、信用压力相互抵消，5 个交易日暂不判断。",
+        },
+      },
+      market_cutoff_ms: marketCutoffMs,
+      memo_text: "# 每日宏观 SPY 研判",
+      model_name: "openai/gpt-5.5",
+      outcomes: [],
+      prompt_version: "daily_macro_spy_v1",
+      published_at_ms: marketCutoffMs + 120_000,
+      renderer_version: "daily_macro_judgment_zh_v1",
+      review: {
+        disposition: "pass",
+        issues: [],
+      },
+      schema_version: "daily_macro_judgment_v1",
+      sealed_at_ms: marketCutoffMs + 60_000,
+      selection_policy_version: "macro_point_in_time_v1",
+      session_date: "2026-07-22",
+      workflow_version: "daily_macro_deepagent_v1",
+    },
+    state: "current",
+    target_job: {
+      attempt_count: 1,
+      due_at_ms: marketCutoffMs,
+      last_error: null,
+      market_cutoff_ms: marketCutoffMs,
+      max_attempts: 3,
+      reviewer_disposition: "pass",
+      session_date: "2026-07-22",
+      status: "published",
+      updated_at_ms: marketCutoffMs + 120_000,
+    },
+    target_session_date: "2026-07-22",
+  };
+}
 
 function evidence(
   conceptKey: string,

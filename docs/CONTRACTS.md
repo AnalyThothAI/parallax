@@ -18,10 +18,13 @@ The configuration schema uses typed nested models directly
 Root-level `postgres_*`, `api_*`, provider, LLM, and upstream forwarding
 aliases are not part of the configuration contract.
 
-`llm` contains only dormant provider credentials (`api_key` and `base_url`).
-The production service has no model policy, model worker, model lane selector,
-prompt setting, or model status surface. Those two values are retained only for
-the provider-neutral library and are not consumed by bootstrap.
+`llm` contains only shared provider credentials (`api_key` and `base_url`).
+They are consumed only when the `daily_macro_judgment` worker is enabled;
+`analyst_model`, `reviewer_model`, timeouts, cadence, retry, evidence bounds,
+and token limit remain typed worker settings in `workers.yaml`. Analyst and
+Reviewer may use distinct explicit model identities against the same provider
+boundary. There is no generic model policy, lane selector, prompt config, or
+model-capacity status surface.
 
 `app/runtime/worker_manifest.py` owns the worker inventory and writer/queue declarations. The current keys are:
 
@@ -40,6 +43,7 @@ news_fetch
 news_item_process
 news_page_projection
 macro_view_projection
+daily_macro_judgment
 notification_rule
 notification_delivery
 ```
@@ -79,7 +83,7 @@ Errors use `ok: false` with a stable error code. Pydantic response models genera
 | Watchlist | `/api/watchlist/handles/overview`, `/api/watchlist/handle/{handle}/overview`, `/api/watchlist/handle/{handle}/timeline` | Evidence queries; no separate Watchlist domain |
 | Search/case | `/api/search`, `/api/search/inspect`, `/api/token-case`, `/api/target-posts`, `/api/target-social-timeline` | Evidence, identity facts, and current Token Radar rows |
 | Radar/market | `/api/token-radar`, `/api/stocks-radar`, `/api/live-market` | stable PostgreSQL current read models |
-| Macro | `/api/macro/overview`, `/api/macro/cross-asset`, `/api/macro/rates-inflation`, `/api/macro/growth-labor`, `/api/macro/liquidity-funding`, `/api/macro/credit`, `/api/macro/series` | one current six-document Macro snapshot and compact series |
+| Macro | `/api/macro/overview`, `/api/macro/cross-asset`, `/api/macro/rates-inflation`, `/api/macro/growth-labor`, `/api/macro/liquidity-funding`, `/api/macro/credit`, `/api/macro/series`, `/api/macro/daily-judgment` | deterministic current six-document snapshot/series plus separate immutable SPY judgment history |
 | News | `/api/news`, `/api/news/items/{id}`, `/api/news/facts/{id}`, `/api/news/sources/status` | current fact-only News page projection, persisted News evidence, and fetch-source state |
 | Notifications | account alerts, notification list with embedded summary, delivery audit, and read commands under `/api` | notification facts and external-delivery ledger |
 | Images | `/api/token-images/{image_id}` | ready mirrored assets under the operator cache root |
@@ -122,7 +126,8 @@ admission fields are absent, not nullable.
 
 ### Macro
 
-Macro exposes exactly six typed page reads and one typed series read:
+Macro exposes exactly six typed deterministic page reads, one typed series
+read, and one independent experimental judgment read:
 
 ```text
 /api/macro/overview
@@ -132,10 +137,8 @@ Macro exposes exactly six typed page reads and one typed series read:
 /api/macro/liquidity-funding
 /api/macro/credit
 /api/macro/series
+/api/macro/daily-judgment
 ```
-
-No other `/api/macro` path is mounted; unmatched paths return the ordinary
-application `404` response.
 
 The six page reads select six JSON documents from the same
 `snapshot_key = 'current'` row. They therefore carry identical
@@ -182,6 +185,30 @@ countdown from an unparsed time, or event score is inferred. The series route
 reads compact persisted rows and accepts explicit concepts plus one supported
 window; it returns exact points, sources, quality, event metadata, and gaps.
 Macro reads do not call providers, run projection code, or join another domain.
+
+`GET /api/macro/daily-judgment` reads only persisted immutable judgment state.
+With no query it targets the latest completed US session; optional
+`session_date=YYYY-MM-DD` requests one explicit session. States are `current`,
+`historical`, `stale`, `pending`, `running`, `retryable`, `blocked`, `failed`,
+or `missing`. A stale response names the current target separately and may
+carry the latest prior publication; it never relabels that prior session as
+current. Missing returns `503` with `daily_macro_judgment_missing`.
+
+The response includes the frozen `MacroEvidencePack`, strict judgment, fixed
+Chinese memo, Reviewer result, sanitized audit, and append-only 5/20-session
+outcomes. It never invokes an Agent, provider, repair, or backfill. Judgment
+directions are only `up`, `down`, `range`, or `no_call` for SPY 5/20 completed
+sessions. Scores, probabilities, numeric confidence, expected return,
+positions, entries, stops, targets, execution, and other-asset directions are
+not fields. Every publication is marked `experimental_shadow_research`.
+
+The Macro Overview may render this persisted publication beside the
+deterministic risk map. Missing, running, blocked, failed, stale, and historical
+states remain explicit; the browser never turns a page read into a model call
+or relabels an older publication as current.
+
+No other `/api/macro` path is mounted; unmatched paths return the ordinary
+application `404` response.
 
 ### Notifications
 

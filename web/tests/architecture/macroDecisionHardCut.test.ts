@@ -49,7 +49,7 @@ describe("macro decision workbench hard cut", () => {
     expect(router).not.toContain('path: "macro/*"');
   });
 
-  it("uses only the seven current Macro API paths", () => {
+  it("uses only the eight current Macro API paths", () => {
     const macroSource = macroText();
     const paths = [...macroSource.matchAll(/["`]\/api\/macro(?:\/[^"`]*)?["`]/g)].map((match) =>
       match[0].slice(1, -1),
@@ -64,6 +64,7 @@ describe("macro decision workbench hard cut", () => {
         "/api/macro/liquidity-funding",
         "/api/macro/credit",
         "/api/macro/series",
+        "/api/macro/daily-judgment",
       ]),
     );
   });
@@ -83,7 +84,7 @@ describe("macro decision workbench hard cut", () => {
     expect(overview).toContain("data.risk_lanes.map");
     expect(overview).not.toMatch(/risk_lanes\.(?:sort|filter|reduce)/);
     expect(overview).not.toMatch(/\bdominant_shock\b|macro_evidence_v1/);
-    expect(overview).not.toMatch(/buy|sell|holding|position.?size|allocation|target.?price|llm/i);
+    expect(overview).not.toMatch(/buy|sell|holding|position.?size|allocation|target.?price/i);
   });
 
   it("keeps normal audit metadata collapsed and local gaps adjacent", () => {

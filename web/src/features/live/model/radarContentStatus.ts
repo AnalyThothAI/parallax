@@ -35,10 +35,10 @@ export function radarResponseMatchesIdentity(
 ): boolean {
   return Boolean(
     data &&
-      data.window === identity.window &&
-      data.scope === identity.scope &&
-      data.venue === identity.venue &&
-      data.projection?.venue === identity.venue,
+    data.window === identity.window &&
+    data.scope === identity.scope &&
+    data.venue === identity.venue &&
+    data.projection?.venue === identity.venue,
   );
 }
 

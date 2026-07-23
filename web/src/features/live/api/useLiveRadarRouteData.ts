@@ -4,10 +4,7 @@ import type { TokenRadarVenueFilter } from "@lib/venue";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { targetRefFromTokenItem } from "../../../domain/tokenTarget";
-import {
-  radarResponseMatchesIdentity,
-  type RadarStatusInput,
-} from "../model/radarContentStatus";
+import { radarResponseMatchesIdentity, type RadarStatusInput } from "../model/radarContentStatus";
 
 import { useTokenRadarQuery } from "./useTokenRadarQuery";
 
@@ -69,9 +66,7 @@ export function useLiveRadarRouteData({
   const queryError = assetFlowQuery.error instanceof Error ? assetFlowQuery.error : null;
   const hasRefreshError = Boolean(queryError || parsed.error);
   const projectionDegraded =
-    projectionStatus === "stale" ||
-    projectionStatus === "pending" ||
-    projectionStatus === "failed";
+    projectionStatus === "stale" || projectionStatus === "pending" || projectionStatus === "failed";
   const shouldUseCachedFrame =
     Boolean(cachedFrame) &&
     (!responseIdentityMatches ||

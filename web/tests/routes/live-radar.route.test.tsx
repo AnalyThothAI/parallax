@@ -1,10 +1,7 @@
 import type { ScopeKey, WindowKey } from "@lib/types";
 import type { TokenRadarVenueFilter } from "@lib/venue";
 import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
-import {
-  tokenRadarFixture,
-  tokenRadarRowFixture,
-} from "@tests/fixtures/appRouteFixtures";
+import { tokenRadarFixture, tokenRadarRowFixture } from "@tests/fixtures/appRouteFixtures";
 import { ok } from "@tests/msw/fixtures";
 import { mockLiveRadarRoute } from "@tests/msw/scenarios";
 import { renderAppRoute } from "@tests/render/renderRoute";
@@ -384,9 +381,13 @@ function radarResponse({
   };
 }
 
-function radarIdentityFromOptions(options: {
-  params?: Record<string, string | number | boolean | null | undefined>;
-} | undefined): {
+function radarIdentityFromOptions(
+  options:
+    | {
+        params?: Record<string, string | number | boolean | null | undefined>;
+      }
+    | undefined,
+): {
   scope: ScopeKey;
   venue: TokenRadarVenueFilter;
   window: WindowKey;

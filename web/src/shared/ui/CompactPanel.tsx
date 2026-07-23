@@ -9,9 +9,5 @@ type CompactPanelProps = {
 };
 
 export function CompactPanel({ children, className }: CompactPanelProps) {
-  return (
-    <section className={clsx("compact-panel", className)}>
-      {children}
-    </section>
-  );
+  return <section className={clsx("compact-panel", className)}>{children}</section>;
 }

@@ -5,6 +5,13 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
+from parallax.domains.macro_intel.services.daily_macro_judgment import (
+    DailyMacroJudgment,
+    DailyMacroOutcome,
+    MacroEvidencePack,
+    ReviewerResult,
+)
+
 JsonObject = dict[str, Any]
 
 
@@ -471,6 +478,57 @@ class MacroSeriesData(ExactApiSchema):
     window: Literal["20d", "60d", "120d", "1y", "3y"]
     series: dict[str, MacroSeriesItemData]
     data_gaps: list[MacroSeriesGapData]
+
+
+class DailyMacroJudgmentJobData(ExactApiSchema):
+    session_date: date
+    market_cutoff_ms: int
+    status: Literal["pending", "running", "retryable", "blocked", "failed", "published"]
+    attempt_count: int
+    max_attempts: int
+    due_at_ms: int
+    reviewer_disposition: Literal["pass", "revise", "block"] | None
+    last_error: str | None
+    updated_at_ms: int
+
+
+class DailyMacroJudgmentPublicationData(ExactApiSchema):
+    session_date: date
+    market_cutoff_ms: int
+    evidence_pack_hash: str
+    judgment: DailyMacroJudgment
+    memo_text: str
+    review: ReviewerResult
+    agent_audit: JsonObject
+    model_name: str
+    prompt_version: str
+    schema_version: Literal["daily_macro_judgment_v1"]
+    workflow_version: str
+    renderer_version: Literal["daily_macro_judgment_zh_v1"]
+    published_at_ms: int
+    evidence_pack: MacroEvidencePack
+    compiler_version: str
+    selection_policy_version: Literal["macro_point_in_time_v1"]
+    sealed_at_ms: int
+    outcomes: list[DailyMacroOutcome]
+
+
+class DailyMacroJudgmentReadData(ExactApiSchema):
+    target_session_date: date
+    state: Literal[
+        "current",
+        "historical",
+        "stale",
+        "pending",
+        "running",
+        "retryable",
+        "blocked",
+        "failed",
+        "missing",
+    ]
+    is_current: bool
+    publication: DailyMacroJudgmentPublicationData | None
+    target_job: DailyMacroJudgmentJobData | None
 
 
 class RecentData(ExactApiSchema):

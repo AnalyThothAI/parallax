@@ -86,6 +86,13 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.macro_view_projection.limit_per_series == 800
     assert settings.macro_view_projection.lease_ms == 300_000
     assert settings.macro_view_projection.retry_ms == 300_000
+    assert settings.daily_macro_judgment.enabled is False
+    assert settings.daily_macro_judgment.interval_seconds == 300
+    assert settings.daily_macro_judgment.settle_delay_seconds == 1_800
+    assert settings.daily_macro_judgment.max_attempts == 3
+    assert settings.daily_macro_judgment.analyst_model == "gpt-5.4-mini"
+    assert settings.daily_macro_judgment.reviewer_model == "gpt-5.4-mini"
+    assert settings.daily_macro_judgment.model_timeout_seconds == 480
     assert settings.notification_rule.batch_size == 50
     assert settings.notification_rule.statement_timeout_seconds == 30
     assert settings.notification_delivery.batch_size == 1

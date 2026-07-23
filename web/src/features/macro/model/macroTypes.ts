@@ -12,6 +12,7 @@ export type MacroRuleHitData = components["schemas"]["MacroRuleHitData"];
 export type MacroMetricData = components["schemas"]["MacroMetricData"];
 export type MacroSeriesData = components["schemas"]["MacroSeriesData"];
 export type MacroUnavailableEvidenceData = components["schemas"]["MacroUnavailableEvidenceData"];
+export type DailyMacroJudgmentReadData = components["schemas"]["DailyMacroJudgmentReadData"];
 
 export type MacroPageCommonData = Pick<
   MacroOverviewData,

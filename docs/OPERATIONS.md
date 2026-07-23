@@ -122,6 +122,23 @@ All six documents share one projection version, fact watermark, completed US
 session cutoff, and computation time. Freshness re-evaluation uses persisted
 rows and a deterministic date/session bucket, not a second queue or writer.
 
+Daily Macro SPY Judgment is a separate experimental lane:
+
+```text
+material Macro/eligible News facts -> frozen session EvidencePack
+  -> macro_judgment_jobs -> Agent/Reviewer outside transaction
+  -> atomic publication + job completion -> immutable history
+  -> append-only 5/20-session outcomes
+```
+
+`daily_macro_judgment` waits for the configured settle delay, claims at most
+one due session per iteration, and replays durable jobs after restart.
+Replaying a published session performs zero model calls and zero publication
+writes. `blocked` is a deterministic evidence/reviewer/gate failure;
+`retryable` is an external/runtime failure with attempts remaining; `failed`
+exhausts the job-local attempt budget while retaining its frozen pack and safe
+error. It does not use the generic terminal-event table.
+
 Notifications create/aggregate the notification and activate delivery rows in
 one transaction. Sending happens later outside the transaction.
 

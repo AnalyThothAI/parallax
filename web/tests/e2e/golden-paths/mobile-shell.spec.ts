@@ -80,7 +80,9 @@ test("mobile radar list remains reachable without reserved task-nav space", asyn
   await expectNoUnhandledApiRequests(page);
 });
 
-test("mobile radar row click reaches token detail without task-nav interception", async ({ page }) => {
+test("mobile radar row click reaches token detail without task-nav interception", async ({
+  page,
+}) => {
   await installMockApi(page);
   await page.goto("/?window=24h&scope=matched");
 

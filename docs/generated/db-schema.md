@@ -260,6 +260,59 @@
 | `updated_at_ms` | `BIGINT` | False | `None` |
 | `search_tsv` | `TSVECTOR` | True | `None` |
 
+## `macro_judgment_jobs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `session_date` | `DATE` | False | `None` |
+| `market_cutoff_ms` | `BIGINT` | False | `None` |
+| `status` | `TEXT` | False | `'pending'::text` |
+| `evidence_pack_json` | `JSONB` | False | `None` |
+| `evidence_pack_hash` | `TEXT` | False | `None` |
+| `compiler_version` | `TEXT` | False | `None` |
+| `selection_policy_version` | `TEXT` | False | `None` |
+| `sealed_at_ms` | `BIGINT` | False | `None` |
+| `attempt_count` | `INTEGER` | False | `0` |
+| `max_attempts` | `INTEGER` | False | `None` |
+| `due_at_ms` | `BIGINT` | False | `None` |
+| `leased_until_ms` | `BIGINT` | True | `None` |
+| `lease_owner` | `TEXT` | True | `None` |
+| `reviewer_disposition` | `TEXT` | True | `None` |
+| `last_error` | `TEXT` | True | `None` |
+| `created_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
+## `macro_judgment_outcomes`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `session_date` | `DATE` | False | `None` |
+| `horizon_sessions` | `INTEGER` | False | `None` |
+| `target_session_date` | `DATE` | False | `None` |
+| `start_close` | `DOUBLE PRECISION` | False | `None` |
+| `target_close` | `DOUBLE PRECISION` | False | `None` |
+| `realized_return_pct` | `DOUBLE PRECISION` | False | `None` |
+| `source_evidence_refs_json` | `JSONB` | False | `None` |
+| `computed_at_ms` | `BIGINT` | False | `None` |
+
+## `macro_judgment_publications`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `session_date` | `DATE` | False | `None` |
+| `market_cutoff_ms` | `BIGINT` | False | `None` |
+| `evidence_pack_hash` | `TEXT` | False | `None` |
+| `judgment_json` | `JSONB` | False | `None` |
+| `memo_text` | `TEXT` | False | `None` |
+| `review_json` | `JSONB` | False | `None` |
+| `agent_audit_json` | `JSONB` | False | `None` |
+| `model_name` | `TEXT` | False | `None` |
+| `prompt_version` | `TEXT` | False | `None` |
+| `schema_version` | `TEXT` | False | `None` |
+| `workflow_version` | `TEXT` | False | `None` |
+| `renderer_version` | `TEXT` | False | `None` |
+| `published_at_ms` | `BIGINT` | False | `None` |
+
 ## `macro_observation_series_publication_state`
 
 | Column | Type | Nullable | Default |

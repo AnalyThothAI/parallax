@@ -100,21 +100,14 @@ test("cold live load renders one full-height Radar with local content age", asyn
     const toolbarBox = await page.locator(".radar-toolbar").boundingBox();
     expect(toolbarBox).not.toBeNull();
     expect(
-      Math.abs(
-        primaryBox!.y +
-          primaryBox!.height / 2 -
-          (controlsBox!.y + controlsBox!.height / 2),
-      ),
+      Math.abs(primaryBox!.y + primaryBox!.height / 2 - (controlsBox!.y + controlsBox!.height / 2)),
     ).toBeLessThanOrEqual(2);
     expect(primaryBox!.x + primaryBox!.width).toBeLessThanOrEqual(controlsBox!.x);
     expect(toolbarBox!.height).toBeLessThanOrEqual(64);
   } else {
     expect(primaryBox!.y + primaryBox!.height).toBeLessThanOrEqual(controlsBox!.y + 1);
   }
-  await expect(page.getByTestId("radar-content-status")).toHaveAttribute(
-    "data-health",
-    "healthy",
-  );
+  await expect(page.getByTestId("radar-content-status")).toHaveAttribute("data-health", "healthy");
   await expect(page.getByTestId("radar-content-status")).toContainText(/最新内容 \d/);
   await expect(page.locator(".detail-task-panel")).toHaveCount(0);
   await expect(page.locator(".detail-drawer")).toHaveCount(0);

@@ -25,6 +25,23 @@ Do not introduce a third config path, shadow config in environment
 variables, or duplicate worker runtime knobs under `config.yaml`.
 Schemas and public config contracts live in `CONTRACTS.md`.
 
+## Daily Macro Agent capability boundary
+
+The experimental `daily_macro_judgment` worker is the sole production model
+consumer. It may read only one persisted, frozen `MacroEvidencePack` through
+one deterministic, hashed, bounded view derived from that pack, and may submit
+a strict typed draft. The size-bounded view keeps the latest selected fact per
+concept and bounded eligible text; prior comparison facts and repeated
+UI-oriented page series remain in the frozen audit pack and feed the
+deterministic page conclusions. DeepAgents filesystem,
+execution, search, and general-purpose subagent tools are excluded; browsing,
+provider calls, arbitrary SQL/shell, file access, long-term memory, and hidden
+reasoning persistence are not capabilities. The only subagent is one isolated
+Reviewer invoked through native `task`. Stored audit data is limited to
+versions, hashes, bounded tool/delegation counts and dispositions, explicit
+Analyst and Reviewer model names, and sanitized failures; credentials and
+reasoning traces are forbidden.
+
 ## Sensitive change confirmation
 
 Ask before changing authentication, authorisation, billing, or data-deletion behaviour.

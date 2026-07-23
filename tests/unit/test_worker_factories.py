@@ -138,6 +138,54 @@ def test_enabled_notification_delivery_without_channel_is_unavailable() -> None:
     assert worker.unavailable_reason == "missing_notification_delivery_channel"
 
 
+def test_daily_macro_judgment_requires_llm_config_and_wires_distinct_role_models() -> None:
+    worker_settings = {
+        name: (
+            {
+                "enabled": True,
+                "analyst_model": "openai/gpt-5.5",
+                "reviewer_model": "openai/gpt-5.6-terra",
+            }
+            if name == "daily_macro_judgment"
+            else {"enabled": False}
+        )
+        for name in worker_names()
+    }
+    unavailable = construct_worker(
+        worker_name="daily_macro_judgment",
+        settings=Settings(ws_token="test-token", workers=worker_settings),
+        db=_FakeDB(),
+        telemetry=SimpleNamespace(),
+        asset_market=None,
+        news_intel=None,
+        hub=None,
+        collector=None,
+        collector_enabled=False,
+    )
+    configured = construct_worker(
+        worker_name="daily_macro_judgment",
+        settings=Settings(
+            ws_token="test-token",
+            llm={"api_key": "test-key", "base_url": "https://llm.example.test/v1"},
+            workers=worker_settings,
+        ),
+        db=_FakeDB(),
+        telemetry=SimpleNamespace(),
+        asset_market=None,
+        news_intel=None,
+        hub=None,
+        collector=None,
+        collector_enabled=False,
+    )
+
+    assert unavailable.effective_status == "unavailable"
+    assert unavailable.unavailable_reason == "llm_not_configured"
+    assert configured.name == "daily_macro_judgment"
+    assert configured.effective_status == "stopped"
+    assert configured._agent._model_name == "openai/gpt-5.5"
+    assert configured._agent._reviewer_model_name == "openai/gpt-5.6-terra"
+
+
 def test_composition_fails_when_a_factory_omits_a_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(composition, "worker_names", lambda: ("expected",))
     monkeypatch.setattr(composition, "worker_factories", lambda: (lambda _ctx: {},))

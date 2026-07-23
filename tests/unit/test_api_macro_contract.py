@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from datetime import date
 from typing import Any
 
 import pytest
@@ -182,6 +183,66 @@ def test_macro_series_rejects_query_token_and_provider_series_keys() -> None:
     }
 
 
+def test_daily_macro_judgment_reads_typed_persisted_job_state_without_model_calls() -> None:
+    daily = FakeDailyMacroJudgmentRepository(
+        jobs={
+            date(2026, 7, 22): {
+                "session_date": date(2026, 7, 22),
+                "market_cutoff_ms": 1_774_200_000_000,
+                "status": "blocked",
+                "attempt_count": 1,
+                "max_attempts": 3,
+                "due_at_ms": 1_774_201_800_000,
+                "reviewer_disposition": "block",
+                "last_error": "daily_macro_judgment_reviewer_block",
+                "updated_at_ms": 1_774_201_900_000,
+            }
+        }
+    )
+    app = _app(FakeMacroIntelRepository(), daily_macro_judgments=daily)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/macro/daily-judgment?session_date=2026-07-22",
+            headers={"Authorization": "Bearer secret"},
+        )
+        unsupported = client.get(
+            "/api/macro/daily-judgment?session_date=2026-07-22&window=20d",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    assert response.json() == {
+        "ok": True,
+        "data": {
+            "target_session_date": "2026-07-22",
+            "state": "blocked",
+            "is_current": False,
+            "publication": None,
+            "target_job": {
+                "session_date": "2026-07-22",
+                "market_cutoff_ms": 1_774_200_000_000,
+                "status": "blocked",
+                "attempt_count": 1,
+                "max_attempts": 3,
+                "due_at_ms": 1_774_201_800_000,
+                "reviewer_disposition": "block",
+                "last_error": "daily_macro_judgment_reviewer_block",
+                "updated_at_ms": 1_774_201_900_000,
+            },
+        },
+    }
+    assert daily.calls == [
+        ("publication", date(2026, 7, 22)),
+        ("job", date(2026, 7, 22)),
+    ]
+    assert unsupported.json() == {
+        "ok": False,
+        "error": "unsupported_query_param",
+        "field": "window",
+    }
+
+
 class FakeMacroIntelRepository:
     def __init__(
         self,
@@ -213,9 +274,37 @@ class FakeMacroIntelRepository:
         return self.observations
 
 
+class FakeDailyMacroJudgmentRepository:
+    def __init__(
+        self,
+        *,
+        jobs: dict[date, dict[str, Any]] | None = None,
+    ) -> None:
+        self.jobs = jobs or {}
+        self.calls: list[tuple[str, date]] = []
+
+    def publication_record(self, session_date: date) -> None:
+        self.calls.append(("publication", session_date))
+
+    def latest_publication_record(self) -> None:
+        return None
+
+    def job_record(self, session_date: date) -> dict[str, Any] | None:
+        self.calls.append(("job", session_date))
+        return self.jobs.get(session_date)
+
+    def outcomes_for_session(self, session_date: date) -> list[dict[str, Any]]:
+        raise AssertionError(f"unexpected outcome read for {session_date}")
+
+
 class FakeRepositoryContext:
-    def __init__(self, macro_intel: FakeMacroIntelRepository) -> None:
+    def __init__(
+        self,
+        macro_intel: FakeMacroIntelRepository,
+        daily_macro_judgments: FakeDailyMacroJudgmentRepository,
+    ) -> None:
         self.macro_intel = macro_intel
+        self.daily_macro_judgments = daily_macro_judgments
 
     def __enter__(self) -> FakeRepositoryContext:
         return self
@@ -225,18 +314,30 @@ class FakeRepositoryContext:
 
 
 class FakeRuntime:
-    def __init__(self, macro_intel: FakeMacroIntelRepository) -> None:
+    def __init__(
+        self,
+        macro_intel: FakeMacroIntelRepository,
+        daily_macro_judgments: FakeDailyMacroJudgmentRepository,
+    ) -> None:
         self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
         self.macro_intel = macro_intel
+        self.daily_macro_judgments = daily_macro_judgments
 
     def repositories(self) -> FakeRepositoryContext:
-        return FakeRepositoryContext(self.macro_intel)
+        return FakeRepositoryContext(self.macro_intel, self.daily_macro_judgments)
 
 
-def _app(macro_intel: FakeMacroIntelRepository) -> FastAPI:
+def _app(
+    macro_intel: FakeMacroIntelRepository,
+    *,
+    daily_macro_judgments: FakeDailyMacroJudgmentRepository | None = None,
+) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
     app.include_router(create_api_router(lambda _: {"ok": True}))
-    app.state.service = FakeRuntime(macro_intel)
+    app.state.service = FakeRuntime(
+        macro_intel,
+        daily_macro_judgments or FakeDailyMacroJudgmentRepository(),
+    )
     return app

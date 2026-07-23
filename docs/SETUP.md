@@ -33,9 +33,14 @@ credentials/endpoints needed by the enabled data lanes, including GMGN OpenAPI
 for exact token profiles and OKX provider settings for discovery, market data,
 or DEX WebSocket lanes when those workers are enabled. Keep secrets out of
 terminal output, docs, tests, and commits.
-The `llm` block contains only dormant `api_key` and `base_url` fields retained
-for the provider-neutral library. Production bootstrap does not instantiate a
-model consumer, and `workers.yaml` has no model-runtime block.
+The `llm` block contains only `api_key` and `base_url`. They are used solely by
+the experimental `daily_macro_judgment` worker. Its explicit `analyst_model`
+and `reviewer_model`, timeout, settle delay, retry/lease policy, evidence
+bounds, and output token limit live under `workers.daily_macro_judgment`; no
+third config source or generic model policy is supported. The experimental
+worker is disabled by default and must be
+enabled explicitly in `workers.yaml`. If enabled without both credential fields, the worker reports
+`unavailable: llm_not_configured` and makes no model call.
 
 Use `uv run parallax config` to inspect both config paths and the effective
 worker settings. Inspect the running process through authenticated

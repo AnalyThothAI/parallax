@@ -32,6 +32,12 @@ Current read models include `token_radar_current_rows`,
 product keys, exactly one runtime writer, and zero writes when their business
 payload is unchanged.
 
+`macro_judgment_publications` is a separate immutable historical derived
+product keyed by completed US session. It is not a replacement for, or a field
+inside, the current `macro_decision_v2` snapshot. Latest judgment is a query
+over that history; 5/20-session realized outcomes are separate append-only
+rows.
+
 Queues, leases, publication state, sync attempts, provider fetch attempts, and terminal-event rows are control or audit state. They are not alternate business truth.
 
 ## Package boundaries
@@ -146,13 +152,42 @@ fail only affected results closed; optional gaps are explicit degradation.
 Unsupported capabilities are named `not_assessed` and never become zeroes,
 proxies, scores, trade outputs, or process-readiness failures.
 
-### Dormant model-execution library
+The experimental Daily Macro SPY Judgment lane starts only after that
+deterministic evidence product:
+
+```text
+macro_observations + eligible persisted official/high-quality News text
+  -> deterministic point-in-time MacroEvidencePack
+  -> session-keyed durable job with frozen full content
+  -> one DeepAgents Analyst -> native task -> one isolated Reviewer
+  -> deterministic schema/reference/health/rendering gates
+  -> immutable SPY 5-session + 20-session judgment and fixed Chinese memo
+  -> persisted-only Daily AI section on the Macro Overview
+  -> append-only realized outcomes
+```
+
+Application code owns the calendar, close cutoff, settle delay, availability
+selection, pack hash, retries, transactions, gates, renderer, and outcomes.
+Model I/O occurs outside transactions. The full pack is persisted; one
+deterministic hashed agent view removes repeated UI series while retaining the
+latest evidence for concepts referenced by the six compact page summaries and
+bounded eligible text. The view exposes short citation IDs that the submit
+boundary deterministically expands to full frozen-pack references. The Agent
+sees only that pack-scoped view and a typed submit tool;
+it cannot browse, call providers, execute SQL/shell, use the filesystem, or
+retain memory. Analyst and Reviewer may use distinct explicit worker-config
+model identities through the same credential/endpoint boundary. One revision
+plus a closing review is the maximum.
+
+### Model-execution boundary
 
 Provider-neutral structured-JSON execution, capability, hashing, schema, and
-usage primitives remain importable as an isolated library. Production
-bootstrap, workers, status, operations, domain projections, public contracts,
-and the frontend instantiate no model consumer. The library owns no product
-queue, table, prompt catalog, or business state.
+usage primitives remain importable as an isolated library. The only product
+model runtime is the named `daily_macro_judgment` worker factory and its
+DeepAgents adapter. The deterministic six-page Macro projection, News, Token,
+other workers, status, and frontend instantiate no model consumer. This narrow
+exception does not create a generic Product-AI platform. The frontend only
+reads the immutable publication; page reads never invoke this runtime.
 
 ### Evidence watchlist and account alerts
 

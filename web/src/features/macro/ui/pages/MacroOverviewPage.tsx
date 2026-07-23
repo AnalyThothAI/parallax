@@ -2,7 +2,7 @@ import type { components } from "@lib/types/openapi";
 import * as PageState from "@shared/ui/PageState";
 import { ArrowDownRight, ArrowRight, ArrowUpRight, CalendarClock, ShieldX } from "lucide-react";
 
-import { useMacroOverviewQuery } from "../../api/useMacroPageQueries";
+import { useDailyMacroJudgmentQuery, useMacroOverviewQuery } from "../../api/useMacroPageQueries";
 import {
   macroCodeLabel,
   macroConceptLabel,
@@ -10,6 +10,7 @@ import {
   macroLabel,
 } from "../../model/macroDisplay";
 import type { MacroOverviewData } from "../../model/macroTypes";
+import { DailyMacroAnalysis } from "../DailyMacroAnalysis";
 import { MacroAuditDrawer, MacroDomainNavigation, MacroPageHeader } from "../MacroPageFrame";
 
 import "./MacroOverviewPage.css";
@@ -57,6 +58,7 @@ const SHOCK_STATE_LABELS: Record<MacroOverviewData["shock_summary"]["state"], st
 
 export function MacroOverviewPage({ token }: { token: string }) {
   const query = useMacroOverviewQuery({ token });
+  const dailyQuery = useDailyMacroJudgmentQuery({ token });
 
   if (query.isError) {
     return <PageState.Error error={query.error} onRetry={() => void query.refetch()} />;
@@ -109,6 +111,8 @@ export function MacroOverviewPage({ token }: { token: string }) {
         </div>
 
         <MacroDomainNavigation />
+
+        <DailyMacroAnalysis query={dailyQuery} />
 
         <section aria-labelledby="risk-map-title" className="macro-risk-map">
           <header>

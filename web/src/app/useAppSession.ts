@@ -25,12 +25,7 @@ export function useAppSession() {
       bootstrapLoading: bootstrapQuery.isPending,
       token,
     }),
-    [
-      bootstrapQuery.data?.data.handles,
-      bootstrapQuery.isError,
-      bootstrapQuery.isPending,
-      token,
-    ],
+    [bootstrapQuery.data?.data.handles, bootstrapQuery.isError, bootstrapQuery.isPending, token],
   );
 }
 

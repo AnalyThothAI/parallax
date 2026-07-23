@@ -1,5 +1,6 @@
 import type { Page, Route } from "@playwright/test";
 import {
+  dailyMacroJudgmentFixture,
   macroCreditFixture,
   macroCrossAssetFixture,
   macroGrowthLaborFixture,
@@ -71,6 +72,9 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       return fulfill(route, watchlistHandleTimelineData(handleFromPath(path)));
     }
     if (path === "/api/macro/overview") return fulfill(route, macroOverviewFixture());
+    if (path === "/api/macro/daily-judgment") {
+      return fulfill(route, dailyMacroJudgmentFixture());
+    }
     if (path === "/api/macro/cross-asset") return fulfill(route, macroCrossAssetFixture());
     if (path === "/api/macro/rates-inflation") {
       return fulfill(route, macroRatesInflationFixture());

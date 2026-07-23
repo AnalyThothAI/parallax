@@ -115,15 +115,20 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   persisted points from `/api/macro/series`.
 
   `/macro` is the fixed cross-asset risk map for the latest completed US
-  session and a 1–4 week horizon. It renders the persisted Overview document
-  directly: one shock state, exactly eight ordered lanes (US equities,
+  session and a 1–4 week horizon. It renders two independent persisted reads:
+  the deterministic Overview document and the latest
+  `/api/macro/daily-judgment`. The Overview remains one shock state, exactly
+  eight ordered lanes (US equities,
   long-duration Treasuries, credit, USD, gold, oil, crypto, and market
   volatility), up to three five-completed-session changes, the nearest
   trustworthy official catalyst, and one core invalidation. Direction, trend,
   categorical confidence, lane rationale, contradictions, invalidations, and
-  local degradation are backend-owned deterministic results. The Overview must
-  make exactly one page read and must not sort, score, infer, or fan out across
-  the five domain documents.
+  local degradation are backend-owned deterministic results. The page must not
+  sort, score, infer, or fan out across the five domain documents. Its Daily AI
+  section renders only an immutable published judgment: cutoff/currentness,
+  data health, macro state, bounded pressures, SPY 5D/20D direction, theses,
+  counterevidence, experimental marker, review disposition, and model identity.
+  It never calls an Agent from the browser or API request path.
 
   Normal snapshot metadata, evidence rows, rules, formulas, freshness, and
   named unavailable capabilities live in the keyboard-accessible `审计与证据`
@@ -138,7 +143,9 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   unit, and as-of labels, followed by domain-specific evidence. The UI does not
   compute correlations, change windows, curve shape, shock state, Credit
   state, or conclusions. Macro never renders holdings, buy/sell instructions,
-  position size, target price, allocation, probabilities, or LLM output.
+  position size, target price, allocation, probabilities, or request-time
+  model output. The only model-derived Macro display is the separate persisted
+  Daily SPY judgment described above.
 
   Macro uses one flat feature-owned navigation and small shared evidence
   primitives; there is no registry-driven page catalog or universal page
@@ -214,7 +221,8 @@ Per `DEVELOPMENT.md`, UI flows that tests cannot exercise must be checked manual
 7. At `390px`, confirm the topbar `SidebarTrigger` opens the shadcn drawer, drawer route links are reachable, `.topbar` and `.center-column` do not overlap, topbar controls stay contained, the full-height Radar shows explicit content age and refresh health, no Tape/task bar exists, and the final Radar row is reachable without overlap.
 8. At tablet width around `834px`, confirm the desktop sidebar is hidden, the topbar trigger opens the shadcn drawer, drawer route navigation and topbar search still work, and the Radar compact title/status group, wrapped controls, full-height list, and no-overflow contract remain intact.
 9. At `1920px`, `1366px`, `834px`, and `390px`, verify the Overview keeps
-   exactly eight ordered lanes plus bounded changes/catalyst/invalidation,
+   the Daily AI judgment readable without horizontal overflow, exactly eight
+   ordered lanes plus bounded changes/catalyst/invalidation,
    every drilldown keeps its charts and judgment band, normal audit metadata
    stays collapsed, the audit drawer is keyboard reachable, local gaps remain
    adjacent, and no Macro page has whole-page overflow.

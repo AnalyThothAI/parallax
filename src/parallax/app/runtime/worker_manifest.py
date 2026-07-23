@@ -106,6 +106,11 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         ),
     ),
     WorkerManifest(
+        name="daily_macro_judgment",
+        start_priority=100,
+        queue_tables=("macro_judgment_jobs",),
+    ),
+    WorkerManifest(
         name="notification_rule",
         start_priority=120,
         current_read_model_identities=(("notifications", ("dedup_key",)),),

@@ -31,6 +31,9 @@ DORMANT_LLM_MODULES = (
     "parallax.platform.agent_hashing",
 )
 DORMANT_LLM_IMPORT_PREFIXES = (
+    "deepagents",
+    "langchain",
+    "langchain_litellm",
     "parallax.integrations.model_execution",
     "parallax.platform.agent_capabilities",
     "parallax.platform.agent_execution",
@@ -42,10 +45,21 @@ PRODUCT_AI_SYMBOLS = frozenset(
         "AgentKnowledgeCatalog",
         "AgentRuntimePolicy",
         "AgentStageSpec",
+        "ChatLiteLLM",
+        "MacroJudgmentDeepAgent",
         "agent_knowledge_catalog",
         "render_agent_instructions",
     }
 )
+AUTHORIZED_PRODUCT_AI_RUNTIME = {
+    "src/parallax/app/runtime/worker_factories/macro_intel.py": {
+        "imports": {
+            "langchain_litellm",
+            "parallax.integrations.model_execution.macro_judgment_deepagent",
+        },
+        "symbols": {"ChatLiteLLM", "MacroJudgmentDeepAgent"},
+    }
+}
 RETIRED_PYTHON_SEMANTICS = frozenset(
     {
         "SearchAgentBrief",
@@ -188,7 +202,7 @@ def test_dormant_llm_library_is_independently_importable_and_provider_neutral() 
     assert {"news.story_brief", "news_story_brief", "market_research_harness"}.isdisjoint(retained_atoms)
 
 
-def test_dormant_llm_library_has_no_production_import_or_instantiation() -> None:
+def test_only_daily_macro_worker_factory_may_import_product_model_runtime() -> None:
     violations: dict[str, dict[str, list[str]]] = {}
     for root in PRODUCTION_ROOTS:
         for path in _python_files(root):
@@ -202,10 +216,20 @@ def test_dormant_llm_library_has_no_production_import_or_instantiation() -> None
                     if isinstance(node, ast.Attribute) and node.attr in PRODUCT_AI_SYMBOLS
                 }
             )
-            if forbidden_imports or forbidden_symbols:
-                violations[_relative(path)] = {
-                    "imports": forbidden_imports,
-                    "symbols": forbidden_symbols,
+            relative = _relative(path)
+            authorized = AUTHORIZED_PRODUCT_AI_RUNTIME.get(relative, {"imports": set(), "symbols": set()})
+            extra_imports = sorted(set(forbidden_imports) - authorized["imports"])
+            extra_symbols = sorted(set(forbidden_symbols) - authorized["symbols"])
+            if extra_imports or extra_symbols:
+                violations[relative] = {
+                    "imports": extra_imports,
+                    "symbols": extra_symbols,
                 }
 
     assert violations == {}
+    for relative, expected in AUTHORIZED_PRODUCT_AI_RUNTIME.items():
+        tree = _tree(ROOT / relative)
+        assert {name for name in _imports(tree) if name.startswith(DORMANT_LLM_IMPORT_PREFIXES)} == expected["imports"]
+        assert {
+            node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and node.id in PRODUCT_AI_SYMBOLS
+        } == expected["symbols"]

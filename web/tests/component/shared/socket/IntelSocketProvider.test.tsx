@@ -5,10 +5,7 @@ import { normalizeMarketTargets } from "@shared/socket/marketTargets";
 import { useSocketSnapshot } from "@shared/socket/socketContext";
 import { useMarketSubscription } from "@shared/socket/useMarketSubscription";
 import { act, cleanup, screen, waitFor } from "@testing-library/react";
-import {
-  tokenRadarFixture,
-  tokenRadarRowFixture,
-} from "@tests/fixtures/appRouteFixtures";
+import { tokenRadarFixture, tokenRadarRowFixture } from "@tests/fixtures/appRouteFixtures";
 import { renderWithProviders } from "@tests/render/renderWithProviders";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
@@ -122,8 +119,9 @@ describe("IntelSocketProvider", () => {
         }),
       });
     });
-    expect(await screen.findByText("1", { selector: '[data-testid="notification-count"]' }))
-      .toBeInTheDocument();
+    expect(
+      await screen.findByText("1", { selector: '[data-testid="notification-count"]' }),
+    ).toBeInTheDocument();
 
     const update: LiveMarketUpdatePayload = {
       type: "live_market_update",
@@ -153,11 +151,7 @@ describe("IntelSocketProvider", () => {
   });
 });
 
-function SocketProbe({
-  target,
-}: {
-  target: { target_id: string; target_type: string };
-}) {
+function SocketProbe({ target }: { target: { target_id: string; target_type: string } }) {
   useMarketSubscription([target]);
   const snapshot = useSocketSnapshot();
   return (

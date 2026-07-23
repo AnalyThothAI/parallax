@@ -49,9 +49,7 @@ describe("responsive CSS contract", () => {
     const liveCss = readFileSync(liveCssPath, "utf8");
     const rules = findRules(liveCss);
     const livePageRules = rules.filter((rule) => selectorContains(rule.selector, ".live-page"));
-    const radarPanelRules = rules.filter((rule) =>
-      selectorContains(rule.selector, ".radar-panel"),
-    );
+    const radarPanelRules = rules.filter((rule) => selectorContains(rule.selector, ".radar-panel"));
     const radarToolbarRules = rules.filter((rule) =>
       selectorContains(rule.selector, ".radar-toolbar"),
     );

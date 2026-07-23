@@ -152,7 +152,7 @@ def test_current_postgres_schema_has_one_kappa_truth_and_compact_read_models(tmp
     }
     assert {"raw_payload_json", "payload_hash"}.isdisjoint(market_current_columns)
     assert news_fetch_run_fk_index == {"indisvalid": True, "indisready": True}
-    assert version == latest_migration_version() == "20260723_0192"
+    assert version == latest_migration_version() == "20260723_0193"
 
 
 def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
@@ -271,7 +271,7 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
             FROM news_sources WHERE source_id = 'source-1'
             """
         ).fetchone()
-        macro_series = conn.execute(
+        retired_macro_series = conn.execute(
             """
             SELECT event_metadata_json
             FROM macro_observation_series_rows
@@ -317,16 +317,11 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
     assert tuple(terminal_row.values()) == ("archive", "queue_retired_by_0185")
     assert news_source["config_payload_hash"].startswith("sha256:")
     assert news_source["terminal_config_payload_hash"] is None
-    assert macro_series["event_metadata_json"] == {
-        "event_code": "official_fed_text:fomc_statement_latest",
-        "source_url": "https://fed.example/statement",
-        "speaker": "Powell",
-        "text_value": "FOMC statement",
-    }
+    assert retired_macro_series is None
     assert macro_snapshot is None
     assert macro_rebuild == {
-        "payload_hash": "schema-hard-cut-0191:macro-evidence-v1",
-        "dirty_reason": "schema_hard_cut_0191",
+        "payload_hash": "schema-hard-cut-0192:macro-decision-v2",
+        "dirty_reason": "schema_hard_cut_0192",
         "leased_until_ms": None,
         "attempt_count": 0,
     }
@@ -576,8 +571,8 @@ def test_runtime_hard_cut_reconciles_nonempty_0185_backlog(tmp_path) -> None:
     assert retired_queue is None
     assert macro_snapshot is None
     assert macro_rebuild == {
-        "payload_hash": "schema-hard-cut-0191:macro-evidence-v1",
-        "dirty_reason": "schema_hard_cut_0191",
+        "payload_hash": "schema-hard-cut-0192:macro-decision-v2",
+        "dirty_reason": "schema_hard_cut_0192",
         "leased_until_ms": None,
         "attempt_count": 0,
     }

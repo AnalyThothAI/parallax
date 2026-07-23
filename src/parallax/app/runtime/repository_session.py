@@ -35,6 +35,9 @@ from parallax.domains.asset_market.repositories.token_profile_current_dirty_targ
 from parallax.domains.evidence.queries.watchlist_query import WatchlistQuery
 from parallax.domains.evidence.repositories.entity_repository import EntityRepository
 from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
+from parallax.domains.macro_intel.repositories.daily_macro_judgment_repository import (
+    DailyMacroJudgmentRepository,
+)
 from parallax.domains.macro_intel.repositories.macro_intel_repository import MacroIntelRepository
 from parallax.domains.news_intel.repositories.news_item_repository import NewsItemRepository
 from parallax.domains.news_intel.repositories.news_page_repository import NewsPageRepository
@@ -103,6 +106,7 @@ class RepositorySession:
     news_pages: NewsPageRepository
     news_projection_dirty_targets: NewsProjectionDirtyTargetRepository
     macro_intel: MacroIntelRepository
+    daily_macro_judgments: DailyMacroJudgmentRepository
 
     def transaction(self) -> AbstractContextManager[None]:
         return transaction(self.conn)
@@ -157,6 +161,7 @@ def repositories_for_connection(
         news_pages=NewsPageRepository(conn),
         news_projection_dirty_targets=NewsProjectionDirtyTargetRepository(conn),
         macro_intel=MacroIntelRepository(conn),
+        daily_macro_judgments=DailyMacroJudgmentRepository(conn),
     )
 
 
