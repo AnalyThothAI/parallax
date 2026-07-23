@@ -76,12 +76,7 @@ export async function expectScrollableToLastMeaningfulElement(
 
       target.scrollIntoView({ block: "end", inline: "nearest" });
       const targetRect = target.getBoundingClientRect();
-      const navRect = document
-        .querySelector<HTMLElement>(".live-task-nav")
-        ?.getBoundingClientRect();
-      const viewportBottom = window.innerHeight;
-      const occlusionTop = navRect ? Math.max(0, navRect.top) : viewportBottom;
-      const visible = targetRect.bottom > 0 && targetRect.top < occlusionTop;
+      const visible = targetRect.bottom > 0 && targetRect.top < window.innerHeight;
 
       return {
         ok: visible,
@@ -90,9 +85,7 @@ export async function expectScrollableToLastMeaningfulElement(
           : `Target rect ${JSON.stringify({
               top: targetRect.top,
               bottom: targetRect.bottom,
-            })} is not reachable above mobile task nav ${JSON.stringify(
-              navRect ? { top: navRect.top, bottom: navRect.bottom } : null,
-            )}`,
+            })} is not reachable in the viewport`,
       };
     },
     { containerSelector, targetSelector },

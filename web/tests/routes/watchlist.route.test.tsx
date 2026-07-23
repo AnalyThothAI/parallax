@@ -22,9 +22,6 @@ describe("watchlist navigation", () => {
       if (path === "/api/status") {
         return ok(appStatusFixture({ handles: ["toly"] }));
       }
-      if (path === "/api/recent") {
-        return ok({ items: [] });
-      }
       if (path === "/api/watchlist/handles/overview") {
         return ok({
           window: "7d",
@@ -53,15 +50,12 @@ describe("watchlist navigation", () => {
     expect(screen.queryByRole("link", { name: /toly/i })).not.toBeInTheDocument();
   });
 
-  it("renders selected watchlist facts from persisted overview when live replay is empty", async () => {
+  it("renders selected watchlist facts from the persisted overview", async () => {
     apiMock.getBootstrapImpl = async () =>
       ok({ ws_token: "test-token", handles: ["marionawfal"], replay_limit: 25 });
     apiMock.readApiImpl = async (path: string) => {
       if (path === "/api/status") {
         return ok(appStatusFixture({ handles: ["marionawfal"] }));
-      }
-      if (path === "/api/recent") {
-        return ok({ items: [] });
       }
       if (path === "/api/watchlist/handles/overview") {
         return ok({

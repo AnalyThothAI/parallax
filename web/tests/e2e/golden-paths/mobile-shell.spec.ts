@@ -11,9 +11,7 @@ test.beforeEach(({}, testInfo) => {
   test.skip(!testInfo.project.name.startsWith("mobile-"), "mobile-only layout contract");
 });
 
-test("mobile shell exposes sidebar route nav and task nav without route reloads", async ({
-  page,
-}) => {
+test("mobile shell exposes sidebar route nav and keeps Radar task-local", async ({ page }) => {
   await installMockApi(page);
   await page.goto("/");
 
@@ -32,28 +30,12 @@ test("mobile shell exposes sidebar route nav and task nav without route reloads"
   await page.keyboard.press("Escape");
   await expect(primaryNavigation).toBeHidden();
 
-  const liveTaskNav = page.locator(".live-task-nav");
-  await expect(liveTaskNav).toBeVisible();
-  const radarButton = liveTaskNav.getByRole("button", { name: "Radar" });
-  const tapeButton = liveTaskNav.getByRole("button", { name: "Tape" });
-  await expect(radarButton).toBeVisible();
-  await expect(tapeButton).toBeVisible();
-  await expect(liveTaskNav.getByRole("button", { name: "Lab" })).toHaveCount(0);
-
+  await expect(page.locator(".live-task-nav")).toHaveCount(0);
+  await expect(page.getByText(/实时信号 Tape/i)).toHaveCount(0);
+  await expect(page.getByTestId("radar-content-status")).toBeVisible();
+  await expect(page.getByTestId("radar-content-status")).toContainText(/最新内容 \d/);
   await expectNoDocumentHorizontalOverflow(page);
-  await expectNoNestedHorizontalOverflow(page, [".topbar", ".live-task-nav"]);
-  await expectActiveMobileTask(page, "radar");
-
-  await page.evaluate(() => {
-    window.__routeBackSentinel = "mobile-task-switch";
-  });
-
-  await tapeButton.click();
-  await expect(tapeButton).toHaveAttribute("aria-current", "page");
-  await expect(radarButton).not.toHaveAttribute("aria-current", "page");
-  await expectActiveMobileTask(page, "tape");
-  await expect(page).toHaveURL(/\/$/);
-  expect(await page.evaluate(() => window.__routeBackSentinel)).toBe("mobile-task-switch");
+  await expectNoNestedHorizontalOverflow(page, [".topbar", ".radar-toolbar"]);
 
   await page.getByLabel("global search").fill("test-token");
   await page.getByLabel("global search").press("Enter");
@@ -61,13 +43,13 @@ test("mobile shell exposes sidebar route nav and task nav without route reloads"
   await expectNoUnhandledApiRequests(page);
 });
 
-test("mobile radar list remains reachable above the task nav without overlap", async ({ page }) => {
+test("mobile radar list remains reachable without reserved task-nav space", async ({ page }) => {
   await installMockApi(page);
   await page.goto("/?window=24h&scope=matched");
 
   await expect(page.getByRole("button", { name: "Toggle Sidebar" })).toBeVisible();
   await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeHidden();
-  await expect(page.locator(".live-task-nav")).toBeVisible();
+  await expect(page.locator(".live-task-nav")).toHaveCount(0);
   await expect(page.locator(".token-radar-row")).toHaveCount(8);
 
   const layout = await page.evaluate(() => {
@@ -75,27 +57,18 @@ test("mobile radar list remains reachable above the task nav without overlap", a
     const livePage = document.querySelector<HTMLElement>(".live-page");
     const radarPanel = document.querySelector<HTMLElement>(".radar-panel");
     const tokenTable = document.querySelector<HTMLElement>(".token-radar-table");
-    const liveTaskNav = document.querySelector<HTMLElement>(".live-task-nav");
-    const firstRow = document.querySelector<HTMLElement>(".token-radar-row");
-    const navRect = liveTaskNav?.getBoundingClientRect();
-    const firstRowRect = firstRow?.getBoundingClientRect();
     return {
       centerMaxScroll: center ? center.scrollHeight - center.clientHeight : null,
       livePageGridRows: livePage ? getComputedStyle(livePage).gridTemplateRows : null,
-      liveTaskNavPosition: liveTaskNav ? getComputedStyle(liveTaskNav).position : null,
       tokenTableMaxScroll: tokenTable ? tokenTable.scrollHeight - tokenTable.clientHeight : null,
       radarPanelOverflowY: radarPanel ? getComputedStyle(radarPanel).overflowY : null,
-      firstRowOverlapsTaskNav:
-        firstRowRect && navRect ? firstRowRect.bottom > navRect.top + 1 : null,
     };
   });
 
   expect(layout.centerMaxScroll).toBe(0);
   expect(layout.tokenTableMaxScroll).toBeGreaterThan(0);
-  expect(layout.livePageGridRows).not.toContain("405px");
-  expect(layout.liveTaskNavPosition).toBe("static");
+  expect(layout.livePageGridRows?.trim().split(/\s+/)).toHaveLength(1);
   expect(layout.radarPanelOverflowY).toBe("hidden");
-  expect(layout.firstRowOverlapsTaskNav).toBe(false);
 
   await expectScrollableToLastMeaningfulElement(
     page,
@@ -107,7 +80,7 @@ test("mobile radar list remains reachable above the task nav without overlap", a
   await expectNoUnhandledApiRequests(page);
 });
 
-test("mobile radar row click reaches token detail above the task nav", async ({ page }) => {
+test("mobile radar row click reaches token detail without task-nav interception", async ({ page }) => {
   await installMockApi(page);
   await page.goto("/?window=24h&scope=matched");
 
@@ -122,30 +95,20 @@ test("mobile radar row click reaches token detail above the task nav", async ({ 
       rect.left + rect.width / 2,
       rect.top + rect.height / 2,
     );
-    const taskNav = document.querySelector(".live-task-nav");
     return {
       rowContainsHit: element ? row.contains(element) : false,
       hitClassName: element instanceof HTMLElement ? element.className : "",
       hitTagName: element?.tagName ?? "",
-      taskNavContainsHit: element ? Boolean(taskNav?.contains(element)) : false,
     };
   });
   expect(hitTest).toMatchObject({
     rowContainsHit: true,
-    taskNavContainsHit: false,
   });
 
   await lastRow.click();
   await expect(page).toHaveURL(/\/token\/Asset\/asset%3Adex%3Aeth%3A/);
   await expectNoUnhandledApiRequests(page);
 });
-
-async function expectActiveMobileTask(page: Page, activePanel: string) {
-  await expect(page.locator(`[data-mobile-task-panel="${activePanel}"]`)).toBeVisible();
-  for (const inactivePanel of ["radar", "tape"].filter((panel) => panel !== activePanel)) {
-    await expect(page.locator(`[data-mobile-task-panel="${inactivePanel}"]`)).toBeHidden();
-  }
-}
 
 async function expectMobileTopbarContract(page: Page) {
   const topbar = page.locator(".topbar");

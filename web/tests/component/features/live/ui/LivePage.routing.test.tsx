@@ -9,17 +9,7 @@ describe("LivePage", () => {
       <MemoryRouter initialEntries={["/"]}>
         <Routes>
           <Route
-            element={
-              <LivePage
-                liveSignalTapeItems={[]}
-                isRecentLoading={false}
-                socketStatus="connected"
-                selectedTapeEventId={null}
-                onTapeSelect={() => {}}
-                mobileTask="radar"
-                onMobileTaskChange={() => {}}
-              />
-            }
+            element={<LivePage />}
           >
             <Route index element={<div data-testid="child-content" />} />
           </Route>
@@ -28,9 +18,6 @@ describe("LivePage", () => {
     );
     expect(screen.getByTestId("live-page")).toBeInTheDocument();
     expect(screen.getByTestId("child-content")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "实时信号 Tape" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Radar" })).toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Tape" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Lab" })).not.toBeInTheDocument();
+    expect(screen.queryByText(/Tape/i)).not.toBeInTheDocument();
   });
 });

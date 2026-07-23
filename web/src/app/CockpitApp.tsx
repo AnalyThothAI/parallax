@@ -19,7 +19,6 @@ export function CockpitApp({
     <IntelSocketProvider
       token={session.token}
       handles={session.bootstrapHandles.join(",")}
-      replay={session.replayLimit}
       notifications
     >
       <AppRouteSessionProvider session={session}>

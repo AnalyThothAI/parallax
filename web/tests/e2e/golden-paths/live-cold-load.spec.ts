@@ -1,16 +1,17 @@
 import { expect, test } from "@playwright/test";
-import { expectNoUnhandledApiRequests } from "@tests/e2e/support/layoutAssertions";
+import {
+  expectNoDocumentHorizontalOverflow,
+  expectNoNestedHorizontalOverflow,
+  expectNoUnhandledApiRequests,
+  expectScrollableToLastMeaningfulElement,
+} from "@tests/e2e/support/layoutAssertions";
 import { installMockApi } from "@tests/e2e/support/mockApi";
 
-// @desktop-only-spec
-test.beforeEach(({}, testInfo) => {
-  test.skip(!testInfo.project.name.startsWith("desktop-"), "desktop-only layout contract");
-});
-
-test("cold live load renders radar, tape, and URL-owned filters", async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 1080 });
+test("cold live load renders one full-height Radar with local content age", async ({ page }) => {
   await installMockApi(page);
   await page.goto("/");
+  const viewport = page.viewportSize();
+  expect(viewport).not.toBeNull();
 
   const radarRow = page.getByRole("article", { name: "Token Radar item $UPEG" });
   await expect(radarRow).toBeVisible();
@@ -27,8 +28,12 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
   await expect(radarRow.getByText("profile")).toHaveCount(0);
   await expect(radarRow.getByText("unverified")).toHaveCount(0);
   await expect(page.getByRole("button", { name: /sort by holders/i })).toHaveCount(0);
-  await expect(page.getByRole("button", { name: /sort by market/i })).toBeVisible();
-  await expect(page.getByText("$UPEG watched account evidence")).toBeVisible();
+  if ((viewport?.width ?? 0) >= 768) {
+    await expect(page.getByRole("button", { name: /sort by market/i })).toBeVisible();
+  } else {
+    await expect(page.getByRole("button", { name: /sort by market/i })).toHaveCount(0);
+  }
+  await expect(page.getByText("$UPEG watched account evidence")).toHaveCount(0);
   const radarWindowControls = page.getByLabel("radar window");
   const radarScopeControls = page.getByLabel("token flow scope");
   await expect(radarWindowControls.getByRole("radio", { name: "1h" })).toHaveAttribute(
@@ -45,44 +50,63 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
   expect(shellBox).not.toBeNull();
   expect(Math.round(shellBox?.x ?? -1)).toBe(0);
   expect(Math.round(shellBox?.y ?? -1)).toBe(0);
-  expect(Math.round(shellBox?.width ?? 0)).toBe(1920);
-  expect(Math.round(shellBox?.height ?? 0)).toBe(1080);
+  expect(Math.round(shellBox?.width ?? 0)).toBe(viewport?.width);
+  expect(Math.round(shellBox?.height ?? 0)).toBe(viewport?.height);
 
   const rowBox = await radarRow.boundingBox();
   expect(rowBox).not.toBeNull();
-  expect(Math.round(rowBox?.height ?? 0)).toBeLessThanOrEqual(72);
-  expect(Math.round(rowBox?.height ?? 0)).toBeGreaterThanOrEqual(56);
+  if ((viewport?.width ?? 0) >= 768) {
+    expect(Math.round(rowBox?.height ?? 0)).toBeLessThanOrEqual(72);
+    expect(Math.round(rowBox?.height ?? 0)).toBeGreaterThanOrEqual(56);
+  } else {
+    expect(Math.round(rowBox?.height ?? 0)).toBeGreaterThanOrEqual(56);
+  }
 
-  const scoreHeaderBox = await page.locator(".radar-head-cell.score").boundingBox();
-  const scoreCellBox = await radarRow.locator(".radar-score-cell").boundingBox();
-  const listedHeaderBox = await page.locator(".radar-head-cell.listed").boundingBox();
-  const listedActionBox = await radarRow.locator(".radar-listed-action-cell").boundingBox();
-  expect(scoreHeaderBox).not.toBeNull();
-  expect(scoreCellBox).not.toBeNull();
-  expect(listedHeaderBox).not.toBeNull();
-  expect(listedActionBox).not.toBeNull();
-  expect(
-    Math.abs(
-      Math.round((scoreHeaderBox?.x ?? 0) + (scoreHeaderBox?.width ?? 0)) -
-        Math.round((scoreCellBox?.x ?? 0) + (scoreCellBox?.width ?? 0)),
-    ),
-  ).toBeLessThanOrEqual(2);
-  expect(Math.round(scoreCellBox?.x ?? 0)).toBeLessThan(Math.round(listedActionBox?.x ?? 0));
-  expect(
-    Math.abs(
-      Math.round((listedHeaderBox?.x ?? 0) + (listedHeaderBox?.width ?? 0)) -
-        Math.round((listedActionBox?.x ?? 0) + (listedActionBox?.width ?? 0)),
-    ),
-  ).toBeLessThanOrEqual(2);
+  if ((viewport?.width ?? 0) >= 1_000) {
+    const scoreHeaderBox = await page.locator(".radar-head-cell.score").boundingBox();
+    const scoreCellBox = await radarRow.locator(".radar-score-cell").boundingBox();
+    const listedHeaderBox = await page.locator(".radar-head-cell.listed").boundingBox();
+    const listedActionBox = await radarRow.locator(".radar-listed-action-cell").boundingBox();
+    expect(scoreHeaderBox).not.toBeNull();
+    expect(scoreCellBox).not.toBeNull();
+    expect(listedHeaderBox).not.toBeNull();
+    expect(listedActionBox).not.toBeNull();
+    expect(
+      Math.abs(
+        Math.round((scoreHeaderBox?.x ?? 0) + (scoreHeaderBox?.width ?? 0)) -
+          Math.round((scoreCellBox?.x ?? 0) + (scoreCellBox?.width ?? 0)),
+      ),
+    ).toBeLessThanOrEqual(2);
+    expect(Math.round(scoreCellBox?.x ?? 0)).toBeLessThan(Math.round(listedActionBox?.x ?? 0));
+    expect(
+      Math.abs(
+        Math.round((listedHeaderBox?.x ?? 0) + (listedHeaderBox?.width ?? 0)) -
+          Math.round((listedActionBox?.x ?? 0) + (listedActionBox?.width ?? 0)),
+      ),
+    ).toBeLessThanOrEqual(2);
+  }
 
+  const primaryBox = await page.locator(".radar-toolbar-primary").boundingBox();
+  const controlsBox = await page.getByLabel("token radar scan controls").boundingBox();
+  expect(primaryBox).not.toBeNull();
+  expect(controlsBox).not.toBeNull();
+  expect(primaryBox!.y + primaryBox!.height).toBeLessThanOrEqual(controlsBox!.y + 1);
+  await expect(page.getByTestId("radar-content-status")).toHaveAttribute(
+    "data-health",
+    "healthy",
+  );
+  await expect(page.getByTestId("radar-content-status")).toContainText(/最新内容 \d/);
   await expect(page.locator(".detail-task-panel")).toHaveCount(0);
   await expect(page.locator(".detail-drawer")).toHaveCount(0);
-  await expect(page.getByRole("heading", { name: "实时信号 Tape" })).toBeVisible();
+  await expect(page.getByText(/实时信号 Tape/i)).toHaveCount(0);
+  await expect(page.locator(".live-task-nav")).toHaveCount(0);
   await expect(page.getByRole("button", { name: "Lab" })).toHaveCount(0);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalOverflow(page, [".topbar", ".radar-toolbar", ".token-radar-row"]);
+  await expectNoUnhandledApiRequests(page);
 });
 
 test("radar row click reaches token detail without hit-test interception", async ({ page }) => {
-  await page.setViewportSize({ width: 1920, height: 1080 });
   await installMockApi(page);
   await page.goto("/");
 
@@ -105,5 +129,20 @@ test("radar row click reaches token detail without hit-test interception", async
 
   await radarRow.click();
   await expect(page).toHaveURL(/\/token\/Asset\/asset%3Adex%3Aeth%3A/);
+  await expectNoUnhandledApiRequests(page);
+});
+
+test("full-height Radar keeps the final row reachable without a task bar", async ({ page }) => {
+  await installMockApi(page);
+  await page.goto("/?window=24h&scope=matched");
+
+  await expect(page.locator(".token-radar-row")).toHaveCount(8);
+  await expect(page.locator(".live-task-nav")).toHaveCount(0);
+  await expectScrollableToLastMeaningfulElement(
+    page,
+    ".token-radar-table",
+    ".token-radar-row:last-of-type",
+  );
+  await expectNoDocumentHorizontalOverflow(page);
   await expectNoUnhandledApiRequests(page);
 });

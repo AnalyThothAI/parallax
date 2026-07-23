@@ -4,11 +4,17 @@ import type { TokenRadarVenueFilter } from "@lib/venue";
 import { useEffect, useMemo, useRef, useState } from "react";
 
 import { targetRefFromTokenItem } from "../../../domain/tokenTarget";
+import {
+  radarResponseMatchesIdentity,
+  type RadarStatusInput,
+} from "../model/radarContentStatus";
 
 import { useTokenRadarQuery } from "./useTokenRadarQuery";
 
 type RadarFrame = {
   rawTokenItems: TokenFlowItem[];
+  responseIdentityMatches: boolean;
+  sourceMaxReceivedAtMs: number | null;
   tokenItems: TokenFlowItem[];
 };
 
@@ -34,30 +40,51 @@ export function useLiveRadarRouteData({
   });
   const lastReadyFrames = useRef(new Map<string, RadarFrame>());
   const cacheKey = `${window}:${scope}:${venueFilter}`;
-  const projectionStatus = assetFlowQuery.data?.data?.projection?.status ?? null;
+  const responseData = assetFlowQuery.data?.data;
+  const responseIdentityMatches = radarResponseMatchesIdentity(responseData, {
+    scope,
+    venue: venueFilter,
+    window,
+  });
+  const projectionStatus = responseIdentityMatches
+    ? (responseData?.projection?.status ?? null)
+    : null;
   const projectionPending = projectionStatus === "pending";
   const parsed = useMemo(
-    () => parseTokenRadarItems(assetFlowQuery.data?.data, window, scope),
-    [assetFlowQuery.data?.data, scope, window],
+    () => parseTokenRadarItems(responseData, window, scope),
+    [responseData, scope, window],
   );
   const currentFrame = useMemo(
     () => ({
       rawTokenItems: parsed.items,
+      responseIdentityMatches,
+      sourceMaxReceivedAtMs: responseIdentityMatches
+        ? positiveTimestamp(responseData?.projection?.source_max_received_at_ms)
+        : null,
       tokenItems: parsed.items,
     }),
-    [parsed.items],
+    [parsed.items, responseData?.projection?.source_max_received_at_ms, responseIdentityMatches],
   );
   const cachedFrame = lastReadyFrames.current.get(cacheKey);
+  const queryError = assetFlowQuery.error instanceof Error ? assetFlowQuery.error : null;
+  const hasRefreshError = Boolean(queryError || parsed.error);
+  const projectionDegraded =
+    projectionStatus === "stale" ||
+    projectionStatus === "pending" ||
+    projectionStatus === "failed";
   const shouldUseCachedFrame =
-    !parsed.error &&
     Boolean(cachedFrame) &&
-    (projectionPending ||
+    (!responseIdentityMatches ||
+      hasRefreshError ||
+      projectionDegraded ||
       (assetFlowQuery.isFetching &&
         currentFrame.tokenItems.length === 0 &&
         !assetFlowQuery.isPending));
   const displayedFrame = shouldUseCachedFrame && cachedFrame ? cachedFrame : currentFrame;
   const rawTokenItems = displayedFrame.rawTokenItems;
   const tokenItems = displayedFrame.tokenItems;
+  const hasUsableRows =
+    displayedFrame.responseIdentityMatches && displayedFrame.tokenItems.length > 0;
   const marketTargets = useMemo(
     () =>
       rawTokenItems.flatMap((item) => {
@@ -67,25 +94,48 @@ export function useLiveRadarRouteData({
     [rawTokenItems],
   );
   const decisionCounts = useMemo(() => countDecisions(tokenItems), [tokenItems]);
-  const assetFlowError =
-    assetFlowQuery.error instanceof Error
-      ? assetFlowQuery.error
-      : parsed.error instanceof Error
-        ? parsed.error
-        : null;
+  const projectionError =
+    responseIdentityMatches &&
+    !hasUsableRows &&
+    (projectionStatus === "failed" || projectionStatus === "stale")
+      ? new Error(
+          responseData?.projection?.error ??
+            responseData?.projection?.reason ??
+            "Token Radar projection is unavailable.",
+        )
+      : null;
+  const assetFlowError = hasUsableRows ? null : (queryError ?? parsed.error ?? projectionError);
   const isAssetFlowLoading =
     !assetFlowError &&
     tokenItems.length === 0 &&
-    (assetFlowQuery.isPending || assetFlowQuery.fetchStatus === "fetching" || projectionPending);
+    (assetFlowQuery.isPending ||
+      assetFlowQuery.fetchStatus === "fetching" ||
+      projectionPending ||
+      !responseIdentityMatches);
   const isAssetFlowRefreshing =
-    !assetFlowError && tokenItems.length > 0 && (assetFlowQuery.isFetching || projectionPending);
+    !assetFlowError &&
+    hasUsableRows &&
+    (assetFlowQuery.isFetching || projectionPending || projectionStatus === "stale");
+  const radarStatus: RadarStatusInput = {
+    hasRefreshError,
+    hasUsableRows,
+    lastSuccessfulHttpAtMs: assetFlowQuery.lastSuccessfulHttpAtMs,
+    projectionStatus,
+    responseIdentityMatches: displayedFrame.responseIdentityMatches,
+    sourceMaxReceivedAtMs: displayedFrame.sourceMaxReceivedAtMs,
+  };
 
   useEffect(() => {
-    if (parsed.error || projectionPending || currentFrame.tokenItems.length === 0) {
+    if (
+      parsed.error ||
+      !responseIdentityMatches ||
+      projectionStatus !== "fresh" ||
+      currentFrame.tokenItems.length === 0
+    ) {
       return;
     }
     lastReadyFrames.current.set(cacheKey, currentFrame);
-  }, [cacheKey, currentFrame, parsed.error, projectionPending]);
+  }, [cacheKey, currentFrame, parsed.error, projectionStatus, responseIdentityMatches]);
 
   return {
     assetFlowError,
@@ -94,10 +144,15 @@ export function useLiveRadarRouteData({
     isAssetFlowRefreshing,
     marketTargets,
     projectionStatus,
+    radarStatus,
     setVenueFilter,
     tokenItems,
     venueFilter,
   };
+}
+
+function positiveTimestamp(value: number | null | undefined): number | null {
+  return typeof value === "number" && Number.isFinite(value) && value > 0 ? value : null;
 }
 
 function parseTokenRadarItems(

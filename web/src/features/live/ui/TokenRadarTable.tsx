@@ -29,7 +29,10 @@ import {
 } from "lucide-react";
 import { Fragment, useMemo, useState, type KeyboardEvent } from "react";
 
+import type { RadarStatusInput } from "../model/radarContentStatus";
 import { tokenRadarDetailHref } from "../model/tokenRadarDetailLink";
+
+import { RadarContentStatus } from "./RadarContentStatus";
 import "./TokenRadarTable.css";
 
 type TokenRadarTableProps = {
@@ -40,6 +43,7 @@ type TokenRadarTableProps = {
   isLoading: boolean;
   isRefreshing?: boolean;
   error?: Error | null;
+  radarStatus?: RadarStatusInput;
   onSelect?: (item: TokenFlowItem) => void;
   onScopeChange: (scope: ScopeKey) => void;
   onVenueChange?: (venue: TokenRadarVenueFilter) => void;
@@ -56,6 +60,7 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
     isLoading,
     isRefreshing = false,
     error,
+    radarStatus,
     onSelect,
     onScopeChange,
     onVenueChange = () => undefined,
@@ -90,9 +95,12 @@ export function TokenRadarTable(props: TokenRadarTableProps) {
   return (
     <section className="radar-panel" aria-label="Token Radar">
       <header className="radar-toolbar">
-        <div className="radar-scan-title">
-          <h2>Token Radar</h2>
-          <span>{resultLabel}</span>
+        <div className="radar-toolbar-primary">
+          <div className="radar-scan-title">
+            <h2>Token Radar</h2>
+            <span>{resultLabel}</span>
+          </div>
+          {radarStatus ? <RadarContentStatus status={radarStatus} /> : null}
         </div>
         <div className="toolbar-controls" aria-label="token radar scan controls">
           <VenueFilter value={venueFilter} onChange={onVenueChange} />

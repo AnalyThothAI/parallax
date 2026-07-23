@@ -6,12 +6,11 @@ import "./CompactPanel.css";
 type CompactPanelProps = {
   children: ReactNode;
   className?: string;
-  mobileTaskPanel?: "tape";
 };
 
-export function CompactPanel({ children, className, mobileTaskPanel }: CompactPanelProps) {
+export function CompactPanel({ children, className }: CompactPanelProps) {
   return (
-    <section className={clsx("compact-panel", className)} data-mobile-task-panel={mobileTaskPanel}>
+    <section className={clsx("compact-panel", className)}>
       {children}
     </section>
   );

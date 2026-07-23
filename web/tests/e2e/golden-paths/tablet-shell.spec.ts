@@ -13,7 +13,8 @@ test("tablet shell keeps top-level route navigation in the sidebar drawer", asyn
   await installMockApi(page);
   await page.goto("/");
 
-  await expect(page.locator(".live-task-nav")).toBeHidden();
+  await expect(page.locator(".live-task-nav")).toHaveCount(0);
+  await expect(page.getByTestId("radar-content-status")).toBeVisible();
 
   const sidebarTrigger = page.getByRole("button", { name: "Toggle Sidebar" });
   await expect(sidebarTrigger).toBeVisible();

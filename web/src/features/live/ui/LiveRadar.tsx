@@ -1,6 +1,8 @@
 import type { ScopeKey, TokenFlowItem, WindowKey } from "@lib/types";
 import type { TokenRadarVenueFilter } from "@lib/venue";
 
+import type { RadarStatusInput } from "../model/radarContentStatus";
+
 import { TokenRadarTable } from "./TokenRadarTable";
 import "./live.css";
 
@@ -9,6 +11,7 @@ type LiveRadarProps = {
   isAssetFlowLoading: boolean;
   isAssetFlowRefreshing?: boolean;
   assetFlowError: Error | null;
+  radarStatus: RadarStatusInput;
   selectedTokenKey: string | null;
   onSelectToken: (item: TokenFlowItem) => void;
   scope: ScopeKey;
@@ -24,6 +27,7 @@ export function LiveRadar({
   isAssetFlowLoading,
   isAssetFlowRefreshing = false,
   assetFlowError,
+  radarStatus,
   selectedTokenKey,
   onSelectToken,
   scope,
@@ -34,12 +38,13 @@ export function LiveRadar({
   venueFilter,
 }: LiveRadarProps) {
   return (
-    <section className="mobile-task-surface" data-mobile-task-panel="radar">
+    <section className="live-radar-surface">
       <TokenRadarTable
         error={assetFlowError}
         isLoading={isAssetFlowLoading}
         isRefreshing={isAssetFlowRefreshing}
         items={tokenItems}
+        radarStatus={radarStatus}
         scope={scope}
         selectedKey={selectedTokenKey}
         windowKey={windowKey}

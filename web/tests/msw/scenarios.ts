@@ -2,7 +2,6 @@ import {
   appStatusFixture,
   notificationSummaryFixture,
   notificationFixture,
-  recentReplayFixture,
   searchInspectFixture,
   targetSocialTimelineFixture,
   tokenRadarFixture,
@@ -23,7 +22,6 @@ export function mockLiveRadarRoute(apiMock: ApiMock) {
     if (path === "/api/notifications") {
       return ok({ items: [], summary });
     }
-    if (path === "/api/recent") return ok(recentReplayFixture());
     if (path === "/api/token-radar") return ok(tokenRadarFixture());
     if (path === "/api/stocks-radar") return ok(stocksRadarFixture());
     if (path === "/api/news") return ok(newsRowsFixture());
@@ -52,7 +50,6 @@ export function mockNotificationRoute(apiMock: ApiMock) {
       return ok(appStatusFixture());
     }
     if (path === "/api/notifications") return ok({ items: [notification], summary });
-    if (path === "/api/recent") return ok(recentReplayFixture());
     if (path === "/api/token-radar") return ok(tokenRadarFixture());
     if (path === "/api/stocks-radar") return ok(stocksRadarFixture());
     if (path === "/api/news") return ok(newsRowsFixture());

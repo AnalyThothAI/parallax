@@ -1,5 +1,5 @@
 import { websocketUrl } from "@lib/api/client";
-import type { LiveMarketUpdatePayload, LivePayload, NotificationLivePayload } from "@lib/types";
+import type { LiveMarketUpdatePayload, NotificationLivePayload } from "@lib/types";
 import {
   patchTokenCaseLiveMarketUpdate,
   patchTokenRadarLiveMarketUpdate,
@@ -15,7 +15,6 @@ import type { MarketTargetRef, NormalizedMarketTarget, SocketSnapshot } from "./
 type IntelSocketProviderProps = {
   token: string;
   handles: string;
-  replay: number;
   notifications?: boolean;
   children: ReactNode;
 };
@@ -23,7 +22,6 @@ type IntelSocketProviderProps = {
 export function IntelSocketProvider({
   token,
   handles,
-  replay,
   notifications = false,
   children,
 }: IntelSocketProviderProps) {
@@ -36,7 +34,6 @@ export function IntelSocketProvider({
     handlesKey: "[]",
     marketTargetKey: "[]",
     notifications: false,
-    replay: 0,
   });
   const handlesKey = useMemo(() => JSON.stringify(normalizeHandles(handles)), [handles]);
   const marketTargets = useMemo(
@@ -45,10 +42,10 @@ export function IntelSocketProvider({
   );
   const marketTargetKey = useMemo(() => JSON.stringify(marketTargets), [marketTargets]);
   const subscriptionKey = useMemo(
-    () => JSON.stringify({ handlesKey, marketTargetKey, notifications, replay }),
-    [handlesKey, marketTargetKey, notifications, replay],
+    () => JSON.stringify({ handlesKey, marketTargetKey, notifications }),
+    [handlesKey, marketTargetKey, notifications],
   );
-  subscribeRef.current = { handlesKey, marketTargetKey, notifications, replay };
+  subscribeRef.current = { handlesKey, marketTargetKey, notifications };
 
   const sendSubscribe = useCallback(() => {
     const socket = socketRef.current;
@@ -62,7 +59,7 @@ export function IntelSocketProvider({
         handles: JSON.parse(subscription.handlesKey) as string[],
         notifications: subscription.notifications,
         market_targets: JSON.parse(subscription.marketTargetKey) as NormalizedMarketTarget[],
-        replay: subscription.replay,
+        replay: 0,
       }),
     );
   }, []);
@@ -95,18 +92,11 @@ export function IntelSocketProvider({
 
     ws.addEventListener("message", (message) => {
       setSnapshot((current) => ({ ...current, lastMessageAt: Date.now() }));
-      const payload = JSON.parse(String(message.data)) as { type?: string } | LivePayload;
+      const payload = JSON.parse(String(message.data)) as { type?: string };
       if (payload.type === "ready") {
         readyRef.current = true;
         setSnapshot((current) => ({ ...current, status: "connected" }));
         sendSubscribe();
-        return;
-      }
-      if (payload.type === "event") {
-        setSnapshot((current) => ({
-          ...current,
-          eventItems: [payload as LivePayload, ...current.eventItems].slice(0, 100),
-        }));
         return;
       }
       if (payload.type === "notification") {

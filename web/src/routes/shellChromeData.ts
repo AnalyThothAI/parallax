@@ -16,7 +16,6 @@ import { useLocation, useNavigate } from "react-router-dom";
 
 export type ShellRouteContext = {
   configuredWatchlistHandles: string[];
-  liveRouteHandles: string;
   onMarkHandleRead: (handle: string) => void;
   scope: ScopeKey;
   token: string;
@@ -52,7 +51,6 @@ export function useShellChromeData(session: AppSession): ShellChromeData {
   const configuredWatchlistHandles = bootstrapHandles;
   const routeContext: ShellRouteContext = {
     configuredWatchlistHandles,
-    liveRouteHandles: liveRoute.handles,
     onMarkHandleRead: notificationsController.markAuthorRead,
     scope,
     token,

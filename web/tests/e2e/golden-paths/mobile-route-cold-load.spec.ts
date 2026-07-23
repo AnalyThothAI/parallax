@@ -179,7 +179,7 @@ for (const routeCase of routeCases) {
     await routeCase.primary(page);
     await expect(page.getByRole("button", { name: "Toggle Sidebar" })).toBeVisible();
     await expect(page.getByRole("navigation", { name: "Primary navigation" })).toBeHidden();
-    await expect(page.locator(".live-task-nav")).toBeHidden();
+    await expect(page.locator(".live-task-nav")).toHaveCount(0);
 
     await routeCase.specific(page);
     await expectNoDocumentHorizontalOverflow(page);

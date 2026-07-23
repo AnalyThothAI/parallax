@@ -5,7 +5,6 @@ import type { TokenCaseScope } from "@shared/model/tokenCaseViewModel";
 export const queryKeys = {
   bootstrap: () => ["bootstrap"] as const,
   status: () => ["status"] as const,
-  liveRecent: (scope: ScopeKey, handles: string) => ["recent", scope, handles] as const,
   tokenRadarRoot: () => ["token-radar"] as const,
   tokenRadar: (window: WindowKey, scope: ScopeKey, venue: TokenRadarVenueFilter, limit: number) =>
     ["token-radar", window, scope, venue, limit] as const,

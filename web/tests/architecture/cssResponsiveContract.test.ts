@@ -23,91 +23,60 @@ const oversizedSideEffectCss = new Set<string>();
 const unlayeredSideEffectCss = new Set(["styles/tailwind.css"]);
 
 describe("responsive CSS contract", () => {
-  it("keeps live task navigation out of cockpit shell CSS", () => {
-    const shellCss = cockpitShellCssUnits()
-      .map((path) => {
-        const relativePath = relativeToWeb(path);
-        const contents = readFileSync(path, "utf8");
-
-        return `\n/* @source ${relativePath} */\n${contents}`;
-      })
-      .join("\n");
+  it("removes retired Live task-navigation selectors from the frontend", () => {
     const forbiddenFragments = [
       ".live-task-nav",
       ".mobile-task-nav",
       ".mobile-task-radar",
       ".mobile-task-tape",
+      ".mobile-task-surface",
       "[data-mobile-task-panel",
     ];
-    const offenders = findRules(shellCss).flatMap((rule) =>
-      forbiddenFragments
-        .filter((fragment) => rule.selector.includes(fragment))
-        .map(
-          (fragment) =>
-            `${sourceMarkerBefore(shellCss, rule.start)}:${lineNumberWithinSourceMarker(
-              shellCss,
-              rule.start,
-            )} owns live task fragment ${fragment} via ${compactSelector(rule.selector)}`,
-        ),
-    );
+    const offenders = collectFiles(srcRoot)
+      .filter((path) => [".css", ".ts", ".tsx"].includes(extname(path)))
+      .flatMap((path) => {
+        const source = readFileSync(path, "utf8");
+        return forbiddenFragments
+          .filter((fragment) => source.includes(fragment))
+          .map((fragment) => `${relativeToWeb(path)} retains ${fragment}`);
+      });
 
     expect(offenders).toEqual([]);
   });
 
-  it("keeps live mobile task visibility owned by live.css", () => {
+  it("keeps LivePage and Radar as one bounded full-height scroll surface", () => {
     const liveCssPath = join(srcRoot, "features/live/ui/live.css");
     const liveCss = readFileSync(liveCssPath, "utf8");
-    const lastMobileGrid = findMobileMediaBlocks(liveCss).reduce((lastIndex, block) => {
-      const matchingRule = [...findRules(block.body)]
-        .reverse()
-        .find(
-          (rule) =>
-            selectorContains(rule.selector, ".live-task-nav") &&
-            declarationValue(rule.body, "display") === "grid",
-        );
-
-      return matchingRule ? Math.max(lastIndex, block.start + matchingRule.start) : lastIndex;
-    }, -1);
-
-    expect(
-      lastMobileGrid,
-      "live.css must include a mobile .live-task-nav display:grid rule",
-    ).not.toBe(-1);
-  });
-
-  it("keeps mobile LivePage from using overlay navigation or the desktop two-row grid", () => {
-    const liveCssPath = join(srcRoot, "features/live/ui/live.css");
-    const liveCss = readFileSync(liveCssPath, "utf8");
-    const mobileBlocks = findMobileMediaBlocks(liveCss);
-    const livePageMobileRules = mobileBlocks.flatMap((block) =>
-      findRules(block.body).filter((rule) => selectorContains(rule.selector, ".live-page")),
+    const rules = findRules(liveCss);
+    const livePageRules = rules.filter((rule) => selectorContains(rule.selector, ".live-page"));
+    const radarPanelRules = rules.filter((rule) =>
+      selectorContains(rule.selector, ".radar-panel"),
     );
-    const radarPanelMobileRules = mobileBlocks.flatMap((block) =>
-      findRules(block.body).filter((rule) => selectorContains(rule.selector, ".radar-panel")),
-    );
-    const liveTaskNavMobileRules = mobileBlocks.flatMap((block) =>
-      findRules(block.body).filter((rule) => selectorContains(rule.selector, ".live-task-nav")),
+    const radarToolbarRules = rules.filter((rule) =>
+      selectorContains(rule.selector, ".radar-toolbar"),
     );
 
     expect(
-      livePageMobileRules.some(
+      livePageRules.some(
         (rule) =>
-          declarationValue(rule.body, "grid-template-rows") === "minmax(0, 1fr) auto" &&
+          declarationValue(rule.body, "grid-template-rows") === "minmax(0, 1fr)" &&
           declarationValue(rule.body, "overflow") === "hidden",
       ),
-      "mobile .live-page must replace the desktop two-row grid with content + task-nav rows",
+      ".live-page must reserve exactly one full-height Radar row",
     ).toBe(true);
     expect(
-      radarPanelMobileRules.some(
+      radarPanelRules.some(
         (rule) =>
           declarationValue(rule.body, "grid-template-rows") === "auto minmax(0, 1fr)" &&
           declarationValue(rule.body, "overflow") === "hidden",
       ),
-      "mobile .radar-panel must bound the token row scroller above the Live task nav",
+      ".radar-panel must bound its header and token-row scroller",
     ).toBe(true);
     expect(
-      liveTaskNavMobileRules.some((rule) => declarationValue(rule.body, "position") === "static"),
-      "mobile .live-task-nav must be a real LivePage layout row instead of a fixed overlay",
+      radarToolbarRules.some(
+        (rule) => declarationValue(rule.body, "grid-template-rows") === "auto auto",
+      ),
+      ".radar-toolbar must keep status/title above route controls",
     ).toBe(true);
   });
 
@@ -140,33 +109,6 @@ describe("responsive CSS contract", () => {
             .map(
               (selector) =>
                 `${relativeToWeb(path)}:${lineNumber(css, rule.start)} owns ${selector} via ${compactSelector(
-                  rule.selector,
-                )}`,
-            ),
-        );
-      });
-
-    expect(offenders).toEqual([]);
-  });
-
-  it("keeps live task panel visibility hooks in live CSS only", () => {
-    const forbiddenFragments = [
-      "[data-mobile-task-panel",
-      ".mobile-task-radar",
-      ".mobile-task-tape",
-    ];
-    const offenders = collectFiles(join(srcRoot, "features"))
-      .filter(isCssFile)
-      .filter((path) => relativeToSrc(path) !== "features/live/ui/live.css")
-      .flatMap((path) => {
-        const css = readFileSync(path, "utf8");
-
-        return findRules(css).flatMap((rule) =>
-          forbiddenFragments
-            .filter((fragment) => rule.selector.includes(fragment))
-            .map(
-              (fragment) =>
-                `${relativeToWeb(path)}:${lineNumber(css, rule.start)} owns ${fragment} via ${compactSelector(
                   rule.selector,
                 )}`,
             ),
@@ -511,43 +453,6 @@ function findRules(css: string): CssRule[] {
   return rules;
 }
 
-function findMobileMediaBlocks(css: string): Array<{ body: string; start: number }> {
-  const blocks: Array<{ body: string; start: number }> = [];
-  const mediaPattern =
-    /@media\s+[^{]*(?:\(\s*max-width:\s*767px\s*\)|\(\s*width\s*<=\s*767px\s*\))[^{]*\{/g;
-  let match: RegExpExecArray | null;
-
-  while ((match = mediaPattern.exec(css)) !== null) {
-    const bodyStart = mediaPattern.lastIndex;
-    const bodyEnd = findMatchingBrace(css, bodyStart - 1);
-
-    if (bodyEnd !== -1) {
-      blocks.push({ body: css.slice(bodyStart, bodyEnd), start: match.index });
-      mediaPattern.lastIndex = bodyEnd + 1;
-    }
-  }
-
-  return blocks;
-}
-
-function findMatchingBrace(input: string, openBraceIndex: number): number {
-  let depth = 0;
-
-  for (let index = openBraceIndex; index < input.length; index += 1) {
-    if (input[index] === "{") {
-      depth += 1;
-    } else if (input[index] === "}") {
-      depth -= 1;
-
-      if (depth === 0) {
-        return index;
-      }
-    }
-  }
-
-  return -1;
-}
-
 function selectorContains(selectorList: string, classSelector: string): boolean {
   const className = classSelector.slice(1).replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
   return new RegExp(`(^|[^a-zA-Z0-9_-])\\.${className}(?![a-zA-Z0-9_-])`).test(selectorList);
@@ -564,22 +469,6 @@ function compactSelector(selector: string): string {
 
 function lineNumber(input: string, index: number): number {
   return input.slice(0, index).split(/\r?\n/).length;
-}
-
-function sourceMarkerBefore(input: string, index: number): string {
-  const markerMatches = [...input.slice(0, index).matchAll(/\/\* @source ([^*]+) \*\//g)];
-  return markerMatches.at(-1)?.[1] ?? "unknown.css";
-}
-
-function lineNumberWithinSourceMarker(input: string, index: number): number {
-  const markerMatches = [...input.slice(0, index).matchAll(/\/\* @source [^*]+ \*\//g)];
-  const marker = markerMatches.at(-1);
-
-  if (!marker) {
-    return lineNumber(input, index);
-  }
-
-  return lineNumber(input.slice(marker.index ?? 0, index), index - (marker.index ?? 0)) - 1;
 }
 
 function isViewportSpecAllowed(path: string, contents: string): boolean {

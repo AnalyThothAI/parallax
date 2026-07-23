@@ -46,7 +46,6 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
       });
     }
     if (path === "/api/status") return fulfill(route, statusData());
-    if (path === "/api/recent") return fulfill(route, recentData());
     if (path === "/api/token-radar") return fulfill(route, tokenRadarData(url));
     if (path === "/api/token-case") return fulfill(route, tokenCaseData(url));
     if (path.startsWith("/api/token-images/")) return fulfillTokenImage(route);
@@ -201,49 +200,6 @@ function notificationSummary() {
     critical_unread_count: 0,
     highest_unread_severity: "high",
     account_unread_counts: { toly: 1 },
-  };
-}
-
-function recentData() {
-  return { scope: "all", events: [], items: [liveEvent()] };
-}
-
-function liveEvent() {
-  return {
-    type: "event",
-    event: {
-      event_id: "event-upeg-1",
-      canonical_url: "https://x.com/traderpow/status/1",
-      author_handle: "traderpow",
-      received_at_ms: NOW,
-      text_clean: "$UPEG watched account evidence",
-      cashtags: ["UPEG"],
-      is_watched: 1,
-    },
-    entities: [{ entity_type: "symbol", normalized_value: "UPEG", received_at_ms: NOW }],
-    token_intents: [
-      {
-        intent_id: `intent:${TARGET_ID}`,
-        event_id: "event-upeg-1",
-        display_symbol: "UPEG",
-        chain_hint: "eth",
-        address_hint: ADDRESS,
-        intent_status: "active",
-        intent_confidence: 1,
-      },
-    ],
-    token_resolutions: [
-      {
-        resolution_id: `resolution:${TARGET_ID}`,
-        intent_id: `intent:${TARGET_ID}`,
-        event_id: "event-upeg-1",
-        target_type: "Asset",
-        target_id: TARGET_ID,
-        resolution_status: "EXACT",
-        reason_codes_json: ["CHAIN_ADDRESS_EXACT"],
-      },
-    ],
-    alerts: [],
   };
 }
 

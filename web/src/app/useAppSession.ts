@@ -23,12 +23,10 @@ export function useAppSession() {
       bootstrapError: bootstrapQuery.isError,
       bootstrapHandles: bootstrapQuery.data?.data.handles ?? [],
       bootstrapLoading: bootstrapQuery.isPending,
-      replayLimit: Math.min(25, bootstrapQuery.data?.data.replay_limit ?? 25),
       token,
     }),
     [
       bootstrapQuery.data?.data.handles,
-      bootstrapQuery.data?.data.replay_limit,
       bootstrapQuery.isError,
       bootstrapQuery.isPending,
       token,

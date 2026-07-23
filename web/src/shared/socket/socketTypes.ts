@@ -1,4 +1,4 @@
-import type { LivePayload, NotificationLivePayload } from "@lib/types";
+import type { NotificationLivePayload } from "@lib/types";
 
 export type SocketStatus =
   | "idle"
@@ -20,7 +20,6 @@ export type NormalizedMarketTarget = {
 
 export type SocketSnapshot = {
   status: SocketStatus;
-  eventItems: LivePayload[];
   notificationItems: NotificationLivePayload[];
   lastMessageAt: number | null;
 };
