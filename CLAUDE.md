@@ -10,6 +10,20 @@ Claude-specific router. Mirrors `AGENTS.md` for the routing table and adds the C
 
 The pipeline is Kappa/CQRS: PostgreSQL material facts (`events`, `token_intents`, `token_intent_resolutions`, `asset_identity_*`, `market_ticks`, `enriched_events`, `news_items`, `macro_observations`) are the only business truth. Derived read models (`token_radar_current_rows`, `token_profile_current`, `market_tick_current`, `news_page_rows`, `macro_view_snapshots`) each have exactly one runtime writer and are rebuildable. Current read models use stable product/window keys, never run/generation/attempt/timestamp/UUID identity; unchanged projections write zero serving rows. Macro publishes one stable current snapshot containing exactly six typed evidence-page documents. News, Search, Token Radar, and Token Case expose source facts and transparent deterministic factors without a model-derived product layer. Workers recover exclusively by re-reading PostgreSQL on bounded `interval_seconds` catch-up; there is no database wake plane. Provider raw frames are inputs, not facts.
 
+## Agent skills
+
+### Issue tracker
+
+GitHub Issues in `AnalyThothAI/parallax` are the project request and PRD tracker. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Use the canonical label mapping in `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+This is a single-context repository. Follow `docs/agents/domain.md` before domain exploration; absent optional context or ADR files are not errors.
+
 ## Runtime config for real data
 
 Live-data runs use the operator-owned files in `~/.parallax/`: `config.yaml` for application/provider/credential/storage settings and `workers.yaml` for worker runtime knobs. Do not assume repository fixtures, example YAML, or `.env` files are the active runtime config. Before debugging provider data, Token Radar rows, asset profiles, or missing icons against real data, run `uv run parallax config` and confirm the reported `config_path` / `workers_config_path` point at `~/.parallax/`. Never print or copy secret values; report only redacted booleans, paths, and diagnostic command results.
