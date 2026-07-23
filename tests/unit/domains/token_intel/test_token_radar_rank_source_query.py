@@ -129,11 +129,11 @@ def test_rank_source_query_populates_edges_for_repair_targets() -> None:
     assert "stale_edges.event_received_at_ms >= %s" in conn.sql
     assert '"window"' not in conn.sql
     assert conn.params[1:] == (
-        "token-radar-v13-social-attention",
+        "token-radar-v14-transparent-factors",
         4,
         TOKEN_RADAR_RESOLVER_POLICY_VERSION,
         2,
-        "token-radar-v13-social-attention",
+        "token-radar-v14-transparent-factors",
         2,
     )
     assert conn.commit_count == 0
@@ -236,7 +236,7 @@ def test_rank_source_query_prunes_edges_by_projection_and_cutoff() -> None:
     conn = FakeConn(rowcount=5)
 
     deleted = TokenRadarRankSourceQuery(conn).prune_edges(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         event_received_before_ms=1_777_800_000_000,
         limit=11,
     )
@@ -247,7 +247,7 @@ def test_rank_source_query_prunes_edges_by_projection_and_cutoff() -> None:
     assert "AND scope = %s" not in conn.sql
     assert "AND event_received_at_ms < %s" in conn.sql
     assert "LIMIT %s" in conn.sql
-    assert conn.params == ("token-radar-v13-social-attention", 1_777_800_000_000, 11)
+    assert conn.params == ("token-radar-v14-transparent-factors", 1_777_800_000_000, 11)
     assert conn.commit_count == 0
 
 
@@ -257,7 +257,7 @@ def test_rank_source_query_prune_edges_rejects_malformed_limit_before_sql(limit:
 
     with pytest.raises(ValueError, match="token_radar_rank_source_prune_limit_required"):
         TokenRadarRankSourceQuery(conn).prune_edges(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             event_received_before_ms=1_777_800_000_000,
             limit=limit,  # type: ignore[arg-type]
         )
@@ -280,7 +280,7 @@ def test_rank_source_query_prune_edges_requires_cursor_rowcount() -> None:
 
     with pytest.raises(TypeError, match="token_radar_rank_source_rowcount_invalid"):
         TokenRadarRankSourceQuery(conn).prune_edges(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             event_received_before_ms=1_777_800_000_000,
             limit=11,
         )
@@ -292,7 +292,7 @@ def test_rank_source_query_prune_edges_rejects_invalid_cursor_rowcount(rowcount:
 
     with pytest.raises(TypeError, match="token_radar_rank_source_rowcount_invalid"):
         TokenRadarRankSourceQuery(conn).prune_edges(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             event_received_before_ms=1_777_800_000_000,
             limit=11,
         )
@@ -364,14 +364,14 @@ def test_rank_source_repository_populates_and_prunes_edges() -> None:
         analysis_since_ms=2,
     )
     deleted = TokenRadarRankSourceRepository(conn).prune_edges(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         event_received_before_ms=1_777_000_000_000,
         limit=13,
     )
 
     assert changed == 1
     assert deleted == 4
-    assert conn.params == ("token-radar-v13-social-attention", 1_777_000_000_000, 13)
+    assert conn.params == ("token-radar-v14-transparent-factors", 1_777_000_000_000, 13)
 
 
 def test_rank_source_repository_mutations_require_connection_transaction_before_sql_when_committing() -> None:
@@ -382,7 +382,7 @@ def test_rank_source_repository_mutations_require_connection_transaction_before_
             analysis_since_ms=2,
         ),
         lambda repo: repo.prune_edges(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             event_received_before_ms=1_777_000_000_000,
             limit=10,
         ),
@@ -413,7 +413,7 @@ def test_rank_source_repository_mutations_share_caller_owned_transaction() -> No
             analysis_since_ms=2,
         )
         pruned = repo.prune_edges(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             event_received_before_ms=1_777_000_000_000,
             limit=10,
         )

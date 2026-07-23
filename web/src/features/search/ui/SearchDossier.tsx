@@ -19,14 +19,7 @@ export function SearchDossier({ view }: { view: SearchCaseView }) {
       />
       <ObsidianSection title="Case file">
         <ObsidianFieldGrid
-          fields={[
-            view.official,
-            view.community,
-            view.narrative,
-            view.market,
-            view.resolver,
-            view.evidence,
-          ]}
+          fields={[view.official, view.community, view.market, view.resolver, view.evidence]}
         />
       </ObsidianSection>
     </ObsidianCase>

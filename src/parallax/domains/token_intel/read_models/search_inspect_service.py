@@ -4,7 +4,6 @@ from typing import Any
 
 from parallax.platform.validation import require_positive_int
 
-from .search_agent_brief import build_topic_agent_brief
 from .search_service import SearchService
 from .token_case_service import TokenCaseService
 
@@ -14,15 +13,15 @@ class SearchInspectService:
         self,
         *,
         search_query: Any,
-        token_radar: Any,
         targets: Any,
         profiles: Any,
+        token_radar: Any,
         market_candles: Any | None = None,
     ) -> None:
         self.search_query = search_query
-        self.token_radar = token_radar
         self.targets = targets
         self.profiles = profiles
+        self.token_radar = token_radar
         self.market_candles = market_candles
 
     def inspect(
@@ -57,7 +56,6 @@ class SearchInspectService:
                 "result_kind": result_kind,
             },
             "resolver": {
-                "confidence": _resolver_confidence(result_kind),
                 "target_candidates": candidates,
                 "selected_target": selected,
                 "reasons": _resolver_reasons(result_kind=result_kind, candidates=candidates),
@@ -83,7 +81,6 @@ class SearchInspectService:
                 "candidates": candidates,
                 "summary": topic_result["summary"],
                 "items": topic_result["items"],
-                "agent_brief": topic_result["agent_brief"],
             }
             return payload
         payload["topic_result"] = topic_result
@@ -101,9 +98,9 @@ class SearchInspectService:
         target_type = str(selected["target_type"])
         target_id = str(selected["target_id"])
         return TokenCaseService(
-            token_radar=self.token_radar,
             targets=self.targets,
             profiles=self.profiles,
+            token_radar=self.token_radar,
             market_candles=self.market_candles,
         ).dossier(
             target_type=target_type,
@@ -118,7 +115,6 @@ class SearchInspectService:
         return {
             "summary": _topic_summary(items),
             "items": items,
-            "agent_brief": build_topic_agent_brief(query=query, items=items),
         }
 
 
@@ -135,15 +131,6 @@ def _result_kind(
     if candidates:
         return "ambiguous_result"
     return "topic_result"
-
-
-def _resolver_confidence(result_kind: str) -> float:
-    return {
-        "token_result": 0.94,
-        "topic_result": 0.65,
-        "ambiguous_result": 0.42,
-        "empty_result": 0.0,
-    }.get(result_kind, 0.0)
 
 
 def _resolver_reasons(*, result_kind: str, candidates: list[dict[str, Any]]) -> list[str]:

@@ -15,6 +15,7 @@ from parallax.app.surfaces.api.schemas import (
     NotificationSummary,
     ReadinessData,
     SearchData,
+    SearchInspectResolverData,
     StocksRadarData,
     WorkerStatusData,
 )
@@ -59,96 +60,85 @@ def test_openapi_publishes_exact_macro_stocks_notifications_ops_and_worker_contr
             "providers",
             "workers",
             "queues",
-            "agent_execution",
             "domains",
             "suggested_checks",
         },
     )
-    agent_execution_schema = schemas["OpsAgentExecutionData"]
-    assert set(agent_execution_schema["properties"]) == {
-        "status",
-        "policy",
-        "counters",
-        "status_reason",
-        "error",
-    }
-    assert set(agent_execution_schema["required"]) == {"status", "policy", "counters"}
-    assert agent_execution_schema["additionalProperties"] is False
-    assert "OpsAgentExecutionLaneData" not in schemas
-    agent_policy_fields = {
-        "lane",
-        "model",
-        "provider_family",
-        "output_strategy",
-        "schema_enforcement",
-        "max_concurrency",
-        "rpm_limit",
-        "timeout_seconds",
-    }
-    agent_counter_fields = {
-        "in_flight",
-        "provider_running",
-        "circuit_state",
-        "circuit_open_until_ms",
-        "capacity_denied_total",
-        "circuit_open_total",
-        "timeout_total",
-        "last_denied_at_ms",
-        "last_timeout_at_ms",
-        "oldest_in_flight_age_ms",
-    }
-    _assert_exact_required(schemas["OpsAgentExecutionPolicyData"], agent_policy_fields)
-    _assert_exact_required(schemas["OpsAgentExecutionCountersData"], agent_counter_fields)
-    _assert_exact_required(
-        schemas["AgentExecutionStatusData"],
-        agent_policy_fields | agent_counter_fields,
-    )
-    _assert_exact_required(schemas["AgentExecutionUnavailableData"], {"status", "error"})
+    assert not {
+        "OpsAgentExecutionData",
+        "OpsAgentExecutionLaneData",
+        "OpsAgentExecutionPolicyData",
+        "OpsAgentExecutionCountersData",
+        "AgentExecutionStatusData",
+        "AgentExecutionUnavailableData",
+    } & set(schemas)
     _assert_exact_required(
         schemas["OpsQueueData"],
         {"schema_version", "queue_name", "status_filter", "counts_by_status", "summary", "items"},
     )
-    _assert_exact_required(
-        schemas["MacroData"],
-        {
-            "snapshot",
-            "currentness",
-            "panels",
-            "indicators",
-            "triggers",
-            "data_gaps",
-            "source_coverage",
-            "features",
-            "chain",
-            "scenario",
-            "scorecard",
+    macro_common_fields = {
+        "snapshot",
+        "conclusion",
+        "horizon",
+        "drivers",
+        "confirmations",
+        "contradictions",
+        "upgrade_invalidation",
+        "evidence_refs",
+        "freshness",
+        "evidence",
+        "unavailable_evidence",
+        "page_id",
+    }
+    macro_page_fields = {
+        "MacroOverviewData": {"dominant_shock", "official_catalysts"},
+        "MacroCrossAssetData": {
+            "asset_returns",
+            "volatility",
+            "correlations_20",
+            "correlations_60",
+            "divergences",
         },
-    )
-    _assert_exact_required(
-        schemas["MacroCurrentnessData"],
-        {
-            "publication_status",
-            "publication_row_count",
-            "publication_finished_at_ms",
-            "facts_max_observed_at",
-            "projection_lag_days",
-            "projection_behind_facts",
+        "MacroRatesInflationData": {
+            "nominal_curve",
+            "curve_slopes",
+            "real_yields",
+            "breakevens",
+            "term_premium",
+            "policy_funding_corridor",
+            "inflation_releases",
+            "curve_shape",
         },
-    )
-    _assert_exact_required(
-        schemas["MacroModuleChartData"],
-        {
-            "id",
-            "kind",
-            "title",
-            "subtitle",
-            "status",
-            "status_label",
-            "min_points",
-            "missing_concept_keys",
-            "series",
+        "MacroGrowthLaborData": {
+            "growth_leading",
+            "growth_lagging",
+            "labor_leading",
+            "labor_lagging",
+            "growth_metrics",
         },
-    )
+        "MacroLiquidityFundingData": {
+            "central_bank_balance_sheet",
+            "treasury_cash",
+            "reverse_repo",
+            "reserves",
+            "net_liquidity",
+            "secured_funding",
+            "unsecured_funding",
+        },
+        "MacroCreditData": {
+            "aggregate_spreads",
+            "rating_tail",
+            "effective_yields",
+            "credit_supply",
+            "realized_damage",
+            "financial_conditions_liquidity",
+            "treasury_spread_quadrant",
+            "credit_state",
+        },
+    }
+    for schema_name, page_fields in macro_page_fields.items():
+        _assert_exact_required(schemas[schema_name], macro_common_fields | page_fields)
+    assert not {"MacroData", "MacroCurrentnessData", "MacroModuleChartData"} & set(schemas)
     _assert_exact_required(
         schemas["WorkerStatusData"],
         {
@@ -173,7 +163,6 @@ def test_openapi_publishes_exact_macro_stocks_notifications_ops_and_worker_contr
             "snapshot_gate",
             "db",
             "provider_states",
-            "agent_execution",
             "news_provider_contract",
             "workers",
         },
@@ -240,8 +229,16 @@ def test_openapi_publishes_exact_macro_stocks_notifications_ops_and_worker_contr
         {"query", "resolver", "token_result", "topic_result", "ambiguous_result"},
     )
     _assert_exact_required(
+        schemas["SearchInspectResolverData"],
+        {"target_candidates", "selected_target", "reasons"},
+    )
+    _assert_exact_required(
         schemas["TokenCaseData"],
-        {"target", "profile", "timeline", "posts", "narrative_admission", "market_live"},
+        {"target", "profile", "timeline", "posts", "market_live", "current_radar"},
+    )
+    _assert_exact_required(
+        schemas["TokenRadarFactRowData"],
+        {"intent", "radar", "resolution", "quality", "factor_snapshot"},
     )
     _assert_exact_required(
         schemas["TargetPostsData"],
@@ -254,6 +251,10 @@ def test_openapi_publishes_exact_macro_stocks_notifications_ops_and_worker_contr
             "next_cursor",
             "items",
         },
+    )
+    _assert_exact_required(
+        schemas["TargetPostsQueryData"],
+        {"target_type", "target_id", "window", "scope", "range"},
     )
     _assert_exact_required(
         schemas["TargetSocialTimelineData"],
@@ -343,6 +344,16 @@ def test_exact_public_models_fail_closed_on_missing_required_payload() -> None:
                 "query": {},
                 "page": {"returned_count": 0, "has_more": False, "next_cursor": None},
                 "target_candidates": [],
+            }
+        )
+
+    with pytest.raises(ValidationError, match=r"confidence|extra_forbidden"):
+        SearchInspectResolverData.model_validate(
+            {
+                "target_candidates": [],
+                "selected_target": None,
+                "reasons": ["empty_query"],
+                "confidence": 0.0,
             }
         )
 

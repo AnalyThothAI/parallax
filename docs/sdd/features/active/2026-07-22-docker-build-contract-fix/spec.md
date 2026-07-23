@@ -9,7 +9,7 @@
 
 ## Background
 
-The production web build type-checks source and tests before Vite emits assets. The current source imports `WorkerStatusData` through the public type barrel (`web/src/features/cockpit/model/statusCurrentContract.ts:1`), accepts an optional macro payload before a required argument (`web/src/features/macro/model/macroChartModel.ts:162`), and returns an un-narrowed news agent object where the contract requires a string status (`web/src/lib/api/client.ts:251`; `web/src/shared/model/newsIntel.ts:42`). These static contract defects block the Docker build before an image can be created.
+The production web build type-checks source and tests before Vite emits assets. At the fixed pre-repair commit, the source imported `WorkerStatusData` through the public type barrel, accepted an optional macro payload before a required argument, and returned an un-narrowed news agent object where the contract required a string status. The deleted historical inputs remain auditable at [status ownership](https://github.com/AnalyThothAI/parallax/blob/62a1b2acf0326f5595a4a75cfcd681dfb36e954f/web/src/features/cockpit/model/statusCurrentContract.ts#L1), [macro chart model](https://github.com/AnalyThothAI/parallax/blob/62a1b2acf0326f5595a4a75cfcd681dfb36e954f/web/src/features/macro/model/macroChartModel.ts#L162), [API client](https://github.com/AnalyThothAI/parallax/blob/62a1b2acf0326f5595a4a75cfcd681dfb36e954f/web/src/lib/api/client.ts#L251), and [News contract](https://github.com/AnalyThothAI/parallax/blob/62a1b2acf0326f5595a4a75cfcd681dfb36e954f/web/src/shared/model/newsIntel.ts#L42). These static contract defects blocked the Docker build before an image could be created.
 
 ## Problem
 
@@ -33,8 +33,8 @@ The repository's frontend tests and lint pass while the production TypeScript bu
 ## First principles
 
 - One canonical public type export must serve all frontend consumers; no compatibility alias is introduced (`web/src/lib/types/index.ts`).
-- Runtime boundary validators narrow unknown payloads before returning typed models (`web/src/lib/api/client.ts:251`).
-- Test fixtures must satisfy the same current contract as production data (`web/src/shared/model/newsIntel.ts:141`).
+- Runtime boundary validators narrow unknown payloads before returning typed models ([pre-repair API client](https://github.com/AnalyThothAI/parallax/blob/62a1b2acf0326f5595a4a75cfcd681dfb36e954f/web/src/lib/api/client.ts#L251)).
+- Test fixtures must satisfy the same current contract as production data ([pre-repair News contract](https://github.com/AnalyThothAI/parallax/blob/62a1b2acf0326f5595a4a75cfcd681dfb36e954f/web/src/shared/model/newsIntel.ts#L141)).
 
 ## Goals
 

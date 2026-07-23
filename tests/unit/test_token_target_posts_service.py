@@ -31,7 +31,6 @@ def test_target_posts_cursor_keeps_same_millisecond_rows_reachable():
         window="1h",
         scope="all",
         post_range="current_window",
-        sort="recent",
         limit=2,
         cursor=None,
         now_ms=2_000_000,
@@ -42,7 +41,6 @@ def test_target_posts_cursor_keeps_same_millisecond_rows_reachable():
         window="1h",
         scope="all",
         post_range="current_window",
-        sort="recent",
         limit=2,
         cursor=first["next_cursor"],
         now_ms=2_000_000,
@@ -50,6 +48,7 @@ def test_target_posts_cursor_keeps_same_millisecond_rows_reachable():
 
     assert first["query"]["target_type"] == "CexToken"
     assert first["query"]["target_id"] == "cex_token:BTC"
+    assert "sort" not in first["query"]
     assert [item["event_id"] for item in first["items"]] == ["event-3", "event-2"]
     assert isinstance(first["items"][0]["attribution_confidence"], float)
     assert first["items"][0]["stage_id"]
@@ -60,6 +59,8 @@ def test_target_posts_cursor_keeps_same_millisecond_rows_reachable():
     assert first["items"][0]["price"]["status"] == "ready"
     assert first["items"][0]["price"]["price_usd"] == 70_000
     assert first["items"][0]["post_quality"]["score_version"] == "post_quality_v1"
+    assert "catalyst_score" not in first["items"][0]
+    assert "catalyst_components" not in first["items"][0]
     assert first["next_cursor"] == "1000:event-2"
     assert targets.seen_cursors[-1] == (1_000, "event-2")
     assert [item["event_id"] for item in second["items"]] == ["event-1"]
@@ -75,7 +76,6 @@ def test_target_posts_rejects_invalid_scope_before_repository_call():
             window="1h",
             scope="everything",
             post_range="current_window",
-            sort="recent",
             limit=2,
             now_ms=2_000_000,
         )
@@ -93,7 +93,6 @@ def test_target_posts_rejects_invalid_window_before_repository_call():
             window="7d",
             scope="all",
             post_range="current_window",
-            sort="recent",
             limit=2,
             now_ms=2_000_000,
         )
@@ -110,7 +109,6 @@ def test_target_posts_allows_zero_limit_with_empty_page_and_lookahead() -> None:
         window="1h",
         scope="all",
         post_range="current_window",
-        sort="recent",
         limit=0,
         now_ms=2_000_000,
     )
@@ -132,7 +130,6 @@ def test_target_posts_rejects_malformed_limit_before_repository_call(limit: obje
             window="1h",
             scope="all",
             post_range="current_window",
-            sort="recent",
             limit=limit,  # type: ignore[arg-type]
             now_ms=2_000_000,
         )

@@ -27,26 +27,3 @@ def test_telemetry_records_pool_wait_histogram() -> None:
     text = telemetry.render_prometheus_text()
     assert 'gmgn_db_pool_wait_ms_count{pool="worker"} 2.0' in text
     assert 'gmgn_db_pool_wait_ms_count{pool="api"} 1.0' in text
-
-
-def test_telemetry_exposes_agent_execution_metrics() -> None:
-    telemetry = TelemetryRegistry()
-
-    telemetry.increment_agent_execution_in_flight(lane="news.story_brief", stage="news_story_brief")
-    telemetry.decrement_agent_execution_in_flight(lane="news.story_brief", stage="news_story_brief")
-    telemetry.record_agent_execution_backpressure(lane="news.story_brief", reason="capacity_denied")
-    telemetry.record_agent_execution_call(
-        lane="news.story_brief",
-        stage="news_story_brief",
-        model="gpt-test",
-        status="done",
-        seconds=0.25,
-    )
-
-    text = telemetry.render_prometheus_text()
-    assert "gmgn_agent_execution_calls_total" in text
-    assert "gmgn_agent_execution_seconds" in text
-    assert "gmgn_agent_execution_in_flight" in text
-    assert "gmgn_agent_execution_backpressure_total" in text
-    assert 'lane="news.story_brief"' in text
-    assert 'reason="capacity_denied"' in text

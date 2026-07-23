@@ -90,12 +90,6 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         start_priority=91,
     ),
     WorkerManifest(
-        name="news_story_brief",
-        start_priority=94,
-        queue_tables=("news_projection_dirty_targets",),
-        current_read_model_identities=(("news_story_agent_briefs", ("story_brief_key",)),),
-    ),
-    WorkerManifest(
         name="news_page_projection",
         start_priority=95,
         queue_tables=("news_projection_dirty_targets",),
@@ -108,7 +102,7 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         current_read_model_identities=(
             ("macro_observation_series_rows", ("projection_version", "concept_key", "observed_at")),
             ("macro_observation_series_publication_state", ("projection_version",)),
-            ("macro_view_snapshots", ("projection_version",)),
+            ("macro_view_snapshots", ("snapshot_key",)),
         ),
     ),
     WorkerManifest(

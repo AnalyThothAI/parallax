@@ -8,7 +8,7 @@ Claude-specific router. Mirrors `AGENTS.md` for the routing table and adds the C
 
 `Parallax Market Research System`: a single Python service and CLI named `parallax` that ingests social, news, macro, DEX/CEX market, and provider evidence, extracts crypto entities, scores and audits research signals, and serves results over HTTP / WebSocket / CLI to a React operator console. GMGN's anonymous public WebSocket is one source adapter, not the product boundary. One PostgreSQL store. See `docs/ARCHITECTURE.md`.
 
-The pipeline is Kappa/CQRS: PostgreSQL material facts (`events`, `token_intents`, `token_intent_resolutions`, `asset_identity_*`, `market_ticks`, `enriched_events`) are the only business truth. Derived read models (`token_radar_current_rows`, `token_profile_current`, `market_tick_current`, `news_page_rows`, `macro_view_snapshots`) each have exactly one runtime writer and are rebuildable. Current read models must use stable product/window keys, never run/generation/attempt/timestamp/UUID identity; unchanged projections must write zero serving rows. `narrative_admission` is derived inline from a current Radar row and has no separate table or writer. Workers recover exclusively by re-reading PostgreSQL on bounded `interval_seconds` catch-up; there is no database wake plane. Provider raw frames are inputs, not facts.
+The pipeline is Kappa/CQRS: PostgreSQL material facts (`events`, `token_intents`, `token_intent_resolutions`, `asset_identity_*`, `market_ticks`, `enriched_events`, `news_items`, `macro_observations`) are the only business truth. Derived read models (`token_radar_current_rows`, `token_profile_current`, `market_tick_current`, `news_page_rows`, `macro_view_snapshots`) each have exactly one runtime writer and are rebuildable. Current read models use stable product/window keys, never run/generation/attempt/timestamp/UUID identity; unchanged projections write zero serving rows. Macro publishes one stable current snapshot containing exactly six typed evidence-page documents. News, Search, Token Radar, and Token Case expose source facts and transparent deterministic factors without a model-derived product layer. Workers recover exclusively by re-reading PostgreSQL on bounded `interval_seconds` catch-up; there is no database wake plane. Provider raw frames are inputs, not facts.
 
 ## Runtime config for real data
 
@@ -35,8 +35,8 @@ Frontend CSS is harness-constrained, not convention-only. Before changing `web/s
 | Worker flow, lifecycle, state-machine debugging, and review checklist | `docs/WORKER_FLOW.md` |
 | Cross-domain worker inventory, runtime ownership, and worker best practices | `docs/WORKERS.md` |
 | Agent task reading matrix and sub-agent handoffs | `docs/agent-playbook/task-reading-matrix.md` |
-| Product LLM agent execution plane | `docs/AGENT_EXECUTION.md` |
-| Module architecture maps | `src/parallax/domains/<domain>/ARCHITECTURE.md`; discover current maps with `find src/parallax/domains -name ARCHITECTURE.md` |
+| Dormant provider-neutral model execution library | `docs/AGENT_EXECUTION.md` |
+| Domain architecture maps | `src/parallax/domains/<domain>/ARCHITECTURE.md`; discover current maps with `find src/parallax/domains -name ARCHITECTURE.md` |
 | SDD feature workflow | `docs/sdd/` contains current spec→plan→tasks→verification templates and feature records; old planning archives are not canonical truth |
 | External references & papers | `docs/references/` |
 | Auto-generated artefacts | `docs/generated/` |

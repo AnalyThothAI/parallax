@@ -990,7 +990,6 @@ def _project_group(
         target=target,
         attention=features.attention,
         social_quality={**features.quality, **features.propagation},
-        social_semantics=_social_semantics(window_rows),
         market=market,
         timing=features.timing,
         source_event_ids=event_ids,
@@ -1068,53 +1067,6 @@ def _projection_identity_key(row: Mapping[str, Any]) -> tuple[str, str]:
 def _first_discovery_lookup_key(raw_keys: list[Any]) -> str | None:
     keys = _discovery_lookup_keys(raw_keys)
     return keys[0] if keys else None
-
-
-def _social_semantics(window_rows: list[dict[str, Any]]) -> dict[str, Any]:
-    direction_counts: dict[str, int] = {}
-    impact_values: list[float] = []
-    novelty_values: list[float] = []
-    confidence_values: list[float] = []
-
-    for row in window_rows:
-        direction = _semantic_direction(row.get("llm_direction_hint"))
-        if direction:
-            direction_counts[direction] = direction_counts.get(direction, 0) + 1
-        impact = _float_or_none(row.get("llm_impact_hint"))
-        if impact is not None:
-            impact_values.append(impact)
-        novelty = _float_or_none(row.get("llm_semantic_novelty_hint"))
-        if novelty is not None:
-            novelty_values.append(novelty)
-        confidence = _float_or_none(row.get("llm_label_confidence"))
-        if confidence is not None:
-            confidence_values.append(confidence)
-
-    return {
-        "direction_counts": direction_counts,
-        "impact_mean": _mean_or_none(impact_values),
-        "novelty_mean": _mean_or_none(novelty_values),
-        "confidence_mean": _mean_or_none(confidence_values),
-    }
-
-
-def _semantic_direction(value: Any) -> str | None:
-    text = str(value or "").strip().lower()
-    if not text:
-        return None
-    if text in {"bullish", "positive", "attention_positive"} or "positive" in text:
-        return "bullish"
-    if text in {"bearish", "negative", "attention_negative"} or "negative" in text:
-        return "bearish"
-    if text == "neutral" or "neutral" in text:
-        return "neutral"
-    return text
-
-
-def _mean_or_none(values: list[float]) -> float | None:
-    if not values:
-        return None
-    return round(sum(values) / len(values), 6)
 
 
 def _has_resolved_target(row: dict[str, Any], *, resolution_status: str) -> bool:

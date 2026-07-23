@@ -44,10 +44,26 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
 - **Data ownership.** Feature-owned API hooks, page hooks, and controller hooks own server reads/writes. Route modules and presentational UI components consume those feature hooks and must not call `useQuery`, `useMutation`, `useInfiniteQuery`, `getApi`, `postApi`, or `queryClient.set*` directly. `frontendDataOwnership.test.ts` enforces this boundary for `web/src/routes` and `web/src/features/*/ui`.
 - **URL state.** Shareable filters such as `window`, `scope`, handles, search query, selected target, and radar sort live in route-state helpers. Local stores are only for interaction state that should not survive hard reloads.
 - **Socket lifecycle.** `shared/socket` owns authentication, notification/event streams, and ref-counted market-target subscriptions. Routes register only the market targets they currently need; leaving Token Radar releases radar market targets while preserving global notification subscription. Stream/poll workers emit live market messages only after durable current-row persistence; those messages patch visible market response keys but are not a second source of truth.
-- **Search route.** `/search` reuses the cockpit topbar but owns its search-local rail, filters, resolver candidates, and selected result. Topbar submit navigates to `/search?q=<query>`. Token search results render the shared Token Case panel directly from `/api/search/inspect`; they do not fetch `/api/token-case` again. Canonical token results consume the server-derived `narrative_admission` view of the selected current Radar row; topic and ambiguous results are the only search results that keep `agent_brief`.
-- **Token Case route.** `features/token-case` owns persistent `/token/:targetType/:targetId` inspection. The route parses `window`, `scope`, and timeline sort from the URL, fetches `/api/token-case`, seeds `/api/target-posts` from the dossier's first page, and subscribes only the active target for live market updates. The dossier renders admission coverage and raw posts; it does not invent per-post semantic state.
-- **Token Radar drilldown.** Token Radar is the scan surface. Primary row clicks route to `/search?q=<token-or-address>&window=<current>&scope=<current>` for resolver context, while explicit token links may route to the Token Case dossier when a canonical target id is already known. Radar rows may show the API's deterministic `narrative_admission` field, which is derived from the current Radar payload rather than a separate Narrative projection; frontend code must not recompute either rank or admission state.
-- **Narrative states.** Token Radar and Token Case render the API-derived `narrative_admission.status`, currentness, coverage, and data gaps directly. Status is `admitted`, `suppressed`, or `missing`; unsupported windows remain `missing` with `currentness.display_status = unsupported_window`. There is no Narrative table, queue, worker, or frontend fallback.
+- **Search route.** `/search` reuses the cockpit topbar but owns its
+  search-local rail, filters, resolver candidates, and selected result. Topbar
+  submit navigates to `/search?q=<query>`. Token search results render the
+  shared Token Case panel directly from `/api/search/inspect`; they do not
+  fetch `/api/token-case` again. Token, topic, and ambiguous results render
+  resolver, identity, source-post, current Radar, and market facts only.
+- **Token Case route.** `features/token-case` owns persistent
+  `/token/:targetType/:targetId` inspection. The route parses `window`, `scope`,
+  and timeline sort from the URL, fetches `/api/token-case`, seeds
+  `/api/target-posts` from the dossier's first page, and subscribes only the
+  active target for live market updates. The dossier renders current
+  factor/market metadata and raw posts without synthesizing prose or per-post
+  conclusions.
+- **Token Radar drilldown.** Token Radar is the scan surface. Primary row
+  clicks route to
+  `/search?q=<token-or-address>&window=<current>&scope=<current>` for resolver
+  context, while explicit token links may route to the Token Case dossier when
+  a canonical target id is already known. Radar rows render the transparent
+  factor snapshot supplied by the API; frontend code never recomputes ranking
+  or introduces an additional admission state.
 - **Watchlist route.** `features/watchlist/api` owns the selected-handle
   overview, summary, and timeline server state. `/watchlist` consumes the
   Evidence-owned all-activity timeline and does not recreate the removed
@@ -61,22 +77,36 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   On `/news` and `/news/items/:newsItemId`, topbar search is route-local:
   submit navigates to `/news?q=<query>` and the page calls `/api/news` with
   `q`; it must not call `/api/search/inspect` or reuse token resolver state.
-  `/news/items/:newsItemId` is the item evidence page rendering the canonical
-  `signal.display_signal`, token identity lanes, fact candidates, source
-  metadata, and persisted agent brief state directly from
-  `/api/news/items/{news_item_id}`. The list route must not keep an inline
-  selected inspector or recreate trading narrative from headline, summary, or
-  fact-lane keyword heuristics. The detail route must show explicit gaps for
-  price reaction, liquidity/OI, and agent thesis when those fields are absent.
-- **Macro route.** `/macro` and child module routes render deterministic Macro
-  Intel state from `/api/macro`, `/api/macro/modules/{module_id}`, and explicit
-  module-adjacent endpoints such as `/api/macro/assets/correlation`. Macro
-  shell/sidebar code owns macro navigation; module pages consume
-  `macro_module_view_v3` payloads and render `module_read`, `module_evidence`,
-  `transmission`, `data_health`, provenance, and related routes directly. Frontend macro
-  code must not use retired module keys `read`, `evidence`, or top-level
-  `data_gaps`, and must not recompute macro scoring or module reads from
-  indicators, headlines, scenarios, or data-health records.
+  `/news/items/:newsItemId` is the item evidence page rendering story
+  membership, token identity lanes, fact candidates, provider observations,
+  source metadata, content classification, market scope, and dedupe facts
+  directly from `/api/news/items/{news_item_id}`. The list route does not keep
+  an inline selected inspector or infer direction, eligibility, or thesis from
+  headlines, summaries, provider ratings, or keyword heuristics.
+- **Macro routes.** Macro has exactly six flat navigation destinations:
+  `/macro`, `/macro/cross-asset`, `/macro/rates-inflation`,
+  `/macro/growth-labor`, `/macro/liquidity-funding`, and `/macro/credit`.
+  Each route owns an explicit page component and reads its matching typed API:
+  `/api/macro/overview`, `/api/macro/cross-asset`,
+  `/api/macro/rates-inflation`, `/api/macro/growth-labor`,
+  `/api/macro/liquidity-funding`, or `/api/macro/credit`. Charts request
+  persisted points from `/api/macro/series`.
+
+  All pages show the shared snapshot version, fact watermark, completed-session
+  market cutoff, computation time, 1–4 week horizon, conclusion status,
+  drivers, confirmations, contradictions, upgrade/invalidation conditions,
+  rule hits, evidence metadata, freshness, and named unavailable capabilities.
+  Page-specific sections render directly from their strict payloads. The UI
+  does not compute correlations, change windows, curve shape, dominant shock,
+  Credit state, or conclusions. Official catalysts show only the next seven
+  days with official time, timezone, source, URL, and release status.
+
+  Macro uses one flat feature-owned navigation and small shared evidence
+  primitives; there is no registry-driven page catalog or universal page
+  renderer. At desktop widths, dense evidence may use tables and small
+  multiples. At tablet/mobile widths it becomes labelled stacked rows without
+  hiding units, dates, samples, provenance, or gap status. No page may require
+  horizontal document scrolling or hover to reveal material evidence.
 - **Page state.** Loading, empty, stale, and error surfaces should use `PageState.*` so skeletons, error alerts, and retry actions stay consistent.
 - **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Shared primitives such as `IconButton`, `RadarControls`, `PageState`, `TokenProfileCard`, `HandleFilter`, `DecisionTag`, `CompactPanel`, and the Obsidian case-file components own their CSS under `shared/ui/`; feature CSS may lay out the containing toolbar or deck but must not redefine primitive internals. Cross-feature widgets such as notifications own their visual selectors in their feature folder; shell code may place a slot, not restyle the widget internals. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
 - **CSS architecture harness.** `web/tests/architecture/cssArchitectureHarness.test.ts` is the future-proof gate for CSS ownership. It rejects retired global buckets (`cockpit.css`, `macro.css`, `macroResponsive.css`, `shared.css`, `signalLab.css`), side-effect CSS imported from non-local owners, feature CSS that redefines shared UI classes, feature selectors outside their namespace, naked modifier classes such as `.active` or `.gap`, and side-effect class names reused across feature roots. When a new feature needs side-effect CSS, add an explicit namespace policy there rather than borrowing another feature's selectors.
@@ -128,7 +158,10 @@ Production bundles ship inside the same Docker image as the Python service and a
 
 Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually before declaring completion. The minimum checklist for frontend architecture changes is:
 
-1. Hard-reload `/`, `/search`, `/stocks`, `/news`, `/news/items/:newsItemId`, `/macro`, `/watchlist`, `/ops`, and `/token/:targetType/:targetId?window=1h&scope=all` with representative query params.
+1. Hard-reload `/`, `/search`, `/stocks`, `/news`,
+   `/news/items/:newsItemId`, all six Macro routes, `/watchlist`, `/ops`, and
+   `/token/:targetType/:targetId?window=1h&scope=all` with representative query
+   params.
 2. Submit the topbar search and confirm the URL becomes `/search?q=<submitted-query>`.
 3. Verify visible loading/empty/error states are structured, labelled, and non-overlapping.
 4. Confirm no failing `/api/*` requests in the browser session.
@@ -138,3 +171,6 @@ Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually 
    GMGN `external-res`.
 7. At `390px`, confirm the topbar `SidebarTrigger` opens the shadcn drawer, drawer route links are reachable, `.topbar` and `.center-column` do not overlap, topbar controls stay contained, Live-only Radar/Tape/Lab task switching works without route reload on `/`, Radar rows can scroll to the final row above the task nav without overlap, and non-Live routes do not render `.live-task-nav`.
 8. At tablet width around `834px`, confirm the desktop sidebar is hidden, the topbar trigger opens the shadcn drawer, drawer route navigation and topbar search still work, and the mobile Radar/Tape/Lab task nav is hidden.
+9. At `1920px`, `1366px`, `834px`, and `390px`, verify all six Macro pages,
+   required evidence metadata, explicit unavailable capabilities, and the
+   seven-day catalyst list remain readable with no whole-page overflow.

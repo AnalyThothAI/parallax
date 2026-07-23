@@ -8,9 +8,9 @@ from decimal import Decimal
 from typing import Any, cast
 
 from parallax.domains.macro_intel._constants import (
+    MACRO_EVIDENCE_PROJECTION_VERSION,
     MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_PROVIDER_SERIES_SOURCE_PRIORITY,
-    MACRO_VIEW_PROJECTION_VERSION,
 )
 from parallax.domains.macro_intel.observation_identity import normalize_macro_date
 from parallax.domains.macro_intel.services.macro_sync_types import MacrodataBundleImport
@@ -79,8 +79,8 @@ def write_macrodata_bundle_import(
         dirty_targets_enqueued = int(
             repos.macro_intel.enqueue_macro_projection_dirty_targets_for_changes(
                 changed_observations=changed_observations,
-                projection_name="macro_view",
-                projection_version=MACRO_VIEW_PROJECTION_VERSION,
+                projection_name="macro_evidence",
+                projection_version=MACRO_EVIDENCE_PROJECTION_VERSION,
                 now_ms=int(parsed.completed_at_ms),
                 due_at_ms=int(parsed.completed_at_ms),
                 reason="macro_observations_changed",

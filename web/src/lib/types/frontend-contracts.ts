@@ -11,326 +11,8 @@ export type Decision = "driver" | "watch" | "investigate" | "discard";
 export type RadarSortMode = "opportunity" | "heat" | "quality" | "propagation" | "timing";
 export type TimelineBucket = "30s" | "5m" | "15m" | "1h";
 export type TokenPostRange = "current_window" | "since_ignition" | "all_history";
-export type TokenPostSortMode = "recent" | "quality" | "catalyst";
-export type TokenPostServerSort = "recent" | "catalyst";
+export type TokenPostSortMode = "recent" | "watched";
 export type TokenDetailMode = "compact" | "replay";
-
-export type MacroSnapshotSummary = {
-  projection_version: string;
-  asof_date: string;
-  status: string;
-  regime: string;
-  overall_score?: number | null;
-  computed_at_ms: number;
-};
-
-export type MacroPanel = {
-  score?: number | null;
-  regime: string;
-  evidence: string[];
-  data_gaps: string[];
-};
-
-export type MacroIndicator = {
-  label: string;
-  value?: number | string | null;
-  unit?: string | null;
-  observed_at?: string | null;
-  sources?: string[];
-  concept_keys?: string[];
-};
-
-export type MacroTrigger = {
-  code: string;
-  description?: string | null;
-  value?: number | string | null;
-};
-
-export type MacroFeatureSnapshot = {
-  latest?: {
-    value?: number | string | null;
-    observed_at?: string | null;
-    unit?: string | null;
-  };
-  history?: Array<{
-    observed_at?: string | null;
-    value?: number | string | null;
-  }>;
-  freshness_days?: number | null;
-  delta?: Record<string, number | null | undefined>;
-  zscore?: {
-    lookback?: number | null;
-    value?: number | null;
-  };
-  percentile?: {
-    lookback?: number | null;
-    value?: number | null;
-  };
-  data_gaps?: string[];
-};
-
-export type MacroChainNode = {
-  score?: number | null;
-  regime?: string | null;
-  evidence?: string[];
-  data_gaps?: string[];
-};
-
-export type MacroScenarioSignal = {
-  code?: string | null;
-  description?: string | null;
-  node?: string | null;
-  regime?: string | null;
-  evidence?: string[];
-  indicator_keys?: string[];
-  value?: number | string | null;
-  data_gap_count?: number | null;
-  delta_5d?: number | null;
-};
-
-export type MacroTradeMapAction = {
-  kind?: string | null;
-  label?: string | null;
-  description?: string | null;
-};
-
-export type MacroTradeMapEntry = {
-  expression?: string | null;
-  label?: string | null;
-  time_window?: string | null;
-  action_checklist?: MacroTradeMapAction[];
-};
-
-export type MacroScenarioQualityBlocker = {
-  code?: string | null;
-  description?: string | null;
-  label?: string | null;
-  severity?: string | null;
-};
-
-export type MacroScenarioCase = {
-  case?: string | null;
-  entry_condition?: string | null;
-  invalidation?: string | null;
-  label?: string | null;
-  probability?: number | null;
-  probability_label?: string | null;
-  stop?: string | null;
-  thesis?: string | null;
-  time_window?: string | null;
-  trade?: string | null;
-};
-
-export type MacroScenario = {
-  current_regime?: string | null;
-  confidence?: number | null;
-  time_window?: string | null;
-  confirmations?: MacroScenarioSignal[];
-  contradictions?: MacroScenarioSignal[];
-  watch_triggers?: MacroScenarioSignal[];
-  invalidations?: MacroScenarioSignal[];
-  trade_map?: MacroTradeMapEntry[];
-  top_changes?: MacroScenarioSignal[];
-  quality_blockers?: MacroScenarioQualityBlocker[];
-  scenario_cases?: MacroScenarioCase[];
-};
-
-export type MacroScorecard = {
-  projection_version?: string | null;
-  overall_score?: number | null;
-  chain_average?: number | null;
-  observed_concept_count?: number | null;
-  required_concept_count?: number | null;
-  coverage_ratio?: number | null;
-  data_gap_count?: number | null;
-  chain_regimes?: Record<string, string | null | undefined>;
-  [key: string]: unknown;
-};
-
-export type MacroData = {
-  snapshot: MacroSnapshotSummary | null;
-  panels: Record<string, MacroPanel>;
-  indicators: Record<string, MacroIndicator>;
-  triggers: MacroTrigger[];
-  data_gaps: string[];
-  source_coverage: Record<string, number | string | null | undefined>;
-  features: Record<string, MacroFeatureSnapshot>;
-  chain: Record<string, MacroChainNode>;
-  scenario: MacroScenario;
-  scorecard: MacroScorecard;
-};
-
-export type MacroSemanticRecord = Record<string, unknown>;
-
-export type MacroModuleSnapshot = {
-  module_id: string;
-  route_path: string;
-  title: string;
-  asof_label?: string | null;
-  question?: string | null;
-  section?: string | null;
-  projection_version?: string | null;
-  status?: string | null;
-  status_label?: string | null;
-  subtitle?: string | null;
-  asof_date?: string | null;
-  source_projection_version?: string | null;
-  computed_at_ms?: number | null;
-  [key: string]: unknown;
-};
-
-export type MacroModuleTile = {
-  concept_key?: string | null;
-  description?: string | null;
-  delta_label?: string | null;
-  display_value?: string | null;
-  history_points?: number | null;
-  label?: string | null;
-  observed_at?: string | null;
-  observed_at_label?: string | null;
-  quality?: string | null;
-  quality_label?: string | null;
-  score_participation?: boolean | null;
-  short_label?: string | null;
-  source_label?: string | null;
-  unit?: string | null;
-  unit_label?: string | null;
-  value?: number | string | null;
-  data_gaps?: unknown[];
-  [key: string]: unknown;
-};
-
-export type MacroModuleChart = {
-  id: string;
-  kind?: string | null;
-  min_points?: number | null;
-  status?: string | null;
-  status_label?: string | null;
-  subtitle?: string | null;
-  title?: string | null;
-  missing_concept_keys?: string[];
-  series?: MacroSemanticRecord[];
-  [key: string]: unknown;
-};
-
-export type MacroModuleTable = {
-  id: string;
-  columns?: MacroSemanticRecord[];
-  source?: MacroSemanticRecord;
-  status?: string | null;
-  title?: string | null;
-  missing_concept_keys?: string[];
-  rows?: MacroSemanticRecord[];
-  [key: string]: unknown;
-};
-
-export type MacroRelatedRoute = {
-  href: string;
-  label: string;
-};
-
-export type MacroDataHealth = {
-  summary_status?: string | null;
-  summary_label?: string | null;
-  module_gaps: MacroSemanticRecord[];
-  chart_gaps: MacroSemanticRecord[];
-  global_gaps: MacroSemanticRecord[];
-};
-
-export type MacroTransmissionNode = {
-  key?: string | null;
-  label?: string | null;
-  value?: unknown;
-  kind?: string | null;
-  status?: string | null;
-  status_label?: string | null;
-};
-
-export type MacroModuleView = {
-  snapshot: MacroModuleSnapshot;
-  tiles: MacroModuleTile[];
-  primary_chart: MacroModuleChart;
-  tables: MacroModuleTable[];
-  module_read: MacroSemanticRecord;
-  module_evidence: Record<string, MacroSemanticRecord[]>;
-  transmission: MacroTransmissionNode[];
-  data_health: MacroDataHealth;
-  provenance: MacroSemanticRecord;
-  related_routes: MacroRelatedRoute[];
-  [key: string]: unknown;
-};
-
-export type MacroSeriesPoint = {
-  observed_at?: string | null;
-  value?: number | string | null;
-  source_name?: string | null;
-  data_quality?: string | null;
-  [key: string]: unknown;
-};
-
-export type MacroSeriesPayload = {
-  concept_key: string;
-  unit?: string | null;
-  sources?: string[];
-  latest_observed_at?: string | null;
-  data_quality?: string | null;
-  points?: MacroSeriesPoint[];
-  data_gaps?: unknown[];
-  [key: string]: unknown;
-};
-
-export type MacroSeriesData = {
-  window: string;
-  series: Record<string, MacroSeriesPayload>;
-  data_gaps: unknown[];
-};
-
-export type MacroAssetCorrelationAsset = {
-  concept_key: string;
-  title: string;
-  observations_count: number;
-  return_count: number;
-  start_date?: string | null;
-  end_date?: string | null;
-  latest_observed_at?: string | null;
-  sources: string[];
-};
-
-export type MacroAssetCorrelationMatrixRow = {
-  concept_key: string;
-  correlations: Record<string, number | null>;
-};
-
-export type MacroAssetCorrelationPair = {
-  left: string;
-  right: string;
-  correlation: number | null;
-  sample_size: number;
-  start_date?: string | null;
-  end_date?: string | null;
-  available: boolean;
-  reason?: string | null;
-};
-
-export type MacroAssetCorrelationGap = {
-  code: string;
-  concept_key?: string | null;
-  label?: string | null;
-  left?: string | null;
-  right?: string | null;
-  sample_size?: number | null;
-};
-
-export type MacroAssetCorrelationWindow = "20d" | "60d" | "120d";
-
-export type MacroAssetCorrelationData = {
-  window: MacroAssetCorrelationWindow;
-  assets: MacroAssetCorrelationAsset[];
-  matrix: MacroAssetCorrelationMatrixRow[];
-  pairs: MacroAssetCorrelationPair[];
-  data_gaps: MacroAssetCorrelationGap[];
-  asof_date?: string | null;
-};
 
 export type BootstrapData = {
   ws_token: string;
@@ -510,7 +192,7 @@ export type WatchlistOverviewCluster = {
   label: string;
   count: number;
   query: string;
-  kind: "resolved_token" | "candidate_mention" | "narrative";
+  kind: "resolved_token" | "candidate_mention" | "hashtag";
   source: string;
   symbol: string | null;
   target_id: string | null;
@@ -523,12 +205,12 @@ export type WatchlistHandleOverviewData = {
     source_event_count: number;
     resolved_token_count: number;
     candidate_mention_count: number;
-    narrative_count: number;
+    hashtag_count: number;
     last_source_event_at_ms: number | null;
   };
   resolved_token_clusters: WatchlistOverviewCluster[];
   candidate_mention_clusters: WatchlistOverviewCluster[];
-  narrative_clusters: WatchlistOverviewCluster[];
+  hashtag_clusters: WatchlistOverviewCluster[];
   clusters_truncated: boolean;
   risk_notes: string[];
 };
@@ -594,83 +276,6 @@ export type SearchInspectResultKind =
   | "ambiguous_result"
   | "empty_result";
 
-export type SearchAgentBrief = {
-  schema_version: "search_agent_brief_v1" | string;
-  generated_by: "deterministic" | string;
-  project_summary: {
-    one_liner: string;
-    summary_zh: string;
-    current_state: string;
-    data_gaps: string[];
-    evidence_event_ids: string[];
-  };
-  propagation: {
-    summary_zh: string;
-    phases: Array<{
-      phase: string;
-      window_label: string;
-      tweets: number;
-      authors: number;
-      lead_accounts: string[];
-      read_zh: string;
-      evidence_event_ids: string[];
-    }>;
-    key_accounts: Array<{
-      handle: string;
-      role: string;
-      posts: number;
-      first_seen_ms?: number | null;
-    }>;
-  };
-  bull_bear: {
-    stance: "watch" | "research" | "avoid" | "unknown" | string;
-    bull: {
-      thesis_zh: string;
-      evidence_event_ids: string[];
-      triggers_zh: string[];
-    };
-    bear: {
-      thesis_zh: string;
-      evidence_event_ids: string[];
-      invalidations_zh: string[];
-    };
-  };
-};
-
-export type NarrativeAdmissionStatus = "admitted" | "suppressed" | "missing";
-
-export type NarrativeAdmissionCurrentnessStatus =
-  | "current"
-  | "not_ready"
-  | "out_of_frontier"
-  | "unsupported_window";
-
-export type NarrativeAdmissionCurrentness = {
-  display_status: NarrativeAdmissionCurrentnessStatus;
-  reason: string;
-};
-
-export type NarrativeAdmission = {
-  status: NarrativeAdmissionStatus;
-  reason: string;
-  is_current: boolean;
-  computed_at_ms?: number | null;
-  currentness: NarrativeAdmissionCurrentness;
-  coverage: {
-    source_mentions: number;
-    independent_authors: number;
-  };
-  data_gaps: Array<
-    | string
-    | {
-        code?: string | null;
-        message?: string | null;
-        reason?: string | null;
-        [key: string]: unknown;
-      }
-  >;
-};
-
 export type TokenProfileBlock = {
   status: "ready" | "pending" | "missing" | "unsupported" | "error" | string;
   provider?: string | null;
@@ -727,11 +332,11 @@ export type TokenCaseSocialTimelineData = Omit<TokenSocialTimelineData, "query">
 
 export type TokenCaseDossier = {
   target: SearchTargetCandidate;
-  profile?: TokenProfileBlock | null;
+  profile: TokenProfileBlock | null;
   timeline: TokenCaseSocialTimelineData;
   posts: TokenCasePostsData;
-  narrative_admission: NarrativeAdmission;
   market_live: LiveMarketSnapshot;
+  current_radar: TokenRadarFactRow | null;
 };
 
 export type SearchTokenResult = TokenCaseDossier;
@@ -742,7 +347,6 @@ export type SearchTopicResult = {
     authors: number;
   };
   items: SearchItem[];
-  agent_brief: SearchAgentBrief;
 };
 
 export type SearchAmbiguousResult = {
@@ -752,7 +356,6 @@ export type SearchAmbiguousResult = {
     authors: number;
   };
   items: SearchItem[];
-  agent_brief: SearchAgentBrief;
 };
 
 export type SearchInspectData = {
@@ -764,14 +367,13 @@ export type SearchInspectData = {
     result_kind: SearchInspectResultKind;
   };
   resolver: {
-    confidence: number;
     target_candidates: SearchTargetCandidate[];
-    selected_target?: SearchTargetCandidate | null;
+    selected_target: SearchTargetCandidate | null;
     reasons: string[];
   };
-  token_result?: SearchTokenResult | null;
-  topic_result?: SearchTopicResult | null;
-  ambiguous_result?: SearchAmbiguousResult | null;
+  token_result: SearchTokenResult | null;
+  topic_result: SearchTopicResult | null;
+  ambiguous_result: SearchAmbiguousResult | null;
 };
 
 export type TokenRadarIntentBlock = {
@@ -826,10 +428,9 @@ export type TokenRadarRowMeta = {
   source_max_received_at_ms?: number | null;
 };
 
-export type AssetFlowRow = {
+export type TokenRadarFactRow = {
   intent: TokenRadarIntentBlock;
   radar: TokenRadarRowMeta;
-  narrative_admission?: NarrativeAdmission | null;
   resolution: {
     status: "EXACT" | "UNIQUE_BY_CONTEXT" | "NIL" | "AMBIGUOUS" | string;
     target_type: string | null;
@@ -841,11 +442,14 @@ export type AssetFlowRow = {
     discovery: TokenDiscoveryAudit[];
   };
   factor_snapshot: TokenFactorSnapshot;
-  profile?: TokenProfileBlock | null;
   quality: {
     status: string;
     degraded_reasons: string[];
   };
+};
+
+export type AssetFlowRow = TokenRadarFactRow & {
+  profile?: TokenProfileBlock | null;
 };
 
 export type TokenDiscoveryAudit = {
@@ -1142,7 +746,6 @@ export type OpportunityBlock = ScoreBlock & {
   hard_risks?: string[];
   components: {
     heat: number;
-    quality: number;
     propagation: number;
     timing: number;
   };
@@ -1164,7 +767,6 @@ export type TokenPostsQuery = {
   window: WindowKey;
   scope: TokenCaseApiScope;
   range: TokenPostRange;
-  sort?: TokenPostServerSort;
 };
 
 export type TokenSocialTimelineParams = {
@@ -1190,7 +792,6 @@ export type TokenFlowItem = {
   opportunity: OpportunityBlock;
   watch: WatchBlock;
   profile?: TokenProfileBlock | null;
-  narrative_admission?: NarrativeAdmission | null;
   factor_data_health?: TokenFactorSnapshot["data_health"];
   factor_gates?: TokenFactorSnapshot["gates"];
   factor_normalization?: TokenFactorSnapshot["normalization"];
@@ -1218,8 +819,6 @@ export type TokenPostItem = {
   is_first_seen_by_watched_for_token?: boolean | number | null;
   event_type?: string | null;
   reference?: TokenReference | null;
-  catalyst_score?: number | null;
-  catalyst_components?: CatalystComponents | null;
   price?: TokenMessagePrice | null;
   stage_id?: string | null;
   stage_phase?: string | null;
@@ -1299,8 +898,6 @@ export type TokenTimelinePost = {
   attribution_confidence?: number | null;
   attribution_weight?: number | null;
   mention_source?: string | null;
-  catalyst_score?: number | null;
-  catalyst_components?: CatalystComponents | null;
   stage_id?: string | null;
   stage_phase?: string | null;
   author_role?: string | null;
@@ -1327,24 +924,6 @@ export type TokenTimelineCascadeEdge = {
 export type TokenTimelineCascade = {
   edges: TokenTimelineCascadeEdge[];
   unresolved_parents: TokenTimelineCascadeEdge[];
-};
-
-export type CatalystComponents = {
-  observation_window_ms?: number;
-  baseline_window_ms?: number;
-  followup_count?: number;
-  independent_authors?: number;
-  baseline_mentions_per_min?: number;
-  excess_followups?: number;
-  excess_score?: number;
-  independence_score?: number;
-  explicit_cascade_followups?: number;
-  cascade_grip?: number;
-  time_to_k_authors?: number;
-  time_to_k_authors_ms?: number | null;
-  time_to_k_score?: number;
-  structural_virality_score?: number;
-  avg_followup_quality?: number;
 };
 
 export type TokenTimelineMarketCandles = {
@@ -1455,11 +1034,7 @@ export type FactorPoint = {
   risk_flags?: string[];
 };
 
-export type TokenFactorFamilyKey =
-  | "social_heat"
-  | "social_propagation"
-  | "semantic_catalyst"
-  | "timing_risk";
+export type TokenFactorFamilyKey = "social_heat" | "social_propagation" | "timing_risk";
 
 export type TokenFactorFamily = {
   raw_score: number;
@@ -1471,7 +1046,7 @@ export type TokenFactorFamily = {
 };
 
 export type TokenFactorSnapshot = {
-  schema_version: "token_factor_snapshot_v3_social_attention";
+  schema_version: "token_factor_snapshot_v4_transparent_factors";
   subject: {
     target_type: string | null;
     target_id: string | null;
@@ -1551,32 +1126,6 @@ export type WorkerStatusData = {
   iteration_duration_p99_ms: number | null;
 };
 
-export type AgentExecutionStatusData = {
-  lane: "news.story_brief";
-  model: string;
-  provider_family: string;
-  output_strategy: "json_object";
-  schema_enforcement: "client_validate";
-  max_concurrency: number;
-  rpm_limit: number;
-  timeout_seconds: number;
-  in_flight: number;
-  provider_running: number;
-  circuit_state: "open" | "closed";
-  circuit_open_until_ms: number | null;
-  capacity_denied_total: number;
-  circuit_open_total: number;
-  timeout_total: number;
-  last_denied_at_ms: number | null;
-  last_timeout_at_ms: number | null;
-  oldest_in_flight_age_ms: number | null;
-};
-
-export type AgentExecutionUnavailableData = {
-  status: "unavailable";
-  error: string;
-};
-
 export type StatusData = {
   ok: boolean;
   reasons: string[];
@@ -1585,7 +1134,6 @@ export type StatusData = {
   snapshot_gate: Record<string, unknown>;
   db: Record<string, unknown>;
   provider_states: Record<string, unknown>;
-  agent_execution: AgentExecutionStatusData | AgentExecutionUnavailableData | null;
   news_provider_contract: Record<string, unknown>;
   workers: Record<string, WorkerStatusData> & {
     collector: WorkerStatusData;

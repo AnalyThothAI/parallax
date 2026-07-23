@@ -5,12 +5,12 @@ import { Link } from "react-router-dom";
 
 export function WatchlistInsightRail({
   candidateClusters,
-  narrativeClusters,
+  hashtagClusters,
   resolvedClusters,
   riskNotes,
 }: {
   candidateClusters: WatchlistOverviewCluster[];
-  narrativeClusters: WatchlistOverviewCluster[];
+  hashtagClusters: WatchlistOverviewCluster[];
   resolvedClusters: WatchlistOverviewCluster[];
   riskNotes: string[];
 }) {
@@ -29,10 +29,10 @@ export function WatchlistInsightRail({
         title="Candidate mentions"
       />
       <ClusterPanel
-        emptyLabel="No narrative clusters in this window."
+        emptyLabel="No hashtags in this window."
         eyebrow="hashtags"
-        items={narrativeClusters}
-        title="Narrative clusters"
+        items={hashtagClusters}
+        title="Hashtags"
       />
       <RiskPanel notes={riskNotes} />
     </aside>

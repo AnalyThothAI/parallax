@@ -69,6 +69,9 @@ describe("TokenCaseRoute", () => {
     renderAt(`/token/Asset/${encodeURIComponent(targetId)}?window=24h&scope=watched`);
 
     expect(await screen.findByRole("region", { name: /Token case/i })).toBeInTheDocument();
+    expect(screen.getByText("#3")).toBeInTheDocument();
+    expect(screen.getByText("resolved")).toBeInTheDocument();
+    expect(screen.getByText("watch")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(apiMock.getApi).toHaveBeenCalledWith(

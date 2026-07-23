@@ -2,11 +2,7 @@ import { OpsDiagnosticsPage } from "@features/ops";
 import type { OpsDiagnostics } from "@features/ops";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
 import { notificationSummaryFixture } from "@tests/fixtures/appRouteFixtures";
-import {
-  activeOpsAgentExecutionFixture,
-  opsDiagnosticsFixture,
-  opsQueueFixture,
-} from "@tests/fixtures/opsFixture";
+import { opsDiagnosticsFixture, opsQueueFixture } from "@tests/fixtures/opsFixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("OpsDiagnosticsPage", () => {
@@ -36,7 +32,7 @@ describe("OpsDiagnosticsPage", () => {
     expect(screen.getByText("建议检查 2 项")).toBeInTheDocument();
     expect(screen.getByText("Ingest")).toBeInTheDocument();
     expect(screen.getByText("Facts & Identity")).toBeInTheDocument();
-    expect(screen.getByText("News & Agent")).toBeInTheDocument();
+    expect(screen.getByText("News projection")).toBeInTheDocument();
     expect(screen.getByText("notification_deliveries")).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: /打开队列 notification_deliveries/i }));
@@ -103,28 +99,6 @@ describe("OpsDiagnosticsPage", () => {
 
     expect(screen.getByText("诊断未定位到具体阻塞项")).toBeInTheDocument();
     expect(screen.queryByText("没有阻塞项")).not.toBeInTheDocument();
-  });
-
-  it("describes an agent incident from the fixed lane policy", () => {
-    const diagnostics = opsDiagnosticsFixture();
-    diagnostics.agent_execution = {
-      ...activeOpsAgentExecutionFixture(),
-      status: "degraded",
-      status_reason: "recent_timeout",
-      error: "model timeout",
-    };
-
-    render(
-      <OpsDiagnosticsPage
-        diagnostics={diagnostics}
-        loading={false}
-        queue={null}
-        selectedQueueName={null}
-        onSelectQueue={vi.fn()}
-      />,
-    );
-
-    expect(screen.getByText("news.story_brief: model timeout")).toBeInTheDocument();
   });
 
   it("fails closed when selected queue data is malformed", () => {

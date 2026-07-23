@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import asyncio
-import json
 from collections.abc import Mapping
 from contextlib import contextmanager
 from dataclasses import asdict, is_dataclass
@@ -482,7 +481,7 @@ def test_news_fetch_worker_does_not_bound_opennews_since_ms_to_brief_window_with
     assert feed.calls[0]["since_ms"] is None
 
 
-def test_opennews_fetch_since_uses_cursor_overlap_not_agent_brief_age() -> None:
+def test_opennews_fetch_since_uses_cursor_overlap() -> None:
     since_ms = _source_fetch_since_ms(
         source={
             "provider_type": "opennews",
@@ -994,106 +993,11 @@ def test_news_item_process_worker_passes_authority_scope_to_fact_candidates() ->
     assert "event_type_out_of_authority_scope" in candidate.rejection_reasons
 
 
-def test_news_item_process_provider_only_non_crypto_row_enqueues_page_and_story_brief() -> None:
+def test_news_item_process_persists_facts_and_enqueues_page_only() -> None:
     item = {
-        "news_item_id": "news-spacex",
-        "source_id": "opennews-realtime",
-        "provider_type": "opennews",
-        "source_role": "observed_source",
-        "source_domain": "6551.io",
-        "source_name": "OpenNews",
-        "coverage_tags_json": ["equities"],
-        "authority_scope_json": {},
-        "title": "SpaceX share sale values company above $350 billion",
-        "summary": "Samsung chip demand and private company valuation remain in focus.",
-        "body_text": "",
-        "published_at_ms": NOW_MS - 1_000,
-        "provider_signal_json": {
-            "source": "provider",
-            "provider": "opennews",
-            "status": "ready",
-            "direction": "bullish",
-            "score": 92,
-        },
-        "provider_token_impacts_json": [{"symbol": "SPCX", "score": 92, "signal": "long", "grade": "A"}],
+        **_crypto_process_item(),
         "processing_attempts": 1,
         "processing_lease_owner": "news_item_process",
-    }
-    db = FakeItemProcessDB(FakeItemProcessRepository([item]))
-    worker = NewsItemProcessWorker(
-        name="news_item_process",
-        settings=_news_item_process_settings(),
-        db=db,
-        telemetry=object(),
-        identity_lookup=FakeItemProcessLookup(db),
-    )
-
-    result = worker.run_once_sync(now_ms=NOW_MS)
-
-    assert result.processed == 1
-    assert db.repo.entities["news-spacex"] == []
-    assert db.repo.mentions["news-spacex"] == []
-    assert db.repo.market_scope_story_updates[0]["market_scope"].primary == "private_company"
-    assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
-    story_key = db.repo.market_scope_story_updates[0]["story_identity"].story_key
-    assert db.dirty.enqueued == [
-        {
-            "rows": [
-                {
-                    "projection_name": "page",
-                    "target_kind": "news_item",
-                    "target_id": "news-spacex",
-                    "source_watermark_ms": NOW_MS - 1_000,
-                }
-            ],
-            "reason": "news_item_processed",
-            "now_ms": NOW_MS,
-        },
-        {
-            "rows": [
-                {
-                    "projection_name": "story_brief",
-                    "target_kind": "story",
-                    "target_id": story_key,
-                    "source_watermark_ms": NOW_MS - 1_000,
-                    "priority": 35,
-                }
-            ],
-            "reason": "news_item_processed",
-            "now_ms": NOW_MS,
-        },
-    ]
-
-
-def test_news_item_process_admitted_crypto_row_enqueues_page_and_story_brief_with_story_key() -> None:
-    item = {
-        "news_item_id": "news-zec",
-        "source_id": "opennews-realtime",
-        "provider_type": "opennews",
-        "provider_article_keys_json": ["opennews:2367422"],
-        "source_role": "official_exchange",
-        "source_domain": "coinbase.com",
-        "source_name": "Coinbase",
-        "coverage_tags_json": ["crypto"],
-        "authority_scope_json": {
-            "event_types": ["exchange_listing"],
-            "domains": ["coinbase.com"],
-            "targets": [{"target_type": "CexToken", "target_id": "cex:ZEC"}],
-        },
-        "title": "Coinbase lists $ZEC for trading",
-        "summary": "Zcash trading starts today on Coinbase.",
-        "body_text": "",
-        "published_at_ms": NOW_MS - 1_000,
-        "processing_attempts": 1,
-        "processing_lease_owner": "news_item_process",
-        "provider_signal_json": {
-            "source": "provider",
-            "provider": "opennews",
-            "status": "ready",
-            "direction": "bullish",
-            "score": 88,
-        },
-        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 88, "signal": "long", "grade": "A"}],
     }
     db = FakeItemProcessDB(FakeItemProcessRepository([item]))
     worker = NewsItemProcessWorker(
@@ -1110,11 +1014,6 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_story_brief_wit
     assert db.repo.entities["news-zec"][0].normalized_value == "ZEC"
     assert db.repo.mentions["news-zec"][0].observed_symbol == "ZEC"
     assert db.repo.market_scope_story_updates[0]["market_scope"].primary == "crypto"
-    assert db.repo.market_scope_story_updates[0]["story_identity"].story_key.startswith(
-        "news-story:event:exchange-listing:coinbase:zec:spot:t"
-    )
-    assert db.repo.agent_admission_updates[0]["admission"].status == "eligible"
-    story_key = db.repo.market_scope_story_updates[0]["story_identity"].story_key
     assert db.dirty.enqueued == [
         {
             "rows": [
@@ -1127,275 +1026,8 @@ def test_news_item_process_admitted_crypto_row_enqueues_page_and_story_brief_wit
             ],
             "reason": "news_item_processed",
             "now_ms": NOW_MS,
-        },
-        {
-            "rows": [
-                {
-                    "projection_name": "story_brief",
-                    "target_kind": "story",
-                    "target_id": story_key,
-                    "source_watermark_ms": NOW_MS - 1_000,
-                    "priority": 34,
-                }
-            ],
-            "reason": "news_item_processed",
-            "now_ms": NOW_MS,
-        },
-    ]
-
-
-def test_news_item_process_similar_story_without_material_delta_enqueues_page_only() -> None:
-    item = {
-        "news_item_id": "news-hormuz",
-        "source_id": "opennews-realtime",
-        "provider_type": "opennews",
-        "source_role": "news",
-        "source_domain": "example.com",
-        "source_name": "Example News",
-        "coverage_tags_json": ["macro", "crypto"],
-        "authority_scope_json": {},
-        "title": "Iran shipping risk remains elevated near Hormuz",
-        "summary": "No new official statement or material market fact was reported.",
-        "body_text": "",
-        "published_at_ms": NOW_MS - 1_000,
-        "provider_signal_json": {
-            "source": "provider",
-            "provider": "opennews",
-            "status": "ready",
-            "direction": "neutral",
-            "score": 95,
-        },
-        "processing_attempts": 1,
-        "processing_lease_owner": "news_item_process",
-    }
-    agent_context_rows = [
-        {
-            "item": {
-                **item,
-                "lifecycle_status": "processed",
-                "story_key": "story:hormuz",
-                "content_classification_json": {"policy_version": "news_content_classification_v1"},
-            },
-            "entities": [{"normalized_value": "iran", "entity_type": "country"}],
-            "token_mentions": [],
-            "fact_candidates": [{"event_type": "geopolitical_risk", "validation_status": "accepted"}],
-            "current_brief": None,
-            "exact_duplicate_candidates": [],
-            "story_candidates": [
-                {
-                    "news_item_id": "news-rep",
-                    "story_key": "story:hormuz",
-                    "source_role": "news",
-                    "provider_signal_json": {"score": 96},
-                    "current_brief": {"status": "ready"},
-                    "entities": [{"normalized_value": "iran", "entity_type": "country"}],
-                    "fact_candidates": [{"event_type": "geopolitical_risk", "validation_status": "accepted"}],
-                }
-            ],
         }
     ]
-    db = FakeItemProcessDB(FakeItemProcessRepository([item], agent_context_rows=agent_context_rows))
-    worker = NewsItemProcessWorker(
-        name="news_item_process",
-        settings=_news_item_process_settings(),
-        db=db,
-        telemetry=object(),
-        identity_lookup=FakeItemProcessLookup(db),
-    )
-
-    result = worker.run_once_sync(now_ms=NOW_MS)
-
-    assert result.processed == 1
-    assert db.repo.agent_admission_updates[0]["admission"].status == "similar_story_covered"
-    assert db.dirty.enqueued == [
-        {
-            "rows": [
-                {
-                    "projection_name": "page",
-                    "target_kind": "news_item",
-                    "target_id": "news-hormuz",
-                    "source_watermark_ms": NOW_MS - 1_000,
-                }
-            ],
-            "reason": "news_item_processed",
-            "now_ms": NOW_MS,
-        }
-    ]
-
-
-def test_news_item_process_material_story_delta_enqueues_one_story_brief_refresh() -> None:
-    item = {
-        "news_item_id": "news-hormuz-official",
-        "source_id": "opennews-realtime",
-        "provider_type": "opennews",
-        "source_role": "official_exchange",
-        "source_domain": "example-exchange.com",
-        "source_name": "Example Exchange",
-        "coverage_tags_json": ["crypto"],
-        "authority_scope_json": {},
-        "title": "Exchange issues official Hormuz market risk update",
-        "summary": "The exchange confirms updated margin monitoring for regional risk.",
-        "body_text": "",
-        "published_at_ms": NOW_MS - 1_000,
-        "provider_signal_json": {
-            "source": "provider",
-            "provider": "opennews",
-            "status": "ready",
-            "direction": "neutral",
-            "score": 95,
-        },
-        "processing_attempts": 1,
-        "processing_lease_owner": "news_item_process",
-    }
-    agent_context_rows = [
-        {
-            "item": {
-                **item,
-                "lifecycle_status": "processed",
-                "story_key": "story:hormuz",
-                "content_classification_json": {"policy_version": "news_content_classification_v1"},
-            },
-            "entities": [],
-            "token_mentions": [],
-            "fact_candidates": [],
-            "current_brief": None,
-            "exact_duplicate_candidates": [],
-            "story_candidates": [
-                {
-                    "news_item_id": "news-rep",
-                    "story_key": "story:hormuz",
-                    "source_role": "specialist_media",
-                    "current_brief": {"status": "ready"},
-                }
-            ],
-        }
-    ]
-    db = FakeItemProcessDB(FakeItemProcessRepository([item], agent_context_rows=agent_context_rows))
-    worker = NewsItemProcessWorker(
-        name="news_item_process",
-        settings=_news_item_process_settings(),
-        db=db,
-        telemetry=object(),
-        identity_lookup=FakeItemProcessLookup(db),
-    )
-
-    result = worker.run_once_sync(now_ms=NOW_MS)
-
-    assert result.processed == 1
-    assert db.repo.agent_admission_updates[0]["admission"].status == "eligible_refresh"
-    story_brief_rows = [
-        row
-        for enqueue_call in db.dirty.enqueued
-        for row in enqueue_call["rows"]
-        if row["projection_name"] == "story_brief"
-    ]
-    assert len(story_brief_rows) == 1
-    assert story_brief_rows[0]["target_kind"] == "story"
-    assert story_brief_rows[0]["target_id"] == "story:hormuz"
-    assert story_brief_rows[0]["source_watermark_ms"] == NOW_MS - 1_000
-
-
-def test_news_item_process_worker_fails_when_agent_admission_context_missing() -> None:
-    item = {
-        "news_item_id": "news-zec",
-        "source_id": "opennews-realtime",
-        "provider_type": "opennews",
-        "source_role": "official_exchange",
-        "source_domain": "coinbase.com",
-        "source_name": "Coinbase",
-        "coverage_tags_json": ["crypto"],
-        "authority_scope_json": {
-            "event_types": ["exchange_listing"],
-            "domains": ["coinbase.com"],
-            "targets": [{"target_type": "CexToken", "target_id": "cex:ZEC"}],
-        },
-        "title": "Coinbase lists $ZEC for trading",
-        "summary": "Zcash trading starts today on Coinbase.",
-        "body_text": "",
-        "published_at_ms": NOW_MS - 1_000,
-        "provider_signal_json": {
-            "source": "provider",
-            "provider": "opennews",
-            "status": "ready",
-            "direction": "bullish",
-            "score": 88,
-        },
-        "provider_token_impacts_json": [{"symbol": "ZEC", "score": 88, "signal": "long", "grade": "A"}],
-        "processing_attempts": 1,
-        "processing_lease_owner": "news_item_process",
-    }
-    repo = FakeItemProcessRepository([item], agent_context_rows=[])
-    db = FakeItemProcessDB(repo)
-    worker = NewsItemProcessWorker(
-        name="news_item_process",
-        settings=_news_item_process_settings(),
-        db=db,
-        telemetry=object(),
-        identity_lookup=FakeItemProcessLookup(db),
-    )
-
-    result = worker.run_once_sync(now_ms=NOW_MS)
-
-    assert result.processed == 0
-    assert result.failed == 1
-    assert repo.agent_admission_updates == []
-    assert repo.retryable_items[0]["news_item_id"] == "news-zec"
-    assert "agent admission context" in repo.retryable_items[0]["error"]
-
-
-@pytest.mark.parametrize(
-    ("field", "malformed_value"),
-    (
-        ("item", "json_object"),
-        ("entities", '[{"entity_type": "symbol", "normalized_value": "ZEC"}]'),
-        ("token_mentions", '[{"observed_symbol": "ZEC", "resolution_status": "known_symbol"}]'),
-        ("fact_candidates", '[{"event_type": "exchange_listing", "validation_status": "accepted"}]'),
-    ),
-)
-def test_news_item_process_worker_rejects_malformed_agent_admission_context_fields(
-    field: str,
-    malformed_value: str,
-) -> None:
-    item = _crypto_process_item() | {
-        "processing_attempts": 1,
-        "processing_lease_owner": "news_item_process",
-    }
-    context_item = {
-        **item,
-        "lifecycle_status": "processed",
-        "story_key": "news-story:event:exchange-listing:coinbase:zec:spot:t20260619",
-        "content_class": "exchange_listing",
-        "content_tags_json": ["exchange_listing"],
-        "content_classification_json": {"policy_version": "news_content_classification_v1"},
-        "market_scope_json": {"scope": ["crypto"], "primary": "crypto", "status": "in_scope"},
-    }
-    agent_context = {
-        "item": context_item,
-        "entities": [{"entity_type": "symbol", "normalized_value": "ZEC"}],
-        "token_mentions": [{"observed_symbol": "ZEC", "resolution_status": "known_symbol"}],
-        "fact_candidates": [{"event_type": "exchange_listing", "validation_status": "accepted"}],
-        "current_brief": None,
-        "exact_duplicate_candidates": [],
-        "story_candidates": [],
-    }
-    agent_context[field] = json.dumps(context_item) if malformed_value == "json_object" else malformed_value
-    repo = FakeItemProcessRepository([item], agent_context_rows=[agent_context])
-    db = FakeItemProcessDB(repo)
-    worker = NewsItemProcessWorker(
-        name="news_item_process",
-        settings=_news_item_process_settings(),
-        db=db,
-        telemetry=object(),
-        identity_lookup=FakeItemProcessLookup(db),
-    )
-
-    result = worker.run_once_sync(now_ms=NOW_MS)
-
-    assert result.processed == 0
-    assert result.failed == 1
-    assert repo.agent_admission_updates == []
-    assert repo.retryable_items[0]["news_item_id"] == "news-zec"
-    assert f"news_item_process_agent_admission_context_{field}_required" in repo.retryable_items[0]["error"]
 
 
 def test_news_item_process_worker_marks_retryable_failure_with_next_due_at_ms() -> None:
@@ -1756,8 +1388,6 @@ def test_news_page_projection_worker_replaces_rows() -> None:
     assert repo.replaced_story_keys == ["story:news-1"]
     assert repo.replaced_story_rows[0]["news_item_id"] == "news-1"
     assert repo.replaced_story_rows[0]["lifecycle_status"] == "attention"
-    assert repo.replaced_story_rows[0]["agent_status"] == "ready"
-    assert "agent_run_id" not in repo.replaced_story_rows[0]["agent_brief"]
 
 
 def test_news_page_projection_worker_projects_same_story_once() -> None:
@@ -1770,9 +1400,6 @@ def test_news_page_projection_worker_projects_same_story_once() -> None:
                     "story_key": story_key,
                     "title": "JPMorgan and Citi test tokenized deposits",
                     "market_scope_json": _market_scope_fixture(primary="crypto", scope=["crypto"]),
-                    "agent_admission_status": "eligible",
-                    "agent_admission_reason": "eligible",
-                    "agent_admission_json": _agent_admission_fixture(news_item_id="news-1", market_scope=["crypto"]),
                 },
                 story={
                     "story_key": story_key,
@@ -1823,12 +1450,6 @@ def test_news_page_projection_worker_reports_deleted_story_member_rows() -> None
                     "story_key": story_key,
                     "title": "SpaceX tender offer values company higher",
                     "market_scope_json": _market_scope_fixture(primary="private_company", scope=["private_company"]),
-                    "agent_admission_status": "eligible",
-                    "agent_admission_reason": "eligible",
-                    "agent_admission_json": _agent_admission_fixture(
-                        news_item_id="news-1",
-                        market_scope=["private_company"],
-                    ),
                 },
                 story={
                     "story_key": story_key,
@@ -1868,9 +1489,6 @@ def test_news_page_projection_worker_reports_unchanged_story_projection() -> Non
                     "story_key": story_key,
                     "title": "JPMorgan and Citi test tokenized deposits",
                     "market_scope_json": _market_scope_fixture(primary="crypto", scope=["crypto"]),
-                    "agent_admission_status": "eligible",
-                    "agent_admission_reason": "eligible",
-                    "agent_admission_json": _agent_admission_fixture(news_item_id="news-1", market_scope=["crypto"]),
                 },
                 story={
                     "story_key": story_key,
@@ -2016,17 +1634,6 @@ def _market_scope_fixture(*, primary: str, scope: list[str]) -> dict[str, object
     }
 
 
-def _agent_admission_fixture(*, news_item_id: str, market_scope: list[str]) -> dict[str, object]:
-    return {
-        "eligible": True,
-        "status": "eligible",
-        "reason": "eligible",
-        "representative_news_item_id": news_item_id,
-        "basis": {"market_scope": list(market_scope)},
-        "version": "news_item_agent_admission_market_v2",
-    }
-
-
 def _page_projection_payload(
     *,
     item: dict[str, object] | None = None,
@@ -2051,12 +1658,6 @@ def _page_projection_payload(
     payload_item.setdefault("content_class", "crypto_market")
     payload_item.setdefault("content_tags_json", ["crypto"])
     payload_item.setdefault("content_classification_json", {"policy_version": "news_content_classification_v1"})
-    payload_item.setdefault("agent_admission_status", "eligible")
-    payload_item.setdefault("agent_admission_reason", "eligible")
-    payload_item.setdefault(
-        "agent_admission_json", _agent_admission_fixture(news_item_id=news_item_id, market_scope=["crypto"])
-    )
-    payload_item.setdefault("agent_representative_news_item_id", news_item_id)
     story_payload = story or {
         "story_key": str(payload_item.get("story_key") or f"story:{news_item_id}"),
         "representative_news_item_id": news_item_id,
@@ -2074,18 +1675,6 @@ def _page_projection_payload(
             }
         ],
         "fact_candidates": [],
-        "current_brief": {
-            "agent_run_id": "run-1",
-            "status": "ready",
-            "direction": "bullish",
-            "decision_class": "watch",
-            "brief_json": {"summary_zh": "测试摘要", "bull_view": {"strength": "moderate"}},
-            "input_hash": "input-1",
-            "artifact_version_hash": "artifact-1",
-            "prompt_version": "prompt-v1",
-            "schema_version": "schema-v1",
-            "computed_at_ms": NOW_MS - 1,
-        },
         "story": story_payload,
         "member_items": member_items or [dict(payload_item)],
     }
@@ -2523,10 +2112,8 @@ class FakeItemProcessRepository:
         processed_rowcount: int = 1,
         retryable_rowcount: int = 1,
         terminal_rowcount: int = 1,
-        agent_context_rows: list[dict[str, object]] | None = None,
     ) -> None:
         self.items = items
-        self.agent_context_rows = agent_context_rows
         self.conn: FakeConn | None = None
         self.claim_calls: list[dict[str, int | str]] = []
         self.release_calls: list[int] = []
@@ -2535,7 +2122,6 @@ class FakeItemProcessRepository:
         self.fact_candidates: dict[str, list[object]] = {}
         self.content_classifications: list[dict[str, object]] = []
         self.market_scope_story_updates: list[dict[str, object]] = []
-        self.agent_admission_updates: list[dict[str, object]] = []
         self.processed_items: list[dict[str, int | str]] = []
         self.retryable_items: list[dict[str, int | str]] = []
         self.terminal_failed_items: list[dict[str, int | str]] = []
@@ -2637,64 +2223,6 @@ class FakeItemProcessRepository:
             }
         )
         return self.processed_rowcount
-
-    def load_agent_admission_contexts(self, *, news_item_ids: list[str], now_ms: int) -> list[dict[str, object]]:
-        if self.agent_context_rows is not None:
-            return [dict(row) for row in self.agent_context_rows]
-        contexts: list[dict[str, object]] = []
-        for news_item_id in news_item_ids:
-            item = next((dict(row) for row in self.items if row.get("news_item_id") == news_item_id), None)
-            if item is None:
-                continue
-            classification = next(
-                (row for row in reversed(self.content_classifications) if row.get("news_item_id") == news_item_id),
-                {},
-            )
-            story_update = next(
-                (row for row in reversed(self.market_scope_story_updates) if row.get("news_item_id") == news_item_id),
-                {},
-            )
-            market_scope = story_update.get("market_scope")
-            story_identity = story_update.get("story_identity")
-            item.update(
-                {
-                    "lifecycle_status": "processed",
-                    "content_class": classification.get("content_class") or item.get("content_class") or "",
-                    "content_tags_json": classification.get("content_tags") or item.get("content_tags_json") or [],
-                    "content_classification_json": classification.get("classification_payload") or {},
-                    "market_scope_json": (
-                        market_scope.to_payload()
-                        if hasattr(market_scope, "to_payload")
-                        else getattr(market_scope, "__dict__", {})
-                    ),
-                    "agent_admission_status": item.get("agent_admission_status", ""),
-                    "agent_admission_reason": item.get("agent_admission_reason", ""),
-                    "agent_admission_json": item.get("agent_admission_json", {}),
-                    "story_key": getattr(story_identity, "story_key", item.get("story_key", "")),
-                }
-            )
-            contexts.append(
-                {
-                    "item": item,
-                    "entities": [_object_payload(row) for row in self.entities.get(news_item_id, [])],
-                    "token_mentions": [_object_payload(row) for row in self.mentions.get(news_item_id, [])],
-                    "fact_candidates": [_object_payload(row) for row in self.fact_candidates.get(news_item_id, [])],
-                    "current_brief": None,
-                    "exact_duplicate_candidates": [],
-                    "story_candidates": [],
-                }
-            )
-        return contexts
-
-    def update_item_agent_admission(
-        self,
-        *,
-        news_item_id: str,
-        admission: object,
-        now_ms: int,
-    ) -> int:
-        self.agent_admission_updates.append({"news_item_id": news_item_id, "admission": admission, "now_ms": now_ms})
-        return 1
 
     def mark_item_process_retryable(
         self,

@@ -48,7 +48,6 @@ DIRTY_TARGET_TABLES = frozenset(
 )
 
 DIRTY_TARGET_WORKER_FILTERS = {
-    ("news_projection_dirty_targets", "news_story_brief"): ("projection_name", "story_brief"),
     ("news_projection_dirty_targets", "news_page_projection"): ("projection_name", "page"),
 }
 

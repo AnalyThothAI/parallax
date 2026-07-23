@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import pytest
 
-from parallax.domains.macro_intel._constants import MACRO_CONCEPT_METADATA, MACRO_CORE_CONCEPTS
+from parallax.domains.macro_intel.services.macro_concept_manifest import MACRO_EVIDENCE_CONCEPTS
 from parallax.domains.macro_intel.services.macro_series_view import (
     UnsupportedMacroConceptError,
     UnsupportedMacroSeriesWindowError,
@@ -32,8 +32,26 @@ def test_build_macro_series_view_returns_concept_keyed_series_with_provenance() 
         "latest_observed_at": "2026-05-20",
         "data_quality": "ok",
         "points": [
-            {"observed_at": "2026-05-19", "value": 4.6, "source_name": "fred", "data_quality": "ok"},
-            {"observed_at": "2026-05-20", "value": 4.7, "source_name": "fred", "data_quality": "ok"},
+            {
+                "observed_at": "2026-05-19",
+                "value": 4.6,
+                "source_name": "fred",
+                "series_key": "fred:rates:dgs10",
+                "unit": "percent",
+                "frequency": "daily",
+                "data_quality": "ok",
+                "event_metadata": {},
+            },
+            {
+                "observed_at": "2026-05-20",
+                "value": 4.7,
+                "source_name": "fred",
+                "series_key": "fred:rates:dgs10",
+                "unit": "percent",
+                "frequency": "daily",
+                "data_quality": "ok",
+                "event_metadata": {},
+            },
         ],
         "data_gaps": [],
     }
@@ -44,7 +62,6 @@ def test_build_macro_series_view_returns_concept_keyed_series_with_provenance() 
             "code": "insufficient_history_2_points",
             "label": "历史样本不足：至少需要 2 个点才能绘图",
             "severity": "warning",
-            "score_participation": False,
             "concept_key": "crypto:btc",
         }
     ]
@@ -53,7 +70,6 @@ def test_build_macro_series_view_returns_concept_keyed_series_with_provenance() 
             "code": "insufficient_history_2_points",
             "label": "历史样本不足：至少需要 2 个点才能绘图",
             "severity": "warning",
-            "score_participation": False,
             "concept_key": "crypto:btc",
         }
     ]
@@ -71,18 +87,16 @@ def test_build_macro_series_view_reports_missing_concept_series() -> None:
     assert view["series"]["rates:dgs10"]["data_gaps"] == [
         {
             "code": "series_missing",
-            "label": "缺少序列数据：10Y",
+            "label": "缺少序列数据：rates:dgs10",
             "severity": "error",
-            "score_participation": False,
             "concept_key": "rates:dgs10",
         }
     ]
     assert view["data_gaps"] == [
         {
             "code": "series_missing",
-            "label": "缺少序列数据：10Y",
+            "label": "缺少序列数据：rates:dgs10",
             "severity": "error",
-            "score_participation": False,
             "concept_key": "rates:dgs10",
         }
     ]
@@ -94,6 +108,48 @@ def test_macro_series_view_requires_observation_quality_field() -> None:
 
     with pytest.raises(ValueError, match="macro_series_observation_quality_required:rates:dgs10"):
         build_macro_series_view(concept_keys=("rates:dgs10",), observations=[observation], window="20d")
+
+
+def test_macro_series_view_maps_only_whitelisted_event_metadata() -> None:
+    observation = _obs(
+        "event:fomc_decision_next",
+        "2026-05-20",
+        3,
+        source_name="official_calendar",
+        unit="days_until",
+        frequency="event",
+    )
+    observation["event_metadata_json"] = {
+        "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+        "event_time_et": "2:00 PM",
+        "announcement_date": "2026-05-20",
+        "reopening": False,
+        "forecast": 0.25,
+        "score": 99,
+    }
+
+    point = build_macro_series_view(
+        concept_keys=("event:fomc_decision_next",),
+        observations=[observation],
+        window="20d",
+    )["series"]["event:fomc_decision_next"]["points"][0]
+
+    assert set(point) == {
+        "observed_at",
+        "value",
+        "source_name",
+        "series_key",
+        "unit",
+        "frequency",
+        "data_quality",
+        "event_metadata",
+    }
+    assert point["event_metadata"] == {
+        "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+        "event_time_et": "2:00 PM",
+        "announcement_date": "2026-05-20",
+        "reopening": False,
+    }
 
 
 def test_macro_series_view_rejects_provider_series_keys() -> None:
@@ -125,15 +181,16 @@ def test_macro_series_query_bounds_are_bounded() -> None:
     assert macro_series_query_bounds("3y") == {"lookback_days": 1095, "limit_per_series": 800}
 
 
-def test_macro_core_concepts_have_public_series_labels() -> None:
-    assert [
-        concept_key
-        for concept_key in MACRO_CORE_CONCEPTS
-        if not (
-            MACRO_CONCEPT_METADATA.get(concept_key, {}).get("short_label")
-            or MACRO_CONCEPT_METADATA.get(concept_key, {}).get("label")
-        )
-    ] == []
+def test_macro_evidence_concepts_are_the_only_supported_series_keys() -> None:
+    assert MACRO_EVIDENCE_CONCEPTS
+    assert (
+        build_macro_series_view(
+            concept_keys=MACRO_EVIDENCE_CONCEPTS,
+            observations=[],
+            window="20d",
+        )["series"].keys()
+        == dict.fromkeys(MACRO_EVIDENCE_CONCEPTS).keys()
+    )
 
 
 def _obs(
@@ -143,6 +200,7 @@ def _obs(
     *,
     source_name: str,
     unit: str,
+    frequency: str = "daily",
     data_quality: str = "ok",
 ) -> dict[str, object]:
     return {
@@ -152,5 +210,7 @@ def _obs(
         "unit": unit,
         "source_name": source_name,
         "series_key": f"{source_name}:{concept_key}",
+        "frequency": frequency,
         "data_quality": data_quality,
+        "event_metadata_json": {},
     }

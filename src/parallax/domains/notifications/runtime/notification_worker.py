@@ -109,16 +109,6 @@ class NotificationWorker(WorkerBase):
                     created.append(row)
                     if len(created) >= self.batch_limit:
                         break
-                elif outcome.aggregated and _reactivate_aggregated_delivery(candidate):
-                    external_deliveries_enqueued = (
-                        self._enqueue_external_deliveries_with_repository(
-                            repos.notifications,
-                            row,
-                            candidate,
-                            reactivate_failed=True,
-                        )
-                        or external_deliveries_enqueued
-                    )
         if retention_due:
             self._next_retention_prune_at_ms = now_ms + _RETENTION_INTERVAL_MS
         return NotificationProcessResult(
@@ -156,8 +146,6 @@ class NotificationWorker(WorkerBase):
         repository: NotificationRepository,
         row: dict[str, Any],
         candidate: NotificationCandidate,
-        *,
-        reactivate_failed: bool = False,
     ) -> bool:
         enqueued = False
         for channel_id in _delivery_channels(row, candidate):
@@ -170,8 +158,7 @@ class NotificationWorker(WorkerBase):
                 continue
             if SEVERITY_RANK.get(candidate.severity, 0) < SEVERITY_RANK.get(channel.min_severity, 1):
                 continue
-            enqueue = repository.enqueue_or_requeue_delivery if reactivate_failed else repository.enqueue_delivery
-            delivery = enqueue(
+            delivery = repository.enqueue_delivery(
                 notification_id=str(row["notification_id"]),
                 channel_id=channel_id,
                 provider=channel.provider,
@@ -200,9 +187,3 @@ def _delivery_channels(row: dict[str, Any], candidate: NotificationCandidate) ->
         channels = tuple(str(channel).strip() for channel in row_channels if str(channel).strip())
         return channels or ("in_app",)
     return candidate.channels
-
-
-def _reactivate_aggregated_delivery(candidate: NotificationCandidate) -> bool:
-    if candidate.rule_id != "news_high_signal":
-        return False
-    return candidate.payload.get("external_push_eligible") is True

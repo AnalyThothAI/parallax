@@ -84,31 +84,36 @@ Answer must separate:
 - Worker status contracts from diagnostics-only logs.
 - Runtime repair commands from public route behavior.
 
-## Product LLM Agent Run
+## Dormant Model Library Change
 
-Use for News item/story briefs, model capability, schema validation, shared execution, or agent audit problems.
+Use only for isolated provider-neutral execution, capability, hashing, usage,
+or structured-output library changes. The production product has no model
+consumer, worker, queue, prompt catalog, status lane, or derived model state.
 
 Required reading:
 
 - `docs/AGENT_EXECUTION.md`
-- `docs/ARCHITECTURE.md`
-- `docs/WORKERS.md`
-- The owning domain `ARCHITECTURE.md`
 - `src/parallax/platform/agent_execution.py`
+- `src/parallax/platform/agent_capabilities.py`
+- `src/parallax/platform/agent_hashing.py`
 - `src/parallax/integrations/model_execution/execution_gateway.py`
+- `src/parallax/integrations/model_execution/output_schema.py`
+- `src/parallax/integrations/model_execution/structured_json_strategy.py`
+- `src/parallax/integrations/model_execution/usage.py`
 
 Diagnostic commands:
 
-- `uv run pytest tests/architecture/test_kiss_runtime_invariants.py`
-- `uv run pytest tests/unit/integrations/model_execution/test_agent_execution_gateway.py`
-- Domain-specific unit tests for the affected agent client or worker
+- `uv run pytest tests/unit/integrations/model_execution -q`
+- `uv run pytest tests/architecture/test_product_ai_hard_delete.py -q`
 
 Answer must separate:
 
-- Product LLM agents from development agents.
-- Agent request/result audit from domain truth.
-- No-start backpressure from provider-started failure.
-- Pydantic/schema validation from business validation.
+- Dormant library behavior from supported production composition.
+- Request/result audit structures from material business facts.
+- Provider/schema errors from domain publication, which does not exist for the
+  dormant library.
+- A proposed product consumer from the current approved scope; a consumer
+  requires a new spec.
 
 ## Frontend CSS Or Route Shell
 
@@ -162,9 +167,10 @@ Answer must separate:
 - Durable interval catch-up from public route symptoms.
 - Provider raw inputs from persisted facts.
 
-## Macro Freshness Or Regime Readiness
+## Macro Evidence Snapshot Or Freshness
 
-Use for macro sync, macro observations, regime readiness, module pages, correlation views, or macro provider questions.
+Use for macro sync, observations, six evidence pages, conclusion freshness,
+20/60-session correlations, official catalysts, or macro provider questions.
 
 Required reading:
 
@@ -181,8 +187,12 @@ Diagnostic commands:
 
 Answer must separate:
 
-- `macro_observations` facts from current series/view read models.
-- Sync-window control rows from regime readiness.
+- `macro_observations` facts from compact series and the one current
+  six-document snapshot.
+- Sync-window/control rows and process readiness from page-level conclusion
+  status.
+- Critical missing/stale evidence from optional named unavailable capability.
+- The latest completed US-session cutoff from intraday market time.
 - Packaged `macrodata` runtime from repository fixtures.
 
 ## Agent Workflow Or Documentation Harness

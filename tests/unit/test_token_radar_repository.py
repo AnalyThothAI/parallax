@@ -128,7 +128,7 @@ def test_publish_current_generation_upserts_current_rows_and_marks_ready_publica
     row = _valid_factor_row()
 
     result = TokenRadarRepository(conn).publish_current_generation(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -182,7 +182,7 @@ def test_token_radar_repository_mutations_require_explicit_transaction_before_sq
         (
             "publish_current_generation",
             lambda repo: repo.publish_current_generation(
-                projection_version="token-radar-v13-social-attention",
+                projection_version="token-radar-v14-transparent-factors",
                 window="1h",
                 scope="all",
                 venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -195,7 +195,7 @@ def test_token_radar_repository_mutations_require_explicit_transaction_before_sq
         (
             "upsert_target_feature",
             lambda repo: repo.upsert_target_feature(
-                projection_version="token-radar-v13-social-attention",
+                projection_version="token-radar-v14-transparent-factors",
                 window="1h",
                 scope="all",
                 row=_valid_factor_row(),
@@ -205,7 +205,7 @@ def test_token_radar_repository_mutations_require_explicit_transaction_before_sq
         (
             "delete_target_feature",
             lambda repo: repo.delete_target_feature(
-                projection_version="token-radar-v13-social-attention",
+                projection_version="token-radar-v14-transparent-factors",
                 window="1h",
                 scope="all",
                 lane="resolved",
@@ -216,7 +216,7 @@ def test_token_radar_repository_mutations_require_explicit_transaction_before_sq
         (
             "prune_target_features",
             lambda repo: repo.prune_target_features(
-                projection_version="token-radar-v13-social-attention",
+                projection_version="token-radar-v14-transparent-factors",
                 window="1h",
                 scope="all",
                 latest_event_before_ms=1_778_000_000_000,
@@ -226,7 +226,7 @@ def test_token_radar_repository_mutations_require_explicit_transaction_before_sq
         (
             "upsert_first_seen_batch",
             lambda repo: repo.upsert_first_seen_batch(
-                projection_version="token-radar-v13-social-attention",
+                projection_version="token-radar-v14-transparent-factors",
                 window="1h",
                 scope="all",
                 venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -237,7 +237,7 @@ def test_token_radar_repository_mutations_require_explicit_transaction_before_sq
         (
             "mark_publication_failed",
             lambda repo: repo.mark_publication_failed(
-                projection_version="token-radar-v13-social-attention",
+                projection_version="token-radar-v14-transparent-factors",
                 window="1h",
                 scope="all",
                 venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -258,7 +258,7 @@ def test_token_radar_repository_publication_runs_inside_caller_owned_transaction
 
     with conn.transaction():
         result = TokenRadarRepository(conn).publish_current_generation(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -280,14 +280,14 @@ def test_stable_generation_id_is_content_addressed_not_time_addressed():
     second["created_at_ms"] = 1_778_000_060_000
 
     first_generation_id = stable_generation_id(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="5m",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=[first],
     )
     second_generation_id = stable_generation_id(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="5m",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -309,7 +309,7 @@ def test_runtime_row_payload_hash_ignores_factor_snapshot_computed_at_noise():
 
     first_payload = _runtime_row_payload(
         first,
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -320,7 +320,7 @@ def test_runtime_row_payload_hash_ignores_factor_snapshot_computed_at_noise():
     )
     second_payload = _runtime_row_payload(
         second,
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -353,7 +353,7 @@ def test_runtime_row_payload_hash_keeps_non_factor_provenance_computed_at_signif
 
     first_payload = _runtime_row_payload(
         first,
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -364,7 +364,7 @@ def test_runtime_row_payload_hash_keeps_non_factor_provenance_computed_at_signif
     )
     second_payload = _runtime_row_payload(
         second,
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -387,14 +387,14 @@ def test_stable_generation_id_changes_when_row_quality_changes_even_with_same_pa
     }
 
     ready_generation_id = stable_generation_id(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="5m",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
         rows=[ready],
     )
     degraded_generation_id = stable_generation_id(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="5m",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -416,7 +416,7 @@ def test_token_radar_serving_identity_requires_formal_current_key_without_target
 
     with pytest.raises(ValueError, match="token_radar_current_identity_required"):
         stable_generation_id(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="5m",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -426,7 +426,7 @@ def test_token_radar_serving_identity_requires_formal_current_key_without_target
     with pytest.raises(ValueError, match="token_radar_current_identity_required"):
         _runtime_row_payload(
             row,
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -439,7 +439,7 @@ def test_token_radar_serving_identity_requires_formal_current_key_without_target
     conn = FakeConn()
     with pytest.raises(ValueError, match="token_radar_current_identity_required"):
         TokenRadarRepository(conn).upsert_target_feature(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             row=row,
@@ -457,7 +457,7 @@ def test_publish_current_generation_rewrites_when_only_row_quality_changes():
     }
     incoming_payload_hash = _runtime_row_payload(
         degraded,
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -468,7 +468,7 @@ def test_publish_current_generation_rewrites_when_only_row_quality_changes():
     )["payload_hash"]
     existing_current = _runtime_row_payload(
         ready,
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -487,7 +487,7 @@ def test_publish_current_generation_rewrites_when_only_row_quality_changes():
     )
 
     result = TokenRadarRepository(conn).publish_current_generation(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -508,7 +508,7 @@ def test_publish_current_generation_unchanged_does_not_delete_insert_or_emit_cur
     row = _valid_factor_row()
     existing_current = _runtime_row_payload(
         row,
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -527,7 +527,7 @@ def test_publish_current_generation_unchanged_does_not_delete_insert_or_emit_cur
     current_changes: list[dict[str, Any]] = []
 
     result = TokenRadarRepository(conn).publish_current_generation(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -553,7 +553,7 @@ def test_publish_current_generation_upserts_rows_without_payload_hash_retry_path
     existing_payload = _payload_hash(
         _runtime_row_payload(
             row,
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -566,7 +566,7 @@ def test_publish_current_generation_upserts_rows_without_payload_hash_retry_path
     conn = FakePublishConn(
         existing_current={
             "row_id": "row-factor-existing",
-            "projection_version": "token-radar-v13-social-attention",
+            "projection_version": "token-radar-v14-transparent-factors",
             "window": "1h",
             "scope": "all",
             "lane": "resolved",
@@ -579,7 +579,7 @@ def test_publish_current_generation_upserts_rows_without_payload_hash_retry_path
     )
 
     result = TokenRadarRepository(conn).publish_current_generation(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -602,7 +602,7 @@ def test_publish_current_generation_requires_real_cursor_rowcount_for_current_ro
 
     with pytest.raises(TypeError, match="token_radar_repository_rowcount_invalid"):
         TokenRadarRepository(conn).publish_current_generation(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -619,7 +619,7 @@ def test_publish_current_generation_rejects_invalid_current_row_upsert_rowcount(
 
     with pytest.raises(TypeError, match="token_radar_repository_rowcount_invalid"):
         TokenRadarRepository(conn).publish_current_generation(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -637,7 +637,7 @@ def test_publish_rows_requires_factor_snapshot_json_before_insert():
 
     with pytest.raises(ValueError, match="factor_snapshot_json is required"):
         TokenRadarRepository(conn).publish_current_generation(
-            projection_version="token-radar-v9-factor-snapshot",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -657,7 +657,7 @@ def test_publish_rows_rejects_empty_factor_snapshot_json_before_insert():
 
     with pytest.raises(ValueError, match="factor_snapshot_json must be non-empty"):
         TokenRadarRepository(conn).publish_current_generation(
-            projection_version="token-radar-v9-factor-snapshot",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -677,7 +677,7 @@ def test_publish_rows_requires_factor_version_before_insert():
 
     with pytest.raises(ValueError, match="factor_version is required"):
         TokenRadarRepository(conn).publish_current_generation(
-            projection_version="token-radar-v9-factor-snapshot",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -697,7 +697,7 @@ def test_publish_rows_rejects_hard_gates_before_insert():
 
     with pytest.raises(ValueError, match="hard_gates"):
         TokenRadarRepository(conn).publish_current_generation(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -710,14 +710,14 @@ def test_publish_rows_rejects_hard_gates_before_insert():
     assert conn.current_insert_params == {}
 
 
-def test_publish_rows_rejects_missing_v3_factor_family_before_insert():
+def test_publish_rows_rejects_missing_transparent_factor_family_before_insert():
     conn = FakePublishConn()
     row = _valid_factor_row()
-    del row["factor_snapshot_json"]["families"]["semantic_catalyst"]
+    del row["factor_snapshot_json"]["families"]["social_propagation"]
 
-    with pytest.raises(ValueError, match=r"factor_snapshot_json\.families\.semantic_catalyst is required"):
+    with pytest.raises(ValueError, match=r"factor_snapshot_json\.families\.social_propagation is required"):
         TokenRadarRepository(conn).publish_current_generation(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -749,7 +749,7 @@ def test_upsert_target_feature_requires_factor_snapshot_core_score_decision_fiel
 
     with pytest.raises(ValueError, match=error):
         TokenRadarRepository(conn).upsert_target_feature(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             row=row,
@@ -766,7 +766,7 @@ def test_publish_rows_rejects_factor_snapshot_version_mismatch_before_insert():
 
     with pytest.raises(ValueError, match=r"factor_snapshot_json\.schema_version must match factor_version"):
         TokenRadarRepository(conn).publish_current_generation(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -787,7 +787,7 @@ def test_latest_current_rows_limits_each_lane_independently():
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
         limit=8,
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
     )
 
     assert rows == []
@@ -811,7 +811,7 @@ def test_latest_current_rows_rejects_malformed_limit_before_sql(limit: object) -
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
             limit=limit,  # type: ignore[arg-type]
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
         )
 
     assert conn.calls == 0
@@ -825,7 +825,7 @@ def test_latest_current_rows_reads_materialized_listed_at_without_history_latera
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
         limit=50,
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
     )
 
     assert "LEFT JOIN LATERAL" not in conn.sql
@@ -836,7 +836,7 @@ def test_current_row_for_target_reads_last_good_generation_after_failed_attempt(
     conn = FakeConn(rows=[{"row_id": "row-1"}])
 
     row = TokenRadarRepository(conn).current_row_for_target(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -857,7 +857,7 @@ def test_upsert_target_feature_writes_compact_projection_row():
     row = _valid_factor_row()
 
     count = TokenRadarRepository(conn).upsert_target_feature(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         row=row,
@@ -947,7 +947,7 @@ def test_upsert_target_feature_requires_formal_projection_payload_fields_without
 
     with pytest.raises(ValueError, match=error):
         TokenRadarRepository(conn).upsert_target_feature(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             row=row,
@@ -962,7 +962,7 @@ def test_upsert_target_feature_returns_actual_rowcount_for_unchanged_payload():
     row = _valid_factor_row()
 
     count = TokenRadarRepository(conn).upsert_target_feature(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         row=row,
@@ -985,7 +985,7 @@ def test_upsert_target_feature_requires_real_cursor_rowcount(rowcount: Any, omit
 
     with pytest.raises(TypeError, match=error):
         TokenRadarRepository(conn).upsert_target_feature(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             row=_valid_factor_row(),
@@ -997,7 +997,7 @@ def test_delete_target_feature_uses_projection_identity_key():
     conn = FakeConn()
 
     TokenRadarRepository(conn).delete_target_feature(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         lane="resolved",
@@ -1007,14 +1007,14 @@ def test_delete_target_feature_uses_projection_identity_key():
 
     assert "DELETE FROM token_radar_target_features" in conn.sql
     assert "target_type_key = %s" in conn.sql
-    assert conn.params == ("token-radar-v13-social-attention", "1h", "all", "resolved", "Asset", "asset-1")
+    assert conn.params == ("token-radar-v14-transparent-factors", "1h", "all", "resolved", "Asset", "asset-1")
 
 
 def test_prune_target_features_deletes_only_projection_window_scope_before_cutoff():
     conn = FakeConn(rowcount=7)
 
     deleted = TokenRadarRepository(conn).prune_target_features(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="5m",
         scope="matched",
         latest_event_before_ms=1_777_800_000_000,
@@ -1030,7 +1030,7 @@ def test_prune_target_features_deletes_only_projection_window_scope_before_cutof
     assert "LIMIT %s" in conn.sql
     assert "token_radar_current_rows" not in conn.sql
     assert conn.params == (
-        "token-radar-v13-social-attention",
+        "token-radar-v14-transparent-factors",
         "5m",
         "matched",
         1_777_800_000_000,
@@ -1044,7 +1044,7 @@ def test_prune_target_features_rejects_malformed_limit_before_sql(limit: object)
 
     with pytest.raises(ValueError, match="token_radar_prune_target_features_limit_required"):
         TokenRadarRepository(conn).prune_target_features(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="5m",
             scope="matched",
             latest_event_before_ms=1_777_800_000_000,
@@ -1058,7 +1058,7 @@ def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_ver
     conn = FakeConn(
         rows=[
             {
-                "projection_version": "token-radar-v13-social-attention",
+                "projection_version": "token-radar-v14-transparent-factors",
                 "window": "1h",
                 "scope": "all",
                 "lane": "resolved",
@@ -1073,8 +1073,6 @@ def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_ver
                 "social_heat_weight": 1.0,
                 "social_propagation_raw_score": 10.0,
                 "social_propagation_weight": 1.0,
-                "semantic_catalyst_raw_score": 10.0,
-                "semantic_catalyst_weight": 1.0,
                 "timing_risk_raw_score": 10.0,
                 "timing_risk_weight": 1.0,
                 "cohort_high_confidence_mentions": 1,
@@ -1107,7 +1105,7 @@ def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_ver
     )
 
     rows = TokenRadarRepository(conn).list_rank_inputs_for_rank_set(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         min_latest_event_received_at_ms=1_778_000_000_000,
@@ -1122,7 +1120,7 @@ def test_list_rank_inputs_for_rank_set_reads_private_projection_rows_without_ver
     assert "rank_input_version" not in conn.sql
     assert "latest_event_received_at_ms >= %s" in conn.sql
     assert conn.params == (
-        "token-radar-v13-social-attention",
+        "token-radar-v14-transparent-factors",
         "1h",
         "all",
         1_778_000_000_000,
@@ -1137,7 +1135,7 @@ def test_list_rank_inputs_for_rank_set_filters_by_latest_event_cutoff():
     cutoff_ms = 1_778_000_300_000
 
     rows = TokenRadarRepository(conn).list_rank_inputs_for_rank_set(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="5m",
         scope="matched",
         min_latest_event_received_at_ms=cutoff_ms,
@@ -1148,7 +1146,7 @@ def test_list_rank_inputs_for_rank_set_filters_by_latest_event_cutoff():
     assert "AND latest_event_received_at_ms >= %s" in conn.sql
     assert "ORDER BY lane DESC, rank_score DESC, latest_event_received_at_ms DESC, identity_id ASC" in conn.sql
     assert conn.params == (
-        "token-radar-v13-social-attention",
+        "token-radar-v14-transparent-factors",
         "5m",
         "matched",
         cutoff_ms,
@@ -1159,7 +1157,7 @@ def test_publish_current_generation_rejects_stale_projection_writer():
     conn = FakeStalePublishConn(existing_computed_at_ms=1_700_000_100_000)
 
     result = TokenRadarRepository(conn).publish_current_generation(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="5m",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -1177,7 +1175,7 @@ def test_publish_current_generation_rejects_stale_writer_after_newer_zero_row_pu
     conn = FakeStalePublishConn(existing_computed_at_ms=1_700_000_100_000)
 
     result = TokenRadarRepository(conn).publish_current_generation(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="5m",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -1199,7 +1197,7 @@ def test_mark_publication_failed_records_failed_attempt_without_replacing_curren
     conn = FakeConn()
 
     TokenRadarRepository(conn).mark_publication_failed(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -1232,7 +1230,7 @@ def test_latest_publication_state_reads_state_for_requested_sets():
     )
 
     state = TokenRadarRepository(conn).latest_publication_state(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         windows=("1h",),
         scopes=("all",),
         venues=(TOKEN_RADAR_DEFAULT_VENUE,),
@@ -1494,14 +1492,6 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
                 "facts": {},
                 "factors": {},
             },
-            "semantic_catalyst": {
-                "raw_score": 10,
-                "score": 10,
-                "weight": 1,
-                "data_health": "ready",
-                "facts": {},
-                "factors": {},
-            },
             "timing_risk": {
                 "raw_score": 10,
                 "score": 10,
@@ -1517,7 +1507,6 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
             "family_scores": {
                 "social_heat": rank_score,
                 "social_propagation": 10,
-                "semantic_catalyst": 10,
                 "timing_risk": 10,
             },
             "recommended_decision": "discard",
@@ -1536,7 +1525,6 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
             "factor_ranks": {
                 "social_heat": None,
                 "social_propagation": None,
-                "semantic_catalyst": None,
                 "timing_risk": None,
             },
             "alpha_rank": None,

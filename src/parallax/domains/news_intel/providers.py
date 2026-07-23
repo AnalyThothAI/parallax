@@ -3,13 +3,11 @@ from __future__ import annotations
 from collections.abc import Mapping
 from typing import Any, Protocol
 
-from parallax.domains.news_intel.types.news_story_brief import NewsStoryBriefInputPacket
 from parallax.domains.news_intel.types.source_provider import (
     NewsProviderFetchResult,
     NewsSourceHttpCache,
     NewsSourceSnapshot,
 )
-from parallax.platform.agent_execution import AgentCapacityReservation
 
 
 class NewsSourceProviderError(RuntimeError):
@@ -37,29 +35,4 @@ class NewsSourceProvider(Protocol):
     def close(self) -> None: ...
 
 
-class NewsStoryBriefProvider(Protocol):
-    @property
-    def provider(self) -> str: ...
-
-    @property
-    def model(self) -> str: ...
-
-    @property
-    def artifact_version_hash(self) -> str: ...
-
-    def try_reserve_execution(self, *, rate_units: int = 1) -> AgentCapacityReservation: ...
-
-    def request_audit(self, *, run_id: str, packet: NewsStoryBriefInputPacket) -> dict[str, Any]: ...
-
-    async def brief_story(
-        self,
-        *,
-        run_id: str,
-        packet: NewsStoryBriefInputPacket,
-        reservation: AgentCapacityReservation | None = None,
-    ) -> dict[str, Any]: ...
-
-    async def aclose(self) -> None: ...
-
-
-__all__ = ["NewsSourceProvider", "NewsSourceProviderError", "NewsStoryBriefProvider"]
+__all__ = ["NewsSourceProvider", "NewsSourceProviderError"]

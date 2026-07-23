@@ -18,9 +18,9 @@ def test_dirty_target_identity_is_stable_and_newer_watermark_wins(tmp_path) -> N
             first = repos.news_projection_dirty_targets.enqueue_targets(
                 [
                     {
-                        "projection_name": "story_brief",
-                        "target_kind": "story",
-                        "target_id": "story:btc-etf",
+                        "projection_name": "page",
+                        "target_kind": "news_item",
+                        "target_id": "news-1",
                         "source_watermark_ms": NOW_MS,
                         "priority": 20,
                     }
@@ -31,9 +31,9 @@ def test_dirty_target_identity_is_stable_and_newer_watermark_wins(tmp_path) -> N
             second = repos.news_projection_dirty_targets.enqueue_targets(
                 [
                     {
-                        "projection_name": "story_brief",
-                        "target_kind": "story",
-                        "target_id": "story:btc-etf",
+                        "projection_name": "page",
+                        "target_kind": "news_item",
+                        "target_id": "news-1",
                         "source_watermark_ms": NOW_MS + 100,
                         "priority": 10,
                     }
@@ -54,9 +54,9 @@ def test_dirty_target_identity_is_stable_and_newer_watermark_wins(tmp_path) -> N
     assert second == 1
     assert [dict(row) for row in rows] == [
         {
-            "projection_name": "story_brief",
-            "target_kind": "story",
-            "target_id": "story:btc-etf",
+            "projection_name": "page",
+            "target_kind": "news_item",
+            "target_id": "news-1",
             "window": "",
             "source_watermark_ms": NOW_MS + 100,
             "priority": 10,
@@ -64,7 +64,7 @@ def test_dirty_target_identity_is_stable_and_newer_watermark_wins(tmp_path) -> N
     ]
 
 
-@pytest.mark.parametrize("projection_name", ["brief_input", "source_quality"])
+@pytest.mark.parametrize("projection_name", ["brief_input", "source_quality", "story", "story_brief"])
 def test_retired_projection_names_are_rejected(tmp_path, projection_name: str) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:

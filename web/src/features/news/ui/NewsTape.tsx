@@ -1,19 +1,11 @@
 import { formatRelativeTime } from "@lib/format";
-import type { NewsRow } from "@shared/model/newsIntel";
 import { ExternalLink } from "lucide-react";
 
-import {
-  newsAgentReviewBadge,
-  newsDisplayTokenLanes,
-  newsSignalLabel,
-  newsSignalStatusLabel,
-  newsSignalTone,
-  tokenMarketLabel,
-} from "../model/newsSignalViewModel";
+import { newsLifecycleTone, tokenLaneLabel, type NewsFactRow } from "../model/newsFactViewModel";
 import "./newsTape.css";
 
 type NewsTapeProps = {
-  rows: NewsRow[];
+  rows: NewsFactRow[];
   onOpen: (newsItemId: string) => void;
 };
 
@@ -21,15 +13,10 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
   return (
     <div className="news-tape-list" role="list" aria-label="news tape">
       {rows.map((row) => {
-        const tokens = newsDisplayTokenLanes(row);
+        const tokens = row.token_lanes;
         const visibleTokens = tokens.slice(0, 5);
         const overflowCount = Math.max(0, tokens.length - visibleTokens.length);
-        const reviewBadge = newsAgentReviewBadge(row);
-        const displaySignal = row.signal.display_signal;
-        const useAgentTitle = row.agent_brief.status === "ready";
-        const displayTitle = useAgentTitle
-          ? row.agent_brief.title_zh || displaySignal.title_zh || row.headline
-          : displaySignal.title_zh || row.headline;
+        const displayTitle = row.headline;
         const rating = row.provider_rating;
         const ratingProvider = rating?.provider?.toUpperCase() || "PROVIDER";
         return (
@@ -48,16 +35,13 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
                 </b>
                 <small>{row.source_domain ?? "source unknown"}</small>
               </span>
-              <span className={`news-tape-signal ${newsSignalTone(displaySignal)}`}>
-                <b>{newsSignalLabel(displaySignal)}</b>
-                <small>{newsSignalStatusLabel(displaySignal)}</small>
+              <span className={`news-tape-state ${newsLifecycleTone(row.lifecycle_status)}`}>
+                <b>{row.lifecycle_status}</b>
+                <small>{row.content_class}</small>
               </span>
               <span className="news-tape-copy">
                 <strong>{displayTitle}</strong>
                 <small>
-                  <span className={`news-tape-review ${reviewBadge.tone}`}>
-                    {reviewBadge.label}
-                  </span>
                   {rating?.score != null ? (
                     <span
                       className="news-tape-provider-rating"
@@ -67,14 +51,10 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
                       <span>{ratingProvider}</span>
                     </span>
                   ) : null}
-                  {reviewBadge.detail ? (
-                    <span className="news-tape-review-reason" title={reviewBadge.title}>
-                      {reviewBadge.detail}
-                    </span>
-                  ) : null}
                   <span className="news-tape-summary-text">
-                    {displaySignal.summary_zh || row.summary || "No summary available."}
+                    {row.summary || "No source summary available."}
                   </span>
+                  <span>{row.story.member_count} story members</span>
                 </small>
               </span>
               <span className="news-tape-token-strip">
@@ -82,10 +62,10 @@ export function NewsTape({ rows, onOpen }: NewsTapeProps) {
                   <span
                     className="news-tape-token is-neutral"
                     key={`${row.news_item_id}-${lane.symbol ?? lane.target_id ?? index}`}
-                    title={`${lane.symbol || lane.target_id || "token"} · ${tokenMarketLabel(lane)}`}
+                    title={`${lane.symbol || lane.target_id || "token"} · ${tokenLaneLabel(lane)}`}
                   >
                     <b>{lane.symbol || lane.target_id || "token"}</b>
-                    <small>{tokenMarketLabel(lane)}</small>
+                    <small>{tokenLaneLabel(lane)}</small>
                   </span>
                 ))}
                 {overflowCount ? (

@@ -52,6 +52,7 @@ describe("data router architecture", () => {
     const importSources = shellSources.flatMap(importSpecifiers);
     const pageExportingFeatureBarrels = [
       "@features/live",
+      "@features/macro",
       "@features/news",
       "@features/search",
       "@features/stocks",
@@ -95,7 +96,7 @@ describe("data router architecture", () => {
     const macroBarrel = readSource("features/macro/index.ts");
 
     expect(legacyFiles).toEqual([]);
-    expect(macroBarrel).not.toContain("MacroPage");
+    expect(macroBarrel).not.toMatch(/\bMacroPage\b/);
     expect(macroBarrel).not.toContain("useMacroQuery");
   });
 

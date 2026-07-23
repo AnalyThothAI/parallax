@@ -24,25 +24,41 @@ WorkerScheduler
   -> bounded backoff after failure
 ```
 
-The scheduler is the only owner of task start, stop, and status. `WorkerBase` awaits one `run_once()` at a time and never spawns or force-cancels an iteration task. Provider, database, model, and subprocess boundaries own their explicit timeouts; scheduler shutdown waits for the current iteration to finish before closing resources.
+The scheduler is the only owner of task start, stop, and status. `WorkerBase`
+awaits one `run_once()` at a time and never spawns or force-cancels an
+iteration task. Provider, database, network, and subprocess boundaries own
+their explicit timeouts; scheduler shutdown waits for the current iteration to
+finish before closing resources.
 
 ## Queue rules
 
 - Claim a bounded batch with `FOR UPDATE SKIP LOCKED` or an equivalent compare-and-set transition.
 - Queue identity is the product target, not the triggering event or attempt.
-- Claim increments attempts; no-start provider/agent backpressure must occur before a business claim when possible.
+- Claim increments attempts; provider backpressure must occur before a business
+  claim when possible.
 - Success acknowledges the exact claimed identity/payload inside the same application-owned transaction as its read-model write.
 - Retry clears the lease and sets a bounded future due time.
 - Exhaustion moves the source snapshot to `worker_queue_terminal_events`; it is not silently deleted.
 - Every worker re-reads durable PostgreSQL work on a bounded interval; correctness has no wake-message dependency.
 
-News page and story workers share one physical table but have disjoint `projection_name` discriminators. No other worker may claim their rows.
+A clock-sensitive projection may additionally re-evaluate persisted read-model
+inputs on a deterministic time bucket without manufacturing a queue row. Macro
+uses this only for UTC-date and completed-session freshness changes; the same
+single writer and stable payload-hash gate still apply.
+
+News page projection is the sole owner of
+`news_projection_dirty_targets`; every row has `projection_name = 'page'`,
+`target_kind = 'news_item'`, and an empty window.
 
 ## Provider and side-effect rules
 
-Provider/model/network/subprocess/file work is performed outside DB transactions. The worker loads and claims minimal durable input, closes the transaction, performs I/O, then persists the result through a new explicit transaction.
+Provider/network/subprocess/file work is performed outside DB transactions.
+The worker loads and claims minimal durable input, closes the transaction,
+performs I/O, then persists the result through a new explicit transaction.
 
-External notification delivery uses a ledger and compare-and-set completion/failure. Story model runs retain the side-effect audit needed to explain the current story brief. These ledgers have retention policies; append-only does not mean permanent.
+External notification delivery uses a ledger and compare-and-set
+completion/failure. The production worker inventory has no model-execution
+worker, model queue, or model-owned current read model.
 
 ## Status surfaces
 

@@ -14,7 +14,6 @@ from parallax.integrations.model_execution.structured_json_strategy import (
 )
 from parallax.integrations.model_execution.usage import extract_model_usage
 from parallax.platform.agent_execution import (
-    AGENT_RUNTIME_LANE,
     RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentExecutionCancelled,
@@ -406,7 +405,6 @@ class AgentExecutionGateway:
         state = self._state
         capability_profile = self._policy.capability_profile()
         return {
-            "lane": AGENT_RUNTIME_LANE,
             "model": self.model,
             "provider_family": capability_profile.provider_family.value,
             "output_strategy": "json_object",
@@ -494,12 +492,8 @@ class AgentExecutionGateway:
         if callable(method):
             method(lane=stage.lane, stage=stage.stage)
 
-    def _record_backpressure(self, reason: AgentExecutionErrorClass) -> None:
+    def _record_backpressure(self, _reason: AgentExecutionErrorClass) -> None:
         self._state.last_denied_at_ms = _epoch_ms()
-        telemetry = self._telemetry
-        method = getattr(telemetry, "record_agent_execution_backpressure", None)
-        if callable(method):
-            method(lane=AGENT_RUNTIME_LANE, reason=str(reason.value))
 
     def _record_execution_call(
         self,

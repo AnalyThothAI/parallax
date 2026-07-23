@@ -19,10 +19,6 @@ class TokenTargetPostsRangeError(Exception):
     pass
 
 
-class TokenTargetPostsSortError(Exception):
-    pass
-
-
 class TokenTargetPostsScopeError(ValueError):
     pass
 
@@ -43,7 +39,6 @@ class TokenTargetPostsService:
         window: str,
         scope: str,
         post_range: str,
-        sort: str,
         limit: int,
         cursor: str | None = None,
         now_ms: int | None = None,
@@ -51,8 +46,6 @@ class TokenTargetPostsService:
         row_limit = require_nonnegative_int(limit, error_code="token_target_posts_limit_required")
         if post_range not in {"current_window", "since_ignition", "all_history"}:
             raise TokenTargetPostsRangeError(post_range)
-        if sort not in {"recent", "catalyst"}:
-            raise TokenTargetPostsSortError(sort)
         try:
             timeline_cursor = decode_target_cursor(cursor)
         except TokenTargetCursorError as exc:
@@ -80,7 +73,6 @@ class TokenTargetPostsService:
                 "window": window,
                 "scope": scope,
                 "range": post_range,
-                "sort": sort,
             },
             "score_window": {"window": window},
             "total_count": len(page_rows) + (1 if has_more else 0),

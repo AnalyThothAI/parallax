@@ -48,8 +48,8 @@ describe("TokenRadarTable rows", () => {
     expect(within(row).getByText("ETH · 0x111111...111111")).toBeInTheDocument();
     expect(within(row).getByText("1 帖 · 1 作者")).toBeInTheDocument();
     expect(within(row).getByText("关注源 0 · 较前窗 +1")).toBeInTheDocument();
-    expect(within(row).getByText("Admission missing")).toBeInTheDocument();
-    expect(within(row).getByText("no current admission")).toBeInTheDocument();
+    expect(within(row).getByText("50 / 100")).toBeInTheDocument();
+    expect(within(row).getByText("1 informative · 0% duplicate")).toBeInTheDocument();
     expect(within(row).queryByText("种子中 · 1 条有效讨论")).not.toBeInTheDocument();
     expect(within(row).queryByText("profile")).not.toBeInTheDocument();
     expect(within(row).queryByText("links")).not.toBeInTheDocument();
@@ -135,30 +135,25 @@ describe("TokenRadarTable rows", () => {
     expect(screen.getAllByRole("article")).toHaveLength(4);
   });
 
-  it("renders hydrated narrative admission coverage", () => {
+  it("renders the transparent propagation score and factor facts", () => {
     renderTokenRadarTable([
       {
         ...mixedFreshnessToken(),
-        narrative_admission: {
-          status: "admitted",
-          reason: "hot_rank",
-          is_current: true,
-          currentness: {
-            display_status: "current",
-            reason: "hot_rank",
-          },
-          coverage: {
-            source_mentions: 4,
-            independent_authors: 2,
-          },
-          data_gaps: [],
+        discussion_quality: {
+          ...mixedFreshnessToken().discussion_quality,
+          informative_post_count: 4,
+        },
+        propagation: {
+          ...mixedFreshnessToken().propagation,
+          duplicate_text_share: 0.2,
+          score: 72,
         },
       },
     ]);
 
     const row = screen.getByRole("article", { name: "Token Radar item $TROLL" });
-    expect(within(row).getByText("Admitted")).toBeInTheDocument();
-    expect(within(row).getByText("4 posts · 2 authors")).toBeInTheDocument();
+    expect(within(row).getByText("72 / 100")).toBeInTheDocument();
+    expect(within(row).getByText("4 informative · 20% duplicate")).toBeInTheDocument();
   });
 
   it("renders empty state when not loading and no items, instead of a skeleton", () => {
@@ -418,7 +413,7 @@ describe("TokenRadarTable rows", () => {
     expect(children.map((child) => child.className)).toEqual([
       "token-radar-cell case",
       "token-radar-cell social",
-      "token-radar-cell admission",
+      "token-radar-cell token-radar-propagation",
       "token-radar-cell market",
       "token-radar-cell score",
       "token-radar-cell listed",
@@ -708,7 +703,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       baseline_sample_count: 0,
     },
     social_heat: {
-      score_version: "token_factor_snapshot_v3_social_attention:social_heat",
+      score_version: "token_factor_snapshot_v4_transparent_factors:social_heat",
       score: 44,
       reasons: [],
       risks: [],
@@ -728,7 +723,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       status: "insufficient_history",
     },
     discussion_quality: {
-      score_version: "token_factor_snapshot_v3_social_attention:discussion_quality",
+      score_version: "token_factor_snapshot_v4_transparent_factors:discussion_quality",
       score: 43,
       reasons: [],
       risks: [],
@@ -742,7 +737,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       watched_source_count: 0,
     },
     propagation: {
-      score_version: "token_factor_snapshot_v3_social_attention:propagation",
+      score_version: "token_factor_snapshot_v4_transparent_factors:propagation",
       score: 50,
       reasons: [],
       risks: [],
@@ -758,7 +753,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       top_authors: [],
     },
     tradeability: {
-      score_version: "token_factor_snapshot_v3_social_attention:gates",
+      score_version: "token_factor_snapshot_v4_transparent_factors:gates",
       score: 0,
       reasons: [],
       risks: ["identity_not_tradeable"],
@@ -771,7 +766,7 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       pool_present: false,
     },
     timing: {
-      score_version: "token_factor_snapshot_v3_social_attention:timing",
+      score_version: "token_factor_snapshot_v4_transparent_factors:timing",
       score: 0,
       status: "market_unavailable",
       chase_risk: false,
@@ -780,14 +775,14 @@ function unresolvedSymbolOnly(): TokenFlowItem {
       market_observation_status: "no_resolved_target",
     },
     opportunity: {
-      score_version: "token_factor_snapshot_v3_social_attention:composite",
+      score_version: "token_factor_snapshot_v4_transparent_factors:composite",
       score: 44,
       decision: "investigate",
       reasons: [],
       risks: [],
       contributions: [],
       risk_caps: [],
-      components: { heat: 44, quality: 43, propagation: 50, timing: 0 },
+      components: { heat: 44, propagation: 50, timing: 0 },
     },
     watch: {
       status: "seed",

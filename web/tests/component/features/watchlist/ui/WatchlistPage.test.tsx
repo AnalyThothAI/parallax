@@ -93,7 +93,7 @@ function installWatchlistApi(requests: string[] = [], options: { sourceOnly?: bo
             source_event_count: handle === "marionawfal" ? 42 : 2,
             resolved_token_count: options.sourceOnly ? 0 : 1,
             candidate_mention_count: 0,
-            narrative_count: 0,
+            hashtag_count: 0,
             last_source_event_at_ms: 1_700_000_000_000,
           },
           resolved_token_clusters: options.sourceOnly
@@ -111,7 +111,7 @@ function installWatchlistApi(requests: string[] = [], options: { sourceOnly?: bo
                 },
               ],
           candidate_mention_clusters: [],
-          narrative_clusters: [],
+          hashtag_clusters: [],
           clusters_truncated: false,
           risk_notes: [],
         },

@@ -21,12 +21,12 @@
 
 ### Task 1 — Repair production type ownership
 
-- **File(s)**: `web/src/lib/types/index.ts`, `web/src/features/macro/model/macroChartModel.ts`, `web/src/lib/api/client.ts`
+- **File(s)**: `web/src/lib/types/index.ts`, `web/src/lib/api/client.ts`
 - **Owner**: parent
 - **Depends on**: none
-- **Touch set**: `web/src/lib/types/index.ts`, `web/src/features/macro/model/macroChartModel.ts`, `web/src/lib/api/client.ts`
-- **Conflict set**: `src/parallax/`; `docs/CONTRACTS.md`
-- **Failing test first**: `web/tests/unit/features/macro/model/macroChartModel.test.ts::production typecheck` — `cd web && npm run typecheck` reproduces the public-export, parameter-order, and news-narrowing failures.
+- **Touch set**: `web/src/lib/types/index.ts`, `web/src/lib/api/client.ts`
+- **Conflict set**: `src/parallax/`; `docs/CONTRACTS.md`; coordinate with 2026-07-23-macro-evidence-ai-hard-cut for `web/src/lib/types/index.ts` and `web/src/lib/api/client.ts`
+- **Failing test first**: `web/tests/unit/features/cockpit/model/statusCurrentContract.test.ts::production typecheck` names the surviving type-ownership seam; `cd web && npm run typecheck` reproduced the public-export, parameter-order, and news-narrowing failures recorded in `verification.md`.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
 - **Review result**: parent-reviewed
@@ -46,7 +46,7 @@
 - **Owner**: parent
 - **Depends on**: Task 1
 - **Touch set**: `web/tests/component/features/news/NewsPage.test.tsx`, `web/tests/component/features/news/NewsTape.test.tsx`, `web/tests/unit/features/notifications/api/notifications.test.ts`, `web/tests/unit/features/notifications/useNotificationsController.test.tsx`
-- **Conflict set**: `web/src/`
+- **Conflict set**: `web/src/`; coordinate with 2026-07-23-macro-evidence-ai-hard-cut for `web/tests/component/features/news/NewsPage.test.tsx`, `web/tests/component/features/news/NewsTape.test.tsx`, `web/tests/unit/features/notifications/api/notifications.test.ts`, and `web/tests/unit/features/notifications/useNotificationsController.test.tsx`
 - **Failing test first**: `web/tests/component/features/news/NewsPage.test.tsx::production typecheck` — `cd web && npm run typecheck` reproduces all fixture errors.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated

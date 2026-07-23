@@ -44,6 +44,8 @@ RETIRED_TABLES_AT_HEAD = frozenset(
         "narrative_model_runs",
         "news_item_agent_briefs",
         "news_item_agent_runs",
+        "news_story_agent_briefs",
+        "news_story_agent_runs",
         "news_source_quality_rows",
         "projects",
         "projection_offsets",

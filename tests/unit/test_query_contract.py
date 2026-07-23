@@ -19,12 +19,12 @@ def test_query_contract_asserts_semantic_sql_without_alias_coupling() -> None:
 
     assert_query_contract(
         sql,
-        params=(["asset:spx"], "macro_regime_v4"),
+        params=(["asset:spx"], "macro_evidence_v1"),
         required_tables=("macro_observation_series_rows",),
         forbidden_tables=("macro_observations",),
         required_predicates=("projection_version = %s", "series_rank = 1"),
         forbidden_fragments=("row_number() over",),
-        expected_params=(["asset:spx"], "macro_regime_v4"),
+        expected_params=(["asset:spx"], "macro_evidence_v1"),
     )
 
 

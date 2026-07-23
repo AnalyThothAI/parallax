@@ -12,6 +12,7 @@ import pytest
 from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote
 from parallax.domains.asset_market.runtime.market_tick_poll_worker import MarketTickPollWorker
 from parallax.domains.asset_market.types import market_tick_id
+from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from parallax.platform.runtime.worker_result import WorkerResult
 
 
@@ -114,7 +115,7 @@ def test_market_tick_poll_worker_queries_ranked_targets_persists_current_and_pub
     assert result.notes["ticks_attempted"] == 2
     assert repos.registry.calls == [
         {
-            "projection_version": "token-radar-v13-social-attention",
+            "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
             "since_ms": 1_799_913_600_100,
             "target_types": ("chain_token", "cex_symbol"),
             "limit": 10,

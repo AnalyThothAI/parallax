@@ -205,7 +205,6 @@ def _factor_snapshot(chain: str) -> dict[str, Any]:
         },
         attention={},
         social_quality={},
-        social_semantics={},
         market={
             "event_anchor": None,
             "decision_latest": None,

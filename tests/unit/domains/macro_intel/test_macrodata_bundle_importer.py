@@ -7,11 +7,7 @@ from decimal import Decimal
 
 import pytest
 
-from parallax.domains.macro_intel._constants import (
-    MACRO_CORE_CONCEPTS,
-    MACRO_EVENT_CONCEPTS,
-    MACRO_OPTIONAL_HISTORY_CONCEPTS,
-)
+from parallax.domains.macro_intel._constants import MACRO_EVENT_CONCEPTS
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
@@ -128,8 +124,8 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
                     "fact_payload_hash": macro_observation_fact_payload_hash(repos.macro_intel.observations[0]),
                 }
             ],
-            "projection_name": "macro_view",
-            "projection_version": "macro_regime_v4",
+            "projection_name": "macro_evidence",
+            "projection_version": "macro_evidence_v1",
             "now_ms": NOW_MS,
             "due_at_ms": NOW_MS,
             "reason": "macro_observations_changed",
@@ -338,9 +334,6 @@ def test_import_macrodata_bundle_accepts_event_bundles_without_expanding_numeric
 
     summary = import_macrodata_bundle(event_envelope, repos=repos, now_ms=NOW_MS)
 
-    assert "event:fomc_decision_next" not in MACRO_CORE_CONCEPTS
-    assert "event:treasury_auction_10y_bid_to_cover" not in MACRO_CORE_CONCEPTS
-    assert "event:treasury_auction_10y_next" not in MACRO_CORE_CONCEPTS
     assert [row["concept_key"] for row in repos.macro_intel.observations] == [
         "event:fomc_decision_next",
         "event:treasury_auction_10y_bid_to_cover",
@@ -426,7 +419,6 @@ def test_import_macrodata_bundle_accepts_fed_text_events_with_stable_document_se
     summary = import_macrodata_bundle(fed_text_envelope, repos=repos, now_ms=NOW_MS)
 
     assert "event:fed_speech" in MACRO_EVENT_CONCEPTS
-    assert "event:fed_speech" not in MACRO_CORE_CONCEPTS
     assert [row["concept_key"] for row in repos.macro_intel.observations] == [
         "event:fed_speech",
         "event:fed_speech",
@@ -603,7 +595,6 @@ def test_import_macrodata_bundle_accepts_crypto_derivatives_core_without_page_sh
     assert [row["source_name"] for row in repos.macro_intel.observations[:6]] == ["okx"] * 6
     assert [row["source_name"] for row in repos.macro_intel.observations[6:]] == ["deribit"] * 8
     assert {row["frequency"] for row in repos.macro_intel.observations} == {"intraday"}
-    assert set(expected_concept_keys).issubset(MACRO_OPTIONAL_HISTORY_CONCEPTS)
     assert repos.macro_intel.sync_runs[0]["bundle_name"] == "crypto-derivatives-core"
     assert repos.macro_intel.sync_runs[0]["observations_count"] == 14
     assert summary["imported_observation_count"] == 14

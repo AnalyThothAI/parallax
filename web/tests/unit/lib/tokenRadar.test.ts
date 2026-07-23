@@ -35,6 +35,18 @@ describe("token radar factor snapshot mapper", () => {
     );
   });
 
+  it("rejects the retired four-family snapshot contract", () => {
+    const row = productionFactorSnapshotRow();
+    row.factor_snapshot = {
+      ...row.factor_snapshot,
+      schema_version: legacySnapshotVersion("v3_social_attention"),
+    } as unknown as AssetFlowRow["factor_snapshot"];
+
+    expect(() => tokenRadarRowToTokenItem(row, "1h", "all")).toThrow(
+      /factor_snapshot\.schema_version/,
+    );
+  });
+
   it("rejects snapshots with legacy gate blocks", () => {
     const row = productionFactorSnapshotRow();
     row.factor_snapshot = {
@@ -73,7 +85,7 @@ describe("token radar factor snapshot mapper", () => {
     expect(item.identity.target_type).toBe("CexToken");
     expect(item.flow.mentions).toBe(2);
     expect(item.social_heat.score).toBe(55);
-    expect(item.discussion_quality.score).toBe(84);
+    expect(item.discussion_quality.score).toBe(58);
     expect(item.propagation.score).toBe(58);
     expect(item.tradeability.market_fresh).toBe(true);
     expect(item.opportunity.score).toBe(78);
@@ -133,24 +145,6 @@ describe("token radar factor snapshot mapper", () => {
     const item = tokenRadarRowToTokenItem(row, "1h", "all");
 
     expect((item as { profile?: unknown }).profile).toEqual(profile);
-  });
-
-  it("preserves hydrated narrative admission from asset flow rows", () => {
-    const row = productionFactorSnapshotRow();
-    row.narrative_admission = {
-      status: "admitted",
-      reason: "rank_score",
-      is_current: true,
-      currentness: {
-        display_status: "current",
-        reason: "rank_score",
-      },
-      coverage: { source_mentions: 5, independent_authors: 3 },
-      data_gaps: [],
-    };
-    const item = tokenRadarRowToTokenItem(row, "1h", "all");
-
-    expect(item.narrative_admission).toEqual(row.narrative_admission);
   });
 
   it("preserves radar row metadata for ranking and listed-at UI", () => {
@@ -343,7 +337,7 @@ function productionFactorSnapshotRow(): AssetFlowRow {
       discovery: [],
     },
     factor_snapshot: {
-      schema_version: "token_factor_snapshot_v3_social_attention",
+      schema_version: "token_factor_snapshot_v4_transparent_factors",
       subject: {
         target_type: "CexToken",
         target_id: "cex_token:ZEC",
@@ -365,7 +359,7 @@ function productionFactorSnapshotRow(): AssetFlowRow {
         social_heat: {
           raw_score: 55,
           score: 55,
-          weight: 0.35,
+          weight: 0.55,
           facts: {
             mentions_5m: 0,
             mentions_1h: 2,
@@ -385,7 +379,7 @@ function productionFactorSnapshotRow(): AssetFlowRow {
         social_propagation: {
           raw_score: 58,
           score: 58,
-          weight: 0.3,
+          weight: 0.45,
           facts: {
             mentions: 2,
             independent_authors: 2,
@@ -398,23 +392,10 @@ function productionFactorSnapshotRow(): AssetFlowRow {
           },
           data_health: "ready",
         },
-        semantic_catalyst: {
-          raw_score: 84,
-          score: 84,
-          weight: 0.25,
-          facts: {
-            impact_mean: 0.85,
-            novelty_mean: 0.6,
-            confidence_mean: 0.9,
-            direction_counts: { bullish: 1 },
-          },
-          factors: { impact_mean: factor("semantic_catalyst", "impact_mean", 0.85, 85) },
-          data_health: "ready",
-        },
         timing_risk: {
           raw_score: 99,
           score: 99,
-          weight: 0.1,
+          weight: 0,
           facts: {
             social_signal_start_ms: 1_778_423_360_921,
             price_change_since_social_pct: 0.00131,
@@ -438,7 +419,6 @@ function productionFactorSnapshotRow(): AssetFlowRow {
         factor_ranks: {
           social_heat: 0.8,
           social_propagation: 0.7,
-          semantic_catalyst: 0.9,
           timing_risk: 0.5,
         },
         alpha_rank: 3,
@@ -451,7 +431,6 @@ function productionFactorSnapshotRow(): AssetFlowRow {
           timing_risk: 99,
           social_propagation: 58,
           social_heat: 55,
-          semantic_catalyst: 84,
         },
       },
       provenance: {

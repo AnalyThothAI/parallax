@@ -5,11 +5,7 @@ import {
   requireOpsQueueData,
   statusTone,
 } from "@features/ops/model/opsDiagnostics";
-import {
-  activeOpsAgentExecutionFixture,
-  opsDiagnosticsFixture,
-  opsQueueFixture,
-} from "@tests/fixtures/opsFixture";
+import { opsDiagnosticsFixture, opsQueueFixture } from "@tests/fixtures/opsFixture";
 import { describe, expect, it } from "vitest";
 
 describe("opsDiagnostics current contract", () => {
@@ -18,15 +14,12 @@ describe("opsDiagnostics current contract", () => {
     expect(requireOpsQueueData(opsQueueFixture())).toBeTruthy();
   });
 
-  it.each(["overall", "queues", "agent_execution", "domains"])(
-    "rejects diagnostics without %s",
-    (key) => {
-      const payload = { ...opsDiagnosticsFixture() } as Record<string, unknown>;
-      delete payload[key];
+  it.each(["overall", "queues", "domains"])("rejects diagnostics without %s", (key) => {
+    const payload = { ...opsDiagnosticsFixture() } as Record<string, unknown>;
+    delete payload[key];
 
-      expect(() => requireOpsDiagnostics(payload)).toThrowError("ops_current_contract:diagnostics");
-    },
-  );
+    expect(() => requireOpsDiagnostics(payload)).toThrowError("ops_current_contract:diagnostics");
+  });
 
   it("rejects a malformed queue count instead of treating it as zero", () => {
     const payload = opsQueueFixture();
@@ -88,51 +81,6 @@ describe("opsDiagnostics current contract", () => {
     delete summary.critical_unread_count;
     expect(() => requireOpsDiagnostics(partialSummary)).toThrowError(
       "ops_current_contract:diagnostics.domains.notifications.summary",
-    );
-  });
-
-  it("accepts the fixed story-brief execution object and rejects retired lanes", () => {
-    const active = opsDiagnosticsFixture();
-    active.agent_execution = activeOpsAgentExecutionFixture();
-    expect(requireOpsDiagnostics(active)).toBeTruthy();
-
-    const retired = opsDiagnosticsFixture() as unknown as {
-      agent_execution: Record<string, unknown>;
-    };
-    retired.agent_execution.lanes = {};
-    expect(() => requireOpsDiagnostics(retired)).toThrowError(
-      "ops_current_contract:diagnostics.agent_execution",
-    );
-  });
-
-  it("rejects partial active agent policy instead of accepting a loose object", () => {
-    const payload = opsDiagnosticsFixture();
-    payload.agent_execution = activeOpsAgentExecutionFixture();
-    delete (payload.agent_execution.policy as Record<string, unknown>).model;
-
-    expect(() => requireOpsDiagnostics(payload)).toThrowError(
-      "ops_current_contract:diagnostics.agent_execution.policy",
-    );
-  });
-
-  it("requires active policy/counters and nulls them for inactive status", () => {
-    const activeWithoutPolicy = opsDiagnosticsFixture();
-    activeWithoutPolicy.agent_execution = {
-      status: "ok",
-      policy: null,
-      counters: null,
-    };
-    expect(() => requireOpsDiagnostics(activeWithoutPolicy)).toThrowError(
-      "ops_current_contract:diagnostics.agent_execution.policy",
-    );
-
-    const disabledWithPolicy = opsDiagnosticsFixture();
-    disabledWithPolicy.agent_execution = {
-      ...activeOpsAgentExecutionFixture(),
-      status: "disabled",
-    };
-    expect(() => requireOpsDiagnostics(disabledWithPolicy)).toThrowError(
-      "ops_current_contract:diagnostics.agent_execution",
     );
   });
 

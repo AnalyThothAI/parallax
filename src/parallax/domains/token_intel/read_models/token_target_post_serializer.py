@@ -44,8 +44,6 @@ def token_target_post_payload(
         "is_first_seen_by_watched_for_token": watched,
         "event_type": "watched_token_intent" if watched else "public_token_intent",
         "reference": _reference(row.get("reference_json")),
-        "catalyst_score": int(quality.get("score") or 0) if watched else None,
-        "catalyst_components": None,
         "price": message_price_payload(row),
         "post_quality": quality,
         "stage_id": stage.get("stage_id") if stage else None,

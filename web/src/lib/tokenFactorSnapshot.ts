@@ -1,6 +1,6 @@
 import type { TokenFactorFamilyKey, TokenFactorSnapshot } from "@lib/types";
 
-export const TOKEN_FACTOR_SNAPSHOT_SCHEMA = "token_factor_snapshot_v3_social_attention";
+export const TOKEN_FACTOR_SNAPSHOT_SCHEMA = "token_factor_snapshot_v4_transparent_factors";
 const TOP_LEVEL_KEYS = new Set([
   "schema_version",
   "subject",
@@ -12,12 +12,7 @@ const TOP_LEVEL_KEYS = new Set([
   "composite",
   "provenance",
 ]);
-const ALPHA_FAMILIES: TokenFactorFamilyKey[] = [
-  "social_heat",
-  "social_propagation",
-  "semantic_catalyst",
-  "timing_risk",
-];
+const ALPHA_FAMILIES: TokenFactorFamilyKey[] = ["social_heat", "social_propagation", "timing_risk"];
 const FACTOR_VALUE_KEYS = new Set<string>(ALPHA_FAMILIES);
 const FAMILY_KEYS = new Set(["raw_score", "score", "weight", "data_health", "facts", "factors"]);
 const PROVENANCE_KEYS = new Set(["source_event_ids", "computed_at_ms"]);

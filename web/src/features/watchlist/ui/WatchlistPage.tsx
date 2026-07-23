@@ -117,7 +117,7 @@ export function WatchlistPage({
 
               <WatchlistInsightRail
                 candidateClusters={overview?.candidate_mention_clusters ?? []}
-                narrativeClusters={overview?.narrative_clusters ?? []}
+                hashtagClusters={overview?.hashtag_clusters ?? []}
                 resolvedClusters={overview?.resolved_token_clusters ?? []}
                 riskNotes={overview?.risk_notes ?? []}
               />

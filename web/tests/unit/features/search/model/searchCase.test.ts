@@ -1,97 +1,39 @@
 import { buildSearchCaseView } from "@features/search/model/searchCase";
 import { buildTopicBuckets } from "@features/search/model/searchTopicTimeline";
 import type { SearchInspectData } from "@lib/types";
+import { tokenCaseFixture } from "@tests/fixtures/tokenCaseFixture";
 import { describe, expect, it } from "vitest";
 
 describe("buildSearchCaseView", () => {
-  it("maps token search inspect data into the shared case grammar", () => {
+  it("maps token search facts into the shared case grammar", () => {
     const view = buildSearchCaseView(searchInspectFixture());
 
     expect(view.resultKind).toBe("token_result");
-    expect(view.title).toBe("$RKC");
-    expect(view.official.value).toBe("Rockchain");
+    expect(view.title).toBe("$HANSA");
+    expect(view.official.value).toBe("Hansa Network");
     expect(view.official.source).toBe("official");
-    expect(view.community.value).toBe("73 posts · 18 authors");
-    expect(view.narrative.source).toBe("social");
-    expect(view.narrative.value).toBe("Narrative admitted");
-    expect(view.narrative.detail).toBe("12 mentions · 9 authors");
-    expect(view.market.value).toBe("$51M");
-    expect(view.resolver.value).toBe("94%");
-    expect(view.evidence.value).toBe("12 events");
+    expect(view.community.value).toBe("18 posts · 9 authors");
+    expect(view.market.value).toBe("-");
+    expect(view.resolver.value).toBe("token result");
+    expect(view.resolver.detail).toBe("one resolved target");
+    expect(view.evidence.value).toBe("3 events");
   });
 
-  it("keeps topic and ambiguous search narratives on the agent brief boundary", () => {
+  it("keeps topic search on resolver and source evidence facts", () => {
     const data = searchInspectFixture();
-    const tokenAdmission = data.token_result!.narrative_admission;
     data.query.result_kind = "topic_result";
     data.token_result = null;
     data.topic_result = {
       summary: { posts: 2, authors: 2 },
       items: [],
-      agent_brief: {
-        schema_version: "search_agent_brief_v1",
-        generated_by: "deterministic",
-        project_summary: {
-          current_state: "topic",
-          data_gaps: [],
-          evidence_event_ids: [],
-          one_liner: "Topic agent memo",
-          summary_zh: "Topic agent memo",
-        },
-        propagation: { key_accounts: [], phases: [], summary_zh: "topic" },
-        bull_bear: {
-          stance: "research",
-          bear: { evidence_event_ids: [], invalidations_zh: [], thesis_zh: "" },
-          bull: { evidence_event_ids: [], thesis_zh: "", triggers_zh: [] },
-        },
-      },
     };
 
     const view = buildSearchCaseView(data);
 
-    expect(tokenAdmission.status).toBe("admitted");
-    expect(view.narrative.source).toBe("agent");
-    expect(view.narrative.value).toBe("Topic agent memo");
-  });
-
-  it("normalizes structured narrative admission data gaps", () => {
-    const data = searchInspectFixture();
-    data.token_result!.narrative_admission = {
-      status: "missing",
-      reason: "no_current_admission",
-      is_current: false,
-      currentness: {
-        display_status: "not_ready",
-        reason: "no_current_admission",
-      },
-      coverage: { source_mentions: 0, independent_authors: 0 },
-      data_gaps: [{ reason: "no_current_admission" }],
-    };
-
-    const view = buildSearchCaseView(data);
-
-    expect(view.narrative.value).toBe("Narrative not ready");
-    expect(view.narrative.detail).toBe("not admitted");
-  });
-
-  it("shows unsupported narrative windows from currentness rather than missing status", () => {
-    const data = searchInspectFixture();
-    data.token_result!.narrative_admission = {
-      status: "missing",
-      reason: "narrative_not_supported_for_window",
-      is_current: false,
-      currentness: {
-        display_status: "unsupported_window",
-        reason: "narrative_not_supported_for_window",
-      },
-      coverage: { source_mentions: 0, independent_authors: 0 },
-      data_gaps: ["narrative_not_supported_for_window"],
-    };
-
-    const view = buildSearchCaseView(data);
-
-    expect(view.narrative.value).toBe("Narrative unsupported");
-    expect(view.narrative.detail).toBe("admission unsupported");
+    expect(view.resultKind).toBe("topic_result");
+    expect(view.community.value).toBe("2 posts · 2 authors");
+    expect(view.official.value).toBe("No token profile");
+    expect(view.evidence.value).toBe("0 events");
   });
 
   it("reads token market facts from market_live instead of market candle metadata", () => {
@@ -99,11 +41,9 @@ describe("buildSearchCaseView", () => {
     data.token_result!.market_live = {
       status: "ready",
       target_type: "Asset",
-      target_id: "asset:solana:rkc",
+      target_id: "asset:solana:hansa",
       price_usd: 0.0078,
       market_cap_usd: 51_000_000,
-      liquidity_usd: null,
-      holders: null,
       observed_at_ms: 1_700_000_000_000,
       provider: "live-market",
     };
@@ -133,124 +73,23 @@ describe("buildSearchCaseView", () => {
 });
 
 function searchInspectFixture(): SearchInspectData {
+  const dossier = tokenCaseFixture();
   return {
     query: {
-      normalized_q: "rkc",
-      q: "$RKC",
+      normalized_q: "hansa",
+      q: "$HANSA",
       result_kind: "token_result",
       scope: "all",
       window: "24h",
     },
     resolver: {
-      confidence: 0.94,
       reasons: ["one_resolved_target"],
-      selected_target: {
-        reason: "CANONICAL_SYMBOL_MATCH",
-        source: "asset_identity_current",
-        status: "resolved",
-        symbol: "RKC",
-        target_id: "asset:solana:rkc",
-        target_type: "Asset",
-      },
-      target_candidates: [],
+      selected_target: dossier.target,
+      target_candidates: [dossier.target],
     },
-    token_result: {
-      narrative_admission: {
-        status: "admitted",
-        reason: "radar_row",
-        is_current: true,
-        computed_at_ms: 1_700_000_000_000,
-        currentness: {
-          display_status: "current",
-          reason: "radar_row",
-        },
-        coverage: { source_mentions: 12, independent_authors: 9 },
-        data_gaps: [],
-      },
-      market_live: {
-        status: "ready",
-        target_type: "Asset",
-        target_id: "asset:solana:rkc",
-        price_usd: 0.0078,
-        market_cap_usd: 51_000_000,
-        liquidity_usd: null,
-        holders: null,
-        observed_at_ms: 1_700_000_000_000,
-        provider: "okx_dex_ws_price_info",
-      },
-      posts: {
-        has_more: false,
-        items: [],
-        query: {
-          range: "current_window",
-          scope: "all",
-          target_id: "asset:solana:rkc",
-          target_type: "Asset",
-          window: "24h",
-        },
-        returned_count: 12,
-        score_window: { window: "24h" },
-        total_count: 12,
-      },
-      profile: {
-        status: "ready",
-        identity: {
-          description: "Official profile description.",
-          name: "Rockchain",
-          symbol: "RKC",
-        },
-        links: { website_url: "https://rock.example" },
-        provider: "gmgn",
-      },
-      target: {
-        reason: "CANONICAL_SYMBOL_MATCH",
-        source: "asset_identity_current",
-        status: "resolved",
-        symbol: "RKC",
-        target_id: "asset:solana:rkc",
-        target_type: "Asset",
-      },
-      timeline: {
-        authors: [],
-        buckets: [],
-        cascade: { edges: [], unresolved_parents: [] },
-        has_more: false,
-        next_cursor: null,
-        posts: [],
-        market_candles: {
-          price_series_type: "ohlc",
-          candle_status: "ready",
-          candle_bar: "1H",
-          candles: [],
-          target_type: "Asset",
-          target_id: "asset:solana:rkc",
-          chain_id: "solana",
-          address: "Rkc111111111111111111111111111111111111111",
-          symbol: "RKC",
-        },
-        query: {
-          bucket: "1h",
-          scope: "all",
-          target_id: "asset:solana:rkc",
-          target_type: "Asset",
-          window: "24h",
-        },
-        returned_count: 0,
-        stages: [],
-        summary: {
-          authors: 18,
-          duplicate_text_share: 0.12,
-          effective_authors: 18,
-          peak_new_authors_per_bucket: 4,
-          peak_posts_per_bucket: 9,
-          phase: "expansion",
-          posts: 73,
-          reproduction_rate: 1.4,
-          top_author_share: 0.22,
-          watched_posts: 6,
-        },
-      },
-    },
+    token_result: dossier,
+    topic_result: null,
+    ambiguous_result: null,
   };
 }
 

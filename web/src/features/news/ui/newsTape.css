@@ -33,13 +33,13 @@
   .news-tape-open:hover,
   .news-tape-open:focus-visible {
     outline: 0;
-    border-color: var(--agent-line);
+    border-color: var(--info-line);
     background: rgba(22, 28, 24, 0.96);
   }
 
   .news-tape-time,
   .news-tape-copy,
-  .news-tape-signal,
+  .news-tape-state,
   .news-tape-token {
     display: grid;
     min-width: 0;
@@ -91,18 +91,6 @@
     text-transform: none;
   }
 
-  .news-tape-review {
-    flex: 0 0 auto;
-    border: 1px solid var(--line-soft);
-    border-radius: 4px;
-    padding: 1px 4px;
-    color: var(--dim);
-    background: rgba(255, 255, 255, 0.04);
-    font-size: 9px;
-    line-height: 1.25;
-    text-transform: uppercase;
-  }
-
   .news-tape-provider-rating {
     display: inline-flex;
     flex: 0 0 auto;
@@ -127,25 +115,6 @@
     font-weight: 900;
   }
 
-  .news-tape-review.is-ready {
-    border-color: var(--opportunity-line);
-    color: var(--opportunity-ink);
-    background: var(--opportunity-soft);
-  }
-
-  .news-tape-review.is-waiting {
-    border-color: var(--info-line);
-    color: var(--info-ink);
-    background: var(--info-soft);
-  }
-
-  .news-tape-review.is-blocked,
-  .news-tape-review.is-failed {
-    border-color: var(--risk-line);
-    color: var(--risk-ink);
-    background: var(--risk-soft);
-  }
-
   .news-tape-summary-text {
     overflow: hidden;
     min-width: 0;
@@ -153,16 +122,7 @@
     white-space: nowrap;
   }
 
-  .news-tape-review-reason {
-    overflow: hidden;
-    min-width: 48px;
-    max-width: 180px;
-    color: var(--dim);
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .news-tape-signal {
+  .news-tape-state {
     justify-items: center;
     gap: 2px;
     border: 1px solid var(--line);
@@ -170,25 +130,23 @@
     padding: 4px 6px;
   }
 
-  .news-tape-signal b {
+  .news-tape-state b {
     font-size: 13px;
   }
 
-  .news-tape-signal.is-long,
-  .news-tape-token.is-long {
+  .news-tape-state.is-ready {
     border-color: var(--opportunity-line);
     color: var(--opportunity-ink);
     background: var(--opportunity-soft);
   }
 
-  .news-tape-signal.is-short,
-  .news-tape-token.is-short {
+  .news-tape-state.is-blocked {
     border-color: var(--risk-line);
     color: var(--risk-ink);
     background: var(--risk-soft);
   }
 
-  .news-tape-signal.is-neutral,
+  .news-tape-state.is-waiting,
   .news-tape-token.is-neutral {
     border-color: var(--info-line);
     color: var(--info-ink);

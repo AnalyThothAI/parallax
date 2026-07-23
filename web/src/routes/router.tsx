@@ -1,11 +1,6 @@
-import {
-  Navigate,
-  createBrowserRouter,
-  createMemoryRouter,
-  type RouteObject,
-} from "react-router-dom";
+import { createBrowserRouter, createMemoryRouter, type RouteObject } from "react-router-dom";
 
-import { RouteErrorElement } from "./routeErrorElement";
+import { RouteErrorElement, RouteNotFoundElement } from "./routeErrorElement";
 import { SearchShellRoute, ShellChromeRoute, ShellRoute } from "./shell.route";
 
 export type AppRouter = ReturnType<typeof createBrowserRouter>;
@@ -41,8 +36,28 @@ export function createAppRouteObjects(): RouteObject[] {
               lazy: () => import("./news.route"),
             },
             {
-              path: "macro/*",
-              lazy: () => import("./macro.route"),
+              path: "macro",
+              lazy: () => import("./macro-overview.route"),
+            },
+            {
+              path: "macro/cross-asset",
+              lazy: () => import("./macro-cross-asset.route"),
+            },
+            {
+              path: "macro/rates-inflation",
+              lazy: () => import("./macro-rates-inflation.route"),
+            },
+            {
+              path: "macro/growth-labor",
+              lazy: () => import("./macro-growth-labor.route"),
+            },
+            {
+              path: "macro/liquidity-funding",
+              lazy: () => import("./macro-liquidity-funding.route"),
+            },
+            {
+              path: "macro/credit",
+              lazy: () => import("./macro-credit.route"),
             },
             {
               path: "ops",
@@ -67,7 +82,7 @@ export function createAppRouteObjects(): RouteObject[] {
     },
     {
       path: "*",
-      element: <Navigate replace to="/" />,
+      element: <RouteNotFoundElement />,
     },
   ];
 }

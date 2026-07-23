@@ -17,7 +17,6 @@ from parallax.platform.agent_capabilities import (
 from parallax.platform.agent_hashing import json_sha256
 
 RUNTIME_VERSION = "litellm-execution-plane-v1"
-AGENT_RUNTIME_LANE = "news.story_brief"
 
 
 class AgentExecutionErrorClass(StrEnum):
@@ -107,8 +106,8 @@ class AgentStageSpec(BaseModel):
     @classmethod
     def parse_lane(cls, value: Any) -> str:
         lane = str(value or "").strip()
-        if lane != AGENT_RUNTIME_LANE:
-            raise ValueError(f"agent_stage_lane_required:{AGENT_RUNTIME_LANE}")
+        if not lane:
+            raise ValueError("agent_stage_lane_required")
         return lane
 
     @property
@@ -279,7 +278,6 @@ class AgentCapacityReservation:
 
 
 __all__ = [
-    "AGENT_RUNTIME_LANE",
     "RUNTIME_VERSION",
     "AgentCapabilityProfile",
     "AgentCapacityReservation",

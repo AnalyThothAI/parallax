@@ -228,10 +228,10 @@ function tokenRadarColumns({
       cell: ({ row }) => <SocialCell item={row.original} />,
     },
     {
-      id: "admission",
-      header: "Admission",
-      accessorFn: (item) => item.narrative_admission?.coverage.source_mentions ?? 0,
-      cell: ({ row }) => <AdmissionCell item={row.original} />,
+      id: "token-radar-propagation",
+      header: "Propagation",
+      accessorFn: (item) => item.propagation.score,
+      cell: ({ row }) => <PropagationCell item={row.original} />,
     },
     {
       id: "market",
@@ -349,12 +349,12 @@ function SocialCell({ item }: { item: TokenFlowItem }) {
   );
 }
 
-function AdmissionCell({ item }: { item: TokenFlowItem }) {
+function PropagationCell({ item }: { item: TokenFlowItem }) {
   const tokenCase = buildTokenRadarCompactCase(item);
   return (
-    <span className="radar-fact admission-fact" data-case-section="admission">
-      <b>{tokenCase.admission.value}</b>
-      <em>{tokenCase.admission.detail}</em>
+    <span className="radar-fact token-radar-propagation-fact" data-case-section="propagation">
+      <b>{tokenCase.propagation.value}</b>
+      <em>{tokenCase.propagation.detail}</em>
     </span>
   );
 }
@@ -413,7 +413,7 @@ function headerLabel(columnId: string): string {
   const labels: Record<string, string> = {
     case: "token case",
     social: "social",
-    admission: "admission",
+    "token-radar-propagation": "propagation",
     market: "market",
     listed: "listed",
     score: "score",

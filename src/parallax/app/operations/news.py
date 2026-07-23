@@ -7,15 +7,11 @@ from typing import Any
 from parallax.domains.news_intel._constants import NEWS_STORY_IDENTITY_VERSION
 from parallax.domains.news_intel.runtime.news_projection_work import (
     enqueue_page_reprojection,
-    enqueue_story_brief_work,
-)
-from parallax.domains.news_intel.services.news_story_agent_policy import (
-    news_story_brief_priority,
 )
 
-PROJECTION_CHOICES = ("all", "page", "story_brief")
+PROJECTION_CHOICES = ("all", "page")
 
-_NEWS_ITEM_PROJECTIONS = ("page", "story_brief")
+_NEWS_ITEM_PROJECTIONS = ("page",)
 
 
 def enqueue_projection_dirty_targets(
@@ -29,8 +25,6 @@ def enqueue_projection_dirty_targets(
     normalized_projection = str(projection or "all").strip().lower()
     if normalized_projection not in PROJECTION_CHOICES:
         raise ValueError(f"unsupported projection dirty target projection: {normalized_projection}")
-    if execute and normalized_projection in {"all", "story_brief"} and since_ms is None:
-        raise ValueError("executing story_brief repair requires --since-hours to bound expensive agent work")
     result: dict[str, Any] = {
         "projection": normalized_projection,
         "execute": bool(execute),
@@ -70,11 +64,7 @@ def _enqueue_news_targets(
         else []
     )
     page_rows = [row for row in news_item_rows if "page" in news_item_projections]
-    story_brief_rows = [
-        row for row in news_item_rows if "story_brief" in news_item_projections and _row_brief_eligible(row)
-    ]
     watermarks = {str(row["news_item_id"]): _news_item_source_watermark_ms(row) for row in news_item_rows}
-    story_targets = _story_brief_targets(story_brief_rows)
     enqueued_pages = (
         enqueue_page_reprojection(
             repos,
@@ -86,22 +76,10 @@ def _enqueue_news_targets(
         if execute and page_rows
         else 0
     )
-    enqueued_story_briefs = (
-        enqueue_story_brief_work(
-            repos,
-            story_keys=story_targets["story_keys"],
-            priority_by_story_key=story_targets["priority_by_story_key"],
-            source_watermark_ms_by_story_key=story_targets["source_watermark_ms_by_story_key"],
-            reason="ops_projection_dirty_repair",
-            now_ms=now_ms,
-        )
-        if execute and story_targets["story_keys"]
-        else 0
-    )
     return {
         "news_item_ids": len(news_item_rows),
-        "news_item_targets": len(page_rows) + len(story_targets["story_keys"]),
-        "news_item_targets_enqueued": int(enqueued_pages) + int(enqueued_story_briefs),
+        "news_item_targets": len(page_rows),
+        "news_item_targets_enqueued": int(enqueued_pages),
     }
 
 
@@ -111,49 +89,6 @@ def _selected_projections(requested: str, available: tuple[str, ...]) -> tuple[s
     if requested in available:
         return (requested,)
     return ()
-
-
-def _row_brief_eligible(row: Mapping[str, Any]) -> bool:
-    return _story_brief_priority(row) < 100
-
-
-def _story_brief_priority(row: Mapping[str, Any]) -> int:
-    return news_story_brief_priority(item=row)
-
-
-def _story_brief_targets(rows: list[Mapping[str, Any]]) -> dict[str, Any]:
-    story_keys: list[str] = []
-    priority_by_story_key: dict[str, int] = {}
-    source_watermark_ms_by_story_key: dict[str, int] = {}
-    for row in rows:
-        story_key = _news_item_story_key(row)
-        if story_key not in source_watermark_ms_by_story_key:
-            story_keys.append(story_key)
-        priority = _story_brief_priority(row)
-        existing_priority = priority_by_story_key.get(story_key)
-        priority_by_story_key[story_key] = priority if existing_priority is None else min(existing_priority, priority)
-        source_watermark_ms_by_story_key[story_key] = max(
-            source_watermark_ms_by_story_key.get(story_key, 0),
-            _news_item_source_watermark_ms(row),
-        )
-    return {
-        "story_keys": story_keys,
-        "priority_by_story_key": priority_by_story_key,
-        "source_watermark_ms_by_story_key": source_watermark_ms_by_story_key,
-    }
-
-
-def _news_item_story_key(row: Mapping[str, Any]) -> str:
-    try:
-        value = row["story_key"]
-    except KeyError as exc:
-        raise ValueError("ops_news_projection_dirty_story_key_required") from exc
-    if not isinstance(value, str):
-        raise ValueError("ops_news_projection_dirty_story_key_required")
-    story_key = value.strip()
-    if not story_key:
-        raise ValueError("ops_news_projection_dirty_story_key_required")
-    return story_key
 
 
 def _news_item_source_watermark_ms(row: Mapping[str, Any]) -> int:
@@ -194,7 +129,7 @@ def _fetch_news_item_rows(conn: Any, *, since_ms: int | None) -> list[dict[str, 
                  COALESCE(NULLIF(items.published_at_ms, 0), 0),
                  COALESCE(NULLIF(items.fetched_at_ms, 0), 0)
                )::bigint AS source_watermark_ms,
-               items.agent_admission_json
+               items.story_identity_version
           FROM news_items AS items
          WHERE {where_clause}
          ORDER BY items.news_item_id ASC

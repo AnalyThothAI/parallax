@@ -141,7 +141,11 @@ def _mount_frontend(app: FastAPI, *, frontend_dist: str | Path | None) -> None:
     app.add_api_route("/news", frontend_index, include_in_schema=False)
     app.add_api_route("/news/{path:path}", frontend_index, include_in_schema=False)
     app.add_api_route("/macro", frontend_index, include_in_schema=False)
-    app.add_api_route("/macro/{path:path}", frontend_index, include_in_schema=False)
+    app.add_api_route("/macro/cross-asset", frontend_index, include_in_schema=False)
+    app.add_api_route("/macro/rates-inflation", frontend_index, include_in_schema=False)
+    app.add_api_route("/macro/growth-labor", frontend_index, include_in_schema=False)
+    app.add_api_route("/macro/liquidity-funding", frontend_index, include_in_schema=False)
+    app.add_api_route("/macro/credit", frontend_index, include_in_schema=False)
     app.add_api_route("/ops", frontend_index, include_in_schema=False)
     app.add_api_route("/ops/{path:path}", frontend_index, include_in_schema=False)
     app.add_api_route("/search", frontend_index, include_in_schema=False)
@@ -196,7 +200,6 @@ def _status_payload(runtime: Runtime) -> dict[str, Any]:
         "store": "postgresql",
         "db": dict(snapshot.startup_db_status),
         "provider_states": snapshot.provider_states,
-        "agent_execution": snapshot.agent_execution,
         "news_provider_contract": snapshot.news_provider_contract,
         "workers": snapshot.workers,
     }

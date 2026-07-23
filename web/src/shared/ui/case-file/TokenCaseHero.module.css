@@ -291,13 +291,11 @@
   color: var(--health);
 }
 
-.metricGrid div[data-tone="info"],
-.metricGrid div[data-tone="agent"] {
+.metricGrid div[data-tone="info"] {
   border-color: var(--info-line);
 }
 
-.metricGrid div[data-tone="info"] dd,
-.metricGrid div[data-tone="agent"] dd {
+.metricGrid div[data-tone="info"] dd {
   color: var(--info);
 }
 

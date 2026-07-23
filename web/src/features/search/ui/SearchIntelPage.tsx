@@ -71,8 +71,11 @@ function SearchTopBar({
         <h2>Search Intel</h2>
         <strong>{routeState.q || "empty query"}</strong>
       </div>
-      <div className="search-route-meta">
+      <div className="search-route-meta" aria-label="Search resolver">
         <code>{resultKind}</code>
+        {data?.resolver.reasons.map((reason, index) => (
+          <code key={`${reason}-${index}`}>{reason}</code>
+        ))}
         <code>{data?.query.window ?? routeState.window}</code>
         <code>{data?.query.scope ?? routeState.scope}</code>
       </div>
@@ -92,7 +95,6 @@ function SearchResultBody({
   if (data.query.result_kind === "token_result" && data.token_result) {
     return (
       <SearchTokenIntelPage
-        data={data}
         result={data.token_result}
         routeState={routeState}
         onRouteChange={onRouteChange}

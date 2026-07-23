@@ -9,7 +9,6 @@ from pydantic import BaseModel
 from parallax.integrations.model_execution.execution_gateway import AgentExecutionGateway
 from parallax.integrations.model_execution.output_schema import StrictJsonOutputSchema
 from parallax.platform.agent_execution import (
-    AGENT_RUNTIME_LANE,
     RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentExecutionCancelled,
@@ -20,6 +19,8 @@ from parallax.platform.agent_execution import (
     AgentStageSpec,
 )
 from parallax.platform.agent_hashing import artifact_hash_for, json_sha256, text_sha256
+
+TEST_LANE = "structured_json.test"
 
 
 class Payload(BaseModel):
@@ -102,7 +103,7 @@ def patch_litellm(monkeypatch: pytest.MonkeyPatch):
 
 def _spec() -> AgentStageSpec:
     return AgentStageSpec(
-        lane=AGENT_RUNTIME_LANE,
+        lane=TEST_LANE,
         stage="stage",
         instructions="Return JSON.",
         input_payload={"x": 1},
@@ -568,7 +569,6 @@ def test_status_snapshot_is_flat_fixed_runtime_policy_and_counters() -> None:
         assert reservation.acquired is True
         assert denied.reason is AgentExecutionErrorClass.CAPACITY_DENIED
         assert set(snapshot) == {
-            "lane",
             "model",
             "provider_family",
             "output_strategy",
@@ -587,7 +587,6 @@ def test_status_snapshot_is_flat_fixed_runtime_policy_and_counters() -> None:
             "last_timeout_at_ms",
             "oldest_in_flight_age_ms",
         }
-        assert snapshot["lane"] == AGENT_RUNTIME_LANE
         assert snapshot["max_concurrency"] == 1
         assert snapshot["timeout_seconds"] == 10.0
         assert snapshot["output_strategy"] == "json_object"

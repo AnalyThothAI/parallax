@@ -16,9 +16,9 @@ test("cold live load renders radar, tape, and URL-owned filters", async ({ page 
   await expect(radarRow).toBeVisible();
   await expect(radarRow.getByRole("link", { name: "Open token item $UPEG" })).toBeVisible();
   await expect(radarRow.getByText("4 帖 · 3 作者")).toBeVisible();
-  await expect(radarRow.locator('[data-case-section="admission"]')).toContainText(
-    "Admission missing",
-  );
+  const propagation = radarRow.locator('[data-case-section="propagation"]');
+  await expect(propagation).toContainText("72 / 100");
+  await expect(propagation).toContainText("4 informative · 0% duplicate");
   await expect(radarRow.locator(".market-move.up", { hasText: "+12%" })).toBeVisible();
   await expect(radarRow.locator('[data-radar-metric="market"]')).toContainText("liq$250K");
   await expect(radarRow.locator('[data-radar-metric="market"]')).toContainText("vol$250K");

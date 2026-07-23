@@ -1,12 +1,12 @@
 # Parallax
 
 **Parallax Market Research System** is an evidence-first research system for
-turning social, news, macro, DEX/CEX market flow, and auditable agent runs into
-replayable evidence, current research views, and operator alerts.
+turning social, news, macro, and DEX/CEX market flow into replayable evidence,
+current research views, and operator alerts.
 
 Parallax is built around the idea that a market event becomes more trustworthy
 when it can be observed from several independent angles: social attention,
-token identity, liquidity, derivatives positioning, news, and macro regime.
+token identity, liquidity, derivatives positioning, news, and macro evidence.
 Provider adapters are inputs to that research loop; the product boundary is
 durable evidence, rebuildable current views, and operator workflows built on
 top of them.
@@ -21,7 +21,7 @@ Information flow
   -> Material facts
   -> Identity and market context
   -> Deterministic current views
-  -> Evidence-bounded News story brief
+  -> Explicit evidence conclusions and gaps
   -> Operator console and notifications
 ```
 
@@ -33,8 +33,9 @@ The system should answer four questions for every asset, event, or candidate:
   topic, macro concept, and related market target.
 - **Why is it worth attention?** Show deterministic gates, factor snapshots,
   source evidence, freshness, and missing fields.
-- **What analysis was produced?** Keep typed News story-brief output and its
-  side-effect audit bound to the facts that supported it.
+- **What does the evidence support?** Keep conclusions, confirmations,
+  contradictions, freshness, samples, and invalidation conditions tied to the
+  exact facts that support them.
 
 ## Architecture At A Glance
 
@@ -53,9 +54,6 @@ Macrodata bundles       DEX / CEX / market-data providers
          |
          v
   Token Radar / Search / Token Case / Watchlist / Stocks / News / Macro
-         |
-         v
-  bounded agent runtime: News story briefs
          |
          v
   diagnostics and notifications
@@ -77,9 +75,13 @@ Parallax follows a Kappa/CQRS model:
   are documented by their owning domain service.
 - **Catch-up is durable.** Workers re-read PostgreSQL state on bounded
   intervals without a message-delivery dependency.
-- **Agent execution is operational.** The shared execution gateway owns model
-  transport, structured JSON dispatch, validation, tracing, quotas, and
-  backpressure. Domains still own facts, gates, decisions, and read-model writes.
+- **Evidence judgments are explicit.** Macro conclusions expose their rule
+  version, rule hits, evidence references, freshness, confirmations,
+  contradictions, and invalidation conditions. Missing capability is reported
+  as unavailable rather than inferred.
+- **The retained model-execution library is dormant.** Production bootstrap,
+  workers, status, APIs, and frontend instantiate no model-backed product
+  consumer.
 
 See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 [docs/WORKERS.md](docs/WORKERS.md) for the canonical implementation map.
@@ -96,28 +98,28 @@ See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) and
 
 ## Research Console Model
 
-The agent-facing product should be organized around information flow rather
-than a generic chat pane:
+The product is organized around information flow rather than a generic chat
+pane:
 
 | Panel | Purpose |
 | --- | --- |
 | Flow Tape | Chronological social, news, macro, market, and watchlist events with provenance and data-health badges. |
 | Radar Board | Deterministic gates and ranked targets: why a target entered the current Token Radar view. |
 | Evidence Dossier | One selected target with source posts, resolved identity, market ticks, profiles, News facts, and macro context. |
-| News Brief Trace | Current story brief plus the bounded run evidence needed to explain model output, validation, and abstention. |
-| Macro Console | Projected regime, module views, scenarios, and source-quality gaps derived from macro facts. |
-| Ops Console | Worker status, lane capacity, queue depth, circuit state, provider health, retries, stale projections, and safe repair actions. |
+| News Evidence | Source-backed story membership, entity resolution, fact candidates, provider observations, content classification, and market scope. |
+| Macro Evidence | Six fixed pages over one completed-session snapshot: Overview, Cross-asset, Rates & Inflation, Growth & Labor, Liquidity & Funding, and Credit. |
+| Ops Console | Worker status, queue depth, provider health, retries, stale projections, and safe repair actions. |
 
 Tooling should be safe by default:
 
 - Prefer read-only inspection and dry-run repair commands.
 - Show the exact fact rows or read-model keys a tool will touch before execute.
-- Keep prompts, raw model inputs/outputs, credentials, and tokens out of public
-  UI unless the route is explicitly ops-only and sanitized.
+- Keep credentials, tokens, and secret-bearing provider payloads out of public
+  UI and sanitized operator output.
 - Expose replay, rebuild, enqueue, and export actions as operator tools, not
   hidden side effects inside read APIs.
-- Treat model output as typed analysis bound to evidence, never as a material
-  fact unless a domain service validates and persists it.
+- Treat unsupported evidence as an explicit gap, never a zero, proxy, or hidden
+  fallback.
 
 ## Main Domains
 
@@ -126,9 +128,9 @@ Tooling should be safe by default:
 | `ingestion` | Provider event normalization, source lifecycle, snapshot gates, and ingest entrypoint. |
 | `evidence` | Canonical event model, entity extraction, material evidence, transactional persistence, and Watchlist reads. |
 | `asset_market` | Asset identity, discovery, profiles, token images, market facts, transactionally maintained current ticks, and post-commit live updates. |
-| `token_intel` | Token evidence, deterministic resolution, Token Radar scoring, search, factor snapshots, and signal diagnostics. |
-| `news_intel` | Configured news ingestion, canonical facts, token/fact extraction, one story-brief lane, source current health, and News page rows. |
-| `macro_intel` | Macrodata sync, macro observations, deterministic regime/features, and Macro module views. |
+| `token_intel` | Token evidence, deterministic resolution, transparent Token Radar factors, fact-only search/inspection, and diagnostics. |
+| `news_intel` | Configured news ingestion, canonical facts, deterministic token/fact/story extraction, source health, and fact-only News page rows. |
+| `macro_intel` | Macrodata sync, macro observations, compact series, and one atomic six-document evidence snapshot. |
 | `notifications` | Notification rules, candidates, side-effect delivery, and delivery ledger state. |
 
 ## Runtime Names
@@ -151,7 +153,7 @@ Repository fixtures, generated examples, and `.env` files are not runtime truth.
 
 ```text
 ~/.parallax/config.yaml       application, providers, credentials, storage
-~/.parallax/workers.yaml      worker cadence, leases, retries, agent lane budgets
+~/.parallax/workers.yaml      worker cadence, leases, retries, and timeouts
 ~/.parallax/postgres_password local PostgreSQL secret for Compose
 ~/.parallax/logs/             service logs
 ~/.parallax/cache/            local media mirrors and runtime cache
@@ -284,5 +286,5 @@ coverage. See [docs/TESTING.md](docs/TESTING.md) and
 - Parallax is not a complete social or market-data firehose; coverage depends
   on the configured provider set and each provider's permitted data surface.
 - Parallax does not treat job queues, provider raw frames, process caches, or
-  model guesses as business facts.
+  derived projections as material facts.
 - Parallax does not use repository-local `.env` files as live runtime config.

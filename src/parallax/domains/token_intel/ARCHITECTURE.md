@@ -108,7 +108,7 @@ For each claimed target they perform:
 6. Derive the target's venue and touch only the `all` plus actual-venue rank sets.
 7. Rank the complete active cohort for each touched set.
 8. Publish current rows and publication state.
-9. Enqueue downstream derived work from semantic rank changes.
+9. Enqueue downstream work from changed ranked content.
 10. Acknowledge the exact dirty claim.
 
 Feature mutation, current-row publication, publication-state update, downstream enqueue, and dirty acknowledgement share the publisher-owned transaction.
@@ -137,13 +137,18 @@ If the incoming semantic signature matches current rows, publication updates no 
 `token_radar_target_first_seen` preserves stable first-listing time independently of publication attempts.
 Read APIs join current rows to publication state and expose the last good generation whenever one exists. A failed refresh keeps those rows readable while publication metadata reports the failed attempt as stale/degraded.
 
-The public Radar row has one semantic payload authority: `factor_snapshot`. Its
+The public Radar row has one factor payload authority: `factor_snapshot`. Its
 `subject` has the exact keys `target_type`, `target_id`, `symbol`,
 `target_market_type`, `chain`, `address`, and `pricefeed_id`. Target, market,
 attention, score, decision, and source-event fields are not duplicated beside
-the snapshot. `gates`, `normalization`, and `composite` retain one exact
-producer-owned shape, and consumers reject unknown decision values rather than
-mapping compatibility labels.
+the snapshot. The transparent factor families are exactly `social_heat`,
+`social_propagation`, and `timing_risk`; every score retains facts, component
+factors, weight, and data health. `gates`, `normalization`, and `composite`
+retain one producer-owned shape, and consumers reject unknown decision values.
+
+Search inspection and Token Case hydrate resolver, identity, current Radar,
+profile, market, timeline, and source-post facts only. They do not publish a
+generated brief, admission layer, inferred catalyst, or model-derived factor.
 
 ## Runtime ownership
 

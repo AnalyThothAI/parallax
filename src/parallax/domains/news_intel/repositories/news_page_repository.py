@@ -4,12 +4,7 @@ from collections import defaultdict
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from parallax.domains.news_intel._constants import (
-    NEWS_ITEM_AGENT_ADMISSION_VERSION,
-    NEWS_PAGE_PROJECTION_VERSION,
-    NEWS_STORY_IDENTITY_VERSION,
-)
-from parallax.domains.news_intel.interfaces import NewsNotificationCandidate
+from parallax.domains.news_intel._constants import NEWS_PAGE_PROJECTION_VERSION, NEWS_STORY_IDENTITY_VERSION
 from parallax.domains.news_intel.repositories.news_repository_support import (
     _NEWS_ITEM_WORKER_COLUMNS_SQL,
     _NEWS_ITEM_WORKER_JSON_SQL,
@@ -24,7 +19,6 @@ from parallax.domains.news_intel.repositories.news_repository_support import (
     _optional_returning_row,
     _page_row_payload,
     _projected_news_page_row_payload,
-    _public_agent_brief_payload,
     _public_fetch_run_payload,
     _public_news_item_payload,
     _public_observation_edge_payload,
@@ -34,7 +28,6 @@ from parallax.domains.news_intel.repositories.news_repository_support import (
     _required_news_dedup_diagnostics_list,
     _required_news_dedup_diagnostics_mapping,
     _required_news_dedup_diagnostics_nonnegative_int,
-    _required_news_high_signal_since_ms,
     _required_news_item_detail_list,
     _required_page_projection_input_list,
     _required_projected_page_list,
@@ -59,82 +52,14 @@ class NewsPageRepository:
         limit: int,
         cursor: str | None = None,
         status: str | None = None,
-        signal: str | None = None,
-        macro_event_flow: bool = False,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         return self._list_projected_news_page_rows(
             limit=limit,
             cursor=cursor,
             status=status,
-            signal=signal,
-            macro_event_flow=macro_event_flow,
             q=q,
         )
-
-    def list_news_high_signal_notification_candidates(
-        self,
-        *,
-        limit: int,
-        since_ms: int,
-    ) -> list[NewsNotificationCandidate]:
-        parsed_limit = require_nonnegative_int(
-            limit,
-            error_code="news_high_signal_notification_limit_required",
-        )
-        parsed_since_ms = _required_news_high_signal_since_ms(since_ms)
-        rows = self.conn.execute(
-            """
-            SELECT
-              row_id,
-              news_item_id,
-              representative_news_item_id,
-              story_key,
-              latest_at_ms,
-              headline,
-              source_domain,
-              canonical_url,
-              agent_brief_json ->> 'direction' AS direction,
-              agent_brief_json ->> 'decision_class' AS decision_class,
-              agent_brief_json ->> 'title_zh' AS title_zh,
-              signal_json #>> '{display_signal,title_zh}' AS projected_title_zh,
-              agent_brief_json ->> 'summary_zh' AS summary_zh,
-              COALESCE(agent_brief_json -> 'affected_entities', '[]'::jsonb) AS affected_entities,
-              COALESCE(token_impacts_json, '[]'::jsonb) AS token_impacts,
-              (signal_json -> 'alert_eligibility' ->> 'external_push_ready')::boolean AS external_push_ready,
-              signal_json -> 'alert_eligibility' ->> 'external_push_basis' AS external_push_basis,
-              signal_json -> 'alert_eligibility' ->> 'external_push_block_reason' AS external_push_block_reason
-            FROM news_page_rows
-            WHERE projection_version = %s
-              AND latest_at_ms >= %s
-              AND COALESCE((signal_json -> 'alert_eligibility' ->> 'in_app_eligible')::boolean, false) = true
-              AND agent_status = 'ready'
-              AND COALESCE(agent_brief_json ->> 'status', '') = 'ready'
-              AND EXISTS (
-                SELECT 1
-                  FROM news_item_observation_edges AS edges
-                  JOIN news_sources AS sources ON sources.source_id = edges.source_id
-                 WHERE edges.news_item_id = news_page_rows.news_item_id
-                   AND sources.enabled = true
-              )
-              AND (
-                COALESCE(source_json ->> 'source_id', '') = ''
-                OR EXISTS (
-                  SELECT 1
-                    FROM news_sources AS projected_source
-                   WHERE projected_source.source_id = source_json ->> 'source_id'
-                     AND projected_source.enabled = true
-                )
-              )
-            ORDER BY
-              latest_at_ms DESC,
-              agent_brief_computed_at_ms DESC NULLS LAST,
-              row_id DESC
-            LIMIT %s
-            """,
-            (NEWS_PAGE_PROJECTION_VERSION, parsed_since_ms, parsed_limit),
-        ).fetchall()
-        return [NewsNotificationCandidate.from_repository_row(row) for row in rows]
 
     def _list_projected_news_page_rows(
         self,
@@ -142,8 +67,6 @@ class NewsPageRepository:
         limit: int,
         cursor: str | None = None,
         status: str | None = None,
-        signal: str | None = None,
-        macro_event_flow: bool = False,
         q: str | None = None,
     ) -> list[dict[str, Any]]:
         parsed_limit = require_nonnegative_int(
@@ -151,11 +74,7 @@ class NewsPageRepository:
             error_code="news_page_rows_limit_required",
         )
         cursor_time, cursor_id = _decode_page_cursor(cursor)
-        filter_sql, filter_params = _news_page_row_filter_sql(
-            status=status,
-            signal=signal,
-            q=q,
-        )
+        filter_sql, filter_params = _news_page_row_filter_sql(status=status, q=q)
         rows = self.conn.execute(
             f"""
             SELECT
@@ -170,34 +89,27 @@ class NewsPageRepository:
               summary,
               source_domain,
               canonical_url,
+              canonical_item_key,
               duplicate_count,
               source_ids_json AS source_ids,
               source_domains_json AS source_domains,
+              provider_article_keys_json AS provider_article_keys,
               token_lanes_json AS token_lanes,
               fact_lanes_json AS fact_lanes,
-              signal_json AS signal,
               provider_rating_json AS provider_rating,
-              token_impacts_json AS token_impacts,
               content_class,
               content_tags_json AS content_tags,
               content_classification_json AS content_classification,
               source_json AS source,
-              agent_brief_json AS agent_brief,
-              agent_status,
-              agent_brief_computed_at_ms,
-              macro_event_flow_json AS macro_event_flow,
-              agent_admission_status,
-              agent_admission_reason,
-              agent_admission_json AS agent_admission,
-              agent_representative_news_item_id,
+              market_scope_json AS market_scope,
               computed_at_ms,
               projection_version
             FROM news_page_rows
             WHERE projection_version = %s
               AND (
-              %s::bigint IS NULL
-              OR (latest_at_ms, row_id) < (%s::bigint, %s::text)
-            )
+                %s::bigint IS NULL
+                OR (latest_at_ms, row_id) < (%s::bigint, %s::text)
+              )
               AND EXISTS (
                 SELECT 1
                   FROM news_item_observation_edges AS edges
@@ -213,9 +125,8 @@ class NewsPageRepository:
                    WHERE projected_source.source_id = source_json ->> 'source_id'
                      AND projected_source.enabled = true
                 )
-            )
-            {filter_sql}
-              {"AND macro_event_flow_json IS NOT NULL" if macro_event_flow else ""}
+              )
+              {filter_sql}
             ORDER BY latest_at_ms DESC, row_id DESC
             LIMIT %s
             """,
@@ -228,14 +139,7 @@ class NewsPageRepository:
                 parsed_limit,
             ),
         ).fetchall()
-        return [
-            _projected_news_page_row_payload(
-                row,
-                require_full_sections=True,
-                require_macro_event_flow=macro_event_flow,
-            )
-            for row in rows
-        ]
+        return [_projected_news_page_row_payload(row, require_full_sections=True) for row in rows]
 
     def load_items_for_page_projection(self, *, news_item_ids: Sequence[str]) -> list[dict[str, Any]]:
         target_ids = list(dict.fromkeys(str(news_item_id) for news_item_id in news_item_ids if str(news_item_id)))
@@ -379,8 +283,6 @@ class NewsPageRepository:
                  AND lifecycle_status = 'processed'
                  AND story_key <> ''
                  AND story_identity_version = %s
-                 AND agent_admission_version = %s
-                 AND agent_admission_status IN ('eligible', 'eligible_refresh')
             ),
             story_bounds AS (
               SELECT story_key,
@@ -388,32 +290,25 @@ class NewsPageRepository:
                      MAX(published_at_ms) + %s::bigint AS upper_bound_ms,
                      MIN(array_position(%s::text[], news_item_id)) AS first_target_ordinal
                 FROM target_items
-               WHERE story_key <> ''
                GROUP BY story_key
-            ),
-            story_members AS (
-              SELECT items.news_item_id,
-                     items.story_key,
-                     story_bounds.first_target_ordinal,
-                     items.published_at_ms
-                FROM story_bounds
-                JOIN news_items AS items ON items.story_key = story_bounds.story_key
-               WHERE items.published_at_ms BETWEEN story_bounds.lower_bound_ms AND story_bounds.upper_bound_ms
-                 AND items.lifecycle_status = 'processed'
-                 AND items.story_key <> ''
-                 AND items.story_identity_version = %s
-                 AND items.agent_admission_version = %s
-                 AND items.agent_admission_status IN ('eligible', 'eligible_refresh')
-                 AND EXISTS (
-                   SELECT 1
-                     FROM news_item_observation_edges AS edges
-                     JOIN news_sources AS sources ON sources.source_id = edges.source_id
-                    WHERE edges.news_item_id = items.news_item_id
-                      AND sources.enabled = true
-                 )
             )
-            SELECT *
-              FROM story_members AS scoped_items
+            SELECT items.news_item_id,
+                   items.story_key,
+                   story_bounds.first_target_ordinal,
+                   items.published_at_ms
+              FROM story_bounds
+              JOIN news_items AS items ON items.story_key = story_bounds.story_key
+             WHERE items.published_at_ms BETWEEN story_bounds.lower_bound_ms AND story_bounds.upper_bound_ms
+               AND items.lifecycle_status = 'processed'
+               AND items.story_key <> ''
+               AND items.story_identity_version = %s
+               AND EXISTS (
+                 SELECT 1
+                   FROM news_item_observation_edges AS edges
+                   JOIN news_sources AS sources ON sources.source_id = edges.source_id
+                  WHERE edges.news_item_id = items.news_item_id
+                    AND sources.enabled = true
+               )
              ORDER BY first_target_ordinal ASC NULLS LAST,
                       story_key ASC,
                       published_at_ms DESC,
@@ -422,12 +317,10 @@ class NewsPageRepository:
             (
                 target_ids,
                 NEWS_STORY_IDENTITY_VERSION,
-                NEWS_ITEM_AGENT_ADMISSION_VERSION,
                 _STORY_PROJECTION_WINDOW_MS,
                 _STORY_PROJECTION_WINDOW_MS,
                 target_ids,
                 NEWS_STORY_IDENTITY_VERSION,
-                NEWS_ITEM_AGENT_ADMISSION_VERSION,
             ),
         ).fetchall()
         scoped_item_ids = [str(row["news_item_id"]) for row in story_scope_rows]
@@ -439,50 +332,26 @@ class NewsPageRepository:
             news_item_id = str(row["news_item_id"])
             if news_item_id not in item_payloads_by_id:
                 continue
-            story_key = str(row["story_key"] or "")
-            group_key = story_key
-            if group_key not in grouped_ids:
-                grouped_ids[group_key] = []
-                group_order.append(group_key)
-            grouped_ids[group_key].append(news_item_id)
+            story_key = str(row["story_key"])
+            if story_key not in grouped_ids:
+                grouped_ids[story_key] = []
+                group_order.append(story_key)
+            grouped_ids[story_key].append(news_item_id)
 
-        story_current_by_key = self._current_story_agent_briefs_for_story_keys(group_order)
         payloads: list[dict[str, Any]] = []
-        for group_key in group_order:
-            member_payloads = [item_payloads_by_id[item_id] for item_id in grouped_ids[group_key]]
-            if not member_payloads:
-                continue
+        for story_key in group_order:
+            member_payloads = [item_payloads_by_id[item_id] for item_id in grouped_ids[story_key]]
             representative = member_payloads[0]
-            story = _story_projection_payload(story_key=group_key, member_payloads=member_payloads)
             payloads.append(
                 {
                     "item": representative["item"],
-                    "current_brief": story_current_by_key.get(group_key),
                     "token_mentions": _required_story_projection_payload_list(representative, "token_mentions"),
                     "fact_candidates": _required_story_projection_payload_list(representative, "fact_candidates"),
-                    "story": story,
+                    "story": _story_projection_payload(story_key=story_key, member_payloads=member_payloads),
                     "member_items": [payload["item"] for payload in member_payloads],
                 }
             )
         return payloads
-
-    def _current_story_agent_briefs_for_story_keys(self, story_keys: Sequence[str]) -> dict[str, dict[str, Any]]:
-        target_keys = [str(story_key) for story_key in dict.fromkeys(story_keys) if str(story_key)]
-        if not target_keys:
-            return {}
-        rows = self.conn.execute(
-            """
-            SELECT DISTINCT ON (briefs.story_key)
-                   briefs.story_key,
-                   to_jsonb(briefs.*) AS current_brief
-              FROM news_story_agent_briefs AS briefs
-             WHERE briefs.story_key = ANY(%s::text[])
-               AND briefs.story_identity_version = %s
-             ORDER BY briefs.story_key ASC, briefs.updated_at_ms DESC, briefs.story_brief_key ASC
-            """,
-            (target_keys, NEWS_STORY_IDENTITY_VERSION),
-        ).fetchall()
-        return {str(row["story_key"]): _json_dict(row["current_brief"]) for row in rows if str(row["story_key"] or "")}
 
     def get_news_item_detail(self, *, news_item_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
@@ -490,10 +359,7 @@ class NewsPageRepository:
             SELECT to_jsonb(items.*) AS item,
                    to_jsonb(sources.*) AS source,
                    to_jsonb(provider_items.*) AS provider_item,
-                   CASE
-                     WHEN fetch_runs.fetch_run_id IS NULL THEN NULL
-                     ELSE to_jsonb(fetch_runs.*)
-                   END AS fetch_run,
+                   CASE WHEN fetch_runs.fetch_run_id IS NULL THEN NULL ELSE to_jsonb(fetch_runs.*) END AS fetch_run,
                    COALESCE(
                      jsonb_agg(DISTINCT to_jsonb(entities.*))
                        FILTER (WHERE entities.entity_id IS NOT NULL),
@@ -525,36 +391,26 @@ class NewsPageRepository:
             return None
         page_row = self.conn.execute(
             """
-            SELECT
-              row_id,
-              representative_news_item_id,
-              story_key,
-              story_json AS story,
-              latest_at_ms,
-              lifecycle_status,
-              token_lanes_json AS token_lanes,
-              fact_lanes_json AS fact_lanes,
-              signal_json AS signal,
-              provider_rating_json AS provider_rating,
-              token_impacts_json AS token_impacts,
-              content_class,
-              content_tags_json AS content_tags,
-              content_classification_json AS content_classification,
-              source_json AS page_source,
-              agent_brief_json AS page_agent_brief,
-              agent_status,
-              agent_brief_computed_at_ms,
-              agent_admission_status,
-              agent_admission_reason,
-              agent_admission_json AS agent_admission,
-              agent_representative_news_item_id,
-              computed_at_ms,
-              projection_version
-            FROM news_page_rows
-            WHERE news_item_id = %s
-              AND projection_version = %s
-            ORDER BY latest_at_ms DESC, row_id DESC
-            LIMIT 1
+            SELECT row_id,
+                   representative_news_item_id,
+                   story_key,
+                   story_json AS story,
+                   latest_at_ms,
+                   lifecycle_status,
+                   token_lanes_json AS token_lanes,
+                   fact_lanes_json AS fact_lanes,
+                   provider_rating_json AS provider_rating,
+                   content_class,
+                   content_tags_json AS content_tags,
+                   content_classification_json AS content_classification,
+                   market_scope_json AS market_scope,
+                   computed_at_ms,
+                   projection_version
+              FROM news_page_rows
+             WHERE news_item_id = %s
+               AND projection_version = %s
+             ORDER BY latest_at_ms DESC, row_id DESC
+             LIMIT 1
             """,
             (news_item_id, NEWS_PAGE_PROJECTION_VERSION),
         ).fetchone()
@@ -589,56 +445,31 @@ class NewsPageRepository:
             """,
             (news_item_id,),
         ).fetchall()
-        item_payload = _json_dict(row["item"])
         projected = dict(page_row)
-        representative_news_item_id = _required_projected_page_text(projected, "representative_news_item_id")
-        story_key = _required_projected_page_text(projected, "story_key")
-        story = _required_projected_page_mapping(projected, "story")
-        token_lanes = _required_projected_page_list(projected, "token_lanes")
-        fact_lanes = _required_projected_page_list(projected, "fact_lanes")
-        projected_signal = _required_projected_page_mapping(projected, "signal")
-        provider_rating = _required_projected_page_mapping(projected, "provider_rating")
-        token_impacts = _required_projected_page_list(projected, "token_impacts")
-        content_class = _required_projected_page_text(projected, "content_class")
-        content_tags = _required_projected_page_list(projected, "content_tags")
-        content_classification = _required_projected_page_mapping(projected, "content_classification")
-        _required_projected_page_mapping(projected, "page_source")
-        agent_brief = _public_agent_brief_payload(_required_projected_page_mapping(projected, "page_agent_brief"))
-        agent_admission_status = _required_projected_page_text(projected, "agent_admission_status")
-        agent_admission_reason = _required_projected_page_text(projected, "agent_admission_reason")
-        agent_admission = _required_projected_page_mapping(projected, "agent_admission")
-        agent_representative_news_item_id = _required_projected_page_text(
-            projected,
-            "agent_representative_news_item_id",
-        )
-        entities = _required_news_item_detail_list(row, "entities")
-        token_mentions = _required_news_item_detail_list(row, "token_mentions")
-        fact_candidates = _required_news_item_detail_list(row, "fact_candidates")
-        public_item = _public_news_item_payload(item_payload)
+        item_payload = _json_dict(row["item"])
         return {
-            **public_item,
-            "representative_news_item_id": representative_news_item_id,
-            "story_key": story_key,
-            "story": story,
-            "agent_admission_status": agent_admission_status,
-            "agent_admission_reason": agent_admission_reason,
-            "agent_admission": agent_admission,
-            "agent_representative_news_item_id": agent_representative_news_item_id,
-            "agent_admission_computed_at_ms": item_payload.get("agent_admission_computed_at_ms"),
-            "content_class": content_class,
-            "content_tags": content_tags,
-            "content_classification": content_classification,
-            "signal": projected_signal,
-            "provider_rating": provider_rating,
-            "token_impacts": token_impacts,
-            "token_lanes": token_lanes,
-            "fact_lanes": fact_lanes,
+            **_public_news_item_payload(item_payload),
+            "representative_news_item_id": _required_projected_page_text(
+                projected,
+                "representative_news_item_id",
+            ),
+            "story_key": _required_projected_page_text(projected, "story_key"),
+            "story": _required_projected_page_mapping(projected, "story"),
+            "content_class": _required_projected_page_text(projected, "content_class"),
+            "content_tags": _required_projected_page_list(projected, "content_tags"),
+            "content_classification": _required_projected_page_mapping(
+                projected,
+                "content_classification",
+            ),
+            "provider_rating": _required_projected_page_mapping(projected, "provider_rating"),
+            "market_scope": _required_projected_page_mapping(projected, "market_scope"),
+            "token_lanes": _required_projected_page_list(projected, "token_lanes"),
+            "fact_lanes": _required_projected_page_list(projected, "fact_lanes"),
             "source": _public_source_payload(_json_dict(row["source"])),
             "provider_item": _public_provider_observation_payload(_json_dict(row["provider_item"])),
-            "fetch_run": _public_fetch_run_payload(_json_dict(row["fetch_run"]))
-            if row["fetch_run"] is not None
-            else None,
-            "agent_brief": agent_brief,
+            "fetch_run": (
+                _public_fetch_run_payload(_json_dict(row["fetch_run"])) if row["fetch_run"] is not None else None
+            ),
             "observation_edges": [
                 _public_observation_edge_payload(_json_dict(observation_row["observation_edge"]))
                 for observation_row in observation_rows
@@ -647,9 +478,9 @@ class NewsPageRepository:
                 _public_provider_observation_payload(_json_dict(observation_row["provider_observation"]))
                 for observation_row in observation_rows
             ],
-            "entities": entities,
-            "token_mentions": token_mentions,
-            "fact_candidates": fact_candidates,
+            "entities": _required_news_item_detail_list(row, "entities"),
+            "token_mentions": _required_news_item_detail_list(row, "token_mentions"),
+            "fact_candidates": _required_news_item_detail_list(row, "fact_candidates"),
         }
 
     def get_news_fact_detail(self, *, fact_candidate_id: str) -> dict[str, Any] | None:
@@ -995,19 +826,6 @@ class NewsPageRepository:
             """,
             {"now_ms": int(now_ms), "window_ms": parsed_window_ms},
         ).fetchall()
-        stale_story_brief_row = self.conn.execute(
-            """
-            SELECT COUNT(*)::int AS row_count
-              FROM news_story_agent_briefs AS briefs
-              LEFT JOIN news_items AS items ON items.news_item_id = briefs.representative_news_item_id
-             WHERE items.news_item_id IS NULL
-                OR NOT EXISTS (
-                     SELECT 1
-                       FROM news_item_observation_edges AS edges
-                      WHERE edges.news_item_id = briefs.representative_news_item_id
-                   )
-            """
-        ).fetchone()
         stale_dirty_row = self.conn.execute(
             """
             SELECT COUNT(*)::int AS row_count
@@ -1046,7 +864,6 @@ class NewsPageRepository:
                 int(group["duplicate_rows"]) for group in visible_material_groups
             ),
             "fact_layer_material_duplicate_excess": sum(int(group["duplicate_rows"]) for group in fact_material_groups),
-            "stale_duplicate_story_brief_rows": int(stale_story_brief_row["row_count"] if stale_story_brief_row else 0),
             "stale_duplicate_dirty_targets": int(stale_dirty_row["row_count"] if stale_dirty_row else 0),
             "top_material_title_duplicate_groups": fact_material_groups[:20],
         }
@@ -1121,39 +938,35 @@ class NewsPageRepository:
                     (scoped_ids,),
                 )
             deleted = mutation_count(cursor, error_code="news_repository_rowcount_invalid")
-        inserted = 0
-        updated = 0
-        unchanged = 0
+
+        inserted = updated = unchanged = 0
         for payload in row_payloads:
             payload["search_text"] = build_news_page_search_text(payload)
-            payload["payload_hash"] = _current_read_model_payload_hash(payload, exclude=_PUBLICATION_METADATA_FIELDS)
+            payload["payload_hash"] = _current_read_model_payload_hash(
+                payload,
+                exclude=_PUBLICATION_METADATA_FIELDS,
+            )
             cursor = self.conn.execute(
                 """
                 INSERT INTO news_page_rows (
                   row_id, news_item_id, representative_news_item_id, story_key, story_json,
-                  latest_at_ms, lifecycle_status,
-                  headline, summary, source_domain, canonical_url, search_text, token_lanes_json,
-                  fact_lanes_json, content_class, content_tags_json, content_classification_json,
-                  source_json, signal_json, provider_rating_json, token_impacts_json, agent_brief_json,
-                  agent_status, agent_brief_computed_at_ms, computed_at_ms, projection_version,
-                  canonical_item_key, duplicate_count, source_ids_json, source_domains_json,
-                  provider_article_keys_json, market_scope_json, macro_event_flow_json,
-                  agent_admission_status, agent_admission_reason,
-                  agent_admission_json, agent_representative_news_item_id, payload_hash
+                  latest_at_ms, lifecycle_status, headline, summary, source_domain,
+                  canonical_url, canonical_item_key, search_text, token_lanes_json,
+                  fact_lanes_json, provider_rating_json, content_class, content_tags_json,
+                  content_classification_json, source_json, market_scope_json, duplicate_count,
+                  source_ids_json, source_domains_json, provider_article_keys_json,
+                  computed_at_ms, projection_version, payload_hash
                 )
                 VALUES (
-                  %(row_id)s, %(news_item_id)s, %(representative_news_item_id)s, %(story_key)s, %(story_json)s,
-                  %(latest_at_ms)s, %(lifecycle_status)s,
-                  %(headline)s, %(summary)s, %(source_domain)s, %(canonical_url)s, %(search_text)s,
-                  %(token_lanes_json)s,
-                  %(fact_lanes_json)s, %(content_class)s, %(content_tags_json)s, %(content_classification_json)s,
-                  %(source_json)s, %(signal_json)s, %(provider_rating_json)s, %(token_impacts_json)s,
-                  %(agent_brief_json)s, %(agent_status)s, %(agent_brief_computed_at_ms)s,
-                  %(computed_at_ms)s, %(projection_version)s, %(canonical_item_key)s,
+                  %(row_id)s, %(news_item_id)s, %(representative_news_item_id)s, %(story_key)s,
+                  %(story_json)s, %(latest_at_ms)s, %(lifecycle_status)s, %(headline)s,
+                  %(summary)s, %(source_domain)s, %(canonical_url)s, %(canonical_item_key)s,
+                  %(search_text)s, %(token_lanes_json)s, %(fact_lanes_json)s,
+                  %(provider_rating_json)s, %(content_class)s, %(content_tags_json)s,
+                  %(content_classification_json)s, %(source_json)s, %(market_scope_json)s,
                   %(duplicate_count)s, %(source_ids_json)s, %(source_domains_json)s,
-                  %(provider_article_keys_json)s, %(market_scope_json)s, %(macro_event_flow_json)s,
-                  %(agent_admission_status)s, %(agent_admission_reason)s,
-                  %(agent_admission_json)s, %(agent_representative_news_item_id)s, %(payload_hash)s
+                  %(provider_article_keys_json)s, %(computed_at_ms)s, %(projection_version)s,
+                  %(payload_hash)s
                 )
                 ON CONFLICT (row_id) DO UPDATE SET
                   news_item_id = EXCLUDED.news_item_id,
@@ -1166,40 +979,29 @@ class NewsPageRepository:
                   summary = EXCLUDED.summary,
                   source_domain = EXCLUDED.source_domain,
                   canonical_url = EXCLUDED.canonical_url,
+                  canonical_item_key = EXCLUDED.canonical_item_key,
                   search_text = EXCLUDED.search_text,
                   token_lanes_json = EXCLUDED.token_lanes_json,
                   fact_lanes_json = EXCLUDED.fact_lanes_json,
+                  provider_rating_json = EXCLUDED.provider_rating_json,
                   content_class = EXCLUDED.content_class,
                   content_tags_json = EXCLUDED.content_tags_json,
                   content_classification_json = EXCLUDED.content_classification_json,
                   source_json = EXCLUDED.source_json,
-                  signal_json = EXCLUDED.signal_json,
-                  provider_rating_json = EXCLUDED.provider_rating_json,
-                  token_impacts_json = EXCLUDED.token_impacts_json,
-                  agent_brief_json = EXCLUDED.agent_brief_json,
-                  agent_status = EXCLUDED.agent_status,
-                  agent_brief_computed_at_ms = EXCLUDED.agent_brief_computed_at_ms,
-                  computed_at_ms = EXCLUDED.computed_at_ms,
-                  projection_version = EXCLUDED.projection_version,
-                  canonical_item_key = EXCLUDED.canonical_item_key,
+                  market_scope_json = EXCLUDED.market_scope_json,
                   duplicate_count = EXCLUDED.duplicate_count,
                   source_ids_json = EXCLUDED.source_ids_json,
                   source_domains_json = EXCLUDED.source_domains_json,
                   provider_article_keys_json = EXCLUDED.provider_article_keys_json,
-                  market_scope_json = EXCLUDED.market_scope_json,
-                  macro_event_flow_json = EXCLUDED.macro_event_flow_json,
-                  agent_admission_status = EXCLUDED.agent_admission_status,
-                  agent_admission_reason = EXCLUDED.agent_admission_reason,
-                  agent_admission_json = EXCLUDED.agent_admission_json,
-                  agent_representative_news_item_id = EXCLUDED.agent_representative_news_item_id,
+                  computed_at_ms = EXCLUDED.computed_at_ms,
+                  projection_version = EXCLUDED.projection_version,
                   payload_hash = EXCLUDED.payload_hash
                 WHERE news_page_rows.payload_hash IS DISTINCT FROM EXCLUDED.payload_hash
                 RETURNING (xmax = 0) AS inserted
                 """,
                 payload,
             )
-            returned = cursor.fetchone()
-            returned_row = _optional_returning_row(cursor, returned)
+            returned_row = _optional_returning_row(cursor, cursor.fetchone())
             if returned_row is None:
                 unchanged += 1
             elif bool(returned_row["inserted"]):

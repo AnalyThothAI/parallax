@@ -7,7 +7,6 @@ from parallax.app.runtime.worker_factories import WorkerFactoryContext, disabled
 from parallax.domains.news_intel.runtime.news_fetch_worker import NewsFetchWorker
 from parallax.domains.news_intel.runtime.news_item_process_worker import NewsItemProcessWorker
 from parallax.domains.news_intel.runtime.news_page_projection_worker import NewsPageProjectionWorker
-from parallax.domains.news_intel.runtime.news_story_brief_worker import NewsStoryBriefWorker
 from parallax.domains.token_intel.interfaces import TokenIdentityLookupResult
 from parallax.domains.token_intel.services.deterministic_token_resolver import (
     DeterministicResolution,
@@ -25,7 +24,6 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
             for name in (
                 "news_fetch",
                 "news_item_process",
-                "news_story_brief",
                 "news_page_projection",
             )
         }
@@ -62,24 +60,6 @@ def construct_news_intel_workers(ctx: WorkerFactoryContext) -> dict[str, WorkerB
         )
     else:
         constructed["news_item_process"] = disabled_worker(ctx, "news_item_process")
-
-    story_brief_provider = news_providers.story_brief_provider if news_providers is not None else None
-    if workers.news_story_brief.enabled:
-        worker_name = "news_story_brief"
-        if not ctx.settings.llm_configured:
-            constructed[worker_name] = unavailable_worker(ctx, worker_name, "missing_llm_configuration")
-        elif story_brief_provider is not None:
-            constructed[worker_name] = NewsStoryBriefWorker(
-                name=worker_name,
-                settings=workers.news_story_brief,
-                db=ctx.db,
-                telemetry=ctx.telemetry,
-                provider=story_brief_provider,
-            )
-        else:
-            constructed[worker_name] = unavailable_worker(ctx, worker_name, "missing_news_story_brief_provider")
-    else:
-        constructed["news_story_brief"] = disabled_worker(ctx, "news_story_brief")
 
     if workers.news_page_projection.enabled:
         worker_name = "news_page_projection"

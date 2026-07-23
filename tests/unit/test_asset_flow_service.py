@@ -36,15 +36,6 @@ def test_asset_flow_returns_one_canonical_factor_snapshot_payload():
     assert btc["factor_snapshot"]["market"]["decision_latest"]["price_usd"] == 70_000.0
     assert btc["factor_snapshot"]["market"]["readiness"]["anchor_status"] == "ready"
     assert btc["factor_snapshot"]["composite"]["rank_score"] == 55
-    assert btc["narrative_admission"] == {
-        "status": "admitted",
-        "reason": "hot_rank",
-        "is_current": True,
-        "computed_at_ms": 1_700_000_060_000,
-        "currentness": {"display_status": "current", "reason": "hot_rank"},
-        "coverage": {"source_mentions": 1, "independent_authors": 1},
-        "data_gaps": [],
-    }
     assert btc["quality"] == {"status": "ready", "degraded_reasons": []}
     assert _legacy_market_key("anchor", "price") not in btc
     assert {"target", "attention", "market", "score", "source_event_ids", "data_health"}.isdisjoint(btc)
@@ -478,13 +469,12 @@ def factor_snapshot_json(
         },
     }
     families = {
-        "social_heat": family("social_heat", {"mentions_1h": 1}, weight=0.35),
+        "social_heat": family("social_heat", {"mentions_1h": 1}, weight=0.55),
         "social_propagation": family(
             "social_propagation",
             {"mentions": 1, "independent_authors": 1},
-            weight=0.30,
+            weight=0.45,
         ),
-        "semantic_catalyst": family("semantic_catalyst", {"direction_counts": {}}, weight=0.25),
         "timing_risk": family(
             "timing_risk",
             {"price_change_status": "live_not_persisted", "social_signal_start_ms": 1_700_000_000_000},
@@ -523,7 +513,6 @@ def factor_snapshot_json(
             "factor_ranks": {
                 "social_heat": None,
                 "social_propagation": None,
-                "semantic_catalyst": None,
                 "timing_risk": None,
             },
             "alpha_rank": None,

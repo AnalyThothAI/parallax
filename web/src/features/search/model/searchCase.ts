@@ -5,8 +5,7 @@ import {
   formatUsdCompact,
   shortAddress,
 } from "@lib/format";
-import type { SearchInspectData, SearchTargetCandidate, SearchTokenResult } from "@lib/types";
-import { narrativeGapLabel } from "@shared/model/narrativeDataGaps";
+import type { SearchInspectData, SearchTargetCandidate, TokenCaseDossier } from "@lib/types";
 import type {
   ObsidianSource,
   ObsidianStringField,
@@ -24,7 +23,6 @@ export type SearchCaseView = {
   evidence: SearchCaseFact;
   official: SearchCaseFact;
   market: SearchCaseFact;
-  narrative: SearchCaseFact;
   resolver: SearchCaseFact;
   resultKind: SearchInspectData["query"]["result_kind"];
   subtitle: string;
@@ -55,7 +53,6 @@ export function buildSearchCaseView(data: SearchInspectData): SearchCaseView {
         value: "No single official target",
       },
       market: unavailableMarket(),
-      narrative: agentNarrative(data.ambiguous_result.agent_brief.project_summary.one_liner),
       resolver: resolverFact(data),
       resultKind: data.query.result_kind,
       subtitle: "Ambiguous query; no silent token selection.",
@@ -82,7 +79,6 @@ export function buildSearchCaseView(data: SearchInspectData): SearchCaseView {
         value: "No token profile",
       },
       market: unavailableMarket(),
-      narrative: agentNarrative(data.topic_result.agent_brief.project_summary.one_liner),
       resolver: resolverFact(data),
       resultKind: data.query.result_kind,
       subtitle: "Topic result; not resolved to one token.",
@@ -94,7 +90,6 @@ export function buildSearchCaseView(data: SearchInspectData): SearchCaseView {
     evidence: evidenceFact(0),
     official: emptyFact("Official", "official"),
     market: unavailableMarket(),
-    narrative: emptyFact("Narrative", "agent"),
     resolver: resolverFact(data),
     resultKind: data.query.result_kind,
     subtitle: "No result available.",
@@ -102,7 +97,7 @@ export function buildSearchCaseView(data: SearchInspectData): SearchCaseView {
   };
 }
 
-function tokenSearchCase(data: SearchInspectData, result: SearchTokenResult): SearchCaseView {
+function tokenSearchCase(data: SearchInspectData, result: TokenCaseDossier): SearchCaseView {
   const profile = result.profile;
   const target = result.target;
   const officialName =
@@ -138,7 +133,6 @@ function tokenSearchCase(data: SearchInspectData, result: SearchTokenResult): Se
       value: officialName,
     },
     market: marketFact(result),
-    narrative: tokenAdmissionNarrative(result),
     resolver: resolverFact(data),
     resultKind: data.query.result_kind,
     subtitle: identityLine(target, searchMarketCandles(result)),
@@ -146,7 +140,7 @@ function tokenSearchCase(data: SearchInspectData, result: SearchTokenResult): Se
   };
 }
 
-function marketFact(result: SearchTokenResult): SearchCaseFact {
+function marketFact(result: TokenCaseDossier): SearchCaseFact {
   const marketLive = asRecord(result.market_live);
   const marketCap = numberValue(marketLive.market_cap_usd);
   const price = numberValue(marketLive.price_usd);
@@ -165,58 +159,29 @@ function marketFact(result: SearchTokenResult): SearchCaseFact {
   };
 }
 
-function searchMarketCandles(result: SearchTokenResult): Record<string, unknown> {
+function searchMarketCandles(result: TokenCaseDossier): Record<string, unknown> {
   return asRecord(result.timeline.market_candles);
 }
 
 function resolverFact(data: SearchInspectData): SearchCaseFact {
   return {
-    detail: data.resolver.reasons.join(" · ") || "no resolver reasons",
+    detail: data.resolver.reasons.map(humanizeResolverCode).join(" · ") || "no resolver reasons",
     label: "Resolver",
     source: "deterministic",
-    tone: data.resolver.confidence >= 0.8 ? "health" : "info",
-    value: `${Math.round(data.resolver.confidence * 100)}%`,
-  };
-}
-
-function agentNarrative(value?: string | null): SearchCaseFact {
-  return {
-    detail: "agent memo boundary",
-    label: "Narrative",
-    source: "agent",
-    tone: "agent",
-    value: cleanText(value) ?? "Agent memo unavailable",
-  };
-}
-
-function tokenAdmissionNarrative(result: SearchTokenResult): SearchCaseFact {
-  const admission = result.narrative_admission;
-  const coverageDetail = `${compactNumber(admission.coverage.source_mentions)} mentions · ${compactNumber(
-    admission.coverage.independent_authors,
-  )} authors`;
-  return {
-    detail: narrativeGapLabel(admission.data_gaps[0]) ?? coverageDetail,
-    label: "Narrative",
-    source: "social",
     tone:
-      admission.status === "admitted" && admission.currentness.display_status === "current"
+      data.query.result_kind === "token_result"
         ? "health"
-        : "info",
-    value:
-      admission.currentness.display_status === "unsupported_window"
-        ? "Narrative unsupported"
-        : admissionStatusLabel(admission.status),
+        : data.query.result_kind === "ambiguous_result"
+          ? "risk"
+          : data.query.result_kind === "empty_result"
+            ? "neutral"
+            : "info",
+    value: humanizeResolverCode(data.query.result_kind),
   };
 }
 
-function admissionStatusLabel(status: string): string {
-  const labels: Record<string, string> = {
-    admitted: "Narrative admitted",
-    missing: "Narrative not ready",
-    suppressed: "Narrative suppressed",
-    unsupported_window: "Narrative unsupported",
-  };
-  return labels[status] ?? status.replaceAll("_", " ");
+function humanizeResolverCode(value: string): string {
+  return value.replaceAll("_", " ");
 }
 
 function evidenceFact(count: number): SearchCaseFact {

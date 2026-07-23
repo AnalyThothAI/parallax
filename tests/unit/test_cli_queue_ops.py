@@ -70,15 +70,15 @@ def test_queue_inspect_passes_reason_bucket_to_terminal_inspect(monkeypatch) -> 
             "--worker",
             "resolution_refresh",
             "--reason-bucket",
-            "llm_provider_522",
+            "provider_unavailable",
         ],
         stdout=stdout,
     )
 
     assert code == 0
-    assert calls[0]["reason_bucket"] == "llm_provider_522"
+    assert calls[0]["reason_bucket"] == "provider_unavailable"
     payload = json.loads(stdout.getvalue())
-    assert payload["data"]["reason_bucket"] == "llm_provider_522"
+    assert payload["data"]["reason_bucket"] == "provider_unavailable"
 
 
 def test_queue_inspect_parser_rejects_zero_limit_before_terminal_sampling(monkeypatch) -> None:
@@ -369,8 +369,8 @@ def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatc
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
     source_row = {
-        "projection_name": "macro_view",
-        "projection_version": "macro_regime_v4",
+        "projection_name": "macro_evidence",
+        "projection_version": "macro_evidence_v1",
         "target_kind": "concept",
         "target_id": "rates:dgs10",
         "concept_key": "rates:dgs10",
@@ -384,7 +384,7 @@ def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatc
             "terminal-macro-target-1",
             worker_name="macro_view_projection",
             source_table="macro_projection_dirty_targets",
-            target_key="macro_view:macro_regime_v4:concept:rates:dgs10",
+            target_key="macro_evidence:macro_evidence_v1:concept:rates:dgs10",
             source_row_json=source_row,
         )
     ]
@@ -424,16 +424,16 @@ def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatc
     assert payload["data"]["operator_action"] == "retry"
     assert payload["data"]["transition"] == {
         "requeued": 1,
-        "projection_name": "macro_view",
-        "projection_version": "macro_regime_v4",
+        "projection_name": "macro_evidence",
+        "projection_version": "macro_evidence_v1",
         "target_kind": "concept",
         "due_at_ms": 1_700_000_100_000,
     }
     assert repos.macro_intel.change_calls == [
         {
             "changed_observations": [{"concept_key": "rates:dgs10", "observed_at": "2026-06-23"}],
-            "projection_name": "macro_view",
-            "projection_version": "macro_regime_v4",
+            "projection_name": "macro_evidence",
+            "projection_version": "macro_evidence_v1",
             "now_ms": 1_700_000_100_000,
             "due_at_ms": 1_700_000_100_000,
             "reason": "terminal_retry:operator checked macro target",

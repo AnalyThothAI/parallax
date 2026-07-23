@@ -32,12 +32,11 @@ _DEX_FLOOR_REASONS = {
 }
 
 _FAMILY_WEIGHTS = {
-    "social_heat": 0.45,
-    "social_propagation": 0.40,
-    "semantic_catalyst": 0.15,
+    "social_heat": 0.55,
+    "social_propagation": 0.45,
     "timing_risk": 0.0,
 }
-_ALPHA_RANK_FAMILIES = ("social_heat", "social_propagation", "semantic_catalyst")
+_ALPHA_RANK_FAMILIES = ("social_heat", "social_propagation")
 
 _PRE_SOCIAL_CHASE_RISK_PCT = 0.10
 _POST_SOCIAL_LATE_RISK_PCT = 0.20
@@ -48,7 +47,6 @@ def build_token_factor_snapshot(
     target: dict[str, Any],
     attention: dict[str, Any],
     social_quality: dict[str, Any],
-    social_semantics: dict[str, Any],
     market: dict[str, Any],
     timing: dict[str, Any],
     source_event_ids: list[str],
@@ -60,17 +58,12 @@ def build_token_factor_snapshot(
     alpha_health = _alpha_health(
         attention=attention,
         social_quality=social_quality,
-        social_semantics=social_semantics,
         timing=timing,
         market=market,
     )
     families = {
         "social_heat": _social_heat_family(attention=attention),
         "social_propagation": _social_propagation_family(social_quality=social_quality),
-        "semantic_catalyst": _semantic_catalyst_family(
-            social_semantics=social_semantics,
-            social_quality=social_quality,
-        ),
         "timing_risk": _timing_risk_family(timing=timing, market=market),
     }
     gates = _gates(
@@ -225,42 +218,6 @@ def _social_propagation_family(*, social_quality: dict[str, Any]) -> dict[str, A
                 threshold=DEX_HIGH_ALERT_FLOORS["top_author_share"],
                 risk_flag="author_concentration_high",
             ),
-        ],
-    )
-
-
-def _semantic_catalyst_family(*, social_semantics: dict[str, Any], social_quality: dict[str, Any]) -> dict[str, Any]:
-    direction_counts = _count_map(social_semantics.get("direction_counts"))
-    impact_mean = _optional_float(social_semantics.get("impact_mean"))
-    novelty_mean = _optional_float(social_semantics.get("novelty_mean"))
-    confidence_mean = _optional_float(social_semantics.get("confidence_mean"))
-    covered_mentions = _optional_int(
-        social_semantics.get("llm_covered_mentions")
-        if social_semantics.get("llm_covered_mentions") is not None
-        else social_semantics.get("covered_mentions")
-    )
-    semantic_mentions = social_semantics.get("mentions")
-    mentions = _optional_int(semantic_mentions if semantic_mentions is not None else social_quality.get("mentions"))
-    semantic_coverage = None
-    if covered_mentions is not None and mentions is not None and mentions > 0:
-        semantic_coverage = covered_mentions / mentions
-    facts = {
-        "direction_counts": direction_counts,
-        "impact_mean": impact_mean,
-        "novelty_mean": novelty_mean,
-        "confidence_mean": confidence_mean,
-        "llm_covered_mentions": _count_int(covered_mentions),
-        "mentions": _count_int(mentions),
-        "semantic_coverage": semantic_coverage,
-    }
-    return _family(
-        "semantic_catalyst",
-        facts=facts,
-        factors=[
-            _coverage_weighted_ratio_factor("semantic_impact", impact_mean, confidence_mean, semantic_coverage),
-            _coverage_weighted_ratio_factor("semantic_novelty", novelty_mean, confidence_mean, semantic_coverage),
-            _ratio_factor("semantic_catalyst", "semantic_coverage", semantic_coverage),
-            _direction_factor("semantic_catalyst", direction_counts),
         ],
     )
 
@@ -532,22 +489,6 @@ def _penalty_factor(
     )
 
 
-def _direction_factor(family: str, direction_counts: dict[str, Any]) -> dict[str, Any]:
-    total = sum(_count_int(value) for value in direction_counts.values())
-    bullish = _count_int(direction_counts.get("bullish"))
-    neutral = _count_int(direction_counts.get("neutral"))
-    score = 0.0
-    if total > 0:
-        score = (bullish + neutral * 0.5) / total * 100.0
-    return _factor_point(
-        family,
-        "direction_mix",
-        raw_value=direction_counts,
-        score=score,
-        confidence=0.85 if total > 0 else 0.0,
-    )
-
-
 def _z_or_new_burst_factor(*, z_value: float | None, new_burst_score: float | None) -> dict[str, Any]:
     if z_value is not None:
         raw_value: Any = z_value
@@ -599,35 +540,6 @@ def _propagation_speed_factor(second_ms: int | None, third_ms: int | None) -> di
         raw_value=raw_value,
         score=score,
         confidence=confidence,
-    )
-
-
-def _coverage_weighted_ratio_factor(
-    key: str,
-    value: float | None,
-    confidence: float | None,
-    coverage: float | None,
-) -> dict[str, Any]:
-    if value is None or confidence is None or coverage is None:
-        raw_value = None
-        score_value = None
-        factor_confidence = 0.0
-    else:
-        bounded_confidence = max(0.0, min(1.0, confidence))
-        bounded_coverage = max(0.0, min(1.0, coverage))
-        factor_confidence = bounded_confidence * bounded_coverage
-        score_value = max(0.0, min(1.0, value)) * factor_confidence
-        raw_value = {
-            "value": value,
-            "confidence_mean": confidence,
-            "semantic_coverage": coverage,
-        }
-    return _factor_point(
-        "semantic_catalyst",
-        key,
-        raw_value=raw_value,
-        score=safe_float(score_value) * 100.0,
-        confidence=factor_confidence,
     )
 
 
@@ -738,7 +650,6 @@ def _alpha_health(
     *,
     attention: dict[str, Any],
     social_quality: dict[str, Any],
-    social_semantics: dict[str, Any],
     timing: dict[str, Any],
     market: dict[str, Any],
 ) -> str:
@@ -752,11 +663,6 @@ def _alpha_health(
     ):
         return "ready"
     if _optional_float(social_quality.get("effective_authors")) is not None:
-        return "ready"
-    if _count_map(social_semantics.get("direction_counts")):
-        return "ready"
-    semantic_fields = ("impact_mean", "novelty_mean", "confidence_mean")
-    if any(_optional_float(social_semantics.get(key)) is not None for key in semantic_fields):
         return "ready"
     if any(
         _optional_float(source.get(key)) is not None
@@ -839,12 +745,6 @@ def _count_int(value: Any, default: int = 0) -> int:
     if parsed is None:
         return default
     return int(parsed)
-
-
-def _count_map(value: Any) -> dict[str, int]:
-    if not isinstance(value, dict):
-        return {}
-    return {str(key): _count_int(item) for key, item in value.items()}
 
 
 def _computed_at_ms(value: Any) -> int:

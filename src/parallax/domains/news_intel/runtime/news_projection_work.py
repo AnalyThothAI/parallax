@@ -4,7 +4,6 @@ from collections.abc import Iterable, Mapping
 from typing import Any
 
 PAGE_PROJECTION = "page"
-STORY_BRIEF_INPUT = "story_brief"
 
 
 def enqueue_page_reprojection(
@@ -26,41 +25,8 @@ def enqueue_page_reprojection(
     return _enqueue(repos, targets, reason=reason, now_ms=now_ms)
 
 
-def enqueue_story_brief_work(
-    repos: Any,
-    *,
-    story_keys: Iterable[str],
-    reason: str,
-    now_ms: int,
-    priority_by_story_key: Mapping[str, int] | None = None,
-    source_watermark_ms_by_story_key: Mapping[str, int] | None = None,
-) -> int:
-    priorities = dict(priority_by_story_key or {})
-    watermarks = dict(source_watermark_ms_by_story_key or {})
-    targets: list[dict[str, Any]] = []
-    for story_key in _unique(story_keys):
-        target = {
-            "projection_name": STORY_BRIEF_INPUT,
-            "target_kind": "story",
-            "target_id": story_key,
-            "source_watermark_ms": _watermark_for_key(watermarks, story_key),
-        }
-        if story_key in priorities:
-            target["priority"] = _priority_for_key(priorities, story_key)
-        targets.append(target)
-    return _enqueue(repos, targets, reason=reason, now_ms=now_ms)
-
-
 def claim_page_projection_work(repos: Any, **kwargs: Any) -> list[dict[str, Any]]:
     return _claim(repos, projection_name=PAGE_PROJECTION, **kwargs)
-
-
-def claim_story_brief_work(repos: Any, **kwargs: Any) -> list[dict[str, Any]]:
-    return _claim(repos, projection_name=STORY_BRIEF_INPUT, **kwargs)
-
-
-def queue_story_brief_depth(repos: Any, *, now_ms: int) -> int:
-    return int(repos.news_projection_dirty_targets.queue_depth(now_ms=now_ms, projection_name=STORY_BRIEF_INPUT))
 
 
 def mark_work_done(repos: Any, targets: Iterable[Mapping[str, Any]], *, now_ms: int) -> int:
@@ -118,16 +84,6 @@ def mark_work_error(
     return changed
 
 
-def story_brief_story_keys(rows: Iterable[Mapping[str, Any]]) -> list[str]:
-    return _target_ids(
-        rows,
-        projection_name=STORY_BRIEF_INPUT,
-        target_kind="story",
-        require_empty_window=True,
-        error_prefix="news_story_brief_claim",
-    )
-
-
 def _claim(repos: Any, *, projection_name: str, **kwargs: Any) -> list[dict[str, Any]]:
     return list(repos.news_projection_dirty_targets.claim_due(projection_name=projection_name, **kwargs))
 
@@ -170,13 +126,6 @@ def _watermark_for_key(watermarks: Mapping[Any, int], key: Any) -> int:
     return int(value)
 
 
-def _priority_for_key(priorities: Mapping[str, int], key: str) -> int:
-    value = priorities[key]
-    if not isinstance(value, int) or isinstance(value, bool):
-        raise ValueError("news_projection_dirty_target_priority_required")
-    return value
-
-
 def _required_worker_name(value: str) -> str:
     worker_name = str(value or "").strip()
     if not worker_name:
@@ -199,54 +148,6 @@ def _completion_attempt_count(target: Mapping[str, Any]) -> int:
 def _retry_budget_exhausted_reason(error: Exception | str) -> str:
     message = str(error or "").strip()
     return f"news_projection_dirty_retry_budget_exhausted: {message}"[:2048]
-
-
-def _target_ids(
-    rows: Iterable[Mapping[str, Any]],
-    *,
-    projection_name: str,
-    target_kind: str,
-    require_empty_window: bool,
-    error_prefix: str,
-) -> list[str]:
-    target_ids: list[str] = []
-    for row in rows:
-        _require_claim_text(row, field="projection_name", expected=projection_name, error_prefix=error_prefix)
-        _require_claim_text(row, field="target_kind", expected=target_kind, error_prefix=error_prefix)
-        if require_empty_window:
-            _require_claim_empty_window(row, error_prefix=error_prefix)
-        target_ids.append(_require_claim_text(row, field="target_id", error_prefix=error_prefix))
-    return _unique(target_ids)
-
-
-def _require_claim_text(
-    row: Mapping[str, Any],
-    *,
-    field: str,
-    error_prefix: str,
-    expected: str | None = None,
-) -> str:
-    try:
-        value = row[field]
-    except KeyError as exc:
-        raise ValueError(f"{error_prefix}_{field}_required") from exc
-    if not isinstance(value, str):
-        raise ValueError(f"{error_prefix}_{field}_required")
-    text = value.strip()
-    if not text:
-        raise ValueError(f"{error_prefix}_{field}_required")
-    if expected is not None and text != expected:
-        raise ValueError(f"{error_prefix}_{field}_required")
-    return text
-
-
-def _require_claim_empty_window(row: Mapping[str, Any], *, error_prefix: str) -> None:
-    try:
-        value = row["window"]
-    except KeyError as exc:
-        raise ValueError(f"{error_prefix}_window_empty_required") from exc
-    if value != "":
-        raise ValueError(f"{error_prefix}_window_empty_required")
 
 
 def _unique(values: Iterable[str]) -> list[str]:

@@ -1,15 +1,16 @@
 import type { Page, Route } from "@playwright/test";
 import {
-  macroAssetsModuleFixture,
-  macroCorrelationFixture,
-  macroFedFundsModuleFixture,
-  macroModuleFixture,
-  macroOverviewModuleFixture,
-  macroRealRatesModuleFixture,
+  macroCreditFixture,
+  macroCrossAssetFixture,
+  macroGrowthLaborFixture,
+  macroLiquidityFundingFixture,
+  macroOverviewFixture,
+  macroRatesInflationFixture,
   macroSeriesFixture,
-  macroYieldCurveModuleFixture,
 } from "@tests/fixtures/macroFixture";
 import { marketContextFixture, marketObservationFixture } from "@tests/fixtures/marketFixtures";
+import { newsItemFixture, newsRowFixture } from "@tests/fixtures/newsFixture";
+import { opsDiagnosticsFixture, opsQueueFixture } from "@tests/fixtures/opsFixture";
 import { tokenCaseFixture, tokenCasePostsFixture } from "@tests/fixtures/tokenCaseFixture";
 
 const NOW = 1_777_746_300_000;
@@ -71,27 +72,19 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     if (path.match(/^\/api\/watchlist\/handles?\/[^/]+\/timeline$/)) {
       return fulfill(route, watchlistHandleTimelineData(handleFromPath(path)));
     }
-    if (path === "/api/macro") return fulfill(route, macroData());
-    if (path === "/api/macro/assets/correlation") return fulfill(route, macroCorrelationData(url));
-    if (path.startsWith("/api/macro/modules/")) {
-      const moduleId = macroModuleIdFromPath(path);
-      if (isParentMacroModule(moduleId)) {
-        recordUnhandledApiRequest(page, url);
-        return route.fulfill({
-          status: 400,
-          contentType: "application/json",
-          body: JSON.stringify({
-            ok: false,
-            error: "unsupported_macro_module",
-            field: "module_id",
-          }),
-        });
-      }
-      return fulfill(route, macroModuleData(moduleId));
+    if (path === "/api/macro/overview") return fulfill(route, macroOverviewFixture());
+    if (path === "/api/macro/cross-asset") return fulfill(route, macroCrossAssetFixture());
+    if (path === "/api/macro/rates-inflation") {
+      return fulfill(route, macroRatesInflationFixture());
     }
+    if (path === "/api/macro/growth-labor") return fulfill(route, macroGrowthLaborFixture());
+    if (path === "/api/macro/liquidity-funding") {
+      return fulfill(route, macroLiquidityFundingFixture());
+    }
+    if (path === "/api/macro/credit") return fulfill(route, macroCreditFixture());
     if (path === "/api/macro/series") return fulfill(route, macroSeriesData(url));
-    if (path === "/api/ops/diagnostics") return fulfill(route, opsDiagnosticsData());
-    if (path.startsWith("/api/ops/queues/")) return fulfill(route, opsQueueData(path));
+    if (path === "/api/ops/diagnostics") return fulfill(route, opsDiagnosticsFixture());
+    if (path.startsWith("/api/ops/queues/")) return fulfill(route, opsQueueFixture());
 
     recordUnhandledApiRequest(page, url);
     return route.fulfill({
@@ -115,35 +108,15 @@ function recordUnhandledApiRequest(page: Page, url: URL) {
 function newsRowsData() {
   return {
     items: [
-      {
+      newsRowFixture({
         row_id: "news-row-1",
         news_item_id: "news-row-1",
-        lifecycle_status: "processed",
+        representative_news_item_id: "news-row-1",
         headline: "Macro desk flags liquidity rotation",
-        latest_at_ms: NOW,
         canonical_url: "https://example.com/macro-liquidity",
         source_domain: "example.com",
         summary: "Liquidity rotation is visible across crypto beta and rates-sensitive assets.",
-        signal: newsProviderSignal(),
-        token_impacts: [],
-        token_lanes: [
-          {
-            lane: "resolved",
-            resolution_status: "resolved",
-            symbol: "UPEG",
-            target_type: "Asset",
-            target_id: TARGET_ID,
-            market_type: "dex",
-          },
-        ],
-        fact_lanes: [
-          {
-            claim: "Funding stress remains elevated.",
-            event_type: "liquidity_rotation",
-            status: "accepted",
-          },
-        ],
-      },
+      }),
     ],
     next_cursor: null,
   };
@@ -151,81 +124,16 @@ function newsRowsData() {
 
 function newsItemDetailData(path: string) {
   const newsItemId = decodeURIComponent(path.split("/").pop() ?? "news-row-1");
-  return {
-    row_id: newsItemId,
+  return newsItemFixture({
     news_item_id: newsItemId,
-    lifecycle_status: "processed",
-    headline: "Macro desk flags liquidity rotation",
-    latest_at_ms: NOW,
+    representative_news_item_id: newsItemId,
+    title: "Macro desk flags liquidity rotation",
     canonical_url: "https://example.com/macro-liquidity",
     source_domain: "example.com",
     summary: "Liquidity rotation is visible across crypto beta and rates-sensitive assets.",
-    content:
+    body_text:
       "A deterministic e2e article body gives the mobile cold-load route enough detail content.",
-    source: {
-      source_name: "Example Wire",
-      source_domain: "example.com",
-      provider_type: "opennews",
-      trust_tier: "tier_1",
-      source_role: "wire",
-      source_quality_status: "healthy",
-    },
-    signal: newsProviderSignal(),
-    token_impacts: [],
-    token_lanes: [
-      {
-        lane: "resolved",
-        resolution_status: "resolved",
-        symbol: "UPEG",
-        target_type: "Asset",
-        target_id: TARGET_ID,
-        market_type: "dex",
-      },
-    ],
-    fact_lanes: [
-      {
-        claim: "Funding stress remains elevated.",
-        event_type: "liquidity_rotation",
-        status: "accepted",
-      },
-    ],
-    token_mentions: [],
-    fact_candidates: [],
-    story_members: [],
-    agent_brief: {
-      status: "ready",
-      summary_zh: "流动性轮动正在影响高 beta crypto。",
-      key_points: ["Funding stress elevated", "Crypto beta in focus"],
-      data_gaps: [],
-      evidence_refs: [],
-      computed_at_ms: NOW,
-    },
-  };
-}
-
-function newsProviderSignal() {
-  const displaySignal = {
-    source: "provider",
-    provider: "opennews",
-    status: "ready",
-    direction: "bullish",
-    label_zh: "利好",
-    signal: "long",
-    score: 82,
-    grade: "A",
-    summary_zh: "OpenNews aiRating flags liquidity rotation as a positive crypto-beta signal.",
-    summary_en: "The display signal links the liquidity rotation to crypto beta.",
-    method: "opennews.aiRating",
-  };
-  return {
-    display_signal: displaySignal,
-    agent_signal: { status: "pending" },
-    alert_eligibility: {
-      in_app_eligible: true,
-      external_push_ready: false,
-      agent_status: "pending",
-    },
-  };
+  });
 }
 
 async function fulfill(route: Route, data: unknown) {
@@ -253,7 +161,6 @@ function statusData() {
     snapshot_gate: {},
     db: { ok: true },
     provider_states: {},
-    agent_execution: null,
     news_provider_contract: { ok: true },
     workers: {
       collector: workerStatus({
@@ -464,7 +371,7 @@ function assetFlowRow() {
 
 function factorSnapshot({ attention, market }: { attention: any; market: any }) {
   return {
-    schema_version: "token_factor_snapshot_v3_social_attention",
+    schema_version: "token_factor_snapshot_v4_transparent_factors",
     subject: {
       target_type: "Asset",
       target_id: TARGET_ID,
@@ -483,7 +390,7 @@ function factorSnapshot({ attention, market }: { attention: any; market: any }) 
     },
     data_health: { identity: "ready", market: "ready", social: "ready", alpha: "ready" },
     families: {
-      social_heat: family(86, 0.35, {
+      social_heat: family(86, 0.55, {
         mentions_5m: attention.mentions_5m,
         mentions_1h: attention.mentions_1h,
         mentions_4h: attention.mentions_4h,
@@ -501,19 +408,13 @@ function factorSnapshot({ attention, market }: { attention: any; market: any }) 
         baseline_sample_count: attention.baseline_sample_count,
         status: "rising",
       }),
-      social_propagation: family(72, 0.3, {
+      social_propagation: family(72, 0.45, {
         mentions: attention.mentions_window,
         independent_authors: attention.unique_authors,
         duplicate_text_share: 0,
         informative_post_count: attention.mentions_window,
       }),
-      semantic_catalyst: family(78, 0.25, {
-        impact_mean: 0.78,
-        novelty_mean: 0.7,
-        confidence_mean: 0.9,
-        direction_counts: { bullish: attention.mentions_window },
-      }),
-      timing_risk: family(50, 0.1, {
+      timing_risk: family(50, 0, {
         social_signal_start_ms: NOW - 60_000,
         price_change_since_social_pct: 0.12,
         price_change_before_social_pct: null,
@@ -526,7 +427,6 @@ function factorSnapshot({ attention, market }: { attention: any; market: any }) 
       factor_ranks: {
         social_heat: 0.86,
         social_propagation: 0.72,
-        semantic_catalyst: 0.78,
         timing_risk: 0.5,
       },
       alpha_rank: 4,
@@ -538,7 +438,6 @@ function factorSnapshot({ attention, market }: { attention: any; market: any }) 
       family_scores: {
         social_heat: 86,
         social_propagation: 72,
-        semantic_catalyst: 78,
         timing_risk: 50,
       },
     },
@@ -620,7 +519,6 @@ function tokenCasePostsData(url: URL) {
   const targetId = url.searchParams.get("target_id") ?? posts.query.target_id;
   const window = url.searchParams.get("window") ?? posts.query.window;
   const scope = url.searchParams.get("scope") ?? posts.query.scope;
-  const sort = url.searchParams.get("sort") ?? posts.query.sort ?? "recent";
   const nextItem = {
     ...posts.items[0],
     event_id: "event-hansa-4",
@@ -635,7 +533,7 @@ function tokenCasePostsData(url: URL) {
   const items = cursor ? [nextItem] : posts.items;
   return {
     ...posts,
-    query: { ...posts.query, target_type: targetType, target_id: targetId, window, scope, sort },
+    query: { ...posts.query, target_type: targetType, target_id: targetId, window, scope },
     returned_count: items.length,
     total_count: posts.total_count + 1,
     has_more: false,
@@ -657,7 +555,6 @@ function searchInspectData(url: URL) {
         result_kind: "token_result",
       },
       resolver: {
-        confidence: 0.98,
         target_candidates: [dossier.target],
         selected_target: dossier.target,
         reasons: ["e2e_token_case_fixture"],
@@ -675,7 +572,7 @@ function searchInspectData(url: URL) {
       scope: "all",
       result_kind: "topic_result",
     },
-    resolver: { confidence: 0.5, target_candidates: [], selected_target: null, reasons: ["e2e"] },
+    resolver: { target_candidates: [], selected_target: null, reasons: ["e2e"] },
     token_result: null,
     ambiguous_result: null,
     topic_result: null,
@@ -862,7 +759,6 @@ function postsData() {
       window: "1h",
       scope: "all",
       range: "current_window",
-      sort: "recent",
     },
   };
 }
@@ -890,12 +786,6 @@ function post(eventId: string, handle: string, text: string, watched: boolean, s
       eventId === "event-upeg-2"
         ? { tweet_id: "tweet-upeg-1", author_handle: "traderpow", type: "quote" }
         : null,
-    catalyst_score: score,
-    catalyst_components: {
-      followup_count: watched ? 0 : 2,
-      independent_authors: watched ? 1 : 2,
-      explicit_cascade_followups: watched ? 0 : 1,
-    },
     price: {
       status: "ready",
       provider: "okx_dex_price",
@@ -1036,7 +926,7 @@ function watchlistHandleOverviewData(handle: string) {
       source_event_count: 42,
       resolved_token_count: 1,
       candidate_mention_count: 3,
-      narrative_count: 1,
+      hashtag_count: 1,
       last_source_event_at_ms: NOW,
     },
     resolved_token_clusters: [
@@ -1063,12 +953,12 @@ function watchlistHandleOverviewData(handle: string) {
         symbol: null,
       },
     ],
-    narrative_clusters: [
+    hashtag_clusters: [
       {
         label: "Liquidity rotation",
         count: 2,
         query: "liquidity",
-        kind: "narrative",
+        kind: "hashtag",
         source: "event_hashtags",
         target_type: null,
         target_id: null,
@@ -1111,295 +1001,10 @@ function watchlistHandleTimelineData(handle: string) {
   };
 }
 
-function macroData() {
-  return {
-    snapshot: {
-      projection_version: "macro_regime_v4",
-      asof_date: "2026-05-20",
-      status: "partial",
-      regime: "funding_stress",
-      overall_score: 7.25,
-      computed_at_ms: NOW,
-    },
-    panels: {
-      liquidity: {
-        score: 9,
-        regime: "funding_stress",
-        evidence: ["sofr_iorb_spread_bps=15.0"],
-        data_gaps: [],
-      },
-      rates: {
-        score: 7,
-        regime: "term_premium_pressure",
-        evidence: ["10y=4.70"],
-        data_gaps: [],
-      },
-    },
-    indicators: {
-      sofr_iorb_spread_bps: {
-        label: "SOFR minus IORB",
-        value: 15,
-        unit: "bps",
-        observed_at: "2026-05-20",
-        sources: ["nyfed", "fred"],
-        concept_keys: ["liquidity:sofr", "fed:iorb"],
-      },
-    },
-    triggers: [{ code: "sofr_above_iorb", description: "SOFR is above IORB", value: 15 }],
-    data_gaps: [
-      {
-        code: "missing_required_concept",
-        label: "标普500 数据缺失",
-        severity: "warning",
-        score_participation: false,
-      },
-    ],
-    source_coverage: {
-      observed_concept_count: 10,
-      required_concept_count: 10,
-      coverage_ratio: 1,
-      latest_observed_at: "2026-05-20",
-    },
-    features: {
-      "rates:dgs10": {
-        latest: { value: 4.7, observed_at: "2026-05-20", unit: "percent" },
-        freshness_days: 1,
-        delta: { "5d": 0.1, "20d": 0.35, "60d": null },
-        zscore: { lookback: 252, value: 1.4 },
-        percentile: { lookback: 252, value: 0.82 },
-        data_gaps: [],
-      },
-    },
-    chain: {
-      liquidity: {
-        score: 8,
-        regime: "funding_stress",
-        evidence: ["sofr_iorb_spread_bps=15.0"],
-        data_gaps: [],
-      },
-      fed_corridor: {
-        score: 7,
-        regime: "corridor_pressure",
-        evidence: ["sofr_iorb_spread_bps=15.0"],
-        data_gaps: [],
-      },
-    },
-    scenario: {
-      current_regime: "funding_stress",
-      confidence: 0.72,
-      time_window: "1w",
-      confirmations: [
-        {
-          code: "sofr_above_iorb",
-          description: "SOFR is above IORB",
-          indicator_keys: ["sofr_iorb_spread_bps"],
-          value: 15,
-        },
-      ],
-      contradictions: [{ code: "volatility_carry", node: "volatility" }],
-      watch_triggers: [
-        {
-          code: "repo_pressure_persists_3d",
-          description: "SOFR remains above IORB across multiple observations.",
-        },
-      ],
-      invalidations: [
-        {
-          code: "sofr_iorb_normalizes",
-          description: "SOFR trades back below or in line with IORB.",
-        },
-      ],
-      trade_map: [
-        {
-          expression: "risk_down_credit_sensitive",
-          label: "风险降档 / 信用敏感",
-          time_window: "1w",
-          action_checklist: [
-            {
-              kind: "confirm",
-              kind_label: "确认",
-              label: "SOFR 高于 IORB",
-              description: "观察 SOFR 高于 IORB 是否继续确认。",
-            },
-            {
-              kind: "invalidate",
-              kind_label: "失效",
-              label: "SOFR 回到 IORB 附近",
-              description: "若 SOFR 回到 IORB 附近，则撤销该映射。",
-            },
-          ],
-        },
-      ],
-    },
-    scorecard: {
-      projection_version: "macro_regime_v4",
-      modules: {
-        liquidity: { score: 9, regime: "funding_stress", evidence: [], data_gaps: [] },
-      },
-    },
-  };
-}
-
-function macroModuleIdFromPath(path: string) {
-  return decodeURIComponent(path.replace("/api/macro/modules/", "")) || "overview";
-}
-
-function isParentMacroModule(moduleId: string) {
-  return new Set(["rates", "liquidity", "economy", "volatility", "credit"]).has(moduleId);
-}
-
-function macroModuleData(moduleId: string) {
-  if (moduleId === "overview") {
-    return macroOverviewModuleFixture();
-  }
-  switch (moduleId) {
-    case "assets":
-      return macroAssetsModuleFixture();
-    case "rates/fed-funds":
-      return macroFedFundsModuleFixture();
-    case "rates/yield-curve":
-      return macroYieldCurveModuleFixture();
-    case "rates/real-rates":
-      return macroRealRatesModuleFixture();
-    default:
-      break;
-  }
-  const base = macroModuleFixture();
-  return macroModuleFixture({
-    snapshot: {
-      ...base.snapshot,
-      module_id: moduleId,
-      route_path: moduleId === "overview" ? "/macro" : `/macro/${moduleId}`,
-      section: moduleId.split("/")[0] || "overview",
-      title: moduleId === "overview" ? "总览" : base.snapshot.title,
-    },
-  });
-}
-
 function macroSeriesData(url: URL) {
   const conceptKeys = (url.searchParams.get("concept_keys") ?? "asset:spx")
     .split(",")
     .map((conceptKey) => conceptKey.trim())
     .filter(Boolean);
   return macroSeriesFixture(conceptKeys.length > 0 ? conceptKeys : ["asset:spx"]);
-}
-
-function macroCorrelationData(url: URL) {
-  const fixture = macroCorrelationFixture();
-  const requestedWindow = url.searchParams.get("window");
-  if (requestedWindow === "20d" || requestedWindow === "60d" || requestedWindow === "120d") {
-    return { ...fixture, window: requestedWindow };
-  }
-  return fixture;
-}
-
-function opsDiagnosticsData() {
-  return {
-    schema_version: "ops_diagnostics_v1",
-    generated_at_ms: NOW,
-    overall: { status: "ok", severity: "info", reasons: [], section_status_counts: { ok: 4 } },
-    config: { status: "ok", config_path: "~/.parallax/config.yaml" },
-    database: { status: "ok", latency_ms: 4 },
-    collector: { status: "ok", frames_received: 88, matched_twitter_events: 7 },
-    providers: [
-      {
-        provider: "gmgn",
-        domain: "social",
-        configured: true,
-        capabilities: ["websocket"],
-        state: "connected",
-        status: "ok",
-        reason: null,
-      },
-    ],
-    workers: [
-      {
-        name: "collector",
-        group: "ingest",
-        enabled: true,
-        running: true,
-        status: "ok",
-        reason: null,
-      },
-    ],
-    queues: [
-      {
-        queue_name: "asset_profile_refresh",
-        table: "asset_profile_refresh_jobs",
-        worker_name: "asset_profile_refresh",
-        counts_by_status: { due: 0, running: 0, failed: 0, dead: 0 },
-        due_count: 0,
-        running_count: 0,
-        failed_count: 0,
-        dead_count: 0,
-        status: "ok",
-        reason: null,
-      },
-    ],
-    agent_execution: {
-      status: "ok",
-      policy: {
-        lane: "news.story_brief",
-        model: "deepseek-v4-flash",
-        provider_family: "deepseek",
-        output_strategy: "json_object",
-        schema_enforcement: "client_validate",
-        max_concurrency: 1,
-        rpm_limit: 60,
-        timeout_seconds: 180,
-      },
-      counters: {
-        in_flight: 0,
-        provider_running: 0,
-        circuit_state: "closed",
-        circuit_open_until_ms: null,
-        capacity_denied_total: 0,
-        circuit_open_total: 0,
-        timeout_total: 0,
-        last_denied_at_ms: null,
-        last_timeout_at_ms: null,
-        oldest_in_flight_age_ms: null,
-      },
-    },
-    domains: { token_intel: { status: "ok", reason: "ready", due_jobs: 0 } },
-    suggested_checks: [],
-  };
-}
-
-function opsQueueData(path: string) {
-  const queueName = decodeURIComponent(path.split("/").pop() ?? "asset_profile_refresh");
-  const summary = {
-    queue_name: queueName,
-    table: `${queueName}_jobs`,
-    worker_name: queueName,
-    counts_by_status: { due: 1, running: 0, failed: 0, dead: 0 },
-    due_count: 1,
-    running_count: 0,
-    failed_count: 0,
-    dead_count: 0,
-    oldest_due_age_ms: 12_000,
-    status: "ok",
-    reason: null,
-  };
-  return {
-    schema_version: "ops_queue_v1",
-    queue_name: queueName,
-    status_filter: null,
-    counts_by_status: summary.counts_by_status,
-    summary,
-    items: [
-      {
-        id: "job-e2e-1",
-        status: "due",
-        attempt_count: 0,
-        max_attempts: 3,
-        created_at_ms: NOW - 60_000,
-        updated_at_ms: NOW - 30_000,
-        next_run_at_ms: NOW,
-        last_error_type: null,
-        last_error_preview: null,
-        source: { target_id: TARGET_ID },
-      },
-    ],
-  };
 }

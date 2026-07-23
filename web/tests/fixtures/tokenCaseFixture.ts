@@ -91,21 +91,6 @@ export function tokenCaseFixture(): TokenCaseDossier {
       has_more: false,
     },
     posts: tokenCasePostsFixture(),
-    narrative_admission: {
-      status: "admitted",
-      reason: "hot_rank",
-      is_current: true,
-      computed_at_ms: BASE_MS - 30_000,
-      currentness: {
-        display_status: "current",
-        reason: "hot_rank",
-      },
-      coverage: {
-        source_mentions: 18,
-        independent_authors: 7,
-      },
-      data_gaps: [],
-    },
     market_live: {
       status: "missing",
       target_type: "Asset",
@@ -118,6 +103,113 @@ export function tokenCaseFixture(): TokenCaseDossier {
       observed_at_ms: null,
       error: "live snapshot unavailable in fixture",
     },
+    current_radar: currentRadarFixture(),
+  };
+}
+
+function currentRadarFixture(): TokenCaseDossier["current_radar"] {
+  const family = {
+    raw_score: 70,
+    score: 70,
+    weight: 1,
+    data_health: "ready",
+    facts: {},
+    factors: {},
+  };
+  return {
+    intent: {
+      intent_id: "intent-hansa",
+      event_id: "event-hansa-3",
+      display_symbol: "HANSA",
+      display_name: "Hansa Network",
+      evidence: [],
+    },
+    radar: {
+      lane: "resolved",
+      rank: 3,
+      listed_at_ms: BASE_MS - 42 * 60_000,
+      computed_at_ms: BASE_MS,
+      source_max_received_at_ms: BASE_MS - 90_000,
+    },
+    resolution: {
+      status: "EXACT",
+      target_type: "Asset",
+      target_id: "asset:solana:token:FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump",
+      pricefeed_id: "pricefeed:gmgn:hansa",
+      reason_codes: ["address_exact"],
+      candidate_ids: [],
+      lookup_keys: ["solana:FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump"],
+      discovery: [],
+    },
+    quality: {
+      status: "ready",
+      degraded_reasons: [],
+    },
+    factor_snapshot: {
+      schema_version: "token_factor_snapshot_v4_transparent_factors",
+      subject: {
+        target_type: "Asset",
+        target_id: "asset:solana:token:FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump",
+        symbol: "HANSA",
+        target_market_type: "dex",
+        chain: "solana",
+        address: "FhoxjfsuStvRQKRXSuB9ZDB7WRGjqhUPxa3NztWspump",
+        pricefeed_id: "pricefeed:gmgn:hansa",
+      },
+      market: {
+        event_anchor: null,
+        decision_latest: null,
+        readiness: {
+          anchor_status: "missing",
+          latest_status: "missing",
+          dex_floor_status: "missing_fields",
+          missing_fields: ["market_cap_usd"],
+          stale_fields: [],
+        },
+      },
+      gates: {
+        eligible_for_high_alert: false,
+        max_decision: "watch",
+        blocked_reasons: [],
+        risk_reasons: [],
+      },
+      data_health: {
+        identity: "ready",
+        market: "missing",
+        social: "ready",
+        alpha: "ready",
+      },
+      families: {
+        social_heat: family,
+        social_propagation: family,
+        timing_risk: family,
+      },
+      normalization: {
+        status: "ready",
+        cohort_status: "ready",
+        cohort: {},
+        factor_ranks: {
+          social_heat: null,
+          social_propagation: null,
+          timing_risk: null,
+        },
+        alpha_rank: null,
+      },
+      composite: {
+        raw_alpha_score: 70,
+        rank_score: 70,
+        recommended_decision: "watch",
+        family_scores: {
+          social_heat: 70,
+          social_propagation: 70,
+          timing_risk: 70,
+        },
+      },
+      provenance: {
+        source_event_ids: ["event-hansa-3"],
+        computed_at_ms: BASE_MS,
+      },
+    },
   };
 }
 
@@ -129,7 +221,6 @@ export function tokenCasePostsFixture(): TokenPostsData {
       window: "1h",
       scope: "all",
       range: "current_window",
-      sort: "recent",
     },
     score_window: { window: "1h" },
     total_count: 18,
@@ -206,7 +297,6 @@ function post(eventId: string, handle: string, text: string, quality: number, wa
     attribution_weight: 1,
     is_watched: watched,
     event_type: "tweet",
-    catalyst_score: quality - 8,
     stage_phase: eventId.endsWith("3") ? "expansion" : eventId.endsWith("2") ? "ignition" : "seed",
     author_role: watched ? "watched" : "scanner",
     is_stage_representative: true,

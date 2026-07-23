@@ -482,8 +482,8 @@ class TokenRadarRepository:
               source_event_ids_json, source_intent_ids_json,
               source_resolution_ids_json, payload_hash, last_scored_at_ms, created_at_ms, updated_at_ms,
               social_heat_raw_score, social_heat_weight, social_propagation_raw_score,
-              social_propagation_weight, semantic_catalyst_raw_score, semantic_catalyst_weight,
-              timing_risk_raw_score, timing_risk_weight, cohort_high_confidence_mentions,
+              social_propagation_weight, timing_risk_raw_score, timing_risk_weight,
+              cohort_high_confidence_mentions,
               cohort_kol_mentions, cohort_public_followup_authors, cohort_first_seen_global_24h,
               cohort_symbol, social_heat_watched_mentions, social_heat_mentions_1h,
               social_propagation_mentions, social_heat_latest_seen_ms, raw_composite_score,
@@ -498,7 +498,6 @@ class TokenRadarRepository:
               %(source_resolution_ids_json)s, %(payload_hash)s, %(last_scored_at_ms)s, %(created_at_ms)s,
               %(updated_at_ms)s, %(social_heat_raw_score)s, %(social_heat_weight)s,
               %(social_propagation_raw_score)s, %(social_propagation_weight)s,
-              %(semantic_catalyst_raw_score)s, %(semantic_catalyst_weight)s,
               %(timing_risk_raw_score)s, %(timing_risk_weight)s,
               %(cohort_high_confidence_mentions)s, %(cohort_kol_mentions)s,
               %(cohort_public_followup_authors)s, %(cohort_first_seen_global_24h)s,
@@ -530,8 +529,6 @@ class TokenRadarRepository:
               social_heat_weight = excluded.social_heat_weight,
               social_propagation_raw_score = excluded.social_propagation_raw_score,
               social_propagation_weight = excluded.social_propagation_weight,
-              semantic_catalyst_raw_score = excluded.semantic_catalyst_raw_score,
-              semantic_catalyst_weight = excluded.semantic_catalyst_weight,
               timing_risk_raw_score = excluded.timing_risk_raw_score,
               timing_risk_weight = excluded.timing_risk_weight,
               cohort_high_confidence_mentions = excluded.cohort_high_confidence_mentions,
@@ -635,8 +632,6 @@ class TokenRadarRepository:
               social_heat_weight,
               social_propagation_raw_score,
               social_propagation_weight,
-              semantic_catalyst_raw_score,
-              semantic_catalyst_weight,
               timing_risk_raw_score,
               timing_risk_weight,
               cohort_high_confidence_mentions,
@@ -953,7 +948,6 @@ def _target_feature_payload(
     families = factor_snapshot.get("families") if isinstance(factor_snapshot, dict) else {}
     social_heat = families.get("social_heat") if isinstance(families, dict) else {}
     social_propagation = families.get("social_propagation") if isinstance(families, dict) else {}
-    semantic_catalyst = families.get("semantic_catalyst") if isinstance(families, dict) else {}
     timing_risk = families.get("timing_risk") if isinstance(families, dict) else {}
     social_heat_facts = social_heat.get("facts") if isinstance(social_heat, dict) else {}
     social_propagation_facts = social_propagation.get("facts") if isinstance(social_propagation, dict) else {}
@@ -973,7 +967,7 @@ def _target_feature_payload(
         "latest_market_observed_at_ms": latest_market_observed_at_ms,
         "attention_score": _family_score(social_heat),
         "market_score": _family_score(families.get("timing_risk") if isinstance(families, dict) else {}),
-        "credibility_score": max(_family_score(social_propagation), _family_score(semantic_catalyst)),
+        "credibility_score": _family_score(social_propagation),
         "rank_score": rank_score,
         "factor_snapshot_json": factor_snapshot,
         "intent_json": intent,
@@ -988,8 +982,6 @@ def _target_feature_payload(
         "social_heat_weight": _family_weight(social_heat),
         "social_propagation_raw_score": _family_raw_score(social_propagation),
         "social_propagation_weight": _family_weight(social_propagation),
-        "semantic_catalyst_raw_score": _family_raw_score(semantic_catalyst),
-        "semantic_catalyst_weight": _family_weight(semantic_catalyst),
         "timing_risk_raw_score": _family_raw_score(timing_risk),
         "timing_risk_weight": _family_weight(timing_risk),
         "cohort_high_confidence_mentions": int(row.get("_cohort_high_conf_count") or 0),

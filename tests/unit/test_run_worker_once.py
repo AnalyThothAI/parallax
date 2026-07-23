@@ -69,7 +69,7 @@ def test_run_worker_once_uses_factory_and_public_worker_lifecycle(monkeypatch) -
     db = _DB(events)
 
     def factory(context: Any) -> dict[str, WorkerBase]:
-        enabled = [name for name, value in context.settings.workers if name != "agent_runtime" and value.enabled]
+        enabled = [name for name, value in context.settings.workers if value.enabled]
         events.append(("factory", tuple(enabled), context.settings.workers.token_profile_current.batch_size))
         return {
             "token_profile_current": _Worker(

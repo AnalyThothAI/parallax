@@ -6,6 +6,7 @@ from typing import Any
 import pytest
 
 from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
+from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from parallax.domains.token_intel.queries.event_token_projection_query import (
     EventTokenProjectionQuery,
 )
@@ -29,7 +30,7 @@ def test_registry_ranked_market_targets_cex_payloads_are_binance_usdt_swap_only(
     conn = RecordingConn()
 
     RegistryRepository(conn).ranked_market_targets(
-        projection_version="token-radar-v13-social-attention",
+        projection_version=TOKEN_RADAR_PROJECTION_VERSION,
         since_ms=1_700_000_000_000,
         target_types=("cex_symbol",),
         limit=25,

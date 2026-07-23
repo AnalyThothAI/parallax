@@ -2,16 +2,16 @@ import type {
   AssetFlowData,
   NotificationItem,
   NotificationSummary,
+  OpenApiStatusData,
   RecentData,
   SearchInspectData,
-  StatusData,
   TokenPostsData,
   TokenSocialTimelineData,
 } from "@lib/types";
 
 const NOW = 1_777_770_000_000;
 
-export function appStatusFixture(overrides: Partial<StatusData> = {}): StatusData {
+export function appStatusFixture(overrides: Partial<OpenApiStatusData> = {}): OpenApiStatusData {
   return {
     ok: true,
     reasons: [],
@@ -20,7 +20,6 @@ export function appStatusFixture(overrides: Partial<StatusData> = {}): StatusDat
     snapshot_gate: {},
     db: { ok: true },
     provider_states: {},
-    agent_execution: null,
     news_provider_contract: { ok: true },
     workers: {
       collector: workerStatusFixture({
@@ -55,7 +54,7 @@ export function appStatusFixture(overrides: Partial<StatusData> = {}): StatusDat
   };
 }
 
-function workerStatusFixture(overrides: Partial<StatusData["workers"]["collector"]> = {}) {
+function workerStatusFixture(overrides: Partial<OpenApiStatusData["workers"][string]> = {}) {
   const enabled = overrides.enabled ?? false;
   const running = overrides.running ?? false;
   return {
@@ -142,7 +141,6 @@ export function searchInspectFixture(
       result_kind: "empty_result",
     },
     resolver: {
-      confidence: 0,
       target_candidates: [],
       selected_target: null,
       reasons: ["route_fixture_empty"],
@@ -189,7 +187,13 @@ export function targetPostsFixture(overrides: Partial<TokenPostsData> = {}): Tok
     total_count: 0,
     has_more: false,
     score_window: { window: "1h" },
-    query: { sort: "recent" },
+    query: {
+      target_type: null,
+      target_id: null,
+      window: "1h",
+      scope: "all",
+      range: "current_window",
+    },
     ...overrides,
   } as TokenPostsData;
 }

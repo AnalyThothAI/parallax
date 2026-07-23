@@ -15,13 +15,16 @@ from parallax.app.surfaces.cli.parser import build_parser
 from parallax.cli import main
 from parallax.domains.macro_intel._constants import (
     MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT,
-    MACRO_HISTORY_REQUIRED_CONCEPTS,
     MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_PROVIDER_SERIES_TO_CONCEPT,
 )
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
     macro_observation_id,
+)
+from parallax.domains.macro_intel.services.macro_concept_manifest import (
+    MACRO_EVIDENCE_CONCEPTS,
+    MACRO_PAGE_IDS,
 )
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 
@@ -912,29 +915,20 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
     repo = FakeMacroIntelRepository()
     repo.sync_queue = {"open_count": 2, "due_count": 1, "running_count": 0}
     repo.publication_state = {
-        "projection_version": "macro_regime_v4",
+        "projection_version": "macro_evidence_v1",
         "row_count": 318,
         "latest_attempt_status": "published",
         "latest_attempt_finished_at_ms": NOW_MS,
         "latest_attempt_error": None,
     }
     repo.latest = {
-        "projection_version": "macro_regime_v4",
-        "status": "partial",
-        "regime": "mixed",
-        "overall_score": None,
+        "snapshot_key": "current",
+        "projection_version": "macro_evidence_v1",
+        "fact_watermark": "2026-05-20",
+        "market_cutoff": "2026-05-20",
         "computed_at_ms": NOW_MS,
-        "asof_date": "2026-05-21",
-        "source_coverage_json": {"latest_observed_at": "2026-05-22"},
-        "panels_json": {},
-        "indicators_json": {},
-        "triggers_json": [],
-        "data_gaps_json": [],
-        "features_json": {},
-        "chain_json": {},
-        "scenario_json": {},
-        "scorecard_json": {},
-        "module_views_json": {},
+        "payload_hash": "sha256:test",
+        **{f"{page_id}_json": _macro_page(page_id) for page_id in MACRO_PAGE_IDS},
     }
     _patch_macro_dependencies(monkeypatch, macro_module, repo, settings=FakeSettings(fred_env="APP_FRED_KEY"))
     monkeypatch.setenv("APP_FRED_KEY", "dummy-fred-secret")
@@ -945,84 +939,49 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
     output = stdout.getvalue()
     assert code == 0
     assert "dummy-fred-secret" not in output
-    assert json.loads(output) == {
-        "ok": True,
-        "data": {
-            "migration_ready": True,
-            "fred_api_key_env": "APP_FRED_KEY",
-            "fred_api_key_configured": True,
-            "macrodata_cli": {
-                "package_version": "0.1.test",
-                "entrypoint_available": True,
-                "command_mode": "python_entrypoint",
-                "command_path": sys.executable,
-                "command_error_code": None,
-                "catalog_available": True,
-                "required_series_count": len(MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT),
-                "missing_required_series_count": 0,
-                "required_series_available": True,
-                "missing_required_series_sample": [],
-                "required_bundle_count": 5,
-                "missing_required_bundle_count": 0,
-                "required_bundles_available": True,
-                "missing_required_bundles": [],
-                "macro_core_bundle_available": True,
-                "missing_required_bundle_series_count": 0,
-                "required_bundle_series_available": True,
-                "missing_required_bundle_series_sample": [],
-                "missing_required_bundle_series_by_bundle": {},
-            },
-            "observations_count": 0,
-            "concept_count": 0,
-            "required_history_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
-            "history_ready": True,
-            "history_coverage": {
-                "required_points": 126,
-                "required_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
-                "ready_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
-                "coverage_ratio": 1.0,
-                "lookback_days": 1095,
-            },
-            "concepts_below_min_history": [],
-            "sync_queue": {"open_count": 2, "due_count": 1, "running_count": 0},
-            "publication_state": {
-                "projection_version": "macro_regime_v4",
-                "row_count": 318,
-                "latest_attempt_status": "published",
-                "latest_attempt_finished_at_ms": NOW_MS,
-                "latest_attempt_error": None,
-            },
-            "facts_max_observed_at": "2026-05-22",
-            "projection_lag_days": 1,
-            "projection_behind_facts": True,
-            "latest_snapshot": {
-                "projection_version": "macro_regime_v4",
-                "asof_date": "2026-05-21",
-                "status": "partial",
-                "regime": "mixed",
-                "overall_score": None,
-                "computed_at_ms": NOW_MS,
-                "feature_count": 0,
-                "indicator_count": 0,
-                "data_gap_count": 0,
-                "data_gap_codes": [],
-                "coverage": {
-                    "latest_coverage_ratio": None,
-                    "history_coverage_ratio": None,
-                    "observed_concept_count": None,
-                    "required_concept_count": None,
-                    "history_ready_concept_count": None,
-                    "required_history_concept_count": None,
-                    "concepts_below_min_history": [],
-                },
-                "panels": {},
-            },
+    payload = json.loads(output)
+    data = payload["data"]
+    assert payload["ok"] is True
+    assert data["migration_ready"] is True
+    assert data["fred_api_key_env"] == "APP_FRED_KEY"
+    assert data["fred_api_key_configured"] is True
+    assert data["observations_count"] == 0
+    assert data["concept_count"] == 0
+    assert data["manifest"] == {
+        "declared_concept_count": len(MACRO_EVIDENCE_CONCEPTS),
+        "observed_concept_count": len(MACRO_EVIDENCE_CONCEPTS),
+        "missing_concept_count": 0,
+        "missing_concept_sample": [],
+        "lookback_days": 1095,
+    }
+    assert data["sync_queue"] == {"open_count": 2, "due_count": 1, "running_count": 0}
+    assert data["publication_state"]["projection_version"] == "macro_evidence_v1"
+    assert data["facts_max_observed_at"] == "2026-05-21"
+    assert data["projection_lag_days"] == 1
+    assert data["projection_behind_facts"] is True
+    assert data["latest_snapshot"] == {
+        "projection_version": "macro_evidence_v1",
+        "fact_watermark": "2026-05-20",
+        "market_cutoff": "2026-05-20",
+        "computed_at_ms": NOW_MS,
+        "pages": {
+            page_id: {
+                "status": "insufficient_evidence",
+                "judgment": "insufficient_evidence",
+                "freshness_status": "insufficient_evidence",
+                "evidence_count": 0,
+                "unavailable_evidence_count": 0,
+            }
+            for page_id in MACRO_PAGE_IDS
         },
     }
-    assert repo.latest_snapshot_projection_versions == ["macro_regime_v4"]
+    assert "regime" not in output
+    assert "overall_score" not in output
+    assert "coverage_ratio" not in output
+    assert repo.latest_snapshot_calls == 1
 
 
-def test_macro_status_reports_projection_behind_when_facts_exist_without_snapshot(monkeypatch) -> None:
+def test_macro_status_reports_projection_behind_when_material_facts_exist_without_snapshot(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository()
@@ -1034,10 +993,52 @@ def test_macro_status_reports_projection_behind_when_facts_exist_without_snapsho
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
-    assert payload["data"]["facts_max_observed_at"] is None
+    assert payload["data"]["facts_max_observed_at"] == "2026-05-21"
     assert payload["data"]["projection_lag_days"] is None
-    assert payload["data"]["projection_behind_facts"] is False
+    assert payload["data"]["projection_behind_facts"] is True
     assert payload["data"]["latest_snapshot"] is None
+
+
+def test_macro_status_compares_snapshot_to_raw_material_facts_not_compact_series(monkeypatch) -> None:
+    from parallax.app.surfaces.cli.commands import macro as macro_module
+
+    repo = FakeMacroIntelRepository(
+        concept_history=[
+            {
+                "concept_key": concept_key,
+                "points": 21,
+                "latest_observed_at": "2026-05-15",
+                "oldest_observed_at": "2026-04-15",
+                "sources": ["fixture"],
+            }
+            for concept_key in MACRO_EVIDENCE_CONCEPTS
+        ],
+        material_fact_max_observed_at="2026-05-16",
+    )
+    repo.latest = {
+        "snapshot_key": "current",
+        "projection_version": "macro_evidence_v1",
+        "fact_watermark": "2026-05-15",
+        "market_cutoff": "2026-05-15",
+        "computed_at_ms": NOW_MS,
+        "payload_hash": "sha256:test",
+        **{f"{page_id}_json": _macro_page(page_id) for page_id in MACRO_PAGE_IDS},
+    }
+    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+    stdout = io.StringIO()
+
+    code = main(["macro", "status"], stdout=stdout)
+
+    data = json.loads(stdout.getvalue())["data"]
+    assert code == 0
+    assert data["facts_max_observed_at"] == "2026-05-16"
+    assert data["projection_lag_days"] == 1
+    assert data["projection_behind_facts"] is True
+    assert repo.material_fact_max_calls
+    queried_concepts, through_date = repo.material_fact_max_calls[0]
+    assert "asset:spy" in queried_concepts
+    assert "event:fomc_decision_next" not in queried_concepts
+    assert through_date == date(2026, 5, 17)
 
 
 def test_macro_status_repository_exception_returns_structured_error_without_secret(monkeypatch) -> None:
@@ -1170,7 +1171,7 @@ def test_macro_status_requires_importable_event_bundle_series(monkeypatch) -> No
     }
 
 
-def test_macro_status_reports_one_point_history_as_not_ready(monkeypatch) -> None:
+def test_macro_status_reports_manifest_availability_without_universal_readiness_score(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
     repo = FakeMacroIntelRepository(
@@ -1191,29 +1192,14 @@ def test_macro_status_reports_one_point_history_as_not_ready(monkeypatch) -> Non
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
-    assert payload["data"]["history_ready"] is False
-    assert payload["data"]["history_coverage"] == {
-        "required_points": 126,
-        "required_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
-        "ready_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS) - 1,
-        "coverage_ratio": round((len(MACRO_HISTORY_REQUIRED_CONCEPTS) - 1) / len(MACRO_HISTORY_REQUIRED_CONCEPTS), 6),
-        "lookback_days": 1095,
-    }
-    assert payload["data"]["concepts_below_min_history"] == [
-        {
-            "concept_key": "asset:spx",
-            "label": "标普500",
-            "short_label": "SPX",
-            "points": 1,
-            "required_points": 126,
-            "latest_observed_at": "2026-05-21",
-            "oldest_observed_at": "2026-05-21",
-            "sources": ["fred"],
-        }
-    ]
+    assert payload["data"]["manifest"]["observed_concept_count"] == 1
+    assert payload["data"]["manifest"]["missing_concept_count"] == len(MACRO_EVIDENCE_CONCEPTS) - 1
+    assert "history_ready" not in payload["data"]
+    assert "history_coverage" not in payload["data"]
+    assert "coverage_ratio" not in payload["data"]["manifest"]
     assert repo.concept_history_count_calls == [
         {
-            "concept_keys": MACRO_HISTORY_REQUIRED_CONCEPTS,
+            "concept_keys": MACRO_EVIDENCE_CONCEPTS,
             "lookback_days": 1095,
         }
     ]
@@ -1263,6 +1249,19 @@ def _patch_macro_dependencies(
     monkeypatch.setattr(macro_module, "_now_ms", lambda: NOW_MS)
 
 
+def _macro_page(page_id: str) -> dict[str, object]:
+    return {
+        "page_id": page_id,
+        "conclusion": {
+            "status": "insufficient_evidence",
+            "judgment": "insufficient_evidence",
+        },
+        "freshness": {"status": "insufficient_evidence"},
+        "evidence": [],
+        "unavailable_evidence": [],
+    }
+
+
 class FakeSettings:
     def __init__(self, *, fred_env: str | None = None) -> None:
         self.providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env=fred_env))
@@ -1288,6 +1287,7 @@ class FakeMacroIntelRepository:
         fail_latest_observations: bool = False,
         fail_observations_for_series: bool = False,
         fail_concept_history_counts: bool = False,
+        material_fact_max_observed_at: str | None = "2026-05-21",
     ) -> None:
         self.conn = FakeConnection()
         self.source_observations = observations or []
@@ -1302,11 +1302,13 @@ class FakeMacroIntelRepository:
         self.enqueued_dirty_targets: list[dict[str, object]] = []
         self.publication_state: dict[str, object] | None = None
         self.latest: dict[str, object] | None = None
-        self.latest_snapshot_projection_versions: list[str | None] = []
+        self.latest_snapshot_calls = 0
         self.fail_record_run = fail_record_run
         self.fail_latest_observations = fail_latest_observations
         self.fail_observations_for_series = fail_observations_for_series
         self.fail_concept_history_counts = fail_concept_history_counts
+        self.material_fact_max_observed_at_value = material_fact_max_observed_at
+        self.material_fact_max_calls: list[tuple[tuple[str, ...], date]] = []
         self.transaction_events: list[str] = []
         self._observation_index: dict[str, int] = {}
 
@@ -1388,10 +1390,10 @@ class FakeMacroIntelRepository:
                         concept_key,
                         {
                             "concept_key": concept_key,
-                            "points": 126,
-                            "latest_observed_at": "2026-05-21",
-                            "oldest_observed_at": "2026-01-01",
-                            "sources": ["fixture"],
+                            "points": 0,
+                            "latest_observed_at": None,
+                            "oldest_observed_at": None,
+                            "sources": [],
                         },
                     )
                 )
@@ -1408,6 +1410,15 @@ class FakeMacroIntelRepository:
             for concept_key in concept_keys
         ]
 
+    def material_fact_max_observed_at(
+        self,
+        *,
+        concept_keys: tuple[str, ...],
+        through_date: date,
+    ) -> str | None:
+        self.material_fact_max_calls.append((concept_keys, through_date))
+        return self.material_fact_max_observed_at_value
+
     def insert_snapshot(self, snapshot: dict[str, object]) -> None:
         self.snapshots.append(snapshot)
 
@@ -1422,11 +1433,11 @@ class FakeMacroIntelRepository:
         return self.sync_queue
 
     def macro_series_publication_state(self, projection_version: str) -> dict[str, object] | None:
-        assert projection_version == "macro_regime_v4"
+        assert projection_version == "macro_evidence_v1"
         return self.publication_state
 
-    def latest_snapshot(self, *, projection_version: str | None = None) -> dict[str, object] | None:
-        self.latest_snapshot_projection_versions.append(projection_version)
+    def latest_snapshot(self) -> dict[str, object] | None:
+        self.latest_snapshot_calls += 1
         return self.latest
 
 

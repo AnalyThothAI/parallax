@@ -33,9 +33,9 @@ credentials/endpoints needed by the enabled data lanes, including GMGN OpenAPI
 for exact token profiles and OKX provider settings for discovery, market data,
 or DEX WebSocket lanes when those workers are enabled. Keep secrets out of
 terminal output, docs, tests, and commits.
-The `llm` block contains only `api_key` and `base_url`; configure the story-brief
-model and its execution policy under the flat `agent_runtime` block in
-`workers.yaml`.
+The `llm` block contains only dormant `api_key` and `base_url` fields retained
+for the provider-neutral library. Production bootstrap does not instantiate a
+model consumer, and `workers.yaml` has no model-runtime block.
 
 Use `uv run parallax config` to inspect both config paths and the effective
 worker settings. Inspect the running process through authenticated
@@ -96,11 +96,12 @@ uv run parallax macro sync --bundle macro-core --start YYYY-MM-DD --end YYYY-MM-
 uv run parallax macro status
 ```
 
-A good macro status has `history_ready=true`, a history coverage ratio above
-the configured threshold, no required concept below minimum history for pages
-claiming `ready`, a recent `latest_sync_run`, `facts_max_observed_at` near the
-expected upstream date, and `projection_behind_facts=false` after projection
-catches up. If facts exist but no macro snapshot exists yet,
+A good macro status has manifest coverage for the required concepts, a recent
+`latest_sync_run`, `facts_max_observed_at` near the expected upstream date,
+and `projection_behind_facts=false` after projection catches up. Page summaries
+separately report conclusion and freshness state; an
+`insufficient_evidence` conclusion is a claim-level result, not service
+unreadiness. If facts exist but no macro snapshot exists yet,
 `projection_behind_facts=true`; that means projection has not caught up, not
 that source facts are missing. The `macrodata_cli` block must show the expected
 package version and `required_bundle_series_available=true`; otherwise the

@@ -5,66 +5,24 @@ import { describe, expect, it } from "vitest";
 const TOKEN_IMAGE_URL = "/api/token-images/hansa-local";
 
 describe("buildTokenRadarCompactCase", () => {
-  it("renders current admission status and source coverage", () => {
+  it("renders the transparent propagation score and source facts", () => {
     const view = buildTokenRadarCompactCase(tokenFlowFixture());
 
-    expect(view.admission.value).toBe("Admitted");
-    expect(view.admission.detail).toBe("22 posts · 9 authors");
-    expect(view.admission.tone).toBe("health");
+    expect(view.propagation.value).toBe("74 / 100");
+    expect(view.propagation.detail).toBe("12 informative · 8% duplicate");
+    expect(view.propagation.tone).toBe("health");
   });
 
-  it("renders a missing admission without synthesizing narrative text", () => {
+  it("surfaces propagation risk directly", () => {
     const view = buildTokenRadarCompactCase({
       ...tokenFlowFixture(),
-      narrative_admission: null,
-    });
-
-    expect(view.admission).toEqual({
-      detail: "no current admission",
-      tone: "info",
-      value: "Admission missing",
-    });
-  });
-
-  it("renders out-of-frontier admission state", () => {
-    const view = buildTokenRadarCompactCase({
-      ...tokenFlowFixture(),
-      narrative_admission: {
-        status: "suppressed",
-        reason: "out_of_frontier",
-        is_current: false,
-        currentness: {
-          display_status: "out_of_frontier",
-          reason: "out_of_frontier",
-        },
-        coverage: { source_mentions: 4, independent_authors: 2 },
-        data_gaps: [{ reason: "out_of_frontier" }],
+      propagation: {
+        ...tokenFlowFixture().propagation,
+        risks: ["duplicate_text_share_high"],
       },
     });
 
-    expect(view.admission.value).toBe("Out of current frontier");
-    expect(view.admission.detail).toBe("4 posts · 2 authors");
-    expect(view.admission.tone).toBe("warn");
-  });
-
-  it("renders unsupported admission state", () => {
-    const view = buildTokenRadarCompactCase({
-      ...tokenFlowFixture(),
-      narrative_admission: {
-        status: "missing",
-        reason: "narrative_not_supported_for_window",
-        is_current: false,
-        currentness: {
-          display_status: "unsupported_window",
-          reason: "narrative_not_supported_for_window",
-        },
-        coverage: { source_mentions: 0, independent_authors: 0 },
-        data_gaps: [{ reason: "narrative_not_supported_for_window" }],
-      },
-    });
-
-    expect(view.admission.value).toBe("Admission unsupported");
-    expect(view.admission.detail).toBe("0 posts · 0 authors");
+    expect(view.propagation.tone).toBe("warn");
   });
 
   it("keeps local mirrored logo URLs", () => {
@@ -153,7 +111,7 @@ function tokenFlowFixture(): TokenFlowItem {
     discussion_quality: {
       score_version: "fixture",
       score: 72,
-      reasons: ["old catalyst text"],
+      reasons: ["informative_discussion"],
       risks: [],
       contributions: [],
       risk_caps: [],
@@ -211,7 +169,7 @@ function tokenFlowFixture(): TokenFlowItem {
       risks: [],
       contributions: [],
       risk_caps: [],
-      components: { heat: 86, quality: 72, propagation: 74, timing: 88 },
+      components: { heat: 86, propagation: 74, timing: 88 },
     },
     watch: {
       status: "public_only",
@@ -221,18 +179,6 @@ function tokenFlowFixture(): TokenFlowItem {
       top_seed: null,
       reasons: [],
       risks: [],
-    },
-    narrative_admission: {
-      status: "admitted",
-      reason: "hot_rank",
-      is_current: true,
-      currentness: {
-        display_status: "current",
-        reason: "hot_rank",
-      },
-      computed_at_ms: 1_777_746_000_000,
-      coverage: { source_mentions: 22, independent_authors: 9 },
-      data_gaps: [],
     },
     evidence_total_count: 21,
     posts_query: { window: "1h", scope: "all", range: "current_window" },

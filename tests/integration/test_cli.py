@@ -146,7 +146,6 @@ def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = No
     workers_payload = yaml.safe_load(default_workers_yaml())
     if llm:
         payload["llm"] = {"api_key": "sk-test"}
-        workers_payload["agent_runtime"]["model"] = "gpt-test"
     path = app_home / "config.yaml"
     path.write_text(yaml.safe_dump(payload, sort_keys=False), encoding="utf-8")
     (app_home / "workers.yaml").write_text(yaml.safe_dump(workers_payload, sort_keys=False), encoding="utf-8")
@@ -266,9 +265,8 @@ class CliTests(unittest.TestCase):
             payload["data"]["config_path"],
             str(home / ".parallax" / "config.yaml"),
         )
-        self.assertTrue(payload["data"]["agent_execution"]["llm_configured"])
-        self.assertEqual(payload["data"]["agent_execution"]["model"], "gpt-test")
-        self.assertEqual(payload["data"]["agent_execution"]["provider_family"], "litellm")
+        self.assertNotIn("agent_execution", payload["data"])
+        self.assertNotIn("llm", payload["data"])
         self.assertEqual(
             payload["data"]["providers"]["gmgn"],
             {
@@ -377,18 +375,18 @@ class CliTests(unittest.TestCase):
                 )
                 notification = insert_notification_row(
                     notifications,
-                    dedup_key="news:pepe",
-                    rule_id="news_high_signal",
+                    dedup_key="watched-account:pepe",
+                    rule_id="watched_account_activity",
                     severity="high",
-                    title="PEPE news",
-                    body="agent news driver",
+                    title="Watched account activity",
+                    body="PEPE mentioned by watched account",
                     entity_type="token",
                     entity_key="token:eth:pepe",
                     symbol="PEPE",
-                    source_table="news_items",
+                    source_table="events",
                     source_id="token:eth:pepe",
                     occurrence_at_ms=1_700_000_060_000,
-                    payload={"decision_class": "driver"},
+                    payload={"handle": "watched_account"},
                     channels=["in_app", "pushdeer"],
                 )
                 self.assertIsNotNone(notification)

@@ -22,7 +22,7 @@ const summary: NotificationSummary = {
 const notification: NotificationItem = {
   notification_id: "n1",
   dedup_key: "news:pepe",
-  rule_id: "news_high_signal",
+  rule_id: "watched_account_activity",
   severity: "high",
   title: "PEPE news",
   body: "News score 88",

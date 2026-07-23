@@ -26,26 +26,6 @@ describe("AppSidebar", () => {
     expect(screen.getByRole("status", { name: "Desk status" })).toBeInTheDocument();
   });
 
-  it("does not expose the hard-deleted Correlation leaf under Macro assets", () => {
-    renderSidebar({ route: "/macro/assets" });
-
-    const macroLink = screen.getByRole("link", { name: "宏观" });
-    expect(macroLink).toHaveAttribute("href", "/macro");
-    expect(macroLink).toHaveAttribute("data-active", "true");
-    expect(macroLink).not.toHaveAttribute("aria-current");
-
-    const assetLink = screen.getByRole("link", { name: "大类资产" });
-    expect(assetLink).toHaveAttribute("href", "/macro/assets");
-    expect(assetLink).toHaveAttribute("data-active", "true");
-    expect(assetLink).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    fireEvent.click(screen.getByRole("button", { name: "展开大类资产" }));
-    expect(screen.queryByRole("link", { name: "相关性" })).not.toBeInTheDocument();
-  });
-
   it("keeps the Macro app parent branch-active while only the overview child is current", () => {
     renderSidebar({ route: "/macro" });
 
@@ -60,115 +40,65 @@ describe("AppSidebar", () => {
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
   });
 
-  it("keeps active nested Macro category collapsed until opened", () => {
-    renderSidebar({ route: "/macro/assets/equities" });
-
-    expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("data-active", "true");
-    expect(screen.getByRole("button", { name: "收起宏观" })).toHaveAttribute(
-      "aria-expanded",
-      "true",
-    );
-    const assetLink = screen.getByRole("link", { name: "大类资产" });
-    expect(assetLink).toHaveAttribute("data-active", "true");
-    expect(assetLink).toHaveAttribute("href", "/macro/assets");
-    expect(assetLink).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-    expect(screen.queryByRole("link", { name: "美股" })).not.toBeInTheDocument();
-
-    fireEvent.click(screen.getByRole("button", { name: "展开大类资产" }));
-    expect(screen.getByRole("link", { name: "美股" })).toHaveAttribute(
-      "href",
-      "/macro/assets/equities",
-    );
-    expect(screen.getByRole("link", { name: "美股" })).toHaveAttribute("aria-current", "page");
-    expect(screen.queryByRole("link", { name: "收益率曲线" })).not.toBeInTheDocument();
-    expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
-  });
-
-  it("keeps nested macro branches collapsed until opened", () => {
+  it("renders exactly six flat Macro destinations when the branch is opened", () => {
     renderSidebar({ route: "/" });
 
     expect(screen.getByRole("button", { name: "展开宏观" })).toHaveAttribute(
       "aria-expanded",
       "false",
     );
-    expect(screen.queryByRole("link", { name: "美股" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("link", { name: "总览" })).not.toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("button", { name: "展开宏观" }));
 
-    expect(screen.getByRole("link", { name: "大类资产" })).toHaveAttribute("href", "/macro/assets");
-    expect(screen.getByRole("button", { name: "展开大类资产" })).toHaveAttribute(
-      "aria-expanded",
-      "false",
-    );
-
-    fireEvent.click(screen.getByRole("button", { name: "展开大类资产" }));
-
-    expect(screen.getByRole("link", { name: "美股" })).toHaveAttribute(
-      "href",
-      "/macro/assets/equities",
-    );
+    const expectedLinks = [
+      ["总览", "/macro"],
+      ["跨资产", "/macro/cross-asset"],
+      ["利率与通胀", "/macro/rates-inflation"],
+      ["增长与就业", "/macro/growth-labor"],
+      ["流动性与资金", "/macro/liquidity-funding"],
+      ["信用", "/macro/credit"],
+    ] as const;
+    for (const [label, href] of expectedLinks) {
+      expect(screen.getByRole("link", { name: label })).toHaveAttribute("href", href);
+    }
+    expect(
+      screen
+        .getAllByRole("link")
+        .filter((link) => expectedLinks.some(([, href]) => link.getAttribute("href") === href)),
+    ).toHaveLength(7);
   });
 
-  it("does not expose hard-deleted macro leaves in the primary sidebar", () => {
-    renderSidebar({ route: "/macro" });
-
-    fireEvent.click(screen.getByRole("button", { name: "收起宏观" }));
-    fireEvent.click(screen.getByRole("button", { name: "展开宏观" }));
-    fireEvent.click(screen.getByRole("button", { name: "展开利率" }));
-    fireEvent.click(screen.getByRole("button", { name: "展开信用" }));
-
-    expect(screen.queryByRole("link", { name: "美联储" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "拍卖" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "FOMC 声明" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "美联储讲话" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "加密衍生品" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "全球美元" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "资金面暗流" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "消费" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "Dashboard" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("link", { name: "CDS 代理" })).not.toBeInTheDocument();
-  });
-
-  it("links macro category parents to default children without creating current index links", () => {
-    renderSidebar({ route: "/macro/assets/equities" });
+  it("marks only the active flat Macro child as current", () => {
+    renderSidebar({ route: "/macro/credit" });
 
     expect(screen.getByRole("link", { name: "宏观" })).toHaveAttribute("data-active", "true");
-
-    const assetLink = screen.getByRole("link", { name: "大类资产" });
-    expect(assetLink).toHaveAttribute("data-active", "true");
-    expect(assetLink).toHaveAttribute("href", "/macro/assets");
-    expect(assetLink).not.toHaveAttribute("aria-current");
-    expect(screen.getByRole("link", { name: "利率" })).toHaveAttribute(
-      "href",
-      "/macro/rates/fed-funds",
+    expect(screen.getByRole("button", { name: "收起宏观" })).toHaveAttribute(
+      "aria-expanded",
+      "true",
     );
-    expect(screen.queryByRole("link", { name: "美联储" })).not.toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "流动性" })).toHaveAttribute(
-      "href",
-      "/macro/liquidity/rrp-tga",
-    );
-    expect(screen.getByRole("link", { name: "经济数据" })).toHaveAttribute(
-      "href",
-      "/macro/economy/gdp",
-    );
-    expect(screen.getByRole("link", { name: "波动率" })).toHaveAttribute(
-      "href",
-      "/macro/volatility/vix",
-    );
-    expect(screen.getByRole("link", { name: "信用" })).toHaveAttribute(
-      "href",
-      "/macro/credit/stress",
-    );
-
-    expect(screen.queryByRole("link", { name: "美股" })).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "展开大类资产" }));
-    expect(screen.getByRole("link", { name: "美股" })).toHaveAttribute("aria-current", "page");
-    expect(screen.queryByRole("link", { name: "相关性" })).not.toBeInTheDocument();
+    expect(screen.getByRole("link", { name: "信用" })).toHaveAttribute("aria-current", "page");
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);
+  });
+
+  it("does not expose any retired nested Macro categories or leaves", () => {
+    renderSidebar({ route: "/macro" });
+
+    for (const label of [
+      "大类资产",
+      "利率",
+      "流动性",
+      "经济数据",
+      "波动率",
+      "美股",
+      "收益率曲线",
+      "相关性",
+      "美联储",
+      "Dashboard",
+      "CDS 代理",
+    ]) {
+      expect(screen.queryByRole("link", { name: label })).not.toBeInTheDocument();
+    }
   });
 
   it("keeps navigation free of server-backed badges", () => {

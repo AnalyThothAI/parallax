@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import pytest
+
 from parallax.domains.token_intel.scoring.cross_section_normalizer import (
     NORMALIZER_VERSION,
     rank_factors_within_cohort,
@@ -86,11 +88,11 @@ def test_rank_factors_within_cohort_ranks_each_factor_independently():
 
 def test_weighted_rank_score_renormalizes_over_available_factor_ranks():
     rank = weighted_rank_score(
-        factor_ranks={"social_heat": 0.5, "social_propagation": None, "semantic_catalyst": 1.0},
-        weights={"social_heat": 0.25, "social_propagation": 0.50, "semantic_catalyst": 0.25},
+        factor_ranks={"social_heat": 0.5, "social_propagation": None, "timing_risk": 1.0},
+        weights={"social_heat": 0.55, "social_propagation": 0.45, "timing_risk": 0.10},
     )
 
-    assert rank == 0.75
+    assert rank == pytest.approx(0.576923)
 
 
 def test_weighted_rank_score_ignores_zero_weight_factors():

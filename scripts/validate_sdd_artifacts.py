@@ -1010,7 +1010,11 @@ def _spec_background_issues(feature: SddFeature, artifact: ArtifactRecord) -> li
 
     invalid_blocks: list[str] = []
     for block in _citation_blocks(background):
-        citation_error = _citation_block_error(_repo_root(feature), block)
+        citation_error = _citation_block_error(
+            _repo_root(feature),
+            block,
+            require_current_source=feature.state == "active",
+        )
         if citation_error:
             invalid_blocks.append(citation_error)
 
@@ -1056,12 +1060,14 @@ def _citation_blocks(section: str) -> list[str]:
     return blocks
 
 
-def _citation_block_error(root: Path, block: str) -> str:
+def _citation_block_error(root: Path, block: str, *, require_current_source: bool) -> str:
     if URL_CITATION_RE.search(block):
         return ""
     citations = list(LOCAL_CITATION_RE.finditer(block))
     if not citations:
         return f"missing citation in {block!r}"
+    if not require_current_source:
+        return ""
     invalid: list[str] = []
     cited_lines: list[str] = []
     for citation in citations:

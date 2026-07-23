@@ -223,8 +223,6 @@ def list_terminal_event_ids(
 
 def terminal_reason_bucket(final_reason: str | None) -> str:
     reason = str(final_reason or "").lower()
-    if "522" in reason:
-        return "llm_provider_522"
     if "retry_budget_exhausted" in reason or "failed_exhausted" in reason or "max_attempt" in reason:
         return "retry_budget_exhausted"
     if "provider_no_quote" in reason:
@@ -241,8 +239,6 @@ def terminal_reason_bucket(final_reason: str | None) -> str:
         return "timeout"
     if "not_found" in reason:
         return "not_found"
-    if "semantic" in reason:
-        return "semantic_unavailable"
     return "other"
 
 

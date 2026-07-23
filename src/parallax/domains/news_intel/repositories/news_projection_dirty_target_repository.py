@@ -10,7 +10,7 @@ from parallax.platform.db.queue_terminal import terminalize_source_row
 from parallax.platform.db.write_contract import expect_mutation_count, mutation_count
 from parallax.platform.validation import require_nonnegative_int, require_positive_int
 
-_ALLOWED_PROJECTION_NAMES = frozenset({"page", "story_brief"})
+_ALLOWED_PROJECTION_NAMES = frozenset({"page"})
 
 
 class NewsProjectionDirtyTargetRepository:
@@ -547,8 +547,6 @@ def _requires_source_watermark(*, projection_name: str, target_kind: str, window
     del window
     if projection_name == "page":
         return target_kind == "news_item"
-    if projection_name == "story_brief":
-        return target_kind == "story"
     return False
 
 
@@ -677,8 +675,6 @@ def _validate_projection_name(projection_name: str) -> None:
 
 def _validate_projection_target(*, projection_name: str, target_kind: str) -> None:
     if projection_name == "page" and target_kind == "news_item":
-        return
-    if projection_name == "story_brief" and target_kind == "story":
         return
     raise ValueError(f"unsupported news projection target: {projection_name}/{target_kind}")
 

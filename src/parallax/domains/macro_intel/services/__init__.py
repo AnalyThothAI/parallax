@@ -1,1 +1,1 @@
-"""Macro regime scoring services."""
+"""Macro fact ingestion, compact series, and evidence-snapshot services."""

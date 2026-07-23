@@ -1,224 +1,32 @@
 import { NewsTape } from "@features/news/ui/NewsTape";
-import type { NewsRow, NewsSignalEnvelope, NewsSignalSummary } from "@shared/model/newsIntel";
 import { cleanup, fireEvent, render, screen } from "@testing-library/react";
+import { newsRowFixture } from "@tests/fixtures/newsFixture";
 import { afterEach, describe, expect, it, vi } from "vitest";
 
 describe("NewsTape", () => {
-  afterEach(() => {
-    cleanup();
-  });
+  afterEach(cleanup);
 
-  it("renders compact rows with provider rating evidence", () => {
-    render(<NewsTape rows={[rowWithBtcEth]} onOpen={vi.fn()} />);
+  it("renders compact rows from lifecycle, source, story, rating, and token facts", () => {
+    render(<NewsTape rows={[newsRowFixture()]} onOpen={vi.fn()} />);
 
-    expect(screen.getByText("利好")).toBeInTheDocument();
-    expect(screen.getByText("ready")).toBeInTheDocument();
+    expect(screen.getByText("processed")).toBeInTheDocument();
+    expect(screen.getByText("market_update")).toBeInTheDocument();
     expect(screen.getByText("OPENNEWS")).toBeInTheDocument();
     expect(screen.getByText("82")).toBeInTheDocument();
     expect(screen.getByText("BTC")).toBeInTheDocument();
     expect(screen.getByText("ETH")).toBeInTheDocument();
-    expect(screen.getAllByText("CEX").length).toBeGreaterThanOrEqual(2);
-    expect(screen.queryByText("A · 82")).not.toBeInTheDocument();
-    expect(screen.queryByText("82 A")).not.toBeInTheDocument();
-    expect(screen.queryByText("70 B+")).not.toBeInTheDocument();
-    expect(screen.queryByText("score")).not.toBeInTheDocument();
+    expect(screen.getByText("2 story members")).toBeInTheDocument();
+    expect(screen.getAllByText("resolved")).toHaveLength(2);
   });
 
   it("opens one news item as one row even with multiple token chips", () => {
     const onOpen = vi.fn();
-    render(<NewsTape rows={[rowWithBtcEth]} onOpen={onOpen} />);
+    render(<NewsTape rows={[newsRowFixture()]} onOpen={onOpen} />);
 
-    const rows = [screen.getByRole("button", { name: "Open news item BTC ETF flows expand" })];
-    expect(screen.getAllByText("BTC ETF flows expand")).toHaveLength(1);
-
-    fireEvent.click(rows[0]);
+    fireEvent.click(screen.getByRole("button", { name: "Open news item BTC ETF flows expand" }));
     expect(onOpen).toHaveBeenCalledWith("news-1");
 
-    fireEvent.click(screen.getByRole("button", { name: /open btc etf flows expand/i }));
+    fireEvent.click(screen.getByRole("button", { name: "Open BTC ETF flows expand" }));
     expect(onOpen).toHaveBeenCalledTimes(2);
   });
-
-  it("surfaces agent review state separately from provider score", () => {
-    render(<NewsTape rows={[rowWithInsufficientAgentBrief]} onOpen={vi.fn()} />);
-
-    expect(screen.getByText("AGENT INSUFF")).toBeInTheDocument();
-    expect(
-      screen.getByText("Provider high score without enough agent evidence"),
-    ).toBeInTheDocument();
-    expect(screen.queryByText("Insufficient agent title")).not.toBeInTheDocument();
-  });
-
-  it("does not show ready watch agents as held when push readiness is blocked", () => {
-    render(<NewsTape rows={[rowWithReadyWatchAgentPushBlocked]} onOpen={vi.fn()} />);
-
-    expect(screen.getByText("AGENT READY")).toBeInTheDocument();
-    expect(screen.queryByText("AGENT HOLD")).not.toBeInTheDocument();
-    expect(screen.getByText("Agent watch title")).toBeInTheDocument();
-  });
 });
-
-const rowWithBtcEth: NewsRow = {
-  row_id: "row-1",
-  news_item_id: "news-1",
-  lifecycle_status: "processed",
-  headline: "BTC ETF flows expand",
-  summary: "ETF desk activity stays elevated.",
-  latest_at_ms: 1_779_000_000_000,
-  source_domain: "6551.io",
-  source: {
-    provider_type: "opennews",
-    source_domain: "6551.io",
-    source_name: "OpenNews",
-    source_role: "aggregator",
-    trust_tier: "standard",
-    coverage_tags: [],
-    source_quality_status: "healthy",
-  },
-  content_tags: [],
-  content_classification: {},
-  provider_rating: {
-    provider: "opennews",
-    status: "ready",
-    direction: "bullish",
-    signal: "long",
-    score: 82,
-    grade: "A",
-    method: "opennews.aiRating",
-  },
-  signal: newsSignalEnvelope({
-    source: "provider",
-    provider: "opennews",
-    status: "ready",
-    direction: "bullish",
-    label_zh: "利好",
-    signal: "long",
-    summary_zh: "ETF 资金流持续增强。",
-    method: "opennews.aiRating",
-  }),
-  token_lanes: [
-    {
-      lane: "resolved",
-      resolution_status: "resolved",
-      symbol: "BTC",
-      target_id: "token:btc",
-      market_type: "cex",
-    },
-    {
-      lane: "resolved",
-      resolution_status: "resolved",
-      symbol: "ETH",
-      target_id: "token:eth",
-      market_type: "cex",
-    },
-  ],
-  token_impacts: [
-    {
-      lane: "provider",
-      symbol: "BTC",
-      market_type: "cex",
-    },
-    {
-      lane: "provider",
-      symbol: "ETH",
-      market_type: "cex",
-    },
-  ],
-  fact_lanes: [],
-  agent_brief: { status: "pending" },
-};
-
-const rowWithInsufficientAgentBrief: NewsRow = {
-  ...rowWithBtcEth,
-  row_id: "row-2",
-  news_item_id: "news-2",
-  headline: "Provider high score without enough agent evidence",
-  signal: newsSignalEnvelope(
-    {
-      source: "provider",
-      provider: "opennews",
-      status: "ready",
-      direction: "bullish",
-      label_zh: "利好",
-      signal: "long",
-      summary_zh: "Provider summary remains visible.",
-      method: "opennews.aiRating",
-    },
-    {
-      alert_eligibility: {
-        in_app_eligible: true,
-        external_push_ready: false,
-        external_push_block_reason: "agent_brief_not_ready",
-        agent_status: "insufficient",
-        decision_class: "context",
-      },
-    },
-  ),
-  agent_brief: {
-    status: "insufficient",
-    direction: "neutral",
-    decision_class: "context",
-    title_zh: "Insufficient agent title",
-    summary_zh: "证据不足。",
-  },
-};
-
-const rowWithReadyWatchAgentPushBlocked: NewsRow = {
-  ...rowWithBtcEth,
-  row_id: "row-3",
-  news_item_id: "news-3",
-  headline: "Ready watch item",
-  signal: newsSignalEnvelope(
-    {
-      source: "agent",
-      provider: "news_story_brief",
-      status: "ready",
-      direction: "bullish",
-      label_zh: "利好",
-      signal: "long",
-      title_zh: "Provider title",
-      summary_zh: "Agent summary remains visible.",
-      method: "news_story_brief",
-    },
-    {
-      alert_eligibility: {
-        in_app_eligible: true,
-        external_push_ready: false,
-        external_push_block_reason: "cooldown",
-        agent_status: "ready",
-        decision_class: "watch",
-      },
-    },
-  ),
-  agent_brief: {
-    status: "ready",
-    direction: "bullish",
-    decision_class: "watch",
-    title_zh: "Agent watch title",
-    summary_zh: "Agent summary.",
-  },
-};
-
-function newsSignalEnvelope(
-  displaySignal: NewsSignalSummary,
-  overrides: { alert_eligibility?: Record<string, unknown> } = {},
-): NewsSignalEnvelope {
-  const agentStatus = overrides.alert_eligibility?.agent_status;
-  return {
-    display_signal: displaySignal,
-    agent_signal: { status: typeof agentStatus === "string" ? agentStatus : "pending" },
-    alert_eligibility: {
-      in_app_eligible: true,
-      external_push_ready: false,
-      agent_status: "pending",
-      market_scope: {
-        scope: ["crypto"],
-        primary: "crypto",
-        status: "classified",
-        reason: "market_scope_classified",
-        basis: { subject: "crypto" },
-        version: "news_market_scope_v1",
-      },
-      ...overrides.alert_eligibility,
-    },
-  };
-}

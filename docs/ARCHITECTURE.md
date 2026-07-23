@@ -26,7 +26,11 @@ Material business truth includes:
 - Macro: `macro_observations`.
 - Notification input/output facts: `account_token_alerts`, `notifications`; external delivery state remains in `notification_deliveries`.
 
-Current read models include `token_radar_current_rows`, `token_profile_current`, `market_tick_current`, `news_page_rows`, `news_story_agent_briefs`, `macro_view_snapshots`, and the compact macro series rows. They have stable product keys, exactly one runtime writer, and zero writes when their business payload is unchanged.
+Current read models include `token_radar_current_rows`,
+`token_profile_current`, `market_tick_current`, `news_page_rows`,
+`macro_view_snapshots`, and the compact macro series rows. They have stable
+product keys, exactly one runtime writer, and zero writes when their business
+payload is unchanged.
 
 Queues, leases, publication state, sync attempts, provider fetch attempts, and terminal-event rows are control or audit state. They are not alternate business truth.
 
@@ -63,7 +67,9 @@ Important atomic units are:
 - notification creation and delivery-row activation;
 - terminalization or retry transition plus its source queue mutation.
 
-Provider, model, subprocess, filesystem, and network I/O stays outside database transactions. External delivery follows load/claim -> close transaction -> I/O -> compare-and-set complete/fail.
+Provider, subprocess, filesystem, and network I/O stays outside database
+transactions. External delivery follows load/claim -> close transaction -> I/O
+-> compare-and-set complete/fail.
 
 ## Current product projections
 
@@ -86,7 +92,9 @@ events + intents + resolutions + market facts
   -> Radar, search, token case, notifications
 ```
 
-There is one target queue. Generic projection run/offset ledgers and the source-event dirty queue are retired. `narrative_admission` is derived directly from the current Radar row; it has no separate domain, table, queue, worker, or fallback.
+There is one target queue. Generic projection run/offset ledgers and the
+source-event dirty queue are retired. The public row is a transparent
+`factor_snapshot` built only from persisted identity, social, and market facts.
 
 ### News
 
@@ -94,11 +102,15 @@ There is one target queue. Generic projection run/offset ledgers and the source-
 configured sources
   -> fetch ledger + provider items + canonical news facts
   -> deterministic item processing
-  -> story agent current brief
-  -> page current rows
+  -> page dirty targets
+  -> fact-only page current rows
 ```
 
-Only `page` and `story_brief` remain as News dirty-target kinds. Item briefs and source-quality projection lanes are retired. Source health is current state on `news_sources`; deterministic terminal failures are tied to `config_payload_hash` and resume only after the source configuration changes.
+`page` is the only News dirty-target kind. The page projection contains source,
+story-membership, entity-resolution, fact-candidate, provider-rating, content,
+and market-scope fields already present in PostgreSQL. Source health is current
+state on `news_sources`; deterministic terminal failures are tied to
+`config_payload_hash` and resume only after the source configuration changes.
 
 ### Macro
 
@@ -106,12 +118,37 @@ Only `page` and `story_brief` remain as News dirty-target kinds. Item briefs and
 macro_sync_windows
   -> provider bundle
   -> macro_observations + macro_sync_runs
+  -> macro_projection_dirty_targets
   -> compact bounded macro series
-  -> macro_view_snapshots (including route-ready module_views_json)
-  -> /api/macro
+  -> one evidence snapshot containing six typed page documents
+  -> six page reads + one series read
 ```
 
-`macro_observations` owns raw provider truth. Compact series rows retain only concept/date/value/source/unit/frequency/quality plus a small whitelisted event metadata object. The view writer embeds the assets daily brief only in `module_views_json.assets.daily_brief` and owns every catalog module payload. Module HTTP requests read `module_views_json` directly; there is no request-time observation scan, News join, second daily-brief projection, or duplicate import ledger.
+`macro_observations` owns raw provider truth. Compact series rows retain only
+concept/date/value/source/unit/frequency/quality plus a small whitelisted event
+metadata object. `MacroViewProjectionWorker` builds all six documents in one
+transaction and writes the single `snapshot_key = 'current'` row only when the
+stable payload changes. The six documents share one projection version, fact
+watermark, latest-completed-US-session market cutoff, and computation time.
+When no dirty target is due, the worker re-reads persisted compact rows once
+per UTC-date/completed-session bucket. This advances freshness and cutoff state
+without a database wake plane; repeated work in the same bucket is suppressed,
+and an unchanged semantic payload still writes no row.
+
+The fixed pages are Overview, Cross-asset, Rates & Inflation, Growth & Labor,
+Liquidity & Funding, and Credit. Their conclusions use explicit evidence,
+freshness, rule-hit, confirmation, contradiction, and invalidation contracts.
+Critical gaps fail the affected conclusion closed; optional gaps are explicit
+degradation. Unsupported capabilities are named `not_assessed` and never
+become zeroes, proxies, scores, or process-readiness failures.
+
+### Dormant model-execution library
+
+Provider-neutral structured-JSON execution, capability, hashing, schema, and
+usage primitives remain importable as an isolated library. Production
+bootstrap, workers, status, operations, domain projections, public contracts,
+and the frontend instantiate no model consumer. The library owns no product
+queue, table, prompt catalog, or business state.
 
 ### Evidence watchlist and account alerts
 

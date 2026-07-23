@@ -1,6 +1,6 @@
 import { NotificationBell } from "@features/notifications";
 import { formatRelativeTime } from "@lib/format";
-import type { NotificationSummary, StatusData } from "@lib/types";
+import type { NotificationSummary, OpenApiStatusData } from "@lib/types";
 import { opsPath } from "@shared/routing/paths";
 import { IconButton } from "@shared/ui/IconButton";
 import clsx from "clsx";
@@ -22,7 +22,7 @@ export type CockpitTopbarProps = {
   status: {
     socketStatus: string;
     lastSocketMessageAt: number | null;
-    status?: StatusData | null;
+    status?: OpenApiStatusData | null;
     statusLoading: boolean;
     statusError: boolean;
     configReady: boolean;
@@ -165,7 +165,7 @@ function StatusPills({
 }: {
   socketStatus: string;
   configReady: boolean;
-  status?: StatusData;
+  status?: OpenApiStatusData;
   statusLoading: boolean;
   statusError: boolean;
   lastMessageAt: number | null;
@@ -200,7 +200,7 @@ function readinessLabel({
   statusError,
 }: {
   configReady: boolean;
-  status?: StatusData;
+  status?: OpenApiStatusData;
   statusLoading: boolean;
   statusError: boolean;
 }): { label: string; ok: boolean; title?: string } {

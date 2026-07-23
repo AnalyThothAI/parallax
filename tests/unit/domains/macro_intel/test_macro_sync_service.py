@@ -235,8 +235,8 @@ def test_sync_service_import_success_writes_facts_and_completes_window() -> None
                     "fact_payload_hash": "hash-1",
                 }
             ],
-            "projection_name": "macro_view",
-            "projection_version": "macro_regime_v4",
+            "projection_name": "macro_evidence",
+            "projection_version": "macro_evidence_v1",
             "now_ms": NOW_MS,
             "due_at_ms": NOW_MS,
             "reason": "macro_observations_changed",

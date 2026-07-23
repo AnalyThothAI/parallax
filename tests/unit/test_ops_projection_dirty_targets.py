@@ -26,7 +26,7 @@ def test_enqueue_projection_dirty_targets_dry_run_reports_counts_without_writes(
 
     assert result["execute"] is False
     assert result["news_item_ids"] == 3
-    assert result["news_item_targets"] == 5
+    assert result["news_item_targets"] == 3
     assert repos.news_dirty.enqueued == []
     assert repos.conn.transactions == 0
     assert all("analysis_admission" not in sql for sql, _params in repos.conn.statements)
@@ -65,22 +65,7 @@ def test_enqueue_projection_dirty_targets_execute_enqueues_only_dirty_targets() 
             "source_watermark_ms": NOW_MS - 3_000,
         },
     ]
-    assert repos.news_dirty.enqueued[1]["rows"] == [
-        {
-            "projection_name": "story_brief",
-            "target_kind": "story",
-            "target_id": "story-sol",
-            "source_watermark_ms": NOW_MS - 2_000,
-            "priority": 10,
-        },
-        {
-            "projection_name": "story_brief",
-            "target_kind": "story",
-            "target_id": "story-eth",
-            "source_watermark_ms": NOW_MS - 3_000,
-            "priority": 55,
-        },
-    ]
+    assert len(repos.news_dirty.enqueued) == 1
 
 
 def test_enqueue_projection_dirty_targets_execute_requires_transaction_before_reads_or_writes() -> None:
@@ -104,7 +89,7 @@ def test_enqueue_projection_dirty_targets_parser_requires_explicit_mode() -> Non
             "ops",
             "enqueue-projection-dirty-targets",
             "--projection",
-            "story_brief",
+            "page",
             "--since-hours",
             "24",
             "--dry-run",
@@ -113,26 +98,10 @@ def test_enqueue_projection_dirty_targets_parser_requires_explicit_mode() -> Non
 
     assert args.command == "ops"
     assert args.ops_command == "enqueue-projection-dirty-targets"
-    assert args.projection == "story_brief"
+    assert args.projection == "page"
     assert args.since_hours == 24
     assert args.dry_run is True
     assert args.execute is False
-
-
-def test_enqueue_projection_dirty_targets_execute_requires_bounded_brief_repair() -> None:
-    repos = FakeRepos()
-
-    try:
-        enqueue_projection_dirty_targets(
-            repos,
-            execute=True,
-            now_ms=NOW_MS,
-            projection="all",
-        )
-    except ValueError as exc:
-        assert "--since-hours" in str(exc)
-    else:
-        raise AssertionError("expected unbounded story_brief repair to fail")
 
 
 def test_enqueue_projection_dirty_targets_page_repair_can_run_unbounded_for_page_only_rows() -> None:
@@ -289,37 +258,6 @@ def test_token_radar_publication_status_rejects_unknown_publication_state() -> N
         token_radar_publication_status(conn, projection_version="token-radar-v-test")
 
 
-def test_enqueue_projection_dirty_targets_can_scope_story_brief_repair() -> None:
-    repos = FakeRepos()
-
-    result = enqueue_projection_dirty_targets(
-        repos,
-        execute=True,
-        now_ms=NOW_MS,
-        projection="story_brief",
-        since_ms=NOW_MS - 24 * 60 * 60 * 1000,
-    )
-
-    assert result["projection"] == "story_brief"
-    assert result["news_item_targets"] == 2
-    assert repos.news_dirty.enqueued[0]["rows"] == [
-        {
-            "projection_name": "story_brief",
-            "target_kind": "story",
-            "target_id": "story-sol",
-            "source_watermark_ms": NOW_MS - 2_000,
-            "priority": 10,
-        },
-        {
-            "projection_name": "story_brief",
-            "target_kind": "story",
-            "target_id": "story-eth",
-            "source_watermark_ms": NOW_MS - 3_000,
-            "priority": 55,
-        },
-    ]
-
-
 class FakeRepos:
     def __init__(self) -> None:
         self.conn = FakeConn()
@@ -353,12 +291,10 @@ class FakeConn:
     def execute(self, sql: str, _params: dict[str, Any] | None = None) -> FakeCursor:
         self.statements.append((sql, _params))
         if "FROM news_items" in sql:
-            assert "items.agent_admission_json" in sql
             assert "items.story_key" in sql
             assert "items.lifecycle_status = 'processed'" in sql
             assert "items.story_key <> ''" in sql
             assert "items.story_identity_version = %(story_identity_version)s" in sql
-            assert "items.agent_admission_status" not in sql
             assert "JOIN news_sources" not in sql
             assert "news_token_mentions" not in sql
             assert "news_fact_candidates" not in sql
@@ -371,21 +307,18 @@ class FakeConn:
                         "story_key": "story-sol",
                         "published_at_ms": NOW_MS - 1_000,
                         "source_watermark_ms": NOW_MS - 1_000,
-                        "agent_admission_json": {"status": "needs_review"},
                     },
                     {
                         "news_item_id": "news-2",
                         "story_key": "story-sol",
                         "published_at_ms": NOW_MS - 2_000,
                         "source_watermark_ms": NOW_MS - 2_000,
-                        "agent_admission_json": {"status": "eligible_refresh"},
                     },
                     {
                         "news_item_id": "news-3",
                         "story_key": "story-eth",
                         "published_at_ms": NOW_MS - 3_000,
                         "source_watermark_ms": NOW_MS - 3_000,
-                        "agent_admission_json": {"status": "eligible"},
                     },
                 ]
             )

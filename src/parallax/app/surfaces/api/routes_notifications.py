@@ -14,21 +14,6 @@ from parallax.domains.notifications.services.account_alert_service import Accoun
 
 router = APIRouter()
 
-_NEWS_HIGH_SIGNAL_TEXT_PAYLOAD_FIELDS = (
-    "news_item_id",
-    "representative_news_item_id",
-    "story_key",
-    "decision_class",
-    "direction",
-    "semantic_signature",
-    "display_title",
-    "summary",
-    "external_push_signature",
-    "external_push_suppression_reason",
-    "canonical_url",
-    "source_domain",
-)
-
 
 @router.get(
     "/account-alerts",
@@ -165,29 +150,10 @@ def mark_author_notifications_read(request: Request, author_handle: str) -> JSON
 
 def _notification_payload(row: dict[str, Any]) -> dict[str, Any]:
     payload = dict(row)
-    rule_id = str(payload.get("rule_id") or "")
     raw_payload = _notification_payload_json(_required_notification_field(payload, "payload_json"))
-    payload["payload"] = _public_notification_payload(rule_id, raw_payload)
+    payload["payload"] = raw_payload
     payload["channels"] = _notification_channels(_required_notification_field(payload, "channels_json"))
     return payload
-
-
-def _public_notification_payload(rule_id: str, raw_payload: Any) -> dict[str, Any]:
-    if rule_id != "news_high_signal":
-        return dict(raw_payload)
-    payload = _required_news_payload(raw_payload)
-    public: dict[str, Any] = {}
-    for key in _NEWS_HIGH_SIGNAL_TEXT_PAYLOAD_FIELDS:
-        text = _optional_payload_text(payload, key)
-        if text is not None:
-            public[key] = text
-    symbols = _optional_payload_symbols(payload)
-    if symbols is not None:
-        public["symbols"] = symbols
-    external_push_eligible = _optional_payload_bool(payload, "external_push_eligible")
-    if external_push_eligible is not None:
-        public["external_push_eligible"] = external_push_eligible
-    return public
 
 
 def _notifications_data(
@@ -232,43 +198,3 @@ def _required_notification_field(payload: dict[str, Any], field_name: str) -> An
     if field_name not in payload:
         raise ValueError(f"notification_{field_name}_required")
     return payload.pop(field_name)
-
-
-def _required_news_payload(value: Any) -> dict[str, Any]:
-    if isinstance(value, Mapping):
-        return dict(value)
-    raise ValueError("news_high_signal_payload_required")
-
-
-def _optional_payload_text(payload: Mapping[str, Any], field_name: str) -> str | None:
-    if field_name not in payload or payload.get(field_name) is None:
-        return None
-    value = payload.get(field_name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"news_high_signal_{field_name}_required")
-    return value.strip()
-
-
-def _optional_payload_bool(payload: Mapping[str, Any], field_name: str) -> bool | None:
-    if field_name not in payload or payload.get(field_name) is None:
-        return None
-    value = payload.get(field_name)
-    if not isinstance(value, bool):
-        raise ValueError(f"news_high_signal_{field_name}_required")
-    return value
-
-
-def _optional_payload_symbols(payload: Mapping[str, Any]) -> list[str] | None:
-    if "symbols" not in payload or payload.get("symbols") is None:
-        return None
-    values = payload.get("symbols")
-    if not isinstance(values, list):
-        raise ValueError("news_high_signal_symbols_required")
-    strings: list[str] = []
-    for value in values:
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError("news_high_signal_symbols_required")
-        symbol = value.strip().lstrip("$").upper()
-        if symbol not in strings:
-            strings.append(symbol)
-    return strings

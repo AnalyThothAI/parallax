@@ -40,6 +40,8 @@ RETIRED_BACKEND_TABLES = {
     "market_tick_current_dirty_targets",
     "token_capture_tier_dirty_targets",
     "token_capture_tier",
+    "news_story_agent_briefs",
+    "news_story_agent_runs",
 }
 
 
@@ -134,11 +136,23 @@ def test_current_postgres_schema_has_one_kappa_truth_and_compact_read_models(tmp
         "event_metadata_json",
     }
     assert {"config_payload_hash", "terminal_config_payload_hash"} <= news_source_columns
-    assert "module_views_json" in macro_snapshot_columns
-    assert "assets_brief_json" not in macro_snapshot_columns
+    assert macro_snapshot_columns == {
+        "snapshot_key",
+        "projection_version",
+        "fact_watermark",
+        "market_cutoff",
+        "computed_at_ms",
+        "overview_json",
+        "cross_asset_json",
+        "rates_inflation_json",
+        "growth_labor_json",
+        "liquidity_funding_json",
+        "credit_json",
+        "payload_hash",
+    }
     assert {"raw_payload_json", "payload_hash"}.isdisjoint(market_current_columns)
     assert news_fetch_run_fk_index == {"indisvalid": True, "indisready": True}
-    assert version == latest_migration_version() == "20260722_0188"
+    assert version == latest_migration_version() == "20260723_0191"
 
 
 def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
@@ -266,7 +280,7 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
         ).fetchone()
         macro_snapshot = conn.execute(
             """
-            SELECT module_views_json, payload_hash
+            SELECT projection_version, payload_hash
             FROM macro_view_snapshots
             WHERE projection_version = 'macro_regime_v4'
             """
@@ -275,8 +289,8 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
             """
             SELECT payload_hash, dirty_reason, leased_until_ms, attempt_count
             FROM macro_projection_dirty_targets
-            WHERE projection_name = 'macro_view'
-              AND projection_version = 'macro_regime_v4'
+            WHERE projection_name = 'macro_evidence'
+              AND projection_version = 'macro_evidence_v1'
               AND target_kind = 'current'
               AND target_id = 'current'
             """
@@ -311,8 +325,8 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
     }
     assert macro_snapshot is None
     assert macro_rebuild == {
-        "payload_hash": "migration:20260722_0186:module_views_only",
-        "dirty_reason": "migration_module_views_only_rebuild",
+        "payload_hash": "schema-hard-cut-0191:macro-evidence-v1",
+        "dirty_reason": "schema_hard_cut_0191",
         "leased_until_ms": None,
         "attempt_count": 0,
     }
@@ -514,8 +528,8 @@ def test_runtime_hard_cut_reconciles_nonempty_0185_backlog(tmp_path) -> None:
             """
             SELECT payload_hash, dirty_reason, leased_until_ms, attempt_count
             FROM macro_projection_dirty_targets
-            WHERE projection_name = 'macro_view'
-              AND projection_version = 'macro_regime_v4'
+            WHERE projection_name = 'macro_evidence'
+              AND projection_version = 'macro_evidence_v1'
               AND target_kind = 'current'
               AND target_id = 'current'
             """
@@ -562,8 +576,8 @@ def test_runtime_hard_cut_reconciles_nonempty_0185_backlog(tmp_path) -> None:
     assert retired_queue is None
     assert macro_snapshot is None
     assert macro_rebuild == {
-        "payload_hash": "migration:20260722_0186:module_views_only",
-        "dirty_reason": "migration_module_views_only_rebuild",
+        "payload_hash": "schema-hard-cut-0191:macro-evidence-v1",
+        "dirty_reason": "schema_hard_cut_0191",
         "leased_until_ms": None,
         "attempt_count": 0,
     }

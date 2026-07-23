@@ -11,7 +11,7 @@ dirty target
   -> due
   -> leased (bounded claim)
   -> load minimal input
-  -> optional provider/model I/O outside transaction
+  -> optional provider I/O outside transaction
   -> explicit write transaction
        -> current read-model write or no-op
        -> publication/audit state
@@ -91,11 +91,14 @@ news_sources
   -> news_fetch_runs + provider items
   -> canonical news item
   -> deterministic processing
-  -> story_brief dirty target / model run / current brief
   -> page dirty target / page current row
 ```
 
-Only `page` and `story_brief` are valid dirty-target kinds. A deterministic HTTP/auth/payment/configuration failure disables or terminalizes the source against its current `config_payload_hash`. Reconciliation resumes it only after that hash changes. Historical fetch success is short-retention; failed/terminal evidence is retained longer.
+`page` is the only valid dirty-target kind, and it always targets one canonical
+News item. A deterministic HTTP/auth/payment/configuration failure disables or
+terminalizes the source against its current `config_payload_hash`.
+Reconciliation resumes it only after that hash changes. Historical fetch
+success is short-retention; failed/terminal evidence is retained longer.
 
 ## Macro
 
@@ -107,10 +110,28 @@ macro_sync_windows
   -> macro_observations
   -> macro_projection_dirty_targets
   -> compact bounded series
-  -> macro_view_snapshots (regime + route-ready module views)
+  -> one current macro_view_snapshots row with six typed page documents
 ```
 
-`macro_sync_runs` is the single attempt ledger. `macro_observations` is raw fact truth. Series rows contain compact projection data; event text/source fields live only in the whitelisted `event_metadata_json`. The assets daily brief is embedded only in the assets module payload, and all catalog module payloads are written by the same view worker; module routes do not rebuild them.
+`macro_sync_runs` is the single attempt ledger. `macro_observations` is raw
+fact truth. Series rows contain compact projection data; event text/source
+fields live only in the whitelisted `event_metadata_json`. The projection
+worker builds Overview, Cross-asset, Rates & Inflation, Growth & Labor,
+Liquidity & Funding, and Credit together. It writes the stable
+`snapshot_key = 'current'` row and acknowledges the exact dirty claim in the
+same transaction; an unchanged evidence payload writes zero serving rows.
+If no dirty target is due, the same worker performs a bounded clock recheck
+from persisted compact rows when either the UTC date or latest completed US
+session changes. This is required because evidence can become stale and the
+market cutoff can advance without a new provider fact. The recheck creates no
+synthetic queue or second writer; a restart simply re-reads PostgreSQL, and a
+same-bucket repeat is a no-op.
+
+To diagnose a conclusion, trace its `evidence_refs` into the page evidence,
+then inspect critical missing/stale concepts, optional unavailable
+capabilities, `rule_hits`, and the shared fact watermark/market cutoff. A
+conclusion with insufficient critical evidence is expected to fail closed
+while `/readyz` stays healthy.
 
 ## Notifications
 
@@ -122,8 +143,12 @@ Rule evaluation is deterministic and provider-free. It creates or aggregates a n
 4. opens a new transaction;
 5. completes or retries with compare-and-set predicates.
 
-Never hold a DB transaction open across the network call. Never send without a durable delivery row and stable dedup basis.
-The unique `notifications.dedup_key` constraint is the sole semantic dedup authority; payload JSON is not scanned for a second identity. External-push cooldown remains independent and applies across distinct notification identities.
+Never hold a DB transaction open across the network call. Never send without a
+durable delivery row and stable dedup basis. Only watched-account activity and
+watched-account token-alert facts feed the rule engine. The unique
+`notifications.dedup_key` constraint is the sole dedup authority; payload JSON
+is not scanned for a second identity. A rule's source occurrence and cooldown
+bucket are encoded in that key.
 
 ## Safe operator actions
 

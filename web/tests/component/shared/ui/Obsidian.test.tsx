@@ -24,14 +24,17 @@ describe("Obsidian UI language", () => {
               <button type="button">Mark reviewed</button>
             </ObsidianActionBar>
           }
-          badge={<ObsidianPill tone="agent">Agent memo</ObsidianPill>}
+          badge={<ObsidianPill tone="info">Source facts</ObsidianPill>}
           eyebrow="selected case"
           mark={<ObsidianTokenMark label="alpha" />}
-          subtitle="Official facts, community proof, narrative, market and decision in one file."
+          subtitle="Official facts, community proof, market and decision in one file."
           title="$ALPHA"
         />
 
-        <ObsidianSection subtitle="Profile facts stay separate from agent text." title="Identity">
+        <ObsidianSection
+          subtitle="Profile facts stay separate from derived fields."
+          title="Identity"
+        >
           <ObsidianFieldGrid>
             <ObsidianField label="Official" source="official" value="alpha.io" />
             <ObsidianField
@@ -70,7 +73,7 @@ describe("Obsidian UI language", () => {
 
     expect(screen.getByRole("region", { name: "selected case" })).toBeInTheDocument();
     expect(screen.getByRole("heading", { name: "$ALPHA" })).toBeInTheDocument();
-    expect(screen.getByText("Agent memo")).toBeInTheDocument();
+    expect(screen.getByText("Source facts")).toBeInTheDocument();
 
     const identity = screen.getByRole("region", { name: "Identity" });
     expect(within(identity).getByText("Official")).toBeInTheDocument();
@@ -93,13 +96,13 @@ describe("Obsidian UI language", () => {
   it("renders stable empty evidence and data-driven fields", () => {
     render(
       <ObsidianCase>
-        <ObsidianSection title="Narrative">
+        <ObsidianSection title="Source state">
           <ObsidianFieldGrid
             fields={[
               {
-                detail: "No agent memo available.",
-                label: "Thesis",
-                source: "agent",
+                detail: "No source event available.",
+                label: "Source status",
+                source: "official",
                 tone: "neutral",
                 value: "Unavailable",
               },
@@ -112,8 +115,8 @@ describe("Obsidian UI language", () => {
       </ObsidianCase>,
     );
 
-    expect(screen.getByText("Thesis")).toBeInTheDocument();
-    expect(screen.getByText("agent")).toBeInTheDocument();
+    expect(screen.getByText("Source status")).toBeInTheDocument();
+    expect(screen.getAllByText("official").length).toBeGreaterThan(0);
     expect(screen.getByText("No source events in this window.")).toBeInTheDocument();
   });
 });

@@ -43,7 +43,6 @@ export type TokenCaseView = {
   key: string;
   label: string;
   market: TokenCaseField;
-  narrative: TokenCaseField;
   official: TokenCaseField;
   score: string;
   subtitle: string;
@@ -104,13 +103,6 @@ export function buildTokenCaseView(item: TokenFlowItem): TokenCaseView {
       source: "market",
       tone: marketTone(item),
       value: marketPrimary(item),
-    },
-    narrative: {
-      detail: narrativeDetail(item),
-      label: "Narrative",
-      source: "deterministic",
-      tone: narrativeTone(item),
-      value: `${compactLabel(item.propagation.phase)} · ${qualityLabel(item)}`,
     },
     official,
     score: formatScore(item.opportunity.score),
@@ -259,18 +251,6 @@ function communityDetail(item: TokenFlowItem): string {
     .join(" · ");
 }
 
-function narrativeDetail(item: TokenFlowItem): string {
-  const reason = item.discussion_quality.reasons[0] ?? item.propagation.reasons[0];
-  const risk = item.discussion_quality.risks[0] ?? item.propagation.risks[0];
-  return [
-    reason ? compactLabel(reason) : null,
-    risk ? formatRisk(risk) : null,
-    `${compactNumber(item.discussion_quality.informative_post_count)} informative`,
-  ]
-    .filter(Boolean)
-    .join(" · ");
-}
-
 function decisionDetail(item: TokenFlowItem): string {
   const reasons = item.opportunity.reasons.slice(0, 2).map(compactLabel);
   const risks = item.opportunity.risks.slice(0, 2).map(formatRisk);
@@ -360,16 +340,6 @@ function marketTone(item: TokenFlowItem): TokenCaseTone {
   return "health";
 }
 
-function narrativeTone(item: TokenFlowItem): TokenCaseTone {
-  if (item.discussion_quality.score >= 70 && item.propagation.independent_authors >= 3) {
-    return "opportunity";
-  }
-  if (item.discussion_quality.risks.length || item.propagation.risks.length) {
-    return "risk";
-  }
-  return "neutral";
-}
-
 function searchHref(item: TokenFlowItem): string {
   const query =
     item.identity.address ??
@@ -399,19 +369,4 @@ function cleanText(value?: string | null): string | null {
 
 function compactLabel(value: string | null | undefined): string {
   return value ? value.replaceAll("_", " ") : "-";
-}
-
-function qualityLabel(item: TokenFlowItem): string {
-  const reason = item.discussion_quality.reasons[0] ?? item.discussion_quality.risks[0] ?? "";
-  const labels: Record<string, string> = {
-    catalyst: "catalyst",
-    duplicate_text_cluster: "repeat",
-    informative_discussion: "informative",
-    low_duplicate_share: "low dup",
-    low_information_posts: "meme only",
-    repeated_text_cluster: "repeat",
-    resolved_direct_evidence: "CA direct",
-    seed_linked: "seed+CA",
-  };
-  return labels[reason] ?? compactLabel(reason);
 }

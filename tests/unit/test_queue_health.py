@@ -57,18 +57,18 @@ def test_dirty_target_health_is_an_on_demand_ops_query() -> None:
     assert health["oldest_due_age_ms"] == 150
 
 
-def test_shared_news_queue_uses_the_current_worker_discriminator() -> None:
+def test_shared_news_queue_uses_the_current_page_projection_discriminator() -> None:
     conn = DirtyQueueConnection()
 
     fetch_queue_table_health(
         conn,
         "news_projection_dirty_targets",
         now_ms=1_000,
-        worker_name="news_story_brief",
+        worker_name="news_page_projection",
     )
 
     assert any("projection_name = %(worker_filter_value)s" in sql for sql in conn.sql)
-    assert any(params.get("worker_filter_value") == "story_brief" for params in conn.params if isinstance(params, dict))
+    assert any(params.get("worker_filter_value") == "page" for params in conn.params if isinstance(params, dict))
 
 
 def test_unknown_queue_is_rejected_without_sql() -> None:

@@ -15,8 +15,6 @@ from parallax.platform.config.news_provider_types import RUNTIME_SUPPORTED_NEWS_
 
 router = APIRouter()
 
-_NEWS_SIGNALS = frozenset({"bullish", "bearish", "neutral"})
-
 
 @router.get("/news", response_model=api_schemas.ApiEnvelope[api_schemas.NewsData])
 def list_news(
@@ -24,16 +22,15 @@ def list_news(
     limit: Annotated[int, Query()] = 100,
     cursor: Annotated[str, Query()] = "",
     status: Annotated[str, Query()] = "",
-    signal: Annotated[str, Query()] = "",
     q: Annotated[str, Query()] = "",
 ) -> JSONResponse:
+    _validate_news_query_params(request)
     runtime = _authenticated_runtime(request)
     with runtime.repositories() as repos:
         data = _news_read_model(repos).list_news(
             limit=_limit(limit, maximum=200),
             cursor=cursor or None,
             status=status or None,
-            signal=_signal(signal),
             q=q.strip() or None,
         )
     return _validated_json(
@@ -108,13 +105,11 @@ def _news_read_model(repos: Any) -> NewsPageQuery:
     )
 
 
-def _signal(value: str) -> str | None:
-    normalized = value.strip().lower()
-    if not normalized:
-        return None
-    if normalized in _NEWS_SIGNALS:
-        return normalized
-    raise ApiBadRequest("invalid_news_signal")
+def _validate_news_query_params(request: Request) -> None:
+    supported = {"limit", "cursor", "status", "q", "token"}
+    for name in request.query_params:
+        if name not in supported:
+            raise ApiBadRequest("unsupported_query_param", field=name)
 
 
 def _provider_capabilities(sources: list[dict[str, Any]], *, supported_types: tuple[str, ...]) -> dict[str, Any]:

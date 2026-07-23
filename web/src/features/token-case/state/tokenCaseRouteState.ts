@@ -2,7 +2,7 @@ import type { WindowKey } from "@lib/types";
 import type { TokenCaseScope, TokenCaseSort } from "@shared/model/tokenCaseViewModel";
 
 const VALID_WINDOWS = new Set<WindowKey>(["5m", "1h", "4h", "24h"]);
-const VALID_SORTS = new Set<TokenCaseSort>(["catalyst", "recent", "watched"]);
+const VALID_SORTS = new Set<TokenCaseSort>(["recent", "watched"]);
 
 export type TokenCaseRouteState = {
   window: WindowKey;

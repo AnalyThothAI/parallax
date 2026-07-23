@@ -1,10 +1,11 @@
 import {
   compactNumber,
+  formatPercentShare,
   formatRelativeTime,
   formatSignedPercent,
   formatUsdCompact,
 } from "@lib/format";
-import type { NarrativeAdmission, TokenFlowItem } from "@lib/types";
+import type { TokenFlowItem } from "@lib/types";
 
 import { buildTokenCaseView, marketMeta } from "./tokenCase";
 
@@ -26,10 +27,12 @@ export function buildTokenRadarCompactCase(item: TokenFlowItem) {
       stats: compactMarketStats(item),
     },
     marketMove,
-    admission: {
-      detail: admissionDetail(item.narrative_admission),
-      tone: admissionTone(item.narrative_admission),
-      value: admissionTitle(item.narrative_admission),
+    propagation: {
+      detail: `${compactNumber(
+        item.discussion_quality.informative_post_count,
+      )} informative · ${formatPercentShare(item.propagation.duplicate_text_share)} duplicate`,
+      tone: propagationTone(item),
+      value: `${compactNumber(item.propagation.score)} / 100`,
     },
     score: tokenCase.score,
     socialDetail: `关注源 ${compactNumber(item.flow.watched_mentions)} · 较前窗 ${signedCompactNumber(
@@ -157,40 +160,11 @@ function compactListedAt(item: TokenFlowItem): {
   };
 }
 
-function admissionTitle(admission: NarrativeAdmission | null | undefined): string {
-  if (!admission) return "Admission missing";
-  if (admission.currentness.display_status === "unsupported_window") {
-    return "Admission unsupported";
-  }
-  if (admission.currentness.display_status === "out_of_frontier") {
-    return "Out of current frontier";
-  }
-  const labels: Record<string, string> = {
-    admitted: "Admitted",
-    missing: "Not admitted",
-    suppressed: "Suppressed",
-    unsupported_window: "Admission unsupported",
-  };
-  return labels[admission.status] ?? admission.status.replaceAll("_", " ");
-}
-
-function admissionDetail(admission: NarrativeAdmission | null | undefined): string {
-  if (!admission) return "no current admission";
-  const { independent_authors: authors, source_mentions: mentions } = admission.coverage;
-  return `${compactNumber(mentions)} posts · ${compactNumber(authors)} authors`;
-}
-
-function admissionTone(admission: NarrativeAdmission | null | undefined): string {
-  if (admission?.status === "admitted" && admission.currentness.display_status === "current") {
-    return "health";
-  }
-  if (
-    admission?.status === "suppressed" ||
-    admission?.currentness.display_status === "out_of_frontier"
-  ) {
+function propagationTone(item: TokenFlowItem): string {
+  if (item.propagation.risks.length) {
     return "warn";
   }
-  return "info";
+  return item.propagation.score >= 70 ? "health" : "info";
 }
 
 function signedCompactNumber(value: number | null | undefined): string {

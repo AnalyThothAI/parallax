@@ -12,7 +12,7 @@ describe("API client errors", () => {
       vi.fn(async () => new Response("Internal Server Error", { status: 500 })),
     );
 
-    await expect(getApi("/api/macro/modules/overview")).rejects.toMatchObject({
+    await expect(getApi("/api/macro/overview")).rejects.toMatchObject({
       name: "ApiError",
       message: "Internal Server Error",
       status: 500,

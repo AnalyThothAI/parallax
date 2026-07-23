@@ -53,38 +53,6 @@ export type OpsQueueSummary = {
   reason: string;
 };
 
-export type OpsAgentExecutionPolicy = {
-  lane: "news.story_brief";
-  model: string;
-  provider_family: string;
-  output_strategy: "json_object";
-  schema_enforcement: "client_validate";
-  max_concurrency: number;
-  rpm_limit: number;
-  timeout_seconds: number;
-};
-
-export type OpsAgentExecutionCounters = {
-  in_flight: number;
-  provider_running: number;
-  circuit_state: "open" | "closed";
-  circuit_open_until_ms: number | null;
-  capacity_denied_total: number;
-  circuit_open_total: number;
-  timeout_total: number;
-  last_denied_at_ms: number | null;
-  last_timeout_at_ms: number | null;
-  oldest_in_flight_age_ms: number | null;
-};
-
-export type OpsAgentExecution = {
-  status: OpsRuntimeStatus;
-  policy: OpsAgentExecutionPolicy | null;
-  counters: OpsAgentExecutionCounters | null;
-  status_reason?: string | null;
-  error?: string | null;
-};
-
 export type OpsDiagnostics = {
   schema_version: "ops.diagnostics.v1";
   generated_at_ms: number;
@@ -100,7 +68,6 @@ export type OpsDiagnostics = {
   providers: OpsProvider[];
   workers: OpsWorker[];
   queues: OpsQueueSummary[];
-  agent_execution: OpsAgentExecution;
   domains: Record<string, OpsJson & { status: OpsRuntimeStatus; reason?: string | null }>;
   suggested_checks: Array<
     OpsJson & {
@@ -148,7 +115,6 @@ const DIAGNOSTIC_KEYS = [
   "providers",
   "workers",
   "queues",
-  "agent_execution",
   "domains",
   "suggested_checks",
 ] as const;
@@ -213,7 +179,6 @@ export function requireOpsDiagnostics(value: unknown): OpsDiagnostics {
   validateProviders(diagnostics.providers);
   validateWorkers(diagnostics.workers);
   validateQueueSummaries(diagnostics.queues, "diagnostics.queues");
-  validateAgentExecution(diagnostics.agent_execution);
   validateDomains(diagnostics.domains);
   validateSuggestedChecks(diagnostics.suggested_checks);
   return diagnostics as OpsDiagnostics;
@@ -367,7 +332,6 @@ function validateConfig(value: unknown): void {
       "upstream_channels",
       "gmgn_configured",
       "okx_dex_configured",
-      "llm_configured",
       "news_enabled",
       "notifications_enabled",
     ],
@@ -381,7 +345,6 @@ function validateConfig(value: unknown): void {
   for (const key of [
     "gmgn_configured",
     "okx_dex_configured",
-    "llm_configured",
     "news_enabled",
     "notifications_enabled",
   ]) {
@@ -541,98 +504,6 @@ function validateQueueSummary(value: unknown, path: string): void {
   requireNullableFiniteNumber(summary.oldest_running_age_ms, `${path}.oldest_running_age_ms`);
   requireRuntimeStatus(summary.status, `${path}.status`);
   requireString(summary.reason, `${path}.reason`);
-}
-
-function validateAgentExecution(value: unknown): void {
-  const agent = requireRecord(value, "diagnostics.agent_execution");
-  requireAllowedKeys(
-    agent,
-    ["status", "policy", "counters", "status_reason", "error"],
-    ["status", "policy", "counters"],
-    "diagnostics.agent_execution",
-  );
-  const status = requireRuntimeStatus(agent.status, "diagnostics.agent_execution.status");
-  const inactive = status === "disabled" || status === "unknown" || status === "unavailable";
-  if (inactive) {
-    if (agent.policy !== null || agent.counters !== null) fail("diagnostics.agent_execution");
-  } else {
-    const policy = requireRecord(agent.policy, "diagnostics.agent_execution.policy");
-    const counters = requireRecord(agent.counters, "diagnostics.agent_execution.counters");
-    validateActiveAgentPolicy(policy);
-    validateActiveAgentCounters(counters);
-  }
-  if (Object.hasOwn(agent, "status_reason")) {
-    requireNullableString(agent.status_reason, "diagnostics.agent_execution.status_reason");
-  }
-  if (Object.hasOwn(agent, "error")) {
-    requireNullableString(agent.error, "diagnostics.agent_execution.error");
-  }
-}
-
-function validateActiveAgentPolicy(policy: OpsJson): void {
-  const path = "diagnostics.agent_execution.policy";
-  requireExactKeys(
-    policy,
-    [
-      "lane",
-      "model",
-      "provider_family",
-      "output_strategy",
-      "schema_enforcement",
-      "max_concurrency",
-      "rpm_limit",
-      "timeout_seconds",
-    ],
-    path,
-  );
-  if (policy.lane !== "news.story_brief") fail(`${path}.lane`);
-  requireString(policy.model, `${path}.model`);
-  requireString(policy.provider_family, `${path}.provider_family`);
-  if (policy.output_strategy !== "json_object") fail(`${path}.output_strategy`);
-  if (policy.schema_enforcement !== "client_validate") fail(`${path}.schema_enforcement`);
-  for (const key of ["max_concurrency", "rpm_limit", "timeout_seconds"]) {
-    requireFiniteNumber(policy[key], `${path}.${key}`);
-  }
-}
-
-function validateActiveAgentCounters(counters: OpsJson): void {
-  const path = "diagnostics.agent_execution.counters";
-  requireExactKeys(
-    counters,
-    [
-      "in_flight",
-      "provider_running",
-      "circuit_state",
-      "circuit_open_until_ms",
-      "capacity_denied_total",
-      "circuit_open_total",
-      "timeout_total",
-      "last_denied_at_ms",
-      "last_timeout_at_ms",
-      "oldest_in_flight_age_ms",
-    ],
-    path,
-  );
-  for (const key of [
-    "in_flight",
-    "provider_running",
-    "capacity_denied_total",
-    "circuit_open_total",
-    "timeout_total",
-  ]) {
-    requireFiniteNumber(counters[key], `${path}.${key}`);
-  }
-  if (counters.circuit_state !== "open" && counters.circuit_state !== "closed") {
-    fail(`${path}.circuit_state`);
-  }
-  for (const key of [
-    "circuit_open_until_ms",
-    "last_denied_at_ms",
-    "last_timeout_at_ms",
-    "oldest_in_flight_age_ms",
-  ]) {
-    requireNullableFiniteNumber(counters[key], `${path}.${key}`);
-  }
 }
 
 function validateDomains(value: unknown): void {

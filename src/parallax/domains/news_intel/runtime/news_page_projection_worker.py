@@ -87,16 +87,13 @@ class NewsPageProjectionWorker(WorkerBase):
                     story_keys: list[str] = []
                     member_item_ids: list[str] = []
                     for payload in payloads:
-                        item, token_mentions, fact_candidates, current_brief, story, member_items = _projection_parts(
-                            payload
-                        )
+                        item, token_mentions, fact_candidates, story, member_items = _projection_parts(payload)
                         rows.append(
                             build_news_page_row(
                                 item=item,
                                 token_mentions=token_mentions,
                                 fact_candidates=fact_candidates,
                                 story=story,
-                                agent_brief=current_brief,
                                 computed_at_ms=now,
                             )
                         )
@@ -213,7 +210,6 @@ def _projection_parts(
     dict[str, Any],
     list[dict[str, Any]],
     list[dict[str, Any]],
-    dict[str, Any] | None,
     dict[str, Any],
     list[dict[str, Any]],
 ]:
@@ -222,7 +218,6 @@ def _projection_parts(
         item,
         _required_mapping_list(payload, "token_mentions"),
         _required_mapping_list(payload, "fact_candidates"),
-        _optional_mapping(payload, "current_brief"),
         _required_mapping(payload, "story"),
         _required_mapping_list(payload, "member_items"),
     )
@@ -254,15 +249,6 @@ def _required_mapping(payload: Mapping[str, Any], field_name: str) -> dict[str, 
     value = payload.get(field_name)
     if not isinstance(value, Mapping):
         raise ValueError(f"news_page_projection_payload_{field_name}_required")
-    return dict(value)
-
-
-def _optional_mapping(payload: Mapping[str, Any], field_name: str) -> dict[str, Any] | None:
-    value = payload.get(field_name)
-    if value is None:
-        return None
-    if not isinstance(value, Mapping):
-        raise ValueError(f"news_page_projection_payload_{field_name}_invalid")
     return dict(value)
 
 

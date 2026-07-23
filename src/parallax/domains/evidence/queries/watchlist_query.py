@@ -169,12 +169,12 @@ class WatchlistQuery:
                 "source_event_count": source_event_count,
                 "resolved_token_count": resolved_token_count,
                 "candidate_mention_count": candidate_mention_count,
-                "narrative_count": _cluster_count(clusters["narrative_clusters"]),
+                "hashtag_count": _cluster_count(clusters["hashtag_clusters"]),
                 "last_source_event_at_ms": last_source_event_at_ms,
             },
             "resolved_token_clusters": public_clusters["resolved_token_clusters"],
             "candidate_mention_clusters": public_clusters["candidate_mention_clusters"],
-            "narrative_clusters": public_clusters["narrative_clusters"],
+            "hashtag_clusters": public_clusters["hashtag_clusters"],
             "clusters_truncated": source_events_truncated
             or _overview_clusters_truncated(clusters, parsed_cluster_limit),
             "risk_notes": sorted(dict.fromkeys(risk_notes)),
@@ -211,7 +211,7 @@ def _decode_handle_overview_row(row: dict[str, Any]) -> dict[str, Any]:
 def _overview_clusters(events: list[dict[str, Any]]) -> dict[str, Any]:
     resolved: dict[str, dict[str, Any]] = {}
     candidates: dict[str, dict[str, Any]] = {}
-    narratives: dict[str, dict[str, Any]] = {}
+    hashtags: dict[str, dict[str, Any]] = {}
     resolved_symbols: set[str] = set()
 
     for item in events:
@@ -257,17 +257,17 @@ def _overview_clusters(events: list[dict[str, Any]]) -> dict[str, Any]:
             term = _clean_hashtag(hashtag)
             if term:
                 _increment_cluster(
-                    narratives,
+                    hashtags,
                     f"hashtag:{term.lower()}",
                     label=f"#{term}",
                     query=f"#{term}",
-                    kind="narrative",
+                    kind="hashtag",
                     source="event_hashtags",
                 )
     return {
         "resolved_token_clusters": _sorted_clusters(resolved.values()),
         "candidate_mention_clusters": _sorted_clusters(candidates.values()),
-        "narrative_clusters": _sorted_clusters(narratives.values()),
+        "hashtag_clusters": _sorted_clusters(hashtags.values()),
         "risk_notes": [],
     }
 
@@ -312,14 +312,14 @@ def _limit_overview_clusters(clusters: dict[str, Any], limit: int) -> dict[str, 
     return {
         "resolved_token_clusters": clusters["resolved_token_clusters"][:limit],
         "candidate_mention_clusters": clusters["candidate_mention_clusters"][:limit],
-        "narrative_clusters": clusters["narrative_clusters"][:limit],
+        "hashtag_clusters": clusters["hashtag_clusters"][:limit],
     }
 
 
 def _overview_clusters_truncated(clusters: dict[str, Any], limit: int) -> bool:
     return any(
         len(clusters[key]) > limit
-        for key in ("resolved_token_clusters", "candidate_mention_clusters", "narrative_clusters")
+        for key in ("resolved_token_clusters", "candidate_mention_clusters", "hashtag_clusters")
     )
 
 

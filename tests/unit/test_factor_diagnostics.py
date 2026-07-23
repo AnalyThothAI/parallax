@@ -25,7 +25,6 @@ def test_factor_distribution_report_flags_family_100_saturation() -> None:
             family_scores={
                 "social_heat": 100 if index < 6 else 40,
                 "social_propagation": 50,
-                "semantic_catalyst": 50,
                 "timing_risk": 50,
             },
         )
@@ -42,7 +41,7 @@ def test_factor_distribution_report_flags_family_100_saturation() -> None:
     )
 
 
-def test_factor_distribution_report_accepts_v3_family_keys() -> None:
+def test_factor_distribution_report_accepts_transparent_family_keys() -> None:
     report = factor_distribution_report([_row()])
 
     assert report["ok"] is True

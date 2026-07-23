@@ -71,18 +71,18 @@ def delivery_worker(conn, *, channels, adapter=None, pushdeer_adapter=None, sett
 def seed_delivery(repo: NotificationRepository, *, max_attempts=3, provider="apprise"):
     notification = insert_notification_row(
         repo,
-        dedup_key="news:pepe",
-        rule_id="news_high_signal",
+        dedup_key="watched-account-token-alert:pepe",
+        rule_id="watched_account_token_alert",
         severity="high",
-        title="PEPE news",
-        body="Agent news driver",
+        title="$PEPE token watch",
+        body="A watched account referenced PEPE.",
         entity_type="token",
         entity_key="token:eth:pepe",
         symbol="PEPE",
-        source_table="news_items",
+        source_table="token_alerts",
         source_id="token:eth:pepe",
         occurrence_at_ms=1_700_000_000_000,
-        payload={"decision_class": "driver"},
+        payload={"alert_id": "token:eth:pepe", "status": "token_watch"},
         channels=["in_app", "pushdeer"],
     )
     assert notification is not None
@@ -127,12 +127,12 @@ def test_delivery_worker_sends_pending_delivery_and_marks_delivered(tmp_path):
     assert adapter.sent == [
         {
             "url": "json://localhost",
-            "title": "PEPE news",
-            "body": "Agent news driver",
+            "title": "$PEPE token watch",
+            "body": "A watched account referenced PEPE.",
             "body_format": "text",
         }
     ]
-    assert notification["title"] == "PEPE news"
+    assert notification["title"] == "$PEPE token watch"
 
 
 def test_delivery_worker_retries_and_then_marks_dead_after_max_attempts(tmp_path):
@@ -233,8 +233,8 @@ def test_delivery_worker_sends_pushdeer_provider_as_markdown(tmp_path):
     assert pushdeer_adapter.sent == [
         {
             "url": "pushdeers://pushKey",
-            "title": "PEPE news",
-            "body": "Agent news driver",
+            "title": "$PEPE token watch",
+            "body": "A watched account referenced PEPE.",
         }
     ]
 

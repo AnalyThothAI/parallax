@@ -15,12 +15,10 @@ from parallax.platform.db.queue_terminal import (
 
 
 def test_terminal_reason_bucket_normalizes_operator_triage_reasons() -> None:
-    assert terminal_reason_bucket("deepseek provider 522 gateway") == "llm_provider_522"
     assert terminal_reason_bucket("stale_running_timeout") == "stale_window_ttl"
     assert terminal_reason_bucket("provider_error_retry_budget_exhausted") == "retry_budget_exhausted"
     assert terminal_reason_bucket("provider_unavailable: transport failed") == "provider_unavailable"
     assert terminal_reason_bucket("provider_no_quote:empty") == "provider_no_quote"
-    assert terminal_reason_bucket("semantic parse unavailable") == "semantic_unavailable"
     assert terminal_reason_bucket("unexpected") == "other"
 
 
@@ -317,7 +315,7 @@ def test_inspect_terminal_events_filters_by_reason_bucket() -> None:
             worker_name="resolution_refresh",
             source_table="lookup",
             target_key="a",
-            final_reason_bucket="llm_provider_522",
+            final_reason_bucket="provider_unavailable",
         ),
         _terminal_row(
             "terminal-2",
@@ -332,11 +330,11 @@ def test_inspect_terminal_events_filters_by_reason_bucket() -> None:
         conn,
         worker_name="resolution_refresh",
         source_table="lookup",
-        reason_bucket="llm_provider_522",
+        reason_bucket="provider_unavailable",
         limit=10,
     )
 
-    assert payload["reason_bucket"] == "llm_provider_522"
+    assert payload["reason_bucket"] == "provider_unavailable"
     assert payload["count"] == 1
     assert payload["items"][0]["terminal_id"] == "terminal-1"
 

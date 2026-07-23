@@ -13,6 +13,7 @@ from parallax.domains.asset_market.runtime.market_tick_stream_worker import (
     MarketTickStreamWorker,
 )
 from parallax.domains.asset_market.types import market_tick_id
+from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from parallax.platform.runtime.worker_base import WorkerBase
 from parallax.platform.runtime.worker_result import WorkerResult
 
@@ -94,7 +95,7 @@ def test_market_tick_stream_worker_reads_ranked_targets_persists_current_and_pub
     assert db.session_names == ["market_tick_stream", "market_tick_stream"]
     assert repos.registry.calls == [
         {
-            "projection_version": "token-radar-v13-social-attention",
+            "projection_version": TOKEN_RADAR_PROJECTION_VERSION,
             "since_ms": 1_799_913_600_100,
             "target_types": ("chain_token",),
             "limit": 10,

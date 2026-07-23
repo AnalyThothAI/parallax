@@ -73,7 +73,6 @@ export function tokenRadarRowToTokenItem(
   ) as TokenFactorSnapshot["normalization"];
   const attentionFamily = requiredFamily(snapshot, "social_heat");
   const diffusionFamily = requiredFamily(snapshot, "social_propagation");
-  const semanticFamily = requiredFamily(snapshot, "semantic_catalyst");
   const timingFamily = requiredFamily(snapshot, "timing_risk");
   const attention = familyFacts(attentionFamily);
   const diffusionFacts = familyFacts(diffusionFamily);
@@ -179,8 +178,8 @@ export function tokenRadarRowToTokenItem(
   const marketObservationStatus = marketStatus;
   const marketHasUsableSnapshot = liveMarketHasPrice || readiness.anchor_status === "ready";
   const heat = scoreBlockFromFamily(attentionFamily, "social_heat", "social_heat");
-  const quality = scoreBlockFromFamily(semanticFamily, "semantic_catalyst", "discussion_quality");
   const propagation = scoreBlockFromFamily(diffusionFamily, "social_propagation", "propagation");
+  const quality = scoreBlockFromFamily(diffusionFamily, "social_propagation", "discussion_quality");
   const anchoredMarketCap = optionalNullableNumber(eventAnchor?.market_cap_usd);
   const anchoredLiquidity = optionalNullableNumber(eventAnchor?.liquidity_usd);
   const anchoredHolders = optionalNullableNumber(eventAnchor?.holders);
@@ -232,10 +231,9 @@ export function tokenRadarRowToTokenItem(
     decision_priority: decision === "driver" ? 3 : decision === "watch" ? 2 : 1,
     hard_risks: blockedReasons,
     components: {
-      heat: scoreFromFamilyScores(familyScores, "social_heat", heat.score),
-      quality: scoreFromFamilyScores(familyScores, "semantic_catalyst", quality.score),
-      propagation: scoreFromFamilyScores(familyScores, "social_propagation", propagation.score),
-      timing: scoreFromFamilyScores(familyScores, "timing_risk", timing.score),
+      heat: scoreFromFamilyScores(familyScores, "social_heat"),
+      propagation: scoreFromFamilyScores(familyScores, "social_propagation"),
+      timing: scoreFromFamilyScores(familyScores, "timing_risk"),
     },
     score: opportunityScore,
   };
@@ -399,7 +397,6 @@ export function tokenRadarRowToTokenItem(
       risks: watched ? [] : ["no_watched_confirmation"],
     },
     profile: row.profile ?? null,
-    narrative_admission: row.narrative_admission ?? null,
     factor_data_health: dataHealth,
     factor_gates: gates,
     factor_normalization: normalization,
@@ -528,9 +525,6 @@ function reasonsFromFamily(factorFamily: string, points: FactorPoint[], risks: s
   if (factorFamily === "timing_risk") {
     return risks.length ? risks : [];
   }
-  if (factorFamily === "semantic_catalyst") {
-    return ["semantic_catalyst_snapshot"];
-  }
   return uniqueStrings(points.map((point) => `${point.family}.${point.key}`));
 }
 
@@ -623,12 +617,8 @@ function contributionsFromFactors(
     : [{ feature: fallbackFeature, value: fallbackScore, reason: "factor_snapshot" }];
 }
 
-function scoreFromFamilyScores(
-  familyScores: Record<string, unknown>,
-  key: string,
-  fallback: number,
-): number {
-  return optionalNumber(familyScores[key]) ?? fallback;
+function scoreFromFamilyScores(familyScores: Record<string, unknown>, key: string): number {
+  return requiredNumber(familyScores[key], `factor_snapshot.composite.family_scores.${key}`);
 }
 
 function decisionFromRecommendation(value: string | null | undefined): Decision {

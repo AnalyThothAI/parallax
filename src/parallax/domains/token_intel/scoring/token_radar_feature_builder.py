@@ -209,12 +209,6 @@ def _quality_features(window: list[dict[str, Any]], *, diffusion: dict[str, Any]
     text_features = [_compact_or_text_features(row) for row in window]
     informative_count = sum(1 for item in text_features if item.get("informative"))
     market_context_count = sum(1 for item in text_features if item.get("has_market_context"))
-    llm_utility_values = [v for row in window if (v := _llm_utility(row)) is not None]
-    llm_confidence_values = [
-        float(row["llm_label_confidence"]) for row in window if row.get("llm_label_confidence") is not None
-    ]
-    llm_semantic_utility = sum(llm_utility_values) / len(llm_utility_values) if llm_utility_values else None
-    llm_label_confidence = sum(llm_confidence_values) / len(llm_confidence_values) if llm_confidence_values else None
     return {
         "mentions": mentions,
         "direct_mentions": mentions,
@@ -224,8 +218,6 @@ def _quality_features(window: list[dict[str, Any]], *, diffusion: dict[str, Any]
         "watched_source_count": sum(1 for row in window if row.get("is_watched")),
         "market_context_count": market_context_count,
         "avg_post_quality": round(sum(post_scores) / max(1, len(post_scores))),
-        "llm_semantic_utility": llm_semantic_utility,
-        "llm_label_confidence": llm_label_confidence,
         "diffusion_status": diffusion.get("status"),
         "diffusion_score": diffusion.get("score"),
         "diffusion_risks": diffusion.get("risks") or [],
@@ -350,16 +342,5 @@ def _int_or_none(value: Any) -> int | None:
         return None
     try:
         return int(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _llm_utility(row: dict[str, Any]) -> float | None:
-    novelty = row.get("llm_semantic_novelty_hint")
-    impact = row.get("llm_impact_hint")
-    if novelty is None or impact is None:
-        return None
-    try:
-        return max(0.0, min(1.0, 0.5 * float(novelty) + 0.5 * float(impact)))
     except (TypeError, ValueError):
         return None

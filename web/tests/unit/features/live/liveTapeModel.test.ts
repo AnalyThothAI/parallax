@@ -99,7 +99,7 @@ function tokenItem({
     },
     social_heat: {
       score: 68,
-      score_version: "token_factor_snapshot_v3_social_attention:social_heat",
+      score_version: "token_factor_snapshot_v4_transparent_factors:social_heat",
       reasons: [],
       risks: [],
       contributions: [],
@@ -119,7 +119,7 @@ function tokenItem({
     },
     propagation: {
       score: 61,
-      score_version: "token_factor_snapshot_v3_social_attention:propagation",
+      score_version: "token_factor_snapshot_v4_transparent_factors:propagation",
       reasons: [],
       risks: [],
       contributions: [],
@@ -135,7 +135,7 @@ function tokenItem({
     },
     timing: {
       score: 55,
-      score_version: "token_factor_snapshot_v3_social_attention:timing",
+      score_version: "token_factor_snapshot_v4_transparent_factors:timing",
       status: "neutral",
       chase_risk: false,
       reasons: [],
@@ -143,7 +143,7 @@ function tokenItem({
     },
     opportunity: {
       score: 72,
-      score_version: "token_factor_snapshot_v3_social_attention:composite",
+      score_version: "token_factor_snapshot_v4_transparent_factors:composite",
       decision: "watch",
       reasons,
       risks: [],
@@ -151,7 +151,6 @@ function tokenItem({
       risk_caps: [],
       components: {
         heat: 68,
-        quality: 50,
         propagation: 61,
         timing: 55,
       },

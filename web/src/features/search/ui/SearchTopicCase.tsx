@@ -4,7 +4,6 @@ import { useMemo } from "react";
 
 import { buildSearchCaseView } from "../model/searchCase";
 
-import { SearchAgentBrief } from "./SearchAgentBrief";
 import { SearchDossier } from "./SearchDossier";
 import { SearchMetricStrip } from "./SearchMetricStrip";
 import { SearchTopicTimeline } from "./SearchTopicTimeline";
@@ -38,8 +37,10 @@ export function SearchTopicCase({
           },
           {
             label: "resolver",
-            value: `${Math.round(data.resolver.confidence * 100)}%`,
-            detail: "topic confidence",
+            value: data.query.result_kind.replaceAll("_", " "),
+            detail:
+              data.resolver.reasons.map((reason) => reason.replaceAll("_", " ")).join(" · ") ||
+              "no resolver reasons",
           },
         ]}
       />
@@ -48,9 +49,6 @@ export function SearchTopicCase({
         <div className="search-result-primary">
           <SearchTopicTimeline items={result.items} />
           <SearchTwitterResults title="Topic Evidence" items={result.items} />
-        </div>
-        <div className="search-result-insights">
-          <SearchAgentBrief brief={result.agent_brief} />
         </div>
       </div>
     </div>

@@ -26,7 +26,6 @@ from parallax.domains.token_intel.read_models.token_target_posts_service import 
     TokenTargetPostsCursorError,
     TokenTargetPostsRangeError,
     TokenTargetPostsService,
-    TokenTargetPostsSortError,
 )
 from parallax.domains.token_intel.read_models.token_target_social_timeline_service import (
     TokenTargetSocialTimelineService,
@@ -98,9 +97,9 @@ def search_inspect(
         profiles = TokenProfileReadModel(token_profiles=repos.token_profiles)
         data = SearchInspectService(
             search_query=SearchEventsQuery(repos.conn),
-            token_radar=repos.token_radar,
             targets=repos.token_targets,
             profiles=profiles,
+            token_radar=repos.token_radar,
             market_candles=_market_candles_service(),
         ).inspect(
             q,
@@ -109,8 +108,6 @@ def search_inspect(
             limit=_limit(limit, maximum=200),
             now_ms=_now_ms(),
         )
-        if isinstance(data.get("token_result"), dict):
-            data["token_result"].pop("agent_brief", None)
     return _validated_json(
         api_schemas.ApiEnvelope[api_schemas.SearchInspectData],
         {"ok": True, "data": data},
@@ -140,9 +137,9 @@ def token_case(
     try:
         with runtime.repositories() as repos:
             data = TokenCaseService(
-                token_radar=repos.token_radar,
                 targets=repos.token_targets,
                 profiles=TokenProfileReadModel(token_profiles=repos.token_profiles),
+                token_radar=repos.token_radar,
                 market_candles=_market_candles_service(),
             ).dossier(
                 target_type=parsed_target_type,
@@ -152,7 +149,6 @@ def token_case(
                 posts_limit=_positive_limit(posts_limit, maximum=50, field="posts_limit"),
                 now_ms=_now_ms(),
             )
-            data.pop("agent_brief", None)
     except TokenCaseTargetNotFound:
         return _validated_json(
             api_schemas.ApiEnvelope[api_schemas.TokenCaseData],
@@ -172,12 +168,13 @@ def target_posts(
     target_id: Annotated[str, Query()] = "",
     window: Annotated[str, Query()] = "5m",
     post_range: Annotated[str, Query(alias="range")] = "current_window",
-    sort: Annotated[str, Query()] = "recent",
     limit: Annotated[int, Query()] = 50,
     scope: Annotated[str, Query()] = "all",
     cursor: Annotated[str, Query()] = "",
 ) -> JSONResponse:
     runtime = _authenticated_runtime(request)
+    if "sort" in request.query_params:
+        raise ApiBadRequest("unsupported_query_param", field="sort")
     parsed_target_type = _target_type(target_type)
     if not parsed_target_type or not target_id:
         raise ApiBadRequest("target_required", field="target_id")
@@ -191,7 +188,6 @@ def target_posts(
                 window=parsed_window,
                 scope=parsed_scope,
                 post_range=_post_range(post_range),
-                sort=sort,
                 limit=_limit(limit, maximum=200),
                 cursor=cursor or None,
             )
@@ -199,12 +195,6 @@ def target_posts(
         return _validated_json(
             api_schemas.ApiEnvelope[api_schemas.TargetPostsData],
             {"ok": False, "error": "invalid_range", "field": "range"},
-            status_code=400,
-        )
-    except TokenTargetPostsSortError:
-        return _validated_json(
-            api_schemas.ApiEnvelope[api_schemas.TargetPostsData],
-            {"ok": False, "error": "invalid_sort", "field": "sort"},
             status_code=400,
         )
     except TokenTargetPostsCursorError:

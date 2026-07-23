@@ -5,7 +5,7 @@ import { describe, expect, it } from "vitest";
 const HANSA_TOKEN_IMAGE_URL = "/api/token-images/hansa-local";
 
 describe("buildTokenCaseViewModel", () => {
-  it("maps a token-case dossier without synthesizing narrative output", () => {
+  it("maps a token-case dossier from source, social, and market facts", () => {
     const dossier = tokenCaseFixture();
 
     const vm = buildTokenCaseViewModel({
@@ -20,14 +20,24 @@ describe("buildTokenCaseViewModel", () => {
     expect(vm.hero.subtitle).toContain("solana");
     expect(vm.metrics.map((metric) => metric.key)).toEqual([
       "mentions",
-      "admission",
-      "watched",
-      "readiness",
+      "radar-rank",
+      "radar-lane",
+      "radar-decision",
     ]);
-    expect(vm.metrics.find((metric) => metric.key === "admission")).toMatchObject({
-      value: "admitted",
-      detail: "18 posts · 7 authors",
-      tone: "health",
+    expect(vm.metrics.find((metric) => metric.key === "radar-rank")).toMatchObject({
+      value: "#3",
+      detail: "current 1h / all row",
+      tone: "info",
+    });
+    expect(vm.metrics.find((metric) => metric.key === "radar-lane")?.value).toBe("resolved");
+    expect(vm.metrics.find((metric) => metric.key === "radar-decision")?.value).toBe("watch");
+    expect(vm.metrics.find((metric) => metric.key === "confidence")).toBeUndefined();
+    expect(vm.metrics.find((metric) => metric.key === "readiness")).toBeUndefined();
+    expect(vm.metrics.find((metric) => metric.key === "authors")).toBeUndefined();
+    expect(vm.metrics.find((metric) => metric.key === "watched")).toBeUndefined();
+    expect(vm.metrics.find((metric) => metric.key === "radar-decision")).toMatchObject({
+      detail: "rank score 70",
+      tone: "info",
     });
     expect(vm.hero.logoUrl).toBe(HANSA_TOKEN_IMAGE_URL);
     expect(vm.timeline.items[0]).toMatchObject({ phase: "expansion", role: "watched" });
@@ -37,34 +47,21 @@ describe("buildTokenCaseViewModel", () => {
     expect(vm.dataGaps).toEqual([]);
   });
 
-  it("normalizes structured admission data gaps for the details rail", () => {
+  it("shows explicit not listed facts when no current Radar row exists", () => {
     const dossier = tokenCaseFixture();
+    dossier.current_radar = null;
 
     const vm = buildTokenCaseViewModel({
-      dossier: {
-        ...dossier,
-        narrative_admission: {
-          ...dossier.narrative_admission,
-          status: "missing",
-          reason: "no_current_admission",
-          is_current: false,
-          currentness: {
-            display_status: "not_ready",
-            reason: "no_current_admission",
-          },
-          coverage: { source_mentions: 0, independent_authors: 0 },
-          data_gaps: [{ reason: "no_current_admission" }],
-        },
-      },
-      route: { window: "1h", scope: "all", postSort: "recent" },
-      posts: dossier.posts,
+      dossier,
+      route: { window: "4h", scope: "watched", postSort: "recent" },
     });
 
-    expect(vm.dataGaps).toEqual(["not admitted"]);
-    expect(vm.metrics.find((metric) => metric.key === "admission")).toMatchObject({
-      value: "not admitted",
-      detail: "0 posts · 0 authors",
-    });
+    expect(vm.metrics.map((metric) => [metric.key, metric.value])).toEqual([
+      ["mentions", "18"],
+      ["radar-rank", "not listed"],
+      ["radar-lane", "not listed"],
+      ["radar-decision", "not listed"],
+    ]);
   });
 
   it("surfaces event-level token prices in timeline pills", () => {

@@ -19,7 +19,6 @@ import {
   requireOpsQueueData,
   statusRank,
   statusTone,
-  type OpsAgentExecution,
   type OpsDiagnostics,
   type OpsJson,
   type OpsProvider,
@@ -439,7 +438,6 @@ function ConfigGrid({ config }: { config: Record<string, unknown> }) {
     "handles_count",
     "gmgn_configured",
     "okx_dex_configured",
-    "llm_configured",
     "news_enabled",
     "notifications_enabled",
   ];
@@ -483,7 +481,6 @@ function chainIcon(icon: ChainLane["icon"]) {
 
 function runtimeChain(diagnostics: OpsDiagnostics): ChainLane[] {
   const collectorDetails = objectValue(diagnostics.collector.details);
-  const agentExecutionStatus = diagnostics.agent_execution.status;
   const providerState = worstStatus(diagnostics.providers);
   const workerState = worstStatus(diagnostics.workers);
 
@@ -505,11 +502,11 @@ function runtimeChain(diagnostics: OpsDiagnostics): ChainLane[] {
       icon: "database",
     },
     {
-      title: "News & Agent",
-      status: worstStatus([diagnostics.domains.news, { status: agentExecutionStatus }]),
-      intent: "News read models 与 Agent 执行状态保持各自可审计。",
+      title: "News projection",
+      status: statusTone(diagnostics.domains.news.status),
+      intent: "News material facts 投影为可重建的当前读模型。",
       primary: `${numberString(diagnostics.domains.news.source_count)} 个新闻来源`,
-      secondary: `新闻${statusLabel(statusTone(diagnostics.domains.news.status))} / Agent ${statusLabel(agentExecutionStatus)}`,
+      secondary: `新闻${statusLabel(statusTone(diagnostics.domains.news.status))}`,
       icon: "workflow",
     },
     {
@@ -567,16 +564,6 @@ function incidentRows(diagnostics: OpsDiagnostics): Array<{
     }
   }
 
-  const agentStatus = statusTone(diagnostics.agent_execution.status);
-  if (agentStatus === "blocked" || agentStatus === "degraded" || agentStatus === "unknown") {
-    incidents.push({
-      id: "agent_execution",
-      title: `Agent 执行${statusLabel(agentStatus)}`,
-      detail: agentIncidentDetail(diagnostics.agent_execution),
-      status: agentStatus,
-    });
-  }
-
   return incidents
     .sort((left, right) => statusRank(right.status) - statusRank(left.status))
     .slice(0, 8);
@@ -598,16 +585,6 @@ function domainIncidentDetail(name: string, payload: OpsJson): string {
     return `${numberString(payload.source_count)} 个来源，检查失败来源状态。`;
   }
   return stringValue(payload.reason ?? payload.error_type ?? payload.status, "需要检查");
-}
-
-function agentIncidentDetail(agentExecution: OpsAgentExecution): string {
-  const policy = objectValue(agentExecution.policy);
-  const lane = typeof policy.lane === "string" ? policy.lane : null;
-  const detail = stringValue(
-    agentExecution.error ?? agentExecution.status_reason,
-    `Agent 执行${statusLabel(statusTone(agentExecution.status))}`,
-  );
-  return lane ? `${lane}: ${detail}` : detail;
 }
 
 function worstStatus(items: Array<{ status?: string | null } | undefined>): OpsSectionStatus {
@@ -686,8 +663,6 @@ function domainLabel(value: string): string {
   switch (value) {
     case "asset_market":
       return "Asset Market";
-    case "narrative":
-      return "Narrative";
     case "news":
       return "News";
     case "notifications":

@@ -35,7 +35,6 @@ export function TokenCaseRoute({ token: tokenProp }: { token?: string } = {}) {
     window: routeState.window,
     scope: routeState.scope,
     postsLimit: 24,
-    postSort: routeState.postSort,
     initialPosts,
   });
   const mergedPosts = mergeTokenCasePostPages(postsQuery.data?.pages);

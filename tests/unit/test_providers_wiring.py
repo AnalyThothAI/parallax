@@ -10,7 +10,6 @@ from parallax.app.runtime import provider_wiring as providers_wiring
 from parallax.app.runtime.provider_wiring import asset_market as asset_market_wiring
 from parallax.app.runtime.provider_wiring import binance as binance_wiring
 from parallax.app.runtime.provider_wiring import gmgn as gmgn_wiring
-from parallax.app.runtime.provider_wiring import model_execution as model_execution_wiring
 from parallax.app.runtime.provider_wiring import news as news_wiring
 from parallax.app.runtime.provider_wiring import okx as okx_wiring
 from parallax.app.runtime.provider_wiring.gmgn import GmgnDexMarketProvider
@@ -418,53 +417,6 @@ def test_okx_bundle_wiring_preserves_original_error_when_partial_cleanup_fails(m
     assert "quote close failed" in notes
 
 
-def test_litellm_news_provider_receives_agent_execution_gateway(monkeypatch) -> None:
-    gateway = object()
-
-    def fake_news_story_brief_client(**kwargs):
-        return SimpleNamespace(provider="litellm", _agent_gateway=kwargs["agent_gateway"])
-
-    monkeypatch.setattr(model_execution_wiring, "LiteLLMNewsStoryBriefClient", fake_news_story_brief_client)
-
-    providers = providers_wiring.wire_providers(
-        _settings_with_news_llm_models(),
-        start_collector=True,
-        agent_execution_gateway=gateway,
-    )
-
-    assert providers.news_intel.story_brief_provider is not None
-    assert providers.news_intel.story_brief_provider._agent_gateway is gateway
-
-
-def test_litellm_provider_wiring_requires_agent_execution_gateway() -> None:
-    with pytest.raises(RuntimeError, match="AgentExecutionGateway is required"):
-        providers_wiring.wire_providers(
-            _settings_with_news_llm_models(),
-            start_collector=True,
-            agent_execution_gateway=None,
-        )
-
-
-def test_news_story_brief_provider_wiring_requires_agent_execution_gateway_for_news_only_config() -> None:
-    settings = Settings(
-        ws_token="secret",
-        llm={
-            "api_key": "sk-test",
-        },
-        workers={
-            "agent_runtime": {"model": "gpt-news"},
-            "news_story_brief": {"enabled": True},
-        },
-    )
-
-    with pytest.raises(RuntimeError, match="AgentExecutionGateway is required"):
-        providers_wiring.wire_providers(
-            settings,
-            start_collector=False,
-            agent_execution_gateway=None,
-        )
-
-
 def test_news_feed_client_returns_registry_backed_provider_and_closes_underlying_clients(monkeypatch) -> None:
     rss_client = CloseCountingFeedClient()
     cryptopanic_client = CloseCountingFeedClient()
@@ -852,19 +804,6 @@ def _settings_with_okx_dex_credentials() -> Settings:
                 "dex_secret_key": "okx-secret",
                 "dex_passphrase": "okx-passphrase",
             }
-        },
-    )
-
-
-def _settings_with_news_llm_models() -> Settings:
-    return Settings(
-        ws_token="secret",
-        llm={
-            "api_key": "sk-test",
-        },
-        workers={
-            "agent_runtime": {"model": "gpt-story"},
-            "news_story_brief": {"enabled": True},
         },
     )
 

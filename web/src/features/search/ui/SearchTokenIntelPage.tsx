@@ -1,5 +1,5 @@
 import { buildTokenCaseViewModel } from "@features/token-case";
-import type { ScopeKey, SearchInspectData, SearchTokenResult } from "@lib/types";
+import type { ScopeKey, TokenCaseDossier } from "@lib/types";
 import type { TokenCaseScope, TokenCaseSort } from "@shared/model/tokenCaseViewModel";
 import { TokenCasePanel } from "@shared/ui/case-file";
 import { useMemo, useState } from "react";
@@ -7,14 +7,12 @@ import { useMemo, useState } from "react";
 import type { SearchRouteState } from "../state/searchRouteState";
 
 type SearchTokenIntelPageProps = {
-  data: SearchInspectData;
-  result: SearchTokenResult;
+  result: TokenCaseDossier;
   routeState: SearchRouteState;
   onRouteChange: (patch: Partial<SearchRouteState>) => void;
 };
 
 export function SearchTokenIntelPage({
-  data: _data,
   result,
   routeState,
   onRouteChange,

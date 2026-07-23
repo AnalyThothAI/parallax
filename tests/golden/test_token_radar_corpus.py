@@ -134,12 +134,13 @@ def test_gmgn_payload_identity_does_not_project_market_snapshot_into_radar(tmp_p
 
 
 def _rebuild_resolved_current_rows(repos, *, now_ms: int) -> None:
-    repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
-        since_ms=now_ms - 5 * 60 * 1000,
-        now_ms=now_ms,
-        limit=20,
-        reason="golden_corpus_projection",
-    )
+    with repos.transaction():
+        repos.token_radar_dirty_targets.enqueue_recent_resolved_targets(
+            since_ms=now_ms - 5 * 60 * 1000,
+            now_ms=now_ms,
+            limit=20,
+            reason="golden_corpus_projection",
+        )
     _publisher(repos).rebuild_dirty_targets(
         lease_ms=120_000,
         retry_ms=30_000,

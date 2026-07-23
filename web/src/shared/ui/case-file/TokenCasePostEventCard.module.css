@@ -146,8 +146,7 @@
   color: var(--health);
 }
 
-.pills span[data-tone="info"],
-.pills span[data-tone="agent"] {
+.pills span[data-tone="info"] {
   border-color: var(--info-line);
   background: var(--info-soft);
   color: var(--info);

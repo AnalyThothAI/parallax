@@ -9,13 +9,19 @@ There are no compatibility aliases for retired products, tables, worker names, r
 The active operator-owned files are:
 
 - `~/.parallax/config.yaml` for application, PostgreSQL, providers, credentials, notifications, API, and public WebSocket settings.
-- `~/.parallax/workers.yaml` for worker enablement, cadence, batch/lease/timeout settings, and agent-runtime policy.
+- `~/.parallax/workers.yaml` for worker enablement, cadence, and batch/lease/timeout settings.
 
 Repository examples, fixtures, `.env` files, and generated docs are not runtime configuration. `uv run parallax config` reports the effective paths and redacted settings. Unknown settings or worker keys fail validation.
 
-Runtime consumers use the typed nested models directly (`storage.postgres`, `api`, `llm`, `gmgn`, `providers.*`, and `upstream`). Root-level `postgres_*`, `api_*`, provider, LLM, and upstream forwarding aliases are not part of the configuration contract.
+The configuration schema uses typed nested models directly
+(`storage.postgres`, `api`, `llm`, `gmgn`, `providers.*`, and `upstream`).
+Root-level `postgres_*`, `api_*`, provider, LLM, and upstream forwarding
+aliases are not part of the configuration contract.
 
-`llm` contains only `api_key` and `base_url`. The fixed LiteLLM backend and every model/capacity/timeout/circuit option belong to the single flat `workers.agent_runtime` policy; trace toggles, provider selectors, and duplicated LLM timeouts are not configuration surfaces.
+`llm` contains only dormant provider credentials (`api_key` and `base_url`).
+The production service has no model policy, model worker, model lane selector,
+prompt setting, or model status surface. Those two values are retained only for
+the provider-neutral library and are not consumed by bootstrap.
 
 `app/runtime/worker_manifest.py` owns the worker inventory and writer/queue declarations. The current keys are:
 
@@ -32,14 +38,15 @@ token_image_mirror
 token_profile_current
 news_fetch
 news_item_process
-news_story_brief
 news_page_projection
 macro_view_projection
 notification_rule
 notification_delivery
 ```
 
-`workers.yaml`, `WorkersSettings`, factories, status output, and this manifest must use these exact names. Item-level News brief, News source-quality projection, CEX OI board, Macro daily brief, Narrative, Account Quality, and generic projection-ledger workers are retired.
+`workers.yaml`, `WorkersSettings`, factories, status output, and this manifest
+must use these exact names. Configuration cannot add another worker or derived
+product lane.
 
 ## HTTP
 
@@ -47,16 +54,14 @@ The service exposes `/healthz`, `/readyz`, `/metrics`, `/ws`, static frontend as
 
 - `/healthz` is process liveness.
 - `/readyz` combines a lightweight PostgreSQL liveness check with the cached startup schema/composition result. It does not inspect providers, queues, or business freshness.
-- `/api/status` captures one typed in-memory runtime snapshot for worker status, collector details, provider connections, startup/schema state, the News provider contract, and agent execution. It performs no SQL.
+- `/api/status` captures one typed in-memory runtime snapshot for worker status,
+  collector details, provider connections, startup/schema state, and the News
+  provider contract. It performs no SQL.
 - `/api/ops/diagnostics` consumes that same snapshot contract and adds authenticated, on-demand database/domain/queue reads; `/api/ops/queues/{queue_name}` is the bounded queue-detail surface.
 - Read endpoints do not call providers, execute models, mutate facts, or rebuild projections.
 
-Agent execution has no open-ended status bucket. `/api/status` returns either
-the exact flat `news.story_brief` runtime snapshot, the exact
-`{status: "unavailable", error}` object, or `null` when disabled. Ops diagnostics
-split an active snapshot into exact `policy` and `counters` objects; disabled,
-unavailable, and invalid-contract states use `null` for both. Empty-object
-sentinels, lane maps, and unknown policy/counter fields are rejected.
+Status and Ops diagnostics contain no model configuration, model policy,
+capacity counters, prompt state, or model-derived business status.
 
 API responses use a typed envelope:
 
@@ -75,8 +80,8 @@ Errors use `ok: false` with a stable error code. Pydantic response models genera
 | Watchlist | `/api/watchlist/handles/overview`, `/api/watchlist/handle/{handle}/overview`, `/api/watchlist/handle/{handle}/timeline` | Evidence queries; no separate Watchlist domain |
 | Search/case | `/api/search`, `/api/search/inspect`, `/api/token-case`, `/api/target-posts`, `/api/target-social-timeline` | Evidence, identity facts, and current Token Radar rows |
 | Radar/market | `/api/token-radar`, `/api/stocks-radar`, `/api/live-market` | stable PostgreSQL current read models |
-| Macro | `/api/macro`, `/api/macro/assets/correlation`, `/api/macro/series`, `/api/macro/modules/{module_id}` | current Macro snapshots and compact series |
-| News | `/api/news`, `/api/news/items/{id}`, `/api/news/facts/{id}`, `/api/news/sources/status` | current News page/story projections and fetch-source state |
+| Macro | `/api/macro/overview`, `/api/macro/cross-asset`, `/api/macro/rates-inflation`, `/api/macro/growth-labor`, `/api/macro/liquidity-funding`, `/api/macro/credit`, `/api/macro/series` | one current six-document Macro snapshot and compact series |
+| News | `/api/news`, `/api/news/items/{id}`, `/api/news/facts/{id}`, `/api/news/sources/status` | current fact-only News page projection, persisted News evidence, and fetch-source state |
 | Notifications | account alerts, notification list with embedded summary, delivery audit, and read commands under `/api` | notification facts and external-delivery ledger |
 | Operations | `/api/ops/diagnostics`, `/api/ops/queues/{queue_name}` | bounded on-demand operational queries |
 | Images | `/api/token-images/{image_id}` | ready mirrored assets under the operator cache root |
@@ -85,21 +90,101 @@ There is no CEX OI/detail product API. Generic exchange facts and provider adapt
 
 ### Token Radar
 
-`/api/token-radar` serves `token_radar_current_rows` selected by stable product/window keys. Each public row exposes `factor_snapshot` as the sole target, market, attention, score, decision, and source-event payload; it does not duplicate those sections at row level. Factor subjects use exactly `target_type`, `target_id`, `symbol`, `target_market_type`, `chain`, `address`, and `pricefeed_id`. `gates`, `normalization`, and `composite` likewise use their producer-defined fixed fields, and decisions are exactly `discard`, `watch`, or `high_alert`. It never falls back to historical runs, source-event dirty rows, provider calls, identity aliases, or alternate decision labels. `narrative_admission` is a deterministic property derived from the selected current row; it is not backed by a Narrative table, worker, or fallback.
+`/api/token-radar` serves `token_radar_current_rows` selected by stable
+product/window keys. Each public row exposes `factor_snapshot` as the sole
+target, market, attention, score, decision, and source-event payload; it does
+not duplicate those sections at row level. Factor subjects use exactly
+`target_type`, `target_id`, `symbol`, `target_market_type`, `chain`, `address`,
+and `pricefeed_id`. The transparent factor families are `social_heat`,
+`social_propagation`, and `timing_risk`. `gates`, `normalization`, and
+`composite` use their producer-defined fixed fields, and decisions are exactly
+`discard`, `watch`, or `high_alert`. The endpoint never falls back to
+historical runs, source-event dirty rows, provider calls, identity aliases, or
+alternate decision labels.
 
 ### News
 
-`/api/news` serves `news_page_rows`; item and fact detail routes require a current projected object. Raw provider items do not synthesize a missing public row.
+`/api/news` serves `news_page_rows`; item and fact detail routes require a
+current projected object. Raw provider items do not synthesize a missing public
+row.
 
-The only model-generated current product object is the story brief. Its stable identity is `story_brief_key`; run rows remain audit evidence. Public status comes from `agent_brief.status` and the projected `agent_status`; there is no `agent_brief_status` compatibility alias. The current row has one market-scope location, `signal.alert_eligibility.market_scope`; there is no top-level `market_scope`. Agent admission status and reason remain top-level row fields and are not duplicated under alert eligibility. `signal`, token/fact lane arrays with explicit lane/status values, and `agent_brief.status` are required current sections; malformed or missing sections fail the public boundary instead of being repaired as `partial`, `resolved`, `attention`, or `pending`. Item briefs and source-quality projections are not fallback paths. Source health is derived from `news_sources` plus fetch history. A deterministic terminal fetch failure is scoped to `config_payload_hash` and becomes eligible again only when that configuration identity changes.
+The projected row contains source-backed headline/summary/time/URL, deterministic
+story membership, token-resolution lanes, fact-candidate lanes, provider
+rating, content classification, source metadata, market scope, dedupe counts,
+and projection metadata. It contains no generated thesis, direction,
+eligibility, or prose layer. Item detail hydrates persisted source observations,
+entities, token mentions, and fact candidates. Source health is derived from
+`news_sources` plus fetch history. A deterministic terminal fetch failure is
+scoped to `config_payload_hash` and becomes eligible again only when that
+configuration identity changes.
+
+Search inspection and Token Case likewise return resolver, identity, current
+Radar, market, timeline, and source-post facts only. Removed derived prose and
+admission fields are absent, not nullable.
 
 ### Macro
 
-Macro routes serve a current snapshot plus bounded compact series. `macro_observations` are the source facts. The snapshot owns one `module_views_json` object for every catalog module; the assets daily brief exists only at `module_views_json.assets.daily_brief`. `/api/macro/modules/{module_id}` returns that projected object directly; it performs no observation query, module build, provider call, or News join. There is no separate daily-brief projection. Series rows expose concept/date/value/source/unit/frequency/data-quality and whitelisted event metadata only. Missing data is represented explicitly rather than filled from a compatibility payload.
+Macro exposes exactly six typed page reads and one typed series read:
+
+```text
+/api/macro/overview
+/api/macro/cross-asset
+/api/macro/rates-inflation
+/api/macro/growth-labor
+/api/macro/liquidity-funding
+/api/macro/credit
+/api/macro/series
+```
+
+No other `/api/macro` path is mounted; unmatched paths return the ordinary
+application `404` response.
+
+The six page reads select six JSON documents from the same
+`snapshot_key = 'current'` row. They therefore carry identical
+`projection_version`, `fact_watermark`, `market_cutoff`, and `computed_at_ms`.
+The market cutoff is the latest completed US regular session; the product is a
+completed snapshot, not an intraday feed.
+
+Every page includes one strict conclusion, 1–4 week horizon, drivers,
+confirmations, contradictions, upgrade/invalidation conditions, evidence
+references, freshness, evidence rows, and named unavailable capabilities. Each
+evidence row carries value/unit/change/window/observation/frequency/source/series,
+freshness, sample range/count, criticality, claim effect, and derivation
+metadata when applicable. Critical gaps produce
+`conclusion.status = "insufficient_evidence"`; optional gaps produce explicit
+degradation. Unsupported capabilities are `not_assessed` and have no numeric
+value.
+
+Overview reports a dominant-shock candidate from
+`growth`, `inflation`, `policy_real_rates`, `term_premium_supply`,
+`liquidity_funding`, or `credit`, with status `confirmed`, `provisional`,
+`divergent`, or `insufficient_evidence`. Cross-asset uses cutoff-aligned returns
+and actual common samples for 20/60-session correlations. Rates & Inflation
+separates nominal tenors, curve slopes, real yields, breakevens, term premium,
+funding corridor, releases, and curve shape. Growth & Labor keeps leading and
+lagging layers separate. Liquidity & Funding keeps balance-sheet, Treasury
+cash, reverse-repo, reserves, accounting proxy, and secured/unsecured funding
+separate. Credit exposes aggregate spreads, rating tail, effective yields,
+credit supply, realized damage, financial conditions/liquidity, the
+Treasury-yield × spread quadrant, and separate stage/direction state.
+
+Official catalysts are limited to the next seven days and include event date,
+official time, timezone, source, URL, and `today`/`upcoming` status. No
+consensus, forecast, surprise, or event score is inferred. The series route
+reads compact persisted rows and accepts explicit concepts plus one supported
+window; it returns exact points, sources, quality, event metadata, and gaps.
+Macro reads do not call providers, run projection code, or join another domain.
 
 ### Notifications
 
-Notifications are durable facts. `GET /api/notifications` is the sole list/read-summary query and returns both `items` and `summary`. Read commands update persisted read state. The unique `dedup_key` is the only semantic dedup authority; external-push cooldown remains a distinct side-effect policy. External delivery uses `notification_deliveries` as an auditable side-effect ledger with compare-and-set state transitions; API responses never infer successful delivery from a provider call alone.
+Notifications are durable facts. `GET /api/notifications` is the sole
+list/read-summary query and returns both `items` and `summary`. Read commands
+update persisted read state. Only watched-account activity and watched-account
+token-alert rules produce candidates. The unique `dedup_key` is the sole dedup
+authority; its rule-defined occurrence bucket enforces cooldown. External
+delivery uses `notification_deliveries` as an auditable side-effect ledger with
+compare-and-set state transitions; API responses never infer successful
+delivery from a provider call alone.
 
 ### Token images
 

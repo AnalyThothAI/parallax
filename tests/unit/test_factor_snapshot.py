@@ -14,11 +14,10 @@ from parallax.domains.token_intel.scoring.factor_snapshot_contract import requir
 def test_scoring_package_exports_factor_snapshot_contract() -> None:
     from parallax.domains.token_intel import scoring
 
-    assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v3_social_attention"
+    assert TOKEN_FACTOR_SNAPSHOT_VERSION == "token_factor_snapshot_v4_transparent_factors"
     assert FACTOR_FAMILIES == (
         "social_heat",
         "social_propagation",
-        "semantic_catalyst",
         "timing_risk",
     )
     assert scoring.TOKEN_FACTOR_SNAPSHOT_VERSION == TOKEN_FACTOR_SNAPSHOT_VERSION
@@ -27,7 +26,7 @@ def test_scoring_package_exports_factor_snapshot_contract() -> None:
     assert scoring.build_token_factor_snapshot is build_token_factor_snapshot
 
 
-def test_factor_snapshot_outputs_v3_social_attention_shape() -> None:
+def test_factor_snapshot_outputs_v4_transparent_factor_shape() -> None:
     snapshot = _strong_dex_snapshot(attention={"latest_seen_ms": 1_778_000_012_345})
 
     assert set(snapshot) == {
@@ -42,7 +41,7 @@ def test_factor_snapshot_outputs_v3_social_attention_shape() -> None:
         "provenance",
     }
     assert "hard_gates" not in snapshot
-    assert snapshot["schema_version"] == "token_factor_snapshot_v3_social_attention"
+    assert snapshot["schema_version"] == "token_factor_snapshot_v4_transparent_factors"
     assert snapshot["subject"] == {
         "target_type": "Asset",
         "target_id": "asset:solana:token:STRONG",
@@ -55,13 +54,11 @@ def test_factor_snapshot_outputs_v3_social_attention_shape() -> None:
     assert set(snapshot["families"]) == {
         "social_heat",
         "social_propagation",
-        "semantic_catalyst",
         "timing_risk",
     }
     assert not {
         "attention_heat",
         "diffusion_quality",
-        "semantic_quality",
         "timing_response",
     } & set(snapshot["families"])
     assert snapshot["families"]["social_heat"]["facts"]["latest_seen_ms"] == 1_778_000_012_345
@@ -158,7 +155,6 @@ def test_identity_market_and_social_start_presence_do_not_score_as_alpha() -> No
         },
         attention={},
         social_quality={},
-        social_semantics={},
         market=_dex_market({"pricefeed_id": "pf-quiet"}),
         timing={"social_signal_start_ms": 1_778_000_001_000},
         source_event_ids=["event-1"],
@@ -279,26 +275,6 @@ def test_social_propagation_formula_constants_and_speed_match_spec() -> None:
     )
     assert missing_second["families"]["social_propagation"]["factors"]["propagation_speed"]["raw_value"] is None
     assert missing_second["families"]["social_propagation"]["factors"]["propagation_speed"]["score"] == 0
-
-
-def test_semantic_catalyst_weights_impact_and_novelty_by_confidence_and_coverage() -> None:
-    snapshot = _strong_dex_snapshot(
-        social_quality={"mentions": 10},
-        social_semantics={
-            "impact_mean": 0.8,
-            "novelty_mean": 0.6,
-            "confidence_mean": 0.5,
-            "llm_covered_mentions": 5,
-            "mentions": 10,
-        },
-    )
-
-    factors = snapshot["families"]["semantic_catalyst"]["factors"]
-    assert factors["semantic_impact"]["score"] == pytest.approx(20.0)
-    assert factors["semantic_impact"]["confidence"] == pytest.approx(0.25)
-    assert factors["semantic_novelty"]["score"] == pytest.approx(15.0)
-    assert factors["semantic_novelty"]["confidence"] == pytest.approx(0.25)
-    assert factors["semantic_coverage"]["score"] == pytest.approx(50.0)
 
 
 def test_dex_market_floors_gate_high_alert_without_market_alpha_family() -> None:
@@ -513,7 +489,7 @@ def test_eligible_raw_alpha_35_recommends_watch() -> None:
             "mentions_24h": 0,
             "weighted_mentions": None,
             "unique_authors": 3,
-            "watched_mentions": 1,
+            "watched_mentions": 0,
             "attention_acceleration": None,
             "new_burst_score": None,
             "robust_z": None,
@@ -528,14 +504,6 @@ def test_eligible_raw_alpha_35_recommends_watch() -> None:
             "time_to_third_author_ms": None,
             "public_followup_author_count": 0,
             "author_entropy": None,
-        },
-        social_semantics={
-            "direction_counts": {},
-            "impact_mean": None,
-            "novelty_mean": None,
-            "confidence_mean": None,
-            "llm_covered_mentions": None,
-            "mentions": 0,
         },
         timing={
             "price_change_before_social_pct": None,
@@ -560,7 +528,6 @@ def test_empty_attention_and_social_quality_are_missing_not_ready() -> None:
         },
         attention={},
         social_quality={},
-        social_semantics={},
         market=_dex_market(),
         timing={},
         source_event_ids=["event-empty"],
@@ -599,12 +566,10 @@ def test_non_finite_numeric_inputs_are_treated_as_missing_or_zero() -> None:
             "top_author_share": float("inf"),
             "effective_authors": float("nan"),
         },
-        social_semantics={"direction_counts": {"bullish": float("inf")}},
         timing={"social_signal_start_ms": float("inf")},
     )
 
     assert snapshot["families"]["social_heat"]["facts"]["mentions_1h"] == 0
-    assert snapshot["families"]["semantic_catalyst"]["facts"]["direction_counts"]["bullish"] == 0
     assert snapshot["families"]["social_propagation"]["factors"]["duplicate_text_share_penalty"]["raw_value"] is None
     concentration_penalty = snapshot["families"]["social_propagation"]["factors"]["top_author_concentration_penalty"]
     assert concentration_penalty["raw_value"] is None
@@ -788,7 +753,6 @@ def _strong_dex_snapshot(
     attention: dict[str, object] | None = None,
     market: dict[str, object] | None = None,
     social_quality: dict[str, object] | None = None,
-    social_semantics: dict[str, object] | None = None,
     timing: dict[str, object] | None = None,
     computed_at_ms: object = 1_778_000_000_000,
 ) -> dict[str, object]:
@@ -832,16 +796,6 @@ def _strong_dex_snapshot(
     }
     if social_quality is not None:
         base_social_quality.update(social_quality)
-    base_social_semantics: dict[str, object] = {
-        "direction_counts": {"bullish": 5, "neutral": 2},
-        "impact_mean": 0.7,
-        "novelty_mean": 0.5,
-        "confidence_mean": 0.9,
-        "llm_covered_mentions": 7,
-        "mentions": 12,
-    }
-    if social_semantics is not None:
-        base_social_semantics.update(social_semantics)
     base_timing: dict[str, object] = {
         "price_change_before_social_pct": 0.01,
         "price_change_since_social_pct": 0.03,
@@ -852,7 +806,6 @@ def _strong_dex_snapshot(
         target=base_target,
         attention=base_attention,
         social_quality=base_social_quality,
-        social_semantics=base_social_semantics,
         market=base_market,
         timing=base_timing,
         source_event_ids=["event-strong-1", "event-strong-2", "event-strong-1"],
@@ -899,14 +852,6 @@ def _strong_cex_snapshot(
             "time_to_third_author_ms": 90_000,
             "public_followup_author_count": 4,
             "author_entropy": 1.2,
-        },
-        social_semantics={
-            "direction_counts": {"bullish": 3, "neutral": 2},
-            "impact_mean": 0.5,
-            "novelty_mean": 0.3,
-            "confidence_mean": 0.8,
-            "llm_covered_mentions": 5,
-            "mentions": 7,
         },
         market=base_market,
         timing={"price_change_before_social_pct": 0.02, "price_change_since_social_pct": 0.01},

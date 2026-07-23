@@ -1,21 +1,36 @@
 from __future__ import annotations
 
+from datetime import date
+
 import pytest
 
 from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
     _series_source_signature,
 )
-from parallax.domains.macro_intel.services.macro_module_views import build_macro_module_views
-from parallax.domains.macro_intel.services.macro_regime_engine import build_macro_view_snapshot
+from parallax.domains.macro_intel.services.macro_evidence_snapshot import (
+    build_macro_evidence_snapshot,
+)
 from tests.support.query_contract import assert_query_contract
 
 
-def test_build_macro_view_snapshot_uses_stable_current_identity() -> None:
+def test_build_macro_evidence_snapshot_uses_stable_contract_version() -> None:
     snapshot = _snapshot(computed_at_ms=1_779_000_000_000)
 
-    assert snapshot["projection_version"] == "macro_regime_v4"
+    assert snapshot["projection_version"] == "macro_evidence_v1"
     assert snapshot["computed_at_ms"] == 1_779_000_000_000
+    assert set(snapshot) == {
+        "projection_version",
+        "fact_watermark",
+        "market_cutoff",
+        "computed_at_ms",
+        "overview",
+        "cross_asset",
+        "rates_inflation",
+        "growth_labor",
+        "liquidity_funding",
+        "credit",
+    }
 
 
 def test_insert_snapshot_returns_false_when_only_computed_at_ms_changes() -> None:
@@ -29,10 +44,11 @@ def test_insert_snapshot_returns_false_when_only_computed_at_ms_changes() -> Non
 
     queries = "\n".join(query for query, _params in conn.executions)
     assert "payload_hash" in queries
-    assert "ON CONFLICT(projection_version) DO UPDATE" in queries
+    assert "ON CONFLICT(snapshot_key) DO UPDATE" in queries
     assert "payload_hash IS DISTINCT FROM excluded.payload_hash" in queries
     assert "RETURNING true AS changed" in queries
-    assert "assets_brief_json" not in queries
+    assert "overall_score" not in queries
+    assert "module_views_json" not in queries
     assert conn.payload_hashes[0] == conn.payload_hashes[1]
 
 
@@ -46,27 +62,34 @@ def test_insert_snapshot_leaves_commit_to_projection_worker_transaction() -> Non
     assert conn.commit_count == 0
 
 
-def test_module_view_reads_one_persisted_snapshot_payload() -> None:
-    expected = {"snapshot": {"module_id": "overview"}, "tiles": []}
-    conn = ReadConnection([{"module_view": expected}])
+def test_snapshot_page_reads_one_persisted_page_without_observation_rebuild() -> None:
+    expected = {"page_id": "overview", "snapshot": {}}
+    conn = ReadConnection([{"page": expected}])
     repo = MacroIntelRepository(conn)
 
-    assert repo.module_view(module_id="overview") == expected
+    assert repo.snapshot_page("overview") == expected
 
     query, params = conn.executions[0]
-    assert "SELECT module_views_json -> %s AS module_view" in query
+    assert "SELECT overview_json AS page" in query
     assert "FROM macro_view_snapshots" in query
     assert "macro_observations" not in query
-    assert params == ("overview", "macro_regime_v4")
+    assert params == ()
 
 
-def test_insert_snapshot_requires_every_catalog_module_payload() -> None:
+def test_snapshot_page_rejects_retired_or_unknown_modules() -> None:
+    repo = MacroIntelRepository(ReadConnection([]))
+
+    with pytest.raises(ValueError, match="macro_evidence_page_unknown"):
+        repo.snapshot_page("rates/yield-curve")
+
+
+def test_insert_snapshot_requires_every_explicit_page_payload() -> None:
     conn = SnapshotConnection()
     repo = MacroIntelRepository(conn)
     snapshot = _snapshot(computed_at_ms=1_779_000_000_000)
-    del snapshot["module_views_json"]["overview"]
+    del snapshot["overview"]
 
-    with pytest.raises(RuntimeError, match="macro_module_views_catalog_mismatch"):
+    with pytest.raises(RuntimeError, match="macro_evidence_snapshot_shape_invalid"):
         repo.insert_snapshot(snapshot)
 
     assert conn.executions == []
@@ -75,54 +98,33 @@ def test_insert_snapshot_requires_every_catalog_module_payload() -> None:
 @pytest.mark.parametrize(
     "field_name",
     (
-        "panels_json",
-        "indicators_json",
-        "triggers_json",
-        "data_gaps_json",
-        "source_coverage_json",
-        "features_json",
-        "chain_json",
-        "scenario_json",
-        "scorecard_json",
-        "module_views_json",
+        "overview",
+        "cross_asset",
+        "rates_inflation",
+        "growth_labor",
+        "liquidity_funding",
+        "credit",
     ),
 )
-def test_insert_snapshot_requires_formal_json_sections_before_payload_hash_and_sql(field_name: str) -> None:
+def test_insert_snapshot_rejects_misshaped_page_before_sql(field_name: str) -> None:
     conn = SnapshotConnection()
     repo = MacroIntelRepository(conn)
     snapshot = _snapshot(computed_at_ms=1_779_000_000_000)
-    del snapshot[field_name]
+    snapshot[field_name] = []
 
-    with pytest.raises(RuntimeError, match=f"macro_view_snapshot_payload_required:{field_name}"):
+    with pytest.raises(RuntimeError, match=f"macro_evidence_snapshot_payload_invalid:{field_name}"):
         repo.insert_snapshot(snapshot)
 
     assert conn.executions == []
 
 
-@pytest.mark.parametrize(
-    ("field_name", "invalid_value"),
-    (
-        ("panels_json", []),
-        ("indicators_json", []),
-        ("source_coverage_json", []),
-        ("features_json", []),
-        ("chain_json", []),
-        ("scenario_json", []),
-        ("scorecard_json", []),
-        ("module_views_json", []),
-        ("triggers_json", {}),
-        ("data_gaps_json", {}),
-    ),
-)
-def test_insert_snapshot_rejects_misshaped_formal_json_sections_before_sql(
-    field_name: str, invalid_value: object
-) -> None:
+def test_insert_snapshot_rejects_page_metadata_that_diverges_from_atomic_snapshot() -> None:
     conn = SnapshotConnection()
     repo = MacroIntelRepository(conn)
     snapshot = _snapshot(computed_at_ms=1_779_000_000_000)
-    snapshot[field_name] = invalid_value
+    snapshot["credit"]["snapshot"]["fact_watermark"] = "2026-01-01"
 
-    with pytest.raises(RuntimeError, match=f"macro_view_snapshot_payload_invalid:{field_name}"):
+    with pytest.raises(RuntimeError, match="macro_evidence_page_snapshot_mismatch:credit"):
         repo.insert_snapshot(snapshot)
 
     assert conn.executions == []
@@ -133,13 +135,13 @@ def test_macro_series_source_signature_uses_only_compact_payload() -> None:
     changed_timing_row = _series_row() | {"ignored_runtime_clock": 1_779_000_060_000}
 
     signature_at_t1 = _series_source_signature(
-        projection_version="macro_regime_v4",
+        projection_version="macro_evidence_v1",
         lookback_days=730,
         limit_per_series=252,
         rows=[base_row],
     )
     signature_at_t2 = _series_source_signature(
-        projection_version="macro_regime_v4",
+        projection_version="macro_evidence_v1",
         lookback_days=730,
         limit_per_series=252,
         rows=[changed_timing_row],
@@ -153,13 +155,13 @@ def test_macro_series_source_signature_changes_when_value_changes() -> None:
     after = _series_row(value_numeric=4.8)
 
     signature_before = _series_source_signature(
-        projection_version="macro_regime_v4",
+        projection_version="macro_evidence_v1",
         lookback_days=730,
         limit_per_series=252,
         rows=[before],
     )
     signature_after = _series_source_signature(
-        projection_version="macro_regime_v4",
+        projection_version="macro_evidence_v1",
         lookback_days=730,
         limit_per_series=252,
         rows=[after],
@@ -171,20 +173,20 @@ def test_macro_series_source_signature_changes_when_value_changes() -> None:
 def test_refresh_observation_series_rows_skips_writes_when_source_signature_unchanged() -> None:
     selected_row = _series_row()
     signature = _series_source_signature(
-        projection_version="macro_regime_v4",
+        projection_version="macro_evidence_v1",
         lookback_days=730,
         limit_per_series=252,
         rows=[selected_row],
     )
     conn = CurrentRefreshConnection(
         selected_rows=[selected_row],
-        publication_state={"projection_version": "macro_regime_v4", "source_signature": signature},
+        publication_state={"projection_version": "macro_evidence_v1", "source_signature": signature},
         existing_rows=[_current_series_row(selected_row)],
     )
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_regime_v4",
+        projection_version="macro_evidence_v1",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
@@ -209,7 +211,7 @@ def test_refresh_observation_series_rows_upserts_current_rows_when_signature_cha
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_regime_v4",
+        projection_version="macro_evidence_v1",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
@@ -256,7 +258,7 @@ def test_refresh_empty_current_partition_without_existing_rows_is_unchanged() ->
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_regime_v4",
+        projection_version="macro_evidence_v1",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
@@ -273,20 +275,20 @@ def test_refresh_empty_current_partition_without_existing_rows_is_unchanged() ->
 
 def test_refresh_empty_current_partition_marks_failed_and_preserves_existing_rows() -> None:
     empty_signature = _series_source_signature(
-        projection_version="macro_regime_v4",
+        projection_version="macro_evidence_v1",
         lookback_days=730,
         limit_per_series=252,
         rows=[],
     )
     conn = CurrentRefreshConnection(
         selected_rows=[],
-        publication_state={"projection_version": "macro_regime_v4", "source_signature": empty_signature},
+        publication_state={"projection_version": "macro_evidence_v1", "source_signature": empty_signature},
         existing_rows=[_current_series_row(_series_row()) | {"value_numeric": 4.6}],
     )
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_regime_v4",
+        projection_version="macro_evidence_v1",
         now_ms=1_779_000_060_000,
         lookback_days=730,
         limit_per_series=252,
@@ -323,7 +325,28 @@ def test_observation_series_readers_read_current_rows_directly() -> None:
         forbidden_tables=("macro_observations", "macro_observation_series_active_generation"),
         required_predicates=("projection_version = %s", "value_numeric IS NOT NULL"),
         forbidden_fragments=("generation_id", "row_number() over", "series_rank = 1"),
-        expected_params=(["asset:spy"], "macro_regime_v4", 60),
+        expected_params=(["asset:spy"], "macro_evidence_v1", 60),
+    )
+
+
+def test_material_fact_max_observed_at_reads_raw_facts_not_compact_series() -> None:
+    conn = ReadConnection([{"max_observed_at": date(2026, 5, 21)}])
+    repo = MacroIntelRepository(conn)
+
+    result = repo.material_fact_max_observed_at(
+        concept_keys=("asset:spy", "credit:hy_oas"),
+        through_date=date(2026, 5, 22),
+    )
+
+    assert result == date(2026, 5, 21)
+    query, params = conn.executions[0]
+    assert_query_contract(
+        query,
+        params=params,
+        required_tables=("macro_observations",),
+        forbidden_tables=("macro_observation_series_rows",),
+        required_predicates=("concept_key = ANY(%s::text[])", "observed_at <= %s"),
+        expected_params=(["asset:spy", "credit:hy_oas"], date(2026, 5, 22)),
     )
 
 
@@ -332,7 +355,7 @@ def _series_row(
     value_numeric: float = 4.7,
 ) -> dict[str, object]:
     return {
-        "projection_version": "macro_regime_v4",
+        "projection_version": "macro_evidence_v1",
         "concept_key": "rates:dgs10",
         "observed_at": "2026-05-20",
         "value_numeric": value_numeric,
@@ -367,12 +390,7 @@ def _observation() -> dict[str, object]:
 
 
 def _snapshot(*, computed_at_ms: int) -> dict[str, object]:
-    snapshot = build_macro_view_snapshot([_observation()], computed_at_ms=computed_at_ms)
-    snapshot["module_views_json"] = build_macro_module_views(
-        snapshot=snapshot,
-        observations=[_observation()],
-    )
-    return snapshot
+    return build_macro_evidence_snapshot([_observation()], computed_at_ms=computed_at_ms)
 
 
 class CurrentRefreshConnection:
@@ -420,7 +438,7 @@ class ReadConnection:
         self.rows = rows
         self.executions: list[tuple[str, tuple[object, ...]]] = []
 
-    def execute(self, query: str, params: tuple[object, ...]) -> Cursor:
+    def execute(self, query: str, params: tuple[object, ...] = ()) -> Cursor:
         self.executions.append((query, params))
         return Cursor(self.rows)
 

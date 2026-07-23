@@ -48,12 +48,6 @@
     background: var(--risk-soft);
   }
 
-  .ods-pill.agent {
-    border-color: var(--agent-line);
-    color: var(--agent-ink);
-    background: var(--agent-soft);
-  }
-
   .ods-token-mark {
     display: grid;
     width: 44px;
@@ -83,12 +77,6 @@
     border-color: var(--risk-line-strong);
     color: var(--risk-ink);
     background: var(--risk-soft);
-  }
-
-  .ods-token-mark.agent {
-    border-color: var(--agent-line);
-    color: var(--agent-ink);
-    background: var(--agent-soft);
   }
 
   .ods-case {
@@ -294,17 +282,6 @@
   .ods-evidence.risk .ods-evidence-line b,
   .ods-evidence.risk .ods-evidence-line a {
     color: var(--risk-ink);
-  }
-
-  .ods-field.agent,
-  .ods-evidence.agent {
-    border-color: var(--agent-line);
-  }
-
-  .ods-field.agent .ods-field-value,
-  .ods-evidence.agent .ods-evidence-line b,
-  .ods-evidence.agent .ods-evidence-line a {
-    color: var(--agent-ink);
   }
 
   .ods-action-bar {

@@ -3,7 +3,7 @@ from __future__ import annotations
 from datetime import date
 from typing import Any, Literal
 
-from pydantic import BaseModel, ConfigDict, Field, model_validator
+from pydantic import BaseModel, ConfigDict, Field
 
 JsonObject = dict[str, Any]
 
@@ -23,32 +23,6 @@ class ApiEnvelope[T](ExactApiSchema):
     field: str | None = None
 
 
-class AgentExecutionStatusData(ExactApiSchema):
-    lane: Literal["news.story_brief"]
-    model: str
-    provider_family: str
-    output_strategy: Literal["json_object"]
-    schema_enforcement: Literal["client_validate"]
-    max_concurrency: int
-    rpm_limit: int
-    timeout_seconds: float
-    in_flight: int
-    provider_running: int
-    circuit_state: Literal["open", "closed"]
-    circuit_open_until_ms: int | None
-    capacity_denied_total: int
-    circuit_open_total: int
-    timeout_total: int
-    last_denied_at_ms: int | None
-    last_timeout_at_ms: int | None
-    oldest_in_flight_age_ms: float | None
-
-
-class AgentExecutionUnavailableData(ExactApiSchema):
-    status: Literal["unavailable"]
-    error: str
-
-
 class BootstrapData(ExactApiSchema):
     ws_token: str
     handles: list[str]
@@ -63,7 +37,6 @@ class StatusData(ExactApiSchema):
     snapshot_gate: JsonObject
     db: JsonObject
     provider_states: dict[str, JsonObject]
-    agent_execution: AgentExecutionStatusData | AgentExecutionUnavailableData | None
     news_provider_contract: JsonObject
     workers: dict[str, WorkerStatusData]
 
@@ -98,93 +71,338 @@ class WorkerStatusData(ExactApiSchema):
 
 
 class MacroSnapshotData(ExactApiSchema):
-    projection_version: str
-    asof_date: date
-    status: str
-    regime: str
-    overall_score: int | float | None
+    projection_version: Literal["macro_evidence_v1"]
+    fact_watermark: date | None
+    market_cutoff: date | None
     computed_at_ms: int
 
 
-class MacroCurrentnessData(ExactApiSchema):
-    publication_status: str | None
-    publication_row_count: int | None
-    publication_finished_at_ms: int | None
-    facts_max_observed_at: date | None
-    projection_lag_days: int | None
-    projection_behind_facts: bool
+class MacroSampleData(ExactApiSchema):
+    start: date | None
+    end: date | None
+    count: int
 
 
-class MacroData(ExactApiSchema):
-    snapshot: MacroSnapshotData | None
-    currentness: MacroCurrentnessData
-    panels: JsonObject
-    indicators: JsonObject
-    triggers: list[JsonObject]
-    data_gaps: list[JsonObject]
-    source_coverage: JsonObject
-    features: JsonObject
-    chain: JsonObject
-    scenario: JsonObject
-    scorecard: JsonObject
+class MacroObservedInputData(ExactApiSchema):
+    observed_at: date
+    value: int | float
 
 
-class MacroAssetCorrelationAssetData(ExactApiSchema):
+class MacroConceptInputData(ExactApiSchema):
     concept_key: str
-    title: str
-    observations_count: int
-    return_count: int
-    start_date: date | None
-    end_date: date | None
-    latest_observed_at: date | None
-    sources: list[str]
+    observed_at: date | None = None
+    value: int | float | None
 
 
-class MacroAssetCorrelationMatrixRowData(ExactApiSchema):
+class MacroLiquidityInputData(ExactApiSchema):
     concept_key: str
-    correlations: dict[str, float | None]
+    source_unit: str
+    value_millions_usd: int | float | None
 
 
-class MacroAssetCorrelationPairData(ExactApiSchema):
+class MacroDerivationData(ExactApiSchema):
+    formula: str
+    inputs: list[MacroObservedInputData | MacroConceptInputData | MacroLiquidityInputData]
+    references: list[str]
+
+
+class MacroEvidenceFreshnessData(ExactApiSchema):
+    status: Literal["fresh", "stale", "missing", "derived"]
+    age_days: int | None
+    stale_after_days: int | None
+
+
+class MacroEvidenceData(ExactApiSchema):
+    concept_key: str
+    role: Literal["primary", "confirmation", "context", "catalyst"]
+    status: Literal["available", "stale", "unavailable", "invalid"]
+    reason: str | None
+    value: int | float | None
+    unit: str
+    change: int | float | None
+    change_window: str | None
+    observed_at: date | None
+    frequency: Literal["daily", "weekly", "monthly", "quarterly", "irregular", "event"]
+    source_name: str | None
+    series_key: str | None
+    data_quality: str
+    freshness: MacroEvidenceFreshnessData
+    sample: MacroSampleData
+    criticality: Literal["critical", "optional"]
+    claim_effect: str
+    derivation: MacroDerivationData | None
+
+
+class MacroRuleHitData(ExactApiSchema):
+    rule_id: str
+    outcome: Literal["trigger", "confirmation", "contradiction", "invalidation"]
+    evidence_refs: list[str]
+
+
+class MacroDecisionItemData(ExactApiSchema):
+    code: str
+    evidence_refs: list[str]
+
+
+class MacroUpgradeInvalidationData(ExactApiSchema):
+    upgrade: list[MacroDecisionItemData]
+    invalidation: list[MacroDecisionItemData]
+
+
+class MacroPageFreshnessData(ExactApiSchema):
+    status: Literal["fresh", "degraded", "insufficient_evidence"]
+    critical_missing: list[str]
+    critical_stale: list[str]
+    optional_unavailable: list[str]
+
+
+class MacroUnavailableEvidenceData(ExactApiSchema):
+    capability: str
+    status: Literal["not_assessed"]
+    reason: str
+
+
+class MacroConclusionData(ExactApiSchema):
+    status: Literal["supported", "degraded", "insufficient_evidence"]
+    judgment: str
+    rule_version: str
+    rule_hits: list[MacroRuleHitData]
+
+
+class MacroPageBaseData(ExactApiSchema):
+    snapshot: MacroSnapshotData
+    conclusion: MacroConclusionData
+    horizon: Literal["1_4_weeks"]
+    drivers: list[MacroDecisionItemData]
+    confirmations: list[MacroDecisionItemData]
+    contradictions: list[MacroDecisionItemData]
+    upgrade_invalidation: MacroUpgradeInvalidationData
+    evidence_refs: list[str]
+    freshness: MacroPageFreshnessData
+    evidence: list[MacroEvidenceData]
+    unavailable_evidence: list[MacroUnavailableEvidenceData]
+
+
+class MacroDominantShockData(ExactApiSchema):
+    candidate: (
+        Literal[
+            "growth",
+            "inflation",
+            "policy_real_rates",
+            "term_premium_supply",
+            "liquidity_funding",
+            "credit",
+        ]
+        | None
+    )
+    status: Literal["confirmed", "provisional", "divergent", "insufficient_evidence"]
+    primary_trigger: MacroDecisionItemData | None
+    cross_domain_confirmations: list[MacroDecisionItemData]
+    critical_contradictions: list[MacroDecisionItemData]
+    affected_exposures: list[str]
+    rule_version: str
+    hit_evidence: list[str]
+
+
+class MacroOfficialCatalystData(ExactApiSchema):
+    concept_key: str
+    event_date: date
+    event_time: str
+    timezone: str
+    source_name: str
+    series_key: str
+    source_url: str
+    release_status: Literal["today", "upcoming"]
+    evidence_ref: str
+
+
+class MacroOverviewData(MacroPageBaseData):
+    page_id: Literal["overview"]
+    dominant_shock: MacroDominantShockData
+    official_catalysts: list[MacroOfficialCatalystData]
+
+
+class MacroReturnWindowData(ExactApiSchema):
+    status: Literal["available", "unavailable"]
+    reason: str | None
+    window: Literal["20_sessions", "60_sessions"]
+    value: int | float | None
+    unit: Literal["percent"]
+    sample: MacroSampleData
+    derivation: MacroDerivationData | None
+
+
+class MacroAssetReturnData(ExactApiSchema):
+    concept_key: str
+    status: Literal["available", "unavailable"]
+    reason: str | None
+    observed_at: date | None
+    source_name: str | None
+    series_key: str | None
+    return_20: MacroReturnWindowData
+    return_60: MacroReturnWindowData
+    evidence: MacroEvidenceData
+
+
+class MacroCorrelationData(ExactApiSchema):
     left: str
     right: str
-    correlation: float | None
-    sample_size: int
-    start_date: date | None
-    end_date: date | None
-    available: bool
+    window: Literal["20_sessions", "60_sessions"]
+    sample: MacroSampleData
+    status: Literal["available", "unavailable"]
     reason: str | None
+    correlation: float | None
 
 
-class MacroAssetCorrelationGapData(ExactApiSchema):
-    code: Literal["insufficient_history", "insufficient_overlap", "zero_variance"]
-    sample_size: int
+class MacroCrossAssetData(MacroPageBaseData):
+    page_id: Literal["cross_asset"]
+    asset_returns: list[MacroAssetReturnData]
+    volatility: list[MacroEvidenceData]
+    correlations_20: list[MacroCorrelationData]
+    correlations_60: list[MacroCorrelationData]
+    divergences: list[MacroDecisionItemData]
+
+
+class MacroMetricData(ExactApiSchema):
     concept_key: str | None = None
-    left: str | None = None
-    right: str | None = None
+    status: Literal["available", "unavailable"]
+    reason: str | None
+    value: int | float | None
+    unit: str | None
+    window: str | None
+    sample: MacroSampleData
+    derivation: MacroDerivationData | None
 
 
-class MacroAssetCorrelationData(ExactApiSchema):
-    window: Literal["20d", "60d", "120d"]
-    assets: list[MacroAssetCorrelationAssetData]
-    matrix: list[MacroAssetCorrelationMatrixRowData]
-    pairs: list[MacroAssetCorrelationPairData]
-    data_gaps: list[MacroAssetCorrelationGapData]
-    asof_date: date | None
+class MacroInflationReleaseData(ExactApiSchema):
+    evidence: MacroEvidenceData
+    release_change: MacroMetricData
+    year_over_year: MacroMetricData
+
+
+class MacroFundingCorridorData(ExactApiSchema):
+    status: Literal["supported", "insufficient_evidence"]
+    state: str
+    evidence_refs: list[str]
+    spreads: list[MacroEvidenceData]
+    evidence: list[MacroEvidenceData]
+
+
+class MacroCurveShapeData(ExactApiSchema):
+    status: Literal["supported", "insufficient_evidence"]
+    level_classification: str
+    move_classification: str
+    two_year_change: int | float | None
+    ten_year_change: int | float | None
+    change_window: Literal["20_sessions"]
+    evidence_refs: list[str]
+    rule_version: str
+
+
+class MacroRatesInflationData(MacroPageBaseData):
+    page_id: Literal["rates_inflation"]
+    nominal_curve: list[MacroEvidenceData]
+    curve_slopes: list[MacroEvidenceData]
+    real_yields: list[MacroEvidenceData]
+    breakevens: list[MacroEvidenceData]
+    term_premium: MacroUnavailableEvidenceData
+    policy_funding_corridor: MacroFundingCorridorData
+    inflation_releases: list[MacroInflationReleaseData]
+    curve_shape: MacroCurveShapeData
+
+
+class MacroGrowthLaborData(MacroPageBaseData):
+    page_id: Literal["growth_labor"]
+    growth_leading: list[MacroEvidenceData]
+    growth_lagging: list[MacroEvidenceData]
+    labor_leading: list[MacroEvidenceData]
+    labor_lagging: list[MacroEvidenceData]
+    growth_metrics: list[MacroMetricData]
+
+
+class MacroFundingLayerData(ExactApiSchema):
+    evidence: list[MacroEvidenceData]
+    spreads: list[MacroEvidenceData]
+
+
+class MacroLiquidityFundingData(MacroPageBaseData):
+    page_id: Literal["liquidity_funding"]
+    central_bank_balance_sheet: list[MacroEvidenceData]
+    treasury_cash: list[MacroEvidenceData]
+    reverse_repo: list[MacroEvidenceData]
+    reserves: list[MacroEvidenceData]
+    net_liquidity: MacroEvidenceData
+    secured_funding: MacroFundingLayerData
+    unsecured_funding: MacroFundingLayerData
+
+
+class MacroTreasurySpreadQuadrantData(ExactApiSchema):
+    status: Literal["supported", "insufficient_evidence"]
+    quadrant: str
+    yield_change: int | float | None
+    spread_change: int | float | None
+    change_window: Literal["20_sessions"]
+    evidence_refs: list[str]
+    rule_version: str
+
+
+class MacroCreditStateData(ExactApiSchema):
+    status: Literal["supported", "insufficient_evidence"]
+    stage: Literal[
+        "contained",
+        "tail_stress",
+        "broadening",
+        "systemic_tightening",
+        "repairing",
+        "insufficient_evidence",
+    ]
+    direction: Literal["widening", "narrowing", "stable", "insufficient_evidence"]
+    evidence_refs: list[str]
+    rule_version: str
+
+
+class MacroCreditData(MacroPageBaseData):
+    page_id: Literal["credit"]
+    aggregate_spreads: list[MacroEvidenceData]
+    rating_tail: list[MacroEvidenceData]
+    effective_yields: list[MacroEvidenceData]
+    credit_supply: list[MacroEvidenceData]
+    realized_damage: list[MacroEvidenceData]
+    financial_conditions_liquidity: list[MacroEvidenceData]
+    treasury_spread_quadrant: MacroTreasurySpreadQuadrantData
+    credit_state: MacroCreditStateData
 
 
 class MacroSeriesPointData(ExactApiSchema):
     observed_at: date
     value: int | float | None
     source_name: str | None
+    series_key: str | None
+    unit: str | None
+    frequency: str | None
     data_quality: str
+    event_metadata: MacroSeriesEventMetadataData
+
+
+class MacroSeriesEventMetadataData(ExactApiSchema):
+    text_value: str | None = None
+    source_url: str | None = None
+    event_code: str | None = None
+    document_type: str | None = None
+    speaker: str | None = None
+    event_time: str | None = None
+    event_time_et: str | None = None
+    reference_period: str | None = None
+    cusip: str | None = None
+    announcement_date: date | None = None
+    settlement_date: date | None = None
+    reopening: bool | None = None
 
 
 class MacroSeriesGapData(ExactApiSchema):
     code: str
     label: str
-    severity: str
-    score_participation: bool
+    severity: Literal["warning", "error"]
     concept_key: str
 
 
@@ -203,109 +421,6 @@ class MacroSeriesData(ExactApiSchema):
     window: Literal["20d", "60d", "120d", "1y", "3y"]
     series: dict[str, MacroSeriesItemData]
     data_gaps: list[MacroSeriesGapData]
-
-
-class MacroModuleSnapshotData(ExactApiSchema):
-    module_id: str
-    route_path: str
-    title: str
-    subtitle: str
-    question: str
-    section: str
-    projection_version: str
-    status: str
-    status_label: str
-    asof_date: date
-    asof_label: str
-    computed_at_ms: int
-    computed_at_label: str
-    source_projection_version: str
-
-
-class MacroModuleChartPointData(ExactApiSchema):
-    observed_at: date
-    value: int | float
-
-
-class MacroModuleChartSeriesData(ExactApiSchema):
-    concept_key: str
-    label: str
-    unit_label: str
-    points: list[MacroModuleChartPointData]
-
-
-class MacroModuleChartData(ExactApiSchema):
-    id: str
-    kind: Literal["time_series"]
-    title: str
-    subtitle: str
-    status: str
-    status_label: str
-    min_points: int
-    missing_concept_keys: list[str]
-    series: list[MacroModuleChartSeriesData]
-
-
-class MacroModuleTableColumnData(ExactApiSchema):
-    key: str
-    label: str
-
-
-class MacroModuleTableData(ExactApiSchema):
-    id: str
-    title: str
-    status: str
-    missing_concept_keys: list[str]
-    columns: list[MacroModuleTableColumnData]
-    rows: list[JsonObject]
-
-
-class MacroModuleAvailabilityTableData(ExactApiSchema):
-    id: Literal["availability_proxy_notes"]
-    title: str
-    status: str
-    rows: list[JsonObject]
-
-
-class MacroModuleEvidenceData(ExactApiSchema):
-    confirmations: list[JsonObject]
-    contradictions: list[JsonObject]
-    watch_triggers: list[JsonObject]
-    invalidations: list[JsonObject]
-
-
-class MacroModuleDataHealthData(ExactApiSchema):
-    summary_status: str
-    summary_label: str
-    module_gaps: list[JsonObject]
-    chart_gaps: list[JsonObject]
-    global_gaps: list[JsonObject]
-
-
-class MacroModuleProvenanceCurrentnessData(ExactApiSchema):
-    facts_max_observed_at: date | None
-    projection_lag_days: int | None
-    projection_behind_facts: bool
-
-
-class MacroModuleProvenanceData(ExactApiSchema):
-    projection_version: str
-    currentness: MacroModuleProvenanceCurrentnessData
-    rows: list[JsonObject]
-
-
-class MacroModuleData(ExactApiSchema):
-    snapshot: MacroModuleSnapshotData
-    tiles: list[JsonObject]
-    primary_chart: MacroModuleChartData
-    tables: list[MacroModuleTableData | MacroModuleAvailabilityTableData]
-    module_read: JsonObject
-    module_evidence: MacroModuleEvidenceData
-    transmission: list[JsonObject]
-    data_health: MacroModuleDataHealthData
-    provenance: MacroModuleProvenanceData
-    related_routes: list[JsonObject]
-    daily_brief: JsonObject | None = None
 
 
 class RecentData(ExactApiSchema):
@@ -336,38 +451,33 @@ class SearchInspectQueryData(ExactApiSchema):
 
 
 class SearchInspectResolverData(ExactApiSchema):
-    confidence: int | float
     target_candidates: list[JsonObject]
     selected_target: JsonObject | None
     reasons: list[str]
 
 
+class SearchInspectTopicSummaryData(ExactApiSchema):
+    posts: int
+    authors: int
+
+
+class SearchInspectTopicData(ExactApiSchema):
+    summary: SearchInspectTopicSummaryData
+    items: list[JsonObject]
+
+
+class SearchInspectAmbiguousData(ExactApiSchema):
+    candidates: list[JsonObject]
+    summary: SearchInspectTopicSummaryData
+    items: list[JsonObject]
+
+
 class SearchInspectData(ExactApiSchema):
     query: SearchInspectQueryData
     resolver: SearchInspectResolverData
-    token_result: JsonObject | None
-    topic_result: JsonObject | None
-    ambiguous_result: JsonObject | None
-
-
-class NarrativeCurrentnessData(ExactApiSchema):
-    display_status: Literal["current", "not_ready", "out_of_frontier", "unsupported_window"]
-    reason: str
-
-
-class NarrativeCoverageData(ExactApiSchema):
-    source_mentions: int
-    independent_authors: int
-
-
-class NarrativeAdmissionData(ExactApiSchema):
-    status: Literal["admitted", "suppressed", "missing"]
-    reason: str
-    is_current: bool
-    computed_at_ms: int | None
-    currentness: NarrativeCurrentnessData
-    data_gaps: list[JsonObject]
-    coverage: NarrativeCoverageData
+    token_result: TokenCaseData | None
+    topic_result: SearchInspectTopicData | None
+    ambiguous_result: SearchInspectAmbiguousData | None
 
 
 class TokenCaseData(ExactApiSchema):
@@ -375,8 +485,8 @@ class TokenCaseData(ExactApiSchema):
     profile: JsonObject | None
     timeline: JsonObject
     posts: JsonObject
-    narrative_admission: NarrativeAdmissionData
     market_live: JsonObject
+    current_radar: TokenRadarFactRowData | None
 
 
 class TokenRadarIntentData(ApiSchema):
@@ -468,7 +578,6 @@ class TokenFactorFamiliesData(ApiSchema):
 
     social_heat: TokenFactorFamilyData
     social_propagation: TokenFactorFamilyData
-    semantic_catalyst: TokenFactorFamilyData
     timing_risk: TokenFactorFamilyData
 
 
@@ -486,7 +595,6 @@ class TokenFactorFamilyValuesData(ApiSchema):
 
     social_heat: int | float
     social_propagation: int | float
-    semantic_catalyst: int | float
     timing_risk: int | float
 
 
@@ -495,7 +603,6 @@ class TokenFactorRankValuesData(ApiSchema):
 
     social_heat: int | float | None
     social_propagation: int | float | None
-    semantic_catalyst: int | float | None
     timing_risk: int | float | None
 
 
@@ -528,7 +635,7 @@ class TokenFactorProvenanceData(ApiSchema):
 class TokenFactorSnapshotData(ApiSchema):
     model_config = ConfigDict(extra="forbid")
 
-    schema_version: Literal["token_factor_snapshot_v3_social_attention"]
+    schema_version: Literal["token_factor_snapshot_v4_transparent_factors"]
     subject: TokenFactorSubjectData
     market: TokenFactorMarketData
     gates: TokenFactorGatesData
@@ -539,15 +646,17 @@ class TokenFactorSnapshotData(ApiSchema):
     provenance: TokenFactorProvenanceData
 
 
-class TokenRadarRowData(ApiSchema):
+class TokenRadarFactRowData(ExactApiSchema):
     model_config = ConfigDict(extra="forbid")
 
     intent: TokenRadarIntentData
     radar: TokenRadarMetaData
     resolution: TokenRadarResolutionData
     quality: TokenRadarQualityData
-    narrative_admission: NarrativeAdmissionData | None = None
     factor_snapshot: TokenFactorSnapshotData
+
+
+class TokenRadarRowData(TokenRadarFactRowData):
     profile: JsonObject | None = None
 
 
@@ -667,6 +776,8 @@ class NewsStory(ExactApiSchema):
     member_news_item_ids: list[str]
     member_count: int
     source_domains: list[str]
+    source_ids: list[str] = Field(default_factory=list)
+    provider_article_keys: list[str] = Field(default_factory=list)
 
 
 class NewsMarketScope(ExactApiSchema):
@@ -678,40 +789,6 @@ class NewsMarketScope(ExactApiSchema):
     version: str
 
 
-class NewsAgentAdmission(ExactApiSchema):
-    eligible: bool
-    status: str
-    reason: str
-    representative_news_item_id: str
-    basis: JsonObject
-    version: str
-
-
-class NewsAlertEligibility(ApiSchema):
-    model_config = ConfigDict(extra="forbid", populate_by_name=True)
-
-    in_app_eligible: bool
-    external_push_ready: bool
-    external_push_block_reason: str | None = None
-    external_push_basis: str | None = None
-    agent_status: str
-    decision_class: str | None = None
-    market_scope: NewsMarketScope
-
-
-class NewsSignalSummary(ExactApiSchema):
-    source: str
-    provider: str | None = None
-    status: str
-    direction: str
-    label_zh: str | None = None
-    signal: str | None = None
-    title_zh: str | None = None
-    summary_zh: str | None = None
-    summary_en: str | None = None
-    method: str | None = None
-
-
 class NewsProviderRating(ExactApiSchema):
     provider: str | None = None
     status: str | None = None
@@ -720,18 +797,6 @@ class NewsProviderRating(ExactApiSchema):
     score: int | None = None
     grade: str | None = None
     method: str | None = None
-
-
-class NewsAgentSignal(ExactApiSchema):
-    status: str
-    direction: str | None = None
-    decision_class: str | None = None
-
-
-class NewsSignalEnvelope(ExactApiSchema):
-    display_signal: NewsSignalSummary
-    agent_signal: NewsAgentSignal
-    alert_eligibility: NewsAlertEligibility
 
 
 class NewsSourceSummary(ExactApiSchema):
@@ -766,30 +831,6 @@ class NewsFactLane(ExactApiSchema):
     rejection_reasons: list[str] = Field(default_factory=list)
 
 
-class NewsAgentBrief(ExactApiSchema):
-    event_type: str | None = None
-    market_domains: list[str] = Field(default_factory=list)
-    status: str
-    direction: str | None = None
-    decision_class: str | None = None
-    title_zh: str | None = None
-    summary_zh: str | None = None
-    market_read_zh: str | None = None
-    market_impacts: list[Any] = Field(default_factory=list)
-    transmission_paths: list[Any] = Field(default_factory=list)
-    bull_strength: str | None = None
-    bear_strength: str | None = None
-    data_gap_count: int | None = None
-    computed_at_ms: int | None = None
-    bull_view: JsonObject | None = None
-    bear_view: JsonObject | None = None
-    affected_entities: list[Any] = Field(default_factory=list)
-    data_gaps: list[Any] = Field(default_factory=list)
-    watch_triggers: list[str] = Field(default_factory=list)
-    invalidation_conditions: list[str] = Field(default_factory=list)
-    evidence_refs: list[Any] = Field(default_factory=list)
-
-
 class NewsRow(ExactApiSchema):
     row_id: str
     news_item_id: str
@@ -802,26 +843,19 @@ class NewsRow(ExactApiSchema):
     summary: str
     source_domain: str
     canonical_url: str
+    canonical_item_key: str
     duplicate_count: int
     source_ids: list[str]
     source_domains: list[str]
+    provider_article_keys: list[str]
     token_lanes: list[NewsTokenLane]
     fact_lanes: list[NewsFactLane]
-    signal: NewsSignalEnvelope
     provider_rating: NewsProviderRating
-    token_impacts: list[NewsTokenLane]
     content_class: str
     content_tags: list[str]
     content_classification: JsonObject
     source: NewsSourceSummary
-    agent_brief: NewsAgentBrief
-    agent_status: str
-    agent_brief_computed_at_ms: int | None
-    macro_event_flow: JsonObject | None = None
-    agent_admission_status: str
-    agent_admission_reason: str
-    agent_admission: NewsAgentAdmission
-    agent_representative_news_item_id: str
+    market_scope: NewsMarketScope
     computed_at_ms: int
     projection_version: str
 
@@ -870,22 +904,15 @@ class NewsObjectData(ExactApiSchema):
     representative_news_item_id: str
     story_key: str
     story: NewsStory
-    agent_admission_status: str
-    agent_admission_reason: str
-    agent_admission: NewsAgentAdmission
-    agent_representative_news_item_id: str
-    agent_admission_computed_at_ms: int | None
     content_tags: list[str]
     content_classification: JsonObject
-    signal: NewsSignalEnvelope
     provider_rating: NewsProviderRating
-    token_impacts: list[NewsTokenLane]
+    market_scope: NewsMarketScope
     token_lanes: list[NewsTokenLane]
     fact_lanes: list[NewsFactLane]
     source: NewsSourceDetailData
     provider_item: JsonObject
     fetch_run: JsonObject | None
-    agent_brief: NewsAgentBrief
     observation_edges: list[JsonObject]
     provider_observations: list[JsonObject]
     entities: list[Any]
@@ -975,7 +1002,6 @@ class TargetPostsQueryData(ExactApiSchema):
     window: str
     scope: str
     post_range: str = Field(alias="range")
-    sort: str
 
 
 class TargetPostsScoreWindowData(ExactApiSchema):
@@ -1112,7 +1138,7 @@ class WatchlistOverviewMetrics(ExactApiSchema):
     source_event_count: int
     resolved_token_count: int
     candidate_mention_count: int
-    narrative_count: int
+    hashtag_count: int
     last_source_event_at_ms: int | None
 
 
@@ -1120,7 +1146,7 @@ class WatchlistOverviewCluster(ExactApiSchema):
     label: str
     count: int
     query: str
-    kind: Literal["resolved_token", "candidate_mention", "narrative"]
+    kind: Literal["resolved_token", "candidate_mention", "hashtag"]
     target_type: str | None
     target_id: str | None
     symbol: str | None
@@ -1132,7 +1158,7 @@ class WatchlistHandleOverviewData(ExactApiSchema):
     metrics: WatchlistOverviewMetrics
     resolved_token_clusters: list[WatchlistOverviewCluster]
     candidate_mention_clusters: list[WatchlistOverviewCluster]
-    narrative_clusters: list[WatchlistOverviewCluster]
+    hashtag_clusters: list[WatchlistOverviewCluster]
     clusters_truncated: bool
     risk_notes: list[str]
 
@@ -1178,7 +1204,6 @@ class OpsConfigData(ExactApiSchema):
     upstream_channels: list[str]
     gmgn_configured: bool
     okx_dex_configured: bool
-    llm_configured: bool
     news_enabled: bool
     notifications_enabled: bool
 
@@ -1250,47 +1275,6 @@ class OpsQueueSummaryData(ExactApiSchema):
     reason: str
 
 
-class OpsAgentExecutionPolicyData(ExactApiSchema):
-    lane: Literal["news.story_brief"]
-    model: str
-    provider_family: str
-    output_strategy: Literal["json_object"]
-    schema_enforcement: Literal["client_validate"]
-    max_concurrency: int
-    rpm_limit: int
-    timeout_seconds: float
-
-
-class OpsAgentExecutionCountersData(ExactApiSchema):
-    in_flight: int
-    provider_running: int
-    circuit_state: Literal["open", "closed"]
-    circuit_open_until_ms: int | None
-    capacity_denied_total: int
-    circuit_open_total: int
-    timeout_total: int
-    last_denied_at_ms: int | None
-    last_timeout_at_ms: int | None
-    oldest_in_flight_age_ms: float | None
-
-
-class OpsAgentExecutionData(ExactApiSchema):
-    status: Literal["ok", "degraded", "disabled", "unavailable", "unknown"]
-    policy: OpsAgentExecutionPolicyData | None
-    counters: OpsAgentExecutionCountersData | None
-    status_reason: str | None = None
-    error: str | None = None
-
-    @model_validator(mode="after")
-    def validate_policy_state(self) -> OpsAgentExecutionData:
-        inactive = self.status in {"disabled", "unavailable", "unknown"}
-        if inactive and (self.policy is not None or self.counters is not None):
-            raise ValueError("inactive agent execution must not expose policy or counters")
-        if not inactive and (self.policy is None or self.counters is None):
-            raise ValueError("active agent execution requires policy and counters")
-        return self
-
-
 class OpsTokenRadarDomainData(ExactApiSchema):
     status: str
     publication: JsonObject
@@ -1345,7 +1329,6 @@ class OpsDiagnosticsData(ExactApiSchema):
     providers: list[OpsProviderData]
     workers: list[OpsWorkerData]
     queues: list[OpsQueueSummaryData]
-    agent_execution: OpsAgentExecutionData
     domains: OpsDomainsData
     suggested_checks: list[OpsSuggestedCheckData]
 

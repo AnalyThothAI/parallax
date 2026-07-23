@@ -8,8 +8,7 @@
   }
 
   .search-case-header,
-  .search-panel,
-  .search-agent-brief {
+  .search-panel {
     min-width: 0;
     border: 1px solid var(--line);
     background: rgba(13, 17, 17, 0.96);
@@ -36,8 +35,7 @@
   .search-intel-topbar span,
   .search-case-header span,
   .search-intel-controls span,
-  .search-panel header span,
-  .search-agent-brief > header span {
+  .search-panel header span {
     color: var(--dim);
     font-family: var(--mono);
     font-size: 10px;
@@ -46,8 +44,7 @@
 
   .search-intel-topbar h2,
   .search-case-header h3,
-  .search-panel h3,
-  .search-agent-brief h3 {
+  .search-panel h3 {
     margin: 0;
     color: var(--bone);
     font-family: var(--mono);
@@ -65,7 +62,6 @@
   }
 
   .search-route-meta,
-  .search-evidence-ids,
   .search-case-meta,
   .search-data-health {
     display: flex;
@@ -75,7 +71,6 @@
 
   .search-route-meta code,
   .search-case-meta code,
-  .search-evidence-ids code,
   .search-data-health code {
     padding: 4px 7px;
     color: var(--ash);
@@ -129,8 +124,7 @@
   }
 
   .search-content,
-  .search-result-primary,
-  .search-result-insights {
+  .search-result-primary {
     display: grid;
     gap: 10px;
     min-width: 0;
@@ -209,14 +203,13 @@
 
   .search-result-grid {
     display: grid;
-    grid-template-columns: minmax(0, 1.45fr) minmax(360px, 0.72fr);
+    grid-template-columns: minmax(0, 1fr);
     gap: 10px;
     align-items: start;
     min-width: 0;
   }
 
-  .search-panel header,
-  .search-agent-brief > header {
+  .search-panel header {
     display: flex;
     align-items: center;
     justify-content: space-between;

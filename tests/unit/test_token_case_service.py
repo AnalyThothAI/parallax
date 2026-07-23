@@ -16,10 +16,11 @@ NOW_MS = 1_700_000_060_000
 
 
 def test_token_case_dossier_builds_all_sections_for_resolved_asset():
+    token_radar = FakeTokenRadar(row=radar_row())
     service = TokenCaseService(
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[target_row("event-2"), target_row("event-1")]),
         profiles=FakeProfiles(profile={"status": "ready", "provider": "test_profile"}),
+        token_radar=token_radar,
     )
 
     dossier = service.dossier(
@@ -31,20 +32,84 @@ def test_token_case_dossier_builds_all_sections_for_resolved_asset():
         now_ms=NOW_MS,
     )
 
-    assert list(dossier) == ["target", "profile", "timeline", "posts", "narrative_admission", "market_live"]
+    assert list(dossier) == [
+        "target",
+        "profile",
+        "timeline",
+        "posts",
+        "market_live",
+        "current_radar",
+    ]
     assert dossier["target"]["target_id"] == TARGET_ID
     assert dossier["profile"]["status"] == "ready"
     assert dossier["timeline"]["summary"]["posts"] == 2
     assert dossier["posts"]["returned_count"] == 2
-    assert dossier["narrative_admission"]["currentness"]["display_status"] == "not_ready"
     assert dossier["market_live"]["status"] in {"ready", "missing"}
+    assert dossier["current_radar"] == {
+        "intent": {
+            "intent_id": "intent-hansa",
+            "event_id": "event-1",
+            "display_symbol": "HANSA",
+            "display_name": "Hansa",
+            "evidence": [],
+        },
+        "radar": {
+            "lane": "resolved",
+            "rank": 3,
+            "listed_at_ms": NOW_MS - 120_000,
+            "computed_at_ms": NOW_MS,
+            "source_max_received_at_ms": NOW_MS - 1_000,
+        },
+        "resolution": {
+            "status": "EXACT",
+            "target_type": "Asset",
+            "target_id": TARGET_ID,
+            "pricefeed_id": "pricefeed:gmgn:hansa",
+            "reason_codes": ["address_exact"],
+            "candidate_ids": [],
+            "lookup_keys": ["solana:hansa"],
+            "discovery": [],
+        },
+        "quality": {"status": "ready", "degraded_reasons": []},
+        "factor_snapshot": radar_factor_snapshot(),
+    }
+    assert "profile" not in dossier["current_radar"]
+    assert token_radar.calls == [
+        {
+            "projection_version": "token-radar-v14-transparent-factors",
+            "window": "1h",
+            "scope": "all",
+            "venue": "all",
+            "target_type": "Asset",
+            "target_id": TARGET_ID,
+        }
+    ]
+
+
+def test_token_case_exposes_null_when_target_is_not_currently_listed():
+    service = TokenCaseService(
+        targets=FakeTargets(rows=[target_row("event-1")]),
+        profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
+    )
+
+    dossier = service.dossier(
+        target_type="Asset",
+        target_id=TARGET_ID,
+        window="1h",
+        scope="all",
+        posts_limit=2,
+        now_ms=NOW_MS,
+    )
+
+    assert dossier["current_radar"] is None
 
 
 def test_token_case_dossier_raises_not_found_for_unknown_target():
     service = TokenCaseService(
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[], identity=None),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     with pytest.raises(TokenCaseTargetNotFound):
@@ -62,9 +127,9 @@ def test_token_case_accepts_watched_scope_alias():
     targets = FakeTargets(rows=[target_row("event-1", is_watched=True)])
     token_radar = FakeTokenRadar()
     service = TokenCaseService(
-        token_radar=token_radar,
         targets=targets,
         profiles=FakeProfiles(),
+        token_radar=token_radar,
     )
 
     dossier = service.dossier(
@@ -81,66 +146,11 @@ def test_token_case_accepts_watched_scope_alias():
     assert token_radar.calls[0]["scope"] == "matched"
 
 
-def test_token_case_derives_admission_from_ready_current_radar_row() -> None:
-    token_radar = FakeTokenRadar(row=current_radar_row())
-    service = TokenCaseService(
-        token_radar=token_radar,
-        targets=FakeTargets(rows=[target_row("event-1")]),
-        profiles=FakeProfiles(),
-    )
-
-    dossier = service.dossier(
-        target_type="Asset",
-        target_id=TARGET_ID,
-        window="1h",
-        scope="all",
-        posts_limit=1,
-        now_ms=NOW_MS,
-    )
-
-    assert dossier["narrative_admission"]["status"] == "admitted"
-    assert dossier["narrative_admission"]["coverage"] == {
-        "source_mentions": 2,
-        "independent_authors": 2,
-    }
-    assert token_radar.calls == [
-        {
-            "projection_version": "token-radar-v13-social-attention",
-            "window": "1h",
-            "scope": "all",
-            "venue": "all",
-            "target_type": "Asset",
-            "target_id": TARGET_ID,
-        }
-    ]
-
-
-def test_token_case_non_1h_admission_is_unsupported_without_radar_read() -> None:
-    token_radar = FakeTokenRadar(row=current_radar_row())
-    service = TokenCaseService(
-        token_radar=token_radar,
-        targets=FakeTargets(rows=[target_row("event-1")]),
-        profiles=FakeProfiles(),
-    )
-
-    dossier = service.dossier(
-        target_type="Asset",
-        target_id=TARGET_ID,
-        window="24h",
-        scope="all",
-        posts_limit=1,
-        now_ms=NOW_MS,
-    )
-
-    assert dossier["narrative_admission"]["currentness"]["display_status"] == "unsupported_window"
-    assert token_radar.calls == []
-
-
 def test_token_case_rejects_invalid_scope():
     service = TokenCaseService(
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[]),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     with pytest.raises(TokenCaseInvalidScope):
@@ -156,9 +166,9 @@ def test_token_case_rejects_invalid_scope():
 
 def test_token_case_uses_missing_live_market_when_no_persisted_tick_exists():
     service = TokenCaseService(
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[target_row("event-1")]),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     dossier = service.dossier(
@@ -177,9 +187,9 @@ def test_token_case_uses_missing_live_market_when_no_persisted_tick_exists():
 
 def test_token_case_requires_latest_market_tick_repository_contract():
     service = TokenCaseService(
-        token_radar=FakeTokenRadar(),
         targets=FakeTargetsWithoutMarketTick(rows=[target_row("event-1")]),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     with pytest.raises(AttributeError, match="latest_market_tick"):
@@ -195,7 +205,6 @@ def test_token_case_requires_latest_market_tick_repository_contract():
 
 def test_token_case_uses_latest_persisted_market_tick():
     service = TokenCaseService(
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(
             rows=[target_row("event-1")],
             market_tick={
@@ -211,6 +220,7 @@ def test_token_case_uses_latest_persisted_market_tick():
             },
         ),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     dossier = service.dossier(
@@ -236,7 +246,6 @@ def test_token_case_uses_latest_persisted_market_tick():
 
 def test_token_case_keeps_profile_and_market_context_without_agent_brief():
     service = TokenCaseService(
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(
             rows=[target_row("event-1")],
             market_tick={
@@ -259,6 +268,7 @@ def test_token_case_keeps_profile_and_market_context_without_agent_brief():
                 "source": {"raw_available": True},
             }
         ),
+        token_radar=FakeTokenRadar(),
     )
 
     dossier = service.dossier(
@@ -277,9 +287,9 @@ def test_token_case_keeps_profile_and_market_context_without_agent_brief():
 
 def test_token_case_uses_missing_live_market_without_persisted_tick():
     service = TokenCaseService(
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[target_row("event-1")]),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     dossier = service.dossier(
@@ -296,9 +306,9 @@ def test_token_case_uses_missing_live_market_without_persisted_tick():
 
 def test_token_case_limits_first_posts_page_to_posts_limit():
     service = TokenCaseService(
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[target_row("event-2"), target_row("event-1")]),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     dossier = service.dossier(
@@ -382,16 +392,6 @@ def test_token_target_repository_target_identity_escapes_cex_feed_like_pattern()
     assert conn.params == ["cex_token:BTC"]
 
 
-class FakeTokenRadar:
-    def __init__(self, *, row: dict | None = None) -> None:
-        self.row = row
-        self.calls: list[dict] = []
-
-    def current_row_for_target(self, **kwargs):
-        self.calls.append(kwargs)
-        return self.row
-
-
 class FakeTargets:
     def __init__(self, *, rows, identity=None, market_tick=None):
         self.rows = rows
@@ -464,6 +464,16 @@ class FakeProfiles:
         return self.profile
 
 
+class FakeTokenRadar:
+    def __init__(self, *, row=None):
+        self.row = row
+        self.calls = []
+
+    def current_row_for_target(self, **kwargs):
+        self.calls.append(kwargs)
+        return self.row
+
+
 class FakeConn:
     def __init__(self, *, row):
         self.row = row
@@ -498,22 +508,6 @@ def target_identity() -> dict:
     }
 
 
-def current_radar_row() -> dict:
-    return {
-        "rank": 1,
-        "rank_score": 55.0,
-        "computed_at_ms": NOW_MS,
-        "source_event_ids_json": ["event-1", "event-2"],
-        "factor_snapshot_json": {
-            "families": {
-                "social_propagation": {
-                    "facts": {"independent_authors": 2},
-                }
-            }
-        },
-    }
-
-
 def target_row(event_id: str, *, is_watched: bool = True) -> dict:
     return {
         "event_id": event_id,
@@ -541,4 +535,102 @@ def target_row(event_id: str, *, is_watched: bool = True) -> dict:
         "market_tick_observed_at_ms": 1_700_000_000_000,
         "market_tick_lag_ms": 0,
         "market_capture_method": "tier1_ws",
+    }
+
+
+def radar_row() -> dict:
+    return {
+        "lane": "resolved",
+        "rank": 3,
+        "listed_at_ms": NOW_MS - 120_000,
+        "computed_at_ms": NOW_MS,
+        "source_max_received_at_ms": NOW_MS - 1_000,
+        "intent_json": {
+            "intent_id": "intent-hansa",
+            "event_id": "event-1",
+            "display_symbol": "HANSA",
+            "display_name": "Hansa",
+            "evidence": [],
+        },
+        "resolution_json": {
+            "status": "EXACT",
+            "target_type": "Asset",
+            "target_id": TARGET_ID,
+            "pricefeed_id": "pricefeed:gmgn:hansa",
+            "reason_codes": ["address_exact"],
+            "candidate_ids": [],
+            "lookup_keys": ["solana:hansa"],
+            "discovery": [],
+        },
+        "quality_status": "ready",
+        "degraded_reasons_json": [],
+        "factor_snapshot_json": radar_factor_snapshot(),
+    }
+
+
+def radar_factor_snapshot() -> dict:
+    family = {
+        "raw_score": 70,
+        "score": 70,
+        "weight": 1,
+        "data_health": "ready",
+        "facts": {},
+        "factors": {},
+    }
+    return {
+        "schema_version": "token_factor_snapshot_v4_transparent_factors",
+        "subject": {
+            "target_type": "Asset",
+            "target_id": TARGET_ID,
+            "symbol": "HANSA",
+            "target_market_type": "dex",
+            "chain": "solana",
+            "address": "hansa",
+            "pricefeed_id": "pricefeed:gmgn:hansa",
+        },
+        "market": {
+            "event_anchor": None,
+            "decision_latest": None,
+            "readiness": {
+                "anchor_status": "missing",
+                "latest_status": "missing",
+                "dex_floor_status": "missing_fields",
+                "missing_fields": ["market_cap_usd"],
+                "stale_fields": [],
+            },
+        },
+        "gates": {
+            "eligible_for_high_alert": False,
+            "max_decision": "watch",
+            "blocked_reasons": [],
+            "risk_reasons": [],
+        },
+        "data_health": {"identity": "ready", "market": "missing", "social": "ready"},
+        "families": {
+            "social_heat": family,
+            "social_propagation": family,
+            "timing_risk": family,
+        },
+        "normalization": {
+            "status": "ready",
+            "cohort_status": "ready",
+            "cohort": {},
+            "factor_ranks": {
+                "social_heat": None,
+                "social_propagation": None,
+                "timing_risk": None,
+            },
+            "alpha_rank": None,
+        },
+        "composite": {
+            "raw_alpha_score": 70,
+            "rank_score": 70,
+            "family_scores": {
+                "social_heat": 70,
+                "social_propagation": 70,
+                "timing_risk": 70,
+            },
+            "recommended_decision": "watch",
+        },
+        "provenance": {"source_event_ids": ["event-1"], "computed_at_ms": NOW_MS},
     }

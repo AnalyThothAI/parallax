@@ -16,11 +16,11 @@ describe("tokenCaseRouteState", () => {
 
   it("accepts supported window, watched scope, and sort params", () => {
     expect(
-      parseTokenCaseRouteState(new URLSearchParams("window=24h&scope=watched&postSort=catalyst")),
+      parseTokenCaseRouteState(new URLSearchParams("window=24h&scope=watched&postSort=watched")),
     ).toEqual({
       window: "24h",
       scope: "watched",
-      postSort: "catalyst",
+      postSort: "watched",
     });
   });
 

@@ -87,7 +87,6 @@ function tokenCaseSearchInspectFixture(q: string) {
       result_kind: "token_result",
     },
     resolver: {
-      confidence: 0.98,
       target_candidates: [dossier.target],
       selected_target: dossier.target,
       reasons: ["msw_token_case_fixture"],

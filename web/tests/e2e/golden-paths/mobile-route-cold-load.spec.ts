@@ -91,17 +91,21 @@ const routeCases: RouteCase[] = [
     specific: async (page) => {
       await expect(page.getByRole("link", { name: "Queue" })).toBeVisible();
       await expect(page.getByText("Evidence page", { exact: true })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "Signal" })).toBeVisible();
-      await expect(page.getByText("Token impacts", { exact: true })).toBeVisible();
-      await expect(page.getByText("Execution gaps", { exact: true })).toBeVisible();
-      await expect(page.getByText("Price reaction", { exact: true })).toBeVisible();
-      await expect(page.getByText("Liquidity / OI", { exact: true })).toBeVisible();
-      await expect(page.getByText("Agent thesis", { exact: true })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Story membership" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Content classification" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Market scope" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Token identity lanes" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Fact lanes" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "Observation set" })).toBeVisible();
       await expect(page.locator("[aria-label='source packet']")).toBeVisible();
       await expect(page.locator("[aria-label='news evidence metadata']")).toBeVisible();
       await expect(page.getByRole("heading", { name: "Source metadata" })).toBeVisible();
       await expect(
-        page.getByText("OpenNews aiRating flags liquidity rotation").first(),
+        page.getByRole("heading", {
+          exact: true,
+          level: 2,
+          name: "Macro desk flags liquidity rotation",
+        }),
       ).toBeVisible();
     },
     nestedOverflowSelectors: [".news-panel", ".news-evidence-page", ".news-evidence-layout"],
@@ -117,7 +121,7 @@ const routeCases: RouteCase[] = [
     specific: async (page) => {
       await expect(page.getByRole("region", { name: "Monitor status" })).toBeVisible();
       await expect(page.getByRole("heading", { name: "Handle intelligence" })).toBeVisible();
-      await expect(page.getByRole("tablist", { name: "Timeline scope" })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "Twitter source list" })).toBeVisible();
       await expect(page.locator("[aria-label='Watchlist source context']")).toBeVisible();
     },
     nestedOverflowSelectors: [
@@ -149,31 +153,23 @@ const routeCases: RouteCase[] = [
     name: "macro",
     path: "/macro",
     primary: async (page) => {
-      await expect(page.getByRole("region", { exact: true, name: "宏观" })).toBeVisible();
-      await expect(
-        page.getByRole("heading", { exact: true, level: 1, name: "宏观总览" }),
-      ).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: "宏观证据总览" })).toBeVisible();
     },
     specific: async (page) => {
-      await expect(page.getByRole("region", { name: "宏观工作台" })).toBeVisible();
-      await expect(page.getByRole("navigation", { name: "宏观主模块" })).toHaveCount(0);
-      await expect(page.getByRole("navigation", { name: "宏观模块" })).toBeVisible();
-      await expect(page.getByText("总览：风险偏好等待利率与流动性确认")).toBeVisible();
-      await expect(page.getByRole("region", { name: "宏观简报" })).toContainText("状态");
-      await expect(page.getByRole("region", { name: "宏观总览" })).not.toContainText(
-        "macro:regime",
-      );
-      await expect(page.getByRole("region", { name: "跨域市场板" })).toBeVisible();
-      await expect(page.getByRole("table", { name: "美股代理快照" })).toBeVisible();
-      await expect(page.getByRole("region", { name: "数据诊断" })).toContainText(
-        "全局历史样本不足",
-      );
-      await expect(page.getByRole("region", { name: "数据诊断" })).not.toContainText(
-        "macro_global_history_partial",
-      );
+      await expect(page.getByRole("navigation", { name: "宏观页面" })).toBeVisible();
+      await expect(page.getByText("macro_evidence_v1")).toBeVisible();
+      await expect(page.getByRole("heading", { name: "主导冲击" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "官方催化日历" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "完整证据与溯源" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "未评估能力" })).toBeVisible();
     },
-    nestedOverflowSelectors: [".macro-module-route", ".macro-shell", ".macro-page-scaffold"],
-    lastMeaningfulSelector: "[aria-label='数据诊断']",
+    nestedOverflowSelectors: [
+      ".macro-evidence-page",
+      ".macro-evidence-header",
+      ".macro-snapshot-meta",
+      ".macro-evidence-card",
+    ],
+    lastMeaningfulSelector: ".macro-evidence-page > section:last-of-type",
   },
   {
     name: "ops",

@@ -468,7 +468,7 @@ def test_api_status_exposes_flat_worker_status(tmp_path):
     assert workers["event_anchor_backfill"]["enabled"] is True
 
 
-def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
+def test_api_exposes_recent_search_and_token_read_models(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -512,18 +512,40 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert search_inspect.status_code == 200
     inspect_data = search_inspect.json()["data"]
     assert inspect_data["query"]["result_kind"] == "token_result"
+    assert set(inspect_data["resolver"]) == {
+        "target_candidates",
+        "selected_target",
+        "reasons",
+    }
     assert inspect_data["resolver"]["target_candidates"]
     assert inspect_data["token_result"]["posts"]["items"][0]["event_id"] == "event-1"
     assert inspect_data["token_result"]["timeline"]["market_candles"]["target_type"] == "Asset"
     assert inspect_data["token_result"]["profile"]["status"] == "pending"
     assert inspect_data["token_result"]["profile"]["provider"] is None
     assert inspect_data["token_result"]["market_live"]["status"] in {"missing", "unsupported", "ready"}
+    current_radar = inspect_data["token_result"]["current_radar"]
+    assert current_radar is not None
+    assert set(current_radar) == {
+        "intent",
+        "radar",
+        "resolution",
+        "quality",
+        "factor_snapshot",
+    }
+    assert current_radar["factor_snapshot"]["subject"]["symbol"] == "PEPE"
+    assert current_radar["radar"]["lane"] == "resolved"
+    assert current_radar["radar"]["rank"] >= 1
+    assert current_radar["factor_snapshot"]["composite"]["recommended_decision"] in {
+        "discard",
+        "watch",
+        "high_alert",
+    }
     legacy_market_field = "market_overlay"
     assert legacy_market_field not in inspect_data["token_result"]
     assert "radar_item" not in inspect_data["token_result"]
     assert "agent_brief" not in inspect_data["token_result"]
     assert "discussion_digest" not in inspect_data["token_result"]
-    assert inspect_data["token_result"]["narrative_admission"]["currentness"]["display_status"] == "unsupported_window"
+    assert "narrative_admission" not in inspect_data["token_result"]
 
     assert asset_flow.status_code == 200
     radar_row = asset_flow.json()["data"]["targets"][0]
@@ -532,7 +554,7 @@ def test_api_exposes_recent_search_and_signal_read_models(tmp_path):
     assert radar_row["profile"]["status"] == "pending"
     assert radar_row["profile"]["provider"] is None
     assert "discussion_digest" not in radar_row
-    assert radar_row["narrative_admission"]["currentness"]["display_status"] == "unsupported_window"
+    assert "narrative_admission" not in radar_row
 
     assert account_alerts.status_code == 200
     assert account_alerts.json()["data"]["items"][0]["event_id"] == "event-1"
@@ -753,31 +775,25 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
             )
             insert_notification_row(
                 repos.notifications,
-                dedup_key="news:pepe",
-                rule_id="news_high_signal",
+                dedup_key="watched-token:pepe",
+                rule_id="watched_account_token_alert",
                 severity="high",
-                title="PEPE news",
-                body="agent news driver",
+                title="@toly mentioned $PEPE",
+                body="First-seen watched-account token mention",
                 entity_type="token",
                 entity_key="token:eth:pepe",
+                author_handle="toly",
                 symbol="PEPE",
                 chain="eth",
                 address=PEPE,
-                source_table="news_items",
-                source_id="token:eth:pepe",
+                source_table="account_token_alerts",
+                source_id="alert-1",
                 occurrence_at_ms=1_700_000_060_000,
                 payload={
-                    "news_item_id": "news-1",
-                    "representative_news_item_id": "news-1",
-                    "story_key": "story-1",
-                    "decision_class": "driver",
-                    "direction": "bullish",
-                    "symbols": ["PEPE"],
-                    "semantic_signature": "semantic-1",
-                    "display_title": "PEPE news",
-                    "summary": "Agent news driver.",
-                    "source_domain": "example.test",
-                    "external_push_eligible": False,
+                    "alert_id": "alert-1",
+                    "author_handle": "toly",
+                    "symbol": "PEPE",
+                    "is_first_seen_global": True,
                 },
                 channels=["in_app"],
             )
@@ -791,12 +807,14 @@ def test_api_exposes_notification_list_summary_and_read_state(tmp_path):
     assert listed.status_code == 200
     assert listed.json()["data"]["summary"]["unread_count"] == 2
     assert listed.json()["data"]["summary"]["high_unread_count"] == 1
-    assert listed.json()["data"]["summary"]["account_unread_counts"] == {"toly": 1}
-    assert listed.json()["data"]["items"][0]["rule_id"] == "news_high_signal"
-    assert listed.json()["data"]["items"][0]["payload"]["decision_class"] == "driver"
-    assert listed.json()["data"]["items"][0]["payload"]["symbols"] == ["PEPE"]
-    assert "agent_brief" not in listed.json()["data"]["items"][0]["payload"]
-    assert "story" not in listed.json()["data"]["items"][0]["payload"]
+    assert listed.json()["data"]["summary"]["account_unread_counts"] == {"toly": 2}
+    assert listed.json()["data"]["items"][0]["rule_id"] == "watched_account_token_alert"
+    assert listed.json()["data"]["items"][0]["payload"] == {
+        "alert_id": "alert-1",
+        "author_handle": "toly",
+        "symbol": "PEPE",
+        "is_first_seen_global": True,
+    }
     assert listed.json()["data"]["items"][0]["channels"] == ["in_app"]
 
     assert read.status_code == 200
@@ -867,18 +885,18 @@ def test_api_exposes_notification_delivery_audit(tmp_path):
         with runtime.repositories() as repos, repos.transaction():
             notification = insert_notification_row(
                 repos.notifications,
-                dedup_key="news:pepe",
-                rule_id="news_high_signal",
+                dedup_key="watched-token:pepe",
+                rule_id="watched_account_token_alert",
                 severity="high",
-                title="PEPE news",
-                body="agent news driver",
+                title="@toly mentioned $PEPE",
+                body="First-seen watched-account token mention",
                 entity_type="token",
                 entity_key="token:eth:pepe",
                 symbol="PEPE",
-                source_table="news_items",
-                source_id="token:eth:pepe",
+                source_table="account_token_alerts",
+                source_id="alert-1",
                 occurrence_at_ms=1_700_000_060_000,
-                payload={"decision_class": "driver"},
+                payload={"alert_id": "alert-1", "symbol": "PEPE"},
                 channels=["in_app", "pushdeer"],
             )
             assert notification is not None
@@ -999,13 +1017,14 @@ def test_api_token_case_returns_dossier_for_resolved_asset(tmp_path):
     assert body["ok"] is True
     assert body["data"]["target"]["target_type"] == "Asset"
     assert "market_live" in body["data"]
+    assert body["data"]["current_radar"] is None
     assert body["data"]["timeline"]["market_candles"]["target_type"] == "Asset"
     assert "radar_item" not in body["data"]
     legacy_market_field = "market_overlay"
     assert legacy_market_field not in body["data"]
     assert "agent_brief" not in body["data"]
     assert "discussion_digest" not in body["data"]
-    assert body["data"]["narrative_admission"]["currentness"]["display_status"] == "unsupported_window"
+    assert "narrative_admission" not in body["data"]
     assert body["data"]["posts"]["items"][0]["post_quality"]["contributions"]
     assert "semantic" not in body["data"]["posts"]["items"][0]
 
@@ -1137,6 +1156,9 @@ def test_api_target_posts_returns_full_post_pages_and_requires_target_identity(t
     assert first_body["has_more"] is True
     assert first_body["query"]["target_type"] == target_type
     assert "semantic" not in first_body["items"][0]
+    assert "sort" not in first_body["query"]
+    assert "catalyst_score" not in first_body["items"][0]
+    assert "catalyst_components" not in first_body["items"][0]
     assert first_body["query"]["target_id"] == target_id
     assert first_body["items"][0]["post_quality"]["score_version"] == "post_quality_v1"
     assert first_body["items"][0]["post_quality"]["contributions"]
@@ -1162,6 +1184,29 @@ def test_api_target_posts_rejects_malformed_cursor(tmp_path):
 
     assert response.status_code == 400
     assert response.json() == {"ok": False, "error": "invalid_cursor"}
+
+
+def test_api_target_posts_rejects_retired_sort_query(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/target-posts",
+            params={
+                "target_type": "Asset",
+                "target_id": "asset:eip155:1:erc20:0xpepe",
+                "window": "5m",
+                "sort": "recent",
+            },
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 400
+    assert response.json() == {
+        "ok": False,
+        "error": "unsupported_query_param",
+        "field": "sort",
+    }
 
 
 def test_api_target_social_timeline_returns_buckets_authors_and_posts(tmp_path):

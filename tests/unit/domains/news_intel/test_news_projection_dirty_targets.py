@@ -44,7 +44,7 @@ class Connection:
         return Cursor(rows, rowcount=self.rowcount if not rows else len(rows))
 
 
-@pytest.mark.parametrize("projection_name", ["brief_input", "source_quality", "story"])
+@pytest.mark.parametrize("projection_name", ["brief_input", "source_quality", "story", "story_brief"])
 def test_retired_projection_names_are_rejected_before_sql(projection_name: str) -> None:
     conn = Connection()
     repo = NewsProjectionDirtyTargetRepository(conn)
@@ -66,26 +66,13 @@ def test_retired_projection_names_are_rejected_before_sql(projection_name: str) 
     assert conn.sql == []
 
 
-@pytest.mark.parametrize(
-    "target",
-    [
-        {
-            "projection_name": "page",
-            "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS,
-        },
-        {
-            "projection_name": "story_brief",
-            "target_kind": "story",
-            "target_id": "story-1",
-            "source_watermark_ms": NOW_MS,
-        },
-    ],
-)
-def test_page_and_story_targets_are_the_only_supported_shapes_without_implicit_transaction(
-    target: dict[str, Any],
-) -> None:
+def test_page_is_the_only_supported_projection_without_implicit_transaction() -> None:
+    target = {
+        "projection_name": "page",
+        "target_kind": "news_item",
+        "target_id": "news-1",
+        "source_watermark_ms": NOW_MS,
+    }
     conn = Connection(rowcount=1)
     repo = NewsProjectionDirtyTargetRepository(conn)
 
@@ -98,26 +85,15 @@ def test_page_and_story_targets_are_the_only_supported_shapes_without_implicit_t
     assert params["source_watermark_ms_values"] == [NOW_MS]
 
 
-@pytest.mark.parametrize(
-    "target",
-    [
-        {
-            "projection_name": "page",
-            "target_kind": "story",
-            "target_id": "story-1",
-            "source_watermark_ms": NOW_MS,
-        },
-        {
-            "projection_name": "story_brief",
-            "target_kind": "news_item",
-            "target_id": "news-1",
-            "source_watermark_ms": NOW_MS,
-        },
-    ],
-)
-def test_projection_target_kind_mismatch_is_rejected(target: dict[str, Any]) -> None:
+def test_projection_target_kind_mismatch_is_rejected() -> None:
     conn = Connection()
     repo = NewsProjectionDirtyTargetRepository(conn)
+    target = {
+        "projection_name": "page",
+        "target_kind": "story",
+        "target_id": "story-1",
+        "source_watermark_ms": NOW_MS,
+    }
 
     with pytest.raises(ValueError, match="unsupported news projection target"):
         repo.enqueue_targets([target], reason="invalid", now_ms=NOW_MS)
@@ -130,9 +106,9 @@ def test_projection_targets_require_positive_integer_watermarks(source_watermark
     conn = Connection()
     repo = NewsProjectionDirtyTargetRepository(conn)
     target = {
-        "projection_name": "story_brief",
-        "target_kind": "story",
-        "target_id": "story-1",
+        "projection_name": "page",
+        "target_kind": "news_item",
+        "target_id": "news-1",
         "source_watermark_ms": source_watermark_ms,
     }
 
@@ -150,9 +126,9 @@ def test_projection_targets_require_empty_window() -> None:
         repo.enqueue_targets(
             [
                 {
-                    "projection_name": "story_brief",
-                    "target_kind": "story",
-                    "target_id": "story-1",
+                    "projection_name": "page",
+                    "target_kind": "news_item",
+                    "target_id": "news-1",
                     "window": "24h",
                     "source_watermark_ms": NOW_MS,
                 }
@@ -164,11 +140,11 @@ def test_projection_targets_require_empty_window() -> None:
     assert conn.sql == []
 
 
-def test_claim_filters_by_story_projection() -> None:
+def test_claim_filters_by_page_projection() -> None:
     claim = {
-        "projection_name": "story_brief",
-        "target_kind": "story",
-        "target_id": "story-1",
+        "projection_name": "page",
+        "target_kind": "news_item",
+        "target_id": "news-1",
         "window": "",
         "payload_hash": "hash-1",
         "source_watermark_ms": NOW_MS,
@@ -179,7 +155,7 @@ def test_claim_filters_by_story_projection() -> None:
     repo = NewsProjectionDirtyTargetRepository(conn)
 
     rows = repo.claim_due(
-        projection_name="story_brief",
+        projection_name="page",
         limit=1,
         lease_ms=30_000,
         now_ms=NOW_MS,
@@ -187,4 +163,4 @@ def test_claim_filters_by_story_projection() -> None:
     )
 
     assert rows == [claim]
-    assert conn.params[-1]["projection_name"] == "story_brief"
+    assert conn.params[-1]["projection_name"] == "page"

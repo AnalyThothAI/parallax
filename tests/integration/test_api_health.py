@@ -274,7 +274,7 @@ def fake_wired_providers(
             stream_dex_market=None,
             discovery_chain_ids=(),
         ),
-        news_intel=news_intel or SimpleNamespace(feed_client=None, story_brief_provider=None),
+        news_intel=news_intel or SimpleNamespace(feed_client=None),
     )
 
 
@@ -284,7 +284,7 @@ def patch_runtime_dependencies(monkeypatch, *, asset_market=None, news_intel=Non
     monkeypatch.setattr(
         bootstrap_module,
         "wire_providers",
-        lambda settings, *, start_collector, agent_execution_gateway=None: fake_wired_providers(
+        lambda settings, *, start_collector: fake_wired_providers(
             settings,
             start_collector=start_collector,
             asset_market=asset_market,
@@ -340,7 +340,7 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
     )
     patch_runtime_dependencies(
         monkeypatch,
-        news_intel=SimpleNamespace(feed_client=FakeClosableProvider(), story_brief_provider=None),
+        news_intel=SimpleNamespace(feed_client=FakeClosableProvider()),
     )
     monkeypatch.setattr(
         app_module,
@@ -407,7 +407,6 @@ def test_healthz_readyz_and_metrics_return_status(monkeypatch, tmp_path):
         "worker:asset_profile_refresh:unavailable:missing_asset_profile_provider",
         "worker:market_tick_poll:unavailable:missing_asset_market_quote_provider",
         "worker:market_tick_stream:unavailable:missing_asset_market_stream_provider",
-        "worker:news_story_brief:unavailable:missing_llm_configuration",
         "worker:notification_delivery:unavailable:missing_notification_delivery_channel",
         "worker:resolution_refresh:unavailable:missing_asset_discovery_provider",
     ]
@@ -587,7 +586,6 @@ def test_readiness_does_not_query_worker_provider_or_business_freshness(monkeypa
         scheduler=ForbiddenDependency(),
         collector=ForbiddenDependency(),
         providers=ForbiddenDependency(),
-        agent_execution_gateway=ForbiddenDependency(),
         repositories=lambda: None,
     )
     monkeypatch.setattr(app_module, "_db_status", lambda _: {"ok": True, "probe": "fake"})
@@ -732,37 +730,16 @@ def test_notification_delivery_starts_when_rule_worker_disabled(monkeypatch, tmp
         close_runtime(runtime)
 
 
-def test_status_uses_runtime_snapshot_worker_and_agent_state():
-    agent_execution = {
-        "lane": "news.story_brief",
-        "model": "gpt-news",
-        "provider_family": "openai",
-        "output_strategy": "json_object",
-        "schema_enforcement": "client_validate",
-        "max_concurrency": 1,
-        "rpm_limit": 60,
-        "timeout_seconds": 180.0,
-        "in_flight": 0,
-        "provider_running": 0,
-        "circuit_state": "closed",
-        "circuit_open_until_ms": None,
-        "capacity_denied_total": 0,
-        "circuit_open_total": 0,
-        "timeout_total": 0,
-        "last_denied_at_ms": None,
-        "last_timeout_at_ms": None,
-        "oldest_in_flight_age_ms": None,
-    }
+def test_status_uses_runtime_snapshot_worker_state():
     runtime = SimpleNamespace(
         settings=Settings(ws_token="secret", handles=("toly",), notifications={"enabled": False}),
         collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
-        agent_execution_gateway=SimpleNamespace(status_snapshot=lambda: agent_execution),
         news_provider_contract={"ok": True},
         scheduler=SimpleNamespace(
             tasks={},
             status_payload=lambda: full_worker_statuses(
-                news_story_brief={
+                news_page_projection={
                     "enabled": True,
                     "running": True,
                     "effective_status": "running",
@@ -779,9 +756,9 @@ def test_status_uses_runtime_snapshot_worker_and_agent_state():
 
     payload = _status_payload(runtime)
 
-    assert payload["workers"]["news_story_brief"]["running"] is True
-    assert payload["workers"]["news_story_brief"]["last_result"] == {"processed": 1}
-    assert payload["agent_execution"] == agent_execution
+    assert payload["workers"]["news_page_projection"]["running"] is True
+    assert payload["workers"]["news_page_projection"]["last_result"] == {"processed": 1}
+    assert "agent_execution" not in payload
 
 
 def test_status_reports_formal_failed_worker():
@@ -790,7 +767,6 @@ def test_status_reports_formal_failed_worker():
         collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
         db=FakeDB(),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
-        agent_execution_gateway=None,
         scheduler=SimpleNamespace(
             tasks={},
             status_payload=lambda: full_worker_statuses(
@@ -817,7 +793,6 @@ def test_status_reports_terminal_news_source_as_degraded() -> None:
         collector=SimpleNamespace(status=SimpleNamespace(to_dict=lambda: {"frames_received": 0}), upstream_client=None),
         db=FakeDB(),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
-        agent_execution_gateway=None,
         scheduler=SimpleNamespace(
             tasks={},
             status_payload=lambda: full_worker_statuses(
@@ -861,7 +836,6 @@ def test_status_reports_okx_circuit_open_as_degraded_without_failing_readiness()
                 )
             )
         ),
-        agent_execution_gateway=None,
         news_provider_contract={"ok": True},
         scheduler=SimpleNamespace(
             tasks={},

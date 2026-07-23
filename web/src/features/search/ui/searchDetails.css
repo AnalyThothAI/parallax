@@ -142,86 +142,8 @@
     color: var(--risk);
   }
 
-  .search-agent-grid {
-    display: grid;
-    grid-template-columns: repeat(2, minmax(0, 1fr));
-    gap: 8px;
-    padding: 10px;
-  }
-
-  .search-agent-card {
-    min-width: 0;
-    padding: 9px;
-    border: 1px solid var(--line);
-    background: rgba(8, 11, 11, 0.95);
-  }
-
-  .search-agent-card.wide {
-    grid-column: 1 / -1;
-  }
-
-  .search-agent-card.bull {
-    border-color: rgba(116, 212, 127, 0.35);
-    background: rgba(116, 212, 127, 0.055);
-  }
-
-  .search-agent-card.bear {
-    border-color: rgba(239, 107, 105, 0.35);
-    background: rgba(239, 107, 105, 0.055);
-  }
-
-  .search-agent-card h4 {
-    margin: 0 0 7px;
-    color: var(--bone);
-    font-family: var(--mono);
-    font-size: 12px;
-  }
-
-  .search-agent-card b,
-  .search-agent-card strong {
-    color: var(--bone);
-    font-family: var(--mono);
-  }
-
-  .search-agent-card p,
-  .search-agent-card li {
-    color: var(--bone-2);
-    font-size: 12px;
-    line-height: 1.45;
-  }
-
-  .search-agent-card p {
-    margin: 0 0 8px;
-  }
-
-  .search-agent-card ul {
-    margin: 8px 0 0;
-    padding-left: 16px;
-  }
-
-  .search-agent-phase-list {
-    display: grid;
-    gap: 6px;
-  }
-
-  .search-agent-phase-list > div {
-    padding: 7px;
-    border: 1px solid var(--line);
-    background: rgba(7, 9, 9, 0.9);
-  }
-
-  .search-agent-phase-list span,
-  .search-agent-phase-list em {
-    display: block;
-    color: var(--dim);
-    font-family: var(--mono);
-    font-size: 10px;
-    font-style: normal;
-  }
-
   @media (max-width: 1180px) {
-    .search-result-grid,
-    .search-agent-grid {
+    .search-result-grid {
       grid-template-columns: 1fr;
     }
 
@@ -237,8 +159,7 @@
   @media (max-width: 767px) {
     .search-intel-topbar,
     .search-case-header,
-    .search-panel header,
-    .search-agent-brief > header {
+    .search-panel header {
       align-items: stretch;
       flex-direction: column;
     }
@@ -259,7 +180,6 @@
 
     .search-result-grid,
     .search-intel-controls,
-    .search-agent-grid,
     .search-score-summary,
     .search-score-families {
       grid-template-columns: minmax(0, 1fr);

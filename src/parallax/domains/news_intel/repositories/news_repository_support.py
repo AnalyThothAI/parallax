@@ -16,7 +16,6 @@ from parallax.domains.news_intel.types.news_canonical_identity import (
     provider_global_article_key,
 )
 from parallax.domains.news_intel.types.news_extraction import NewsEntity, NewsFactCandidate, NewsTokenMention
-from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmission
 from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
 from parallax.domains.news_intel.types.news_material_identity import (
     material_title_fingerprint,
@@ -29,7 +28,7 @@ from parallax.domains.news_intel.types.news_url_identity import url_identity_kin
 from parallax.domains.news_intel.types.source_classification import normalize_string_tuple
 from parallax.platform.current_read_model_payload_hash import stable_current_payload_hash
 from parallax.platform.db.write_contract import expect_mutation_count, returning_mutation_count
-from parallax.platform.validation import require_nonnegative_int, require_positive_int
+from parallax.platform.validation import require_positive_int
 
 _REDACTED = "<redacted>"
 _SECRET_ERROR_KEYS = (
@@ -64,18 +63,6 @@ _BEARER_RE = re.compile(r"\bBearer\s+[A-Za-z0-9._~+/=-]+", re.IGNORECASE)
 _URL_USERINFO_RE = re.compile(r"([a-z][a-z0-9+.-]*://)[^/@\s]+@", re.IGNORECASE)
 _CHECK_QUOTED_VALUE_RE = re.compile(r"'((?:''|[^'])*)'(?:\s*::\s*[A-Za-z_][A-Za-z0-9_]*)?")
 _PUBLICATION_METADATA_FIELDS = {"computed_at_ms", "updated_at_ms", "projected_at_ms", "payload_hash"}
-_NEWS_PAGE_SIGNAL_SQL = "LOWER(signal_json -> 'display_signal' ->> 'direction') = %s"
-_MACRO_EVENT_FLOW_FIELDS = (
-    "window",
-    "window_label",
-    "severity",
-    "severity_label",
-    "category",
-    "category_label",
-    "impact",
-    "impact_label",
-    "watch",
-)
 _NEWS_ITEM_WORKER_COLUMNS = (
     "news_item_id",
     "provider_item_id",
@@ -117,12 +104,6 @@ _NEWS_ITEM_WORKER_COLUMNS = (
     "story_key",
     "story_identity_json",
     "story_identity_version",
-    "agent_admission_status",
-    "agent_admission_reason",
-    "agent_admission_json",
-    "agent_admission_version",
-    "agent_representative_news_item_id",
-    "agent_admission_computed_at_ms",
     "market_scope_json",
 )
 _NEWS_ITEM_WORKER_COLUMNS_SQL = ",\n".join(f"                items.{column}" for column in _NEWS_ITEM_WORKER_COLUMNS)
@@ -133,13 +114,6 @@ _NEWS_ITEM_WORKER_JSON_SQL = (
 )
 _MATERIAL_MATCH_WINDOW_MS = 600_000
 _STORY_PROJECTION_WINDOW_MS = 72 * 60 * 60 * 1000
-
-
-def _required_news_high_signal_since_ms(value: Any) -> int:
-    return require_nonnegative_int(
-        value,
-        error_code="news_high_signal_notification_since_ms_required",
-    )
 
 
 def _optional_returning_row(cursor: Any, row: Any | None) -> dict[str, Any] | None:
@@ -289,7 +263,6 @@ def _decode_page_cursor(cursor: str | None) -> tuple[int | None, str | None]:
 def _news_page_row_filter_sql(
     *,
     status: str | None = None,
-    signal: str | None = None,
     q: str | None = None,
 ) -> tuple[str, list[Any]]:
     filters: list[str] = []
@@ -297,9 +270,6 @@ def _news_page_row_filter_sql(
     if status:
         filters.append("lifecycle_status = %s")
         filter_params.append(str(status))
-    if signal:
-        filters.append(_NEWS_PAGE_SIGNAL_SQL)
-        filter_params.append(str(signal).strip().lower())
     query_text = str(q).strip() if q is not None else ""
     if query_text:
         filters.append("search_text ILIKE %s")
@@ -310,73 +280,44 @@ def _news_page_row_filter_sql(
 
 def _page_row_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     payload = dict(row)
-    if "market_scope" in payload:
-        raise ValueError("news_page_row_payload_retired:market_scope")
+    retired_fields = {
+        "signal",
+        "token_impacts",
+        "agent_brief",
+        "agent_status",
+        "agent_brief_computed_at_ms",
+        "macro_event_flow",
+        "agent_admission",
+        "agent_admission_status",
+        "agent_admission_reason",
+        "agent_representative_news_item_id",
+    }
+    present_retired_fields = sorted(retired_fields.intersection(payload))
+    if present_retired_fields:
+        raise ValueError(f"news_page_row_payload_retired:{present_retired_fields[0]}")
+    for field_name in (
+        "row_id",
+        "news_item_id",
+        "representative_news_item_id",
+        "story_key",
+        "lifecycle_status",
+        "content_class",
+        "projection_version",
+        "canonical_item_key",
+    ):
+        payload[field_name] = _required_page_text(payload, field_name)
     payload["latest_at_ms"] = _required_page_positive_int(payload, "latest_at_ms")
     payload["computed_at_ms"] = _required_page_positive_int(payload, "computed_at_ms")
-    payload["headline"] = _required_page_string(payload, "headline")
-    payload["canonical_url"] = _required_page_string(payload, "canonical_url")
-    payload["summary"] = _required_page_string(payload, "summary")
-    payload["source_domain"] = _required_page_string(payload, "source_domain")
+    for field_name in ("headline", "canonical_url", "summary", "source_domain"):
+        payload[field_name] = _required_page_string(payload, field_name)
+    payload["story_json"] = _json(_required_page_mapping(payload, "story"))
     payload["token_lanes_json"] = _json(_required_page_list(payload, "token_lanes"))
     payload["fact_lanes_json"] = _json(_required_page_list(payload, "fact_lanes"))
-    payload["representative_news_item_id"] = _required_page_text(payload, "representative_news_item_id")
-    payload["story_key"] = _required_page_text(payload, "story_key")
-    payload["story_json"] = _json(_required_page_mapping(payload, "story"))
-    payload["token_impacts_json"] = _json(_required_page_list(payload, "token_impacts"))
-    payload["content_class"] = _required_page_text(payload, "content_class")
+    payload["provider_rating_json"] = _json(_required_page_mapping(payload, "provider_rating"))
     payload["content_tags_json"] = _json(_required_page_list(payload, "content_tags"))
     payload["content_classification_json"] = _json(_required_page_mapping(payload, "content_classification"))
     payload["source_json"] = _json(_required_page_mapping(payload, "source"))
-    agent_brief = _required_page_mapping(payload, "agent_brief")
-    agent_brief_status = _required_page_nested_text(agent_brief, "agent_brief", "status")
-    agent_status = _required_page_text(payload, "agent_status")
-    if agent_status != agent_brief_status:
-        raise ValueError("news_page_row_payload_invalid:agent_status_mismatch")
-    if agent_status == "ready":
-        _required_page_nested_text(agent_brief, "agent_brief", "direction")
-        _required_page_nested_text(agent_brief, "agent_brief", "decision_class")
-    signal = _required_page_mapping(payload, "signal")
-    alert_eligibility = _required_page_nested_mapping(signal, "signal", "alert_eligibility")
-    for retired_field in ("agent_admission_status", "agent_admission_reason"):
-        if retired_field in alert_eligibility:
-            raise ValueError(f"news_page_row_payload_retired:signal.alert_eligibility.{retired_field}")
-    market_scope = _required_page_nested_mapping(
-        alert_eligibility,
-        "signal.alert_eligibility",
-        "market_scope",
-    )
-    payload["signal_json"] = _json(signal)
-    payload["provider_rating_json"] = _json(_required_page_mapping(payload, "provider_rating"))
-    payload["agent_brief_json"] = _json(agent_brief)
-    payload["agent_status"] = agent_status
-    payload["agent_brief_computed_at_ms"] = _optional_page_positive_int(payload, "agent_brief_computed_at_ms")
-    payload["market_scope_json"] = _json(market_scope)
-    macro_event_flow = _required_page_optional_macro_event_flow(payload)
-    payload["macro_event_flow_json"] = _json(macro_event_flow) if macro_event_flow is not None else None
-    agent_admission = _agent_admission_mapping_payload(_required_page_mapping(payload, "agent_admission"))
-    payload["agent_admission_status"] = _required_page_text(payload, "agent_admission_status")
-    payload["agent_admission_reason"] = _required_page_text(payload, "agent_admission_reason")
-    payload["agent_representative_news_item_id"] = _required_page_text(payload, "agent_representative_news_item_id")
-    _require_page_agent_admission_match(
-        payload,
-        agent_admission,
-        payload_field="agent_admission_status",
-        admission_field="status",
-    )
-    _require_page_agent_admission_match(
-        payload,
-        agent_admission,
-        payload_field="agent_admission_reason",
-        admission_field="reason",
-    )
-    _require_page_agent_admission_match(
-        payload,
-        agent_admission,
-        payload_field="agent_representative_news_item_id",
-        admission_field="representative_news_item_id",
-    )
-    payload["agent_admission_json"] = _json(agent_admission)
+    payload["market_scope_json"] = _json(_required_page_mapping(payload, "market_scope"))
     return payload
 
 
@@ -425,13 +366,6 @@ def _required_page_positive_int(payload: Mapping[str, Any], field_name: str) -> 
     return value
 
 
-def _optional_page_positive_int(payload: Mapping[str, Any], field_name: str) -> int | None:
-    value = payload.get(field_name)
-    if value is None:
-        return None
-    return _required_page_positive_int(payload, field_name)
-
-
 def _required_page_nonnegative_int(payload: Mapping[str, Any], field_name: str) -> int:
     if field_name not in payload:
         raise ValueError(f"news_page_row_payload_required:{field_name}")
@@ -441,22 +375,6 @@ def _required_page_nonnegative_int(payload: Mapping[str, Any], field_name: str) 
     if value < 0:
         raise ValueError(f"news_page_row_payload_invalid:{field_name}")
     return value
-
-
-def _required_page_optional_macro_event_flow(payload: Mapping[str, Any]) -> dict[str, Any] | None:
-    field_name = "macro_event_flow"
-    if field_name not in payload:
-        raise ValueError(f"news_page_row_payload_required:{field_name}")
-    value = payload[field_name]
-    if value is None:
-        return None
-    if not isinstance(value, Mapping):
-        raise ValueError(f"news_page_row_payload_invalid:{field_name}")
-    event_flow = dict(value)
-    for event_field in _MACRO_EVENT_FLOW_FIELDS:
-        if not str(event_flow.get(event_field) or "").strip():
-            raise ValueError(f"news_page_row_payload_invalid:{field_name}.{event_field}")
-    return event_flow
 
 
 def _required_projected_page_text(projected: Mapping[str, Any], field_name: str) -> str:
@@ -503,10 +421,6 @@ def _required_page_projection_input_list(row: Mapping[str, Any], field_name: str
     )
 
 
-def _required_agent_admission_context_list(row: Mapping[str, Any], field_name: str) -> list[Any]:
-    return _required_repository_json_list(row, field_name, error_prefix="news_agent_admission_context")
-
-
 def _required_repository_json_list(row: Mapping[str, Any], field_name: str, *, error_prefix: str) -> list[Any]:
     if field_name not in row:
         raise ValueError(f"{error_prefix}_required:{field_name}")
@@ -523,16 +437,6 @@ def _required_positive_news_item_source_watermark(row: Mapping[str, Any]) -> int
     value = row[field_name]
     if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
         raise ValueError(f"news_item_source_watermark_required:{field_name}")
-    return int(value)
-
-
-def _required_story_brief_target_source_updated_at_ms(row: Mapping[str, Any]) -> int:
-    field_name = "source_updated_at_ms"
-    if field_name not in row:
-        raise ValueError("news_story_brief_target_source_updated_at_ms_required")
-    value = row[field_name]
-    if isinstance(value, bool) or not isinstance(value, int) or value <= 0:
-        raise ValueError("news_story_brief_target_source_updated_at_ms_required")
     return int(value)
 
 
@@ -576,7 +480,6 @@ def _projected_news_page_row_payload(
     row: Mapping[str, Any],
     *,
     require_full_sections: bool,
-    require_macro_event_flow: bool = False,
 ) -> dict[str, Any]:
     payload = dict(row)
     for field_name in (
@@ -584,32 +487,29 @@ def _projected_news_page_row_payload(
         "news_item_id",
         "representative_news_item_id",
         "story_key",
+        "canonical_item_key",
         "content_class",
-        "agent_admission_status",
-        "agent_admission_reason",
-        "agent_representative_news_item_id",
         "projection_version",
     ):
         payload[field_name] = _required_news_page_row_text(payload, field_name)
     for field_name in (
         "story",
-        "signal",
         "provider_rating",
         "source",
-        "agent_admission",
+        "market_scope",
+        "content_classification",
     ):
         payload[field_name] = _required_news_page_row_mapping(payload, field_name)
-    for field_name in ("source_ids", "source_domains", "token_impacts", "content_tags"):
+    for field_name in (
+        "source_ids",
+        "source_domains",
+        "provider_article_keys",
+        "content_tags",
+    ):
         payload[field_name] = _required_news_page_row_list(payload, field_name)
     if require_full_sections:
-        payload["content_classification"] = _required_news_page_row_mapping(payload, "content_classification")
         payload["token_lanes"] = _required_news_page_row_list(payload, "token_lanes")
         payload["fact_lanes"] = _required_news_page_row_list(payload, "fact_lanes")
-    if require_macro_event_flow or payload.get("macro_event_flow") is not None:
-        payload["macro_event_flow"] = _required_news_page_row_macro_event_flow(payload)
-    else:
-        payload.pop("macro_event_flow", None)
-    payload["agent_brief"] = _public_agent_brief_payload(_required_news_page_row_mapping(payload, "agent_brief"))
     return payload
 
 
@@ -638,20 +538,6 @@ def _required_news_page_row_list(projected: Mapping[str, Any], field_name: str) 
     if not isinstance(value, list):
         raise ValueError(f"news_page_row_projection_invalid:{field_name}")
     return list(value)
-
-
-def _required_news_page_row_macro_event_flow(projected: Mapping[str, Any]) -> dict[str, Any]:
-    field_name = "macro_event_flow"
-    if field_name not in projected:
-        raise ValueError(f"news_page_row_projection_required:{field_name}")
-    value = projected[field_name]
-    if not isinstance(value, Mapping):
-        raise ValueError(f"news_page_row_projection_invalid:{field_name}")
-    event_flow = dict(value)
-    for event_field in _MACRO_EVENT_FLOW_FIELDS:
-        if not str(event_flow.get(event_field) or "").strip():
-            raise ValueError(f"news_page_row_projection_invalid:{field_name}.{event_field}")
-    return event_flow
 
 
 def _story_projection_payload(*, story_key: str, member_payloads: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
@@ -762,57 +648,6 @@ def _required_story_projection_nonnegative_int(item: Mapping[str, Any], field_na
     return resolved
 
 
-def _required_story_item_text(item: Mapping[str, Any], field_name: str) -> str:
-    if field_name not in item:
-        raise ValueError(f"news_story_brief_target_{field_name}_required")
-    text = str(item[field_name]).strip()
-    if not text:
-        raise ValueError(f"news_story_brief_target_{field_name}_required")
-    return text
-
-
-def _required_story_item_mapping(item: Mapping[str, Any], field_name: str) -> dict[str, Any]:
-    if field_name not in item:
-        raise ValueError(f"news_story_brief_target_{field_name}_required")
-    value = item[field_name]
-    if not isinstance(value, Mapping) or not value:
-        raise ValueError(f"news_story_brief_target_{field_name}_required")
-    return dict(value)
-
-
-def _required_story_item_json_value(item: Mapping[str, Any], field_name: str) -> object:
-    if field_name not in item:
-        raise ValueError(f"news_story_brief_target_{field_name}_required")
-    value = item[field_name]
-    if isinstance(value, Mapping):
-        if not value:
-            raise ValueError(f"news_story_brief_target_{field_name}_required")
-        return dict(value)
-    if isinstance(value, list | tuple | set):
-        if not value:
-            raise ValueError(f"news_story_brief_target_{field_name}_required")
-        return list(value)
-    if isinstance(value, str) and value.strip():
-        return value
-    raise ValueError(f"news_story_brief_target_{field_name}_required")
-
-
-def _story_brief_target_list(row: Mapping[str, Any], field_name: str) -> list[Any]:
-    value = row.get(field_name)
-    if value is None:
-        return []
-    if isinstance(value, str) or not isinstance(value, list | tuple):
-        raise ValueError(f"news_story_brief_target_{field_name}_required")
-    return list(value)
-
-
-def _required_agent_admission_item_text(item: Mapping[str, Any], field_name: str) -> str:
-    value = item.get(field_name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"news_agent_admission_{field_name}_required")
-    return value.strip()
-
-
 def _apply_page_row_summary(payload: dict[str, Any], summary: Mapping[str, Any]) -> None:
     if summary:
         payload["canonical_item_key"] = _required_page_text(summary, "canonical_item_key")
@@ -826,40 +661,6 @@ def _apply_page_row_summary(payload: dict[str, Any], summary: Mapping[str, Any])
     payload["source_ids_json"] = _json(_required_page_list(payload, "source_ids_json"))
     payload["source_domains_json"] = _json(_required_page_list(payload, "source_domains_json"))
     payload["provider_article_keys_json"] = _json(_required_page_list(payload, "provider_article_keys_json"))
-
-
-def _agent_publishable_summary(agent_brief: Mapping[str, Any], *, brief_json: Mapping[str, Any]) -> bool:
-    value = agent_brief.get("summary_zh")
-    if value is None and "summary_zh" in brief_json:
-        value = brief_json.get("summary_zh")
-    if not isinstance(value, str):
-        return False
-    return bool(value.strip())
-
-
-def _required_json_mapping(payload: Mapping[str, Any], field_name: str, *, label: str) -> dict[str, Any]:
-    if field_name not in payload:
-        raise ValueError(f"unsupported {label} shape: missing {field_name}")
-    value = payload[field_name]
-    if not isinstance(value, Mapping):
-        raise ValueError(f"unsupported {label} shape: {field_name} must be mapping")
-    return dict(value)
-
-
-def _required_json_list(payload: Mapping[str, Any], field_name: str, *, label: str) -> list[Any]:
-    if field_name not in payload:
-        raise ValueError(f"unsupported {label} shape: missing {field_name}")
-    value = payload[field_name]
-    if isinstance(value, str) or not isinstance(value, list | tuple):
-        raise ValueError(f"unsupported {label} shape: {field_name} must be list")
-    return list(value)
-
-
-def _required_member_news_item_ids(payload: Mapping[str, Any], *, label: str) -> list[str]:
-    ids = _member_news_item_ids(_required_json_list(payload, "member_news_item_ids_json", label=label))
-    if not ids:
-        raise ValueError(f"unsupported {label} shape: member_news_item_ids_json must be non-empty")
-    return ids
 
 
 def _entity_payload(entity: NewsEntity) -> dict[str, Any]:
@@ -926,80 +727,6 @@ def _fact_payload(candidate: NewsFactCandidate) -> dict[str, Any]:
         "created_at_ms": int(candidate.created_at_ms),
         "updated_at_ms": int(candidate.updated_at_ms),
     }
-
-
-def _story_agent_run_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-    response_json = payload["response_json"]
-    label = "news story agent run payload"
-    return {
-        "run_id": str(payload["run_id"]),
-        "story_brief_key": str(payload["story_brief_key"]),
-        "story_key": str(payload["story_key"]),
-        "story_identity_version": str(payload["story_identity_version"]),
-        "representative_news_item_id": str(payload["representative_news_item_id"]),
-        "member_news_item_ids_json": _json(_required_member_news_item_ids(payload, label=label)),
-        "provider": str(payload["provider"]),
-        "model": str(payload["model"]),
-        "backend": _required_payload_text(payload, "backend", label=label),
-        "execution_trace_id": payload.get("execution_trace_id"),
-        "workflow_name": str(payload["workflow_name"]),
-        "agent_name": str(payload["agent_name"]),
-        "lane": str(payload["lane"]),
-        "artifact_version_hash": str(payload["artifact_version_hash"]),
-        "prompt_version": str(payload["prompt_version"]),
-        "schema_version": str(payload["schema_version"]),
-        "validator_version": str(payload["validator_version"]),
-        "guardrail_version": str(payload["guardrail_version"]),
-        "input_hash": str(payload["input_hash"]),
-        "output_hash": payload.get("output_hash"),
-        "execution_started": bool(payload["execution_started"]),
-        "status": str(payload["status"]),
-        "outcome": str(payload["outcome"]),
-        "error_class": payload.get("error_class"),
-        "error": _compact_error(payload.get("error")),
-        "request_json": _json(_required_json_mapping(payload, "request_json", label=label)),
-        "response_json": _json(response_json) if response_json is not None else None,
-        "validation_errors_json": _json(_required_json_list(payload, "validation_errors_json", label=label)),
-        "trace_metadata_json": _json(_required_json_mapping(payload, "trace_metadata_json", label=label)),
-        "usage_json": _json(_required_json_mapping(payload, "usage_json", label=label)),
-        "latency_ms": _required_payload_nonnegative_int(payload, "latency_ms", label=label),
-        "started_at_ms": int(payload["started_at_ms"]),
-        "finished_at_ms": int(payload["finished_at_ms"]),
-        "created_at_ms": int(payload["created_at_ms"]),
-    }
-
-
-def _story_agent_brief_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-    status = str(payload["status"])
-    brief_json = _required_json_mapping(payload, "brief_json", label="news story agent brief payload")
-    if status == "ready" and not _agent_publishable_summary(payload, brief_json=brief_json):
-        raise ValueError("ready news story agent brief requires publishable summary")
-    return {
-        "story_brief_key": str(payload["story_brief_key"]),
-        "story_key": str(payload["story_key"]),
-        "story_identity_version": str(payload["story_identity_version"]),
-        "representative_news_item_id": str(payload["representative_news_item_id"]),
-        "member_news_item_ids_json": _json(
-            _required_member_news_item_ids(payload, label="news story agent brief payload")
-        ),
-        "agent_run_id": str(payload["agent_run_id"]),
-        "status": status,
-        "direction": str(payload["direction"]),
-        "decision_class": str(payload["decision_class"]),
-        "brief_json": _json(brief_json),
-        "input_hash": str(payload["input_hash"]),
-        "artifact_version_hash": str(payload["artifact_version_hash"]),
-        "prompt_version": str(payload["prompt_version"]),
-        "schema_version": str(payload["schema_version"]),
-        "validator_version": str(payload["validator_version"]),
-        "computed_at_ms": int(payload["computed_at_ms"]),
-        "created_at_ms": int(payload["created_at_ms"]),
-        "updated_at_ms": int(payload["updated_at_ms"]),
-    }
-
-
-def _member_news_item_ids(value: Any) -> list[str]:
-    return list(dict.fromkeys(str(item) for item in value if str(item)))
 
 
 def _source_status_payload(row: Mapping[str, Any]) -> dict[str, Any]:
@@ -1510,23 +1237,6 @@ def _market_scope_payload(value: NewsMarketScope) -> dict[str, object]:
     }
 
 
-def _agent_admission_payload(value: NewsItemAgentAdmission) -> dict[str, object]:
-    if not isinstance(value, NewsItemAgentAdmission):
-        raise ValueError("unsupported agent admission payload shape")
-    return {
-        "eligible": bool(value.eligible),
-        "status": _required_payload_text({"status": value.status}, "status", label="agent admission payload"),
-        "reason": _required_payload_text({"reason": value.reason}, "reason", label="agent admission payload"),
-        "representative_news_item_id": _required_payload_text(
-            {"representative_news_item_id": value.representative_news_item_id},
-            "representative_news_item_id",
-            label="agent admission payload",
-        ),
-        "basis": _required_payload_mapping({"basis": value.basis}, "basis", label="agent admission payload"),
-        "version": _required_payload_text({"version": value.version}, "version", label="agent admission payload"),
-    }
-
-
 def _story_identity_payload(value: NewsStoryIdentity) -> dict[str, object]:
     if not isinstance(value, NewsStoryIdentity):
         raise ValueError("unsupported story identity payload shape")
@@ -1542,52 +1252,6 @@ def _story_identity_payload(value: NewsStoryIdentity) -> dict[str, object]:
         "basis": _required_payload_mapping(payload, "basis", label="story identity payload"),
         "version": _required_payload_text(payload, "version", label="story identity payload"),
     }
-
-
-def _agent_admission_mapping_payload(payload: Mapping[str, Any]) -> dict[str, object]:
-    status = _required_page_nested_text(payload, "agent_admission", "status")
-    reason = _required_page_nested_text(payload, "agent_admission", "reason")
-    representative_news_item_id = _required_page_nested_text(
-        payload,
-        "agent_admission",
-        "representative_news_item_id",
-    )
-    basis = _required_page_nested_mapping(payload, "agent_admission", "basis")
-    version = _required_page_nested_text(payload, "agent_admission", "version")
-    eligible = bool(payload.get("eligible")) if "eligible" in payload else status in {"eligible", "eligible_refresh"}
-    return {
-        "eligible": eligible,
-        "status": status,
-        "reason": reason,
-        "representative_news_item_id": representative_news_item_id,
-        "basis": basis,
-        "version": version,
-    }
-
-
-def _required_page_nested_text(payload: Mapping[str, Any], object_name: str, field_name: str) -> str:
-    value = payload.get(field_name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"news_page_row_payload_required:{object_name}.{field_name}")
-    return value.strip()
-
-
-def _required_page_nested_mapping(payload: Mapping[str, Any], object_name: str, field_name: str) -> dict[str, object]:
-    value = payload.get(field_name)
-    if not isinstance(value, Mapping):
-        raise ValueError(f"news_page_row_payload_required:{object_name}.{field_name}")
-    return dict(value)
-
-
-def _require_page_agent_admission_match(
-    payload: Mapping[str, Any],
-    agent_admission: Mapping[str, object],
-    *,
-    payload_field: str,
-    admission_field: str,
-) -> None:
-    if payload[payload_field] != agent_admission[admission_field]:
-        raise ValueError(f"news_page_row_payload_invalid:{payload_field}_mismatch")
 
 
 def _required_payload_list(payload: Mapping[str, object], field: str, *, label: str) -> list[object]:
@@ -1739,167 +1403,6 @@ def _public_fetch_run_payload(row: Mapping[str, Any]) -> dict[str, Any]:
     if "error" in payload:
         payload["error"] = _compact_error(payload.get("error"))
     return payload
-
-
-def _public_agent_brief_payload(value: Any) -> dict[str, Any]:
-    payload = _json_dict(value)
-    public_fields = (
-        "status",
-        "direction",
-        "decision_class",
-        "event_type",
-        "market_domains",
-        "title_zh",
-        "summary_zh",
-        "market_read_zh",
-        "bull_view",
-        "bear_view",
-        "affected_entities",
-        "transmission_paths",
-        "watch_triggers",
-        "invalidation_conditions",
-        "data_gaps",
-        "evidence_refs",
-        "computed_at_ms",
-        "data_gap_count",
-        "market_impacts",
-        "bull_strength",
-        "bear_strength",
-    )
-    public_payload = {key: payload.get(key) for key in public_fields if key in payload}
-    public_payload["status"] = _required_public_agent_brief_text(payload, "status")
-    if public_payload["status"] == "ready":
-        public_payload["direction"] = _required_public_agent_brief_text(public_payload, "direction")
-        public_payload["decision_class"] = _required_public_agent_brief_text(public_payload, "decision_class")
-    for field_name in (
-        "event_type",
-        "title_zh",
-        "summary_zh",
-        "market_read_zh",
-        "bull_strength",
-        "bear_strength",
-    ):
-        if field_name in public_payload:
-            text_value = _validate_public_agent_brief_text_field(public_payload, field_name)
-            if text_value is None:
-                public_payload.pop(field_name, None)
-            else:
-                public_payload[field_name] = text_value
-    for field_name in ("bull_view", "bear_view"):
-        if field_name in public_payload:
-            public_payload[field_name] = _validate_public_agent_brief_mapping_field(public_payload, field_name)
-    if "affected_entities" in public_payload:
-        public_payload["affected_entities"] = [
-            _validate_public_agent_brief_affected_entity(entity)
-            for entity in _required_public_agent_brief_list(public_payload, "affected_entities")
-        ]
-    for list_key in ("transmission_paths", "market_domains", "market_impacts"):
-        if list_key in public_payload:
-            public_payload[list_key] = _required_public_agent_brief_list(public_payload, list_key)
-    for list_key in ("data_gaps", "evidence_refs", "watch_triggers", "invalidation_conditions"):
-        if list_key in public_payload:
-            public_payload[list_key] = _required_public_agent_brief_list(public_payload, list_key)
-    if "data_gap_count" not in public_payload and "data_gaps" in public_payload:
-        public_payload["data_gap_count"] = len(_required_public_agent_brief_list(public_payload, "data_gaps"))
-    for field_name in ("computed_at_ms", "data_gap_count"):
-        if field_name in public_payload:
-            public_payload[field_name] = _validate_public_agent_brief_nonnegative_int_field(
-                public_payload,
-                field_name,
-            )
-    return public_payload
-
-
-def _validate_public_agent_brief_text_field(payload: Mapping[str, Any], field_name: str) -> str | None:
-    value = payload.get(field_name)
-    if value is None:
-        return None
-    if not isinstance(value, str):
-        raise ValueError(f"news_public_agent_brief_{field_name}_required")
-    text = value.strip()
-    if not text:
-        return None
-    return text
-
-
-def _validate_public_agent_brief_mapping_field(payload: Mapping[str, Any], field_name: str) -> dict[str, Any]:
-    value = payload.get(field_name)
-    if not isinstance(value, Mapping):
-        raise ValueError(f"news_public_agent_brief_{field_name}_required")
-    return dict(value)
-
-
-def _validate_public_agent_brief_nonnegative_int_field(payload: Mapping[str, Any], field_name: str) -> int:
-    value = payload.get(field_name)
-    if not isinstance(value, int) or isinstance(value, bool) or value < 0:
-        raise ValueError(f"news_public_agent_brief_{field_name}_required")
-    return value
-
-
-def _validate_public_agent_brief_affected_entity(value: Any) -> dict[str, Any]:
-    if not isinstance(value, Mapping):
-        raise ValueError("news_public_agent_brief_affected_entities_required")
-    entity = dict(value)
-    payload: dict[str, Any] = {}
-    for key in (
-        "label",
-        "symbol",
-        "name",
-        "entity_type",
-        "market_domain",
-        "resolution_status",
-        "target_type",
-        "target_id",
-        "impact_direction",
-        "reason_zh",
-    ):
-        text = _optional_public_agent_brief_affected_entity_text(entity, key)
-        if text is not None:
-            payload[key] = text
-    evidence_refs = _optional_public_agent_brief_affected_entity_string_list(entity, "evidence_refs")
-    if evidence_refs is not None:
-        payload["evidence_refs"] = evidence_refs
-    return payload
-
-
-def _optional_public_agent_brief_affected_entity_text(entity: Mapping[str, Any], field_name: str) -> str | None:
-    if field_name not in entity or entity.get(field_name) is None:
-        return None
-    value = entity.get(field_name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"news_public_agent_brief_affected_entities_{field_name}_required")
-    return value.strip()
-
-
-def _optional_public_agent_brief_affected_entity_string_list(
-    entity: Mapping[str, Any],
-    field_name: str,
-) -> list[str] | None:
-    if field_name not in entity or entity.get(field_name) is None:
-        return None
-    values = entity.get(field_name)
-    if not isinstance(values, list):
-        raise ValueError(f"news_public_agent_brief_affected_entities_{field_name}_required")
-    refs: list[str] = []
-    for value in values:
-        if not isinstance(value, str) or not value.strip():
-            raise ValueError(f"news_public_agent_brief_affected_entities_{field_name}_required")
-        refs.append(value.strip())
-    return refs
-
-
-def _required_public_agent_brief_list(payload: Mapping[str, Any], field_name: str) -> list[Any]:
-    value = payload.get(field_name)
-    if not isinstance(value, list):
-        raise ValueError(f"news_public_agent_brief_{field_name}_required")
-    return list(value)
-
-
-def _required_public_agent_brief_text(payload: Mapping[str, Any], field_name: str) -> str:
-    value = payload.get(field_name)
-    if not isinstance(value, str) or not value.strip():
-        raise ValueError(f"news_public_agent_brief_{field_name}_required")
-    return value.strip()
 
 
 def _public_url(value: Any) -> str:

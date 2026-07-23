@@ -31,7 +31,7 @@ def test_alembic_graph_has_one_current_head_and_unique_revisions() -> None:
 
     assert None not in revisions
     assert len(revisions) == len(set(revisions))
-    assert script.get_heads() == ["20260722_0188"]
+    assert script.get_heads() == ["20260723_0191"]
 
 
 def test_backend_kiss_hard_cut_is_fail_closed_and_irreversible() -> None:

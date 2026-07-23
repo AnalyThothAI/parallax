@@ -71,7 +71,7 @@ class FakeWatchlistQuery:
                 "source_event_count": 2,
                 "resolved_token_count": 0,
                 "candidate_mention_count": 1,
-                "narrative_count": 0,
+                "hashtag_count": 0,
                 "last_source_event_at_ms": 2_000,
             },
             "resolved_token_clusters": [],
@@ -87,7 +87,7 @@ class FakeWatchlistQuery:
                     "source": "event_cashtags",
                 }
             ],
-            "narrative_clusters": [],
+            "hashtag_clusters": [],
             "clusters_truncated": False,
             "risk_notes": ["candidate_mentions_unresolved"],
         }

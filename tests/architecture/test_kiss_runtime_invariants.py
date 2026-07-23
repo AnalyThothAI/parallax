@@ -6,7 +6,6 @@ from pathlib import Path
 
 from parallax.app.runtime.provider_wiring.types import WiredProviders
 from parallax.app.runtime.worker_manifest import all_worker_manifests
-from parallax.platform.agent_execution import AGENT_RUNTIME_LANE, AgentRuntimePolicy
 from parallax.platform.config.settings import LlmConfig, WorkersSettings
 
 ROOT = Path(__file__).resolve().parents[2]
@@ -166,6 +165,16 @@ def test_worker_manifest_has_unique_names_and_one_writer_per_read_model() -> Non
     assert len(declared_tables) == len(set(declared_tables))
 
 
+def test_macro_snapshot_manifest_declares_the_database_primary_key() -> None:
+    identities = {
+        table: identity
+        for manifest in all_worker_manifests()
+        for table, identity in manifest.current_read_model_identities
+    }
+
+    assert identities["macro_view_snapshots"] == ("snapshot_key",)
+
+
 def test_current_read_model_identities_are_stable_product_keys() -> None:
     violations = {
         f"{manifest.name}:{table}": sorted(set(identity) & FORBIDDEN_CURRENT_IDENTITY_PARTS)
@@ -209,21 +218,8 @@ def test_hot_status_path_does_not_sample_queues() -> None:
     assert forbidden_attributes == []
 
 
-def test_agent_runtime_is_one_fixed_flat_policy() -> None:
-    assert AGENT_RUNTIME_LANE == "news.story_brief"
-    assert set(AgentRuntimePolicy.model_fields) == {
-        "model",
-        "provider_family",
-        "max_tokens",
-        "max_concurrency",
-        "rpm_limit",
-        "timeout_seconds",
-        "circuit_breaker",
-    }
-    assert WorkersSettings.model_fields["agent_runtime"].annotation is AgentRuntimePolicy
-
-
-def test_agent_execution_has_one_runtime_owner_and_minimal_llm_config() -> None:
+def test_runtime_has_no_llm_composition_or_policy_config() -> None:
     assert set(LlmConfig.model_fields) == {"api_key", "base_url"}
+    assert "agent_runtime" not in WorkersSettings.model_fields
     assert [field.name for field in fields(WiredProviders)] == ["ingestion", "asset_market", "news_intel"]
     assert not (SRC / "app" / "runtime" / "llm_gateway.py").exists()

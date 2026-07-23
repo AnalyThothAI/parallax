@@ -32,7 +32,9 @@ Default to extending an existing service, deriving on demand, and extending exis
 The following additions require explicit justification (cite a current pain or a measured number) before appearing in any spec:
 
 - New PostgreSQL tables, materialised views, or background workers.
-- LLM calls outside the current audited execution boundary. Today the product boundary is the durable `news.story_brief` worker path; a second model stage requires its own cost, retry, ledger, and consumer evidence.
+- Any model-backed product consumer. The current service has none; introducing
+  one requires an approved evidence contract plus explicit cost, retry, durable
+  audit/state, public-consumer, migration, and verification design.
 - Bayesian / probabilistic outputs.
 - Ground-truth datasets, human annotation workflows, dual-annotator review.
 - Statistical inference on small samples (N < 200).

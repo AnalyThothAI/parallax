@@ -1,4 +1,3 @@
-import type { NewsRow } from "@shared/model/newsIntel";
 import { newsItemPath, newsPath } from "@shared/routing/paths";
 import * as PageState from "@shared/ui/PageState";
 import { ArrowLeft, ChevronLeft, ChevronRight } from "lucide-react";
@@ -6,6 +5,7 @@ import { useEffect, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
 
 import "./news.css";
+import type { NewsFactRow } from "./model/newsFactViewModel";
 import { NewsItemEvidencePage } from "./ui/NewsItemEvidencePage";
 import { NewsTape } from "./ui/NewsTape";
 import { NEWS_PAGE_SIZE, useNewsItemWithToken, useNewsPageWithToken } from "./useNewsPage";
@@ -15,8 +15,8 @@ type NewsPageProps = {
   newsItemId?: string | null;
 };
 
-const EMPTY_NEWS_ROWS: NewsRow[] = [];
-type SignalFilter = "all" | "bullish" | "bearish" | "neutral";
+const EMPTY_NEWS_ROWS: NewsFactRow[] = [];
+type LifecycleFilter = "all" | "accepted" | "attention" | "rejected";
 type NewsCursorState = {
   searchQuery: string;
   stack: Array<string | null>;
@@ -30,7 +30,7 @@ export function NewsPage({ token, newsItemId = null }: NewsPageProps) {
 function NewsQueueRoute({ token }: { token: string }) {
   const navigate = useNavigate();
   const [searchParams, setSearchParams] = useSearchParams();
-  const [signalFilter, setSignalFilter] = useState<SignalFilter>("all");
+  const [lifecycleFilter, setLifecycleFilter] = useState<LifecycleFilter>("all");
   const searchQuery = searchParams.get("q") ?? "";
   const [cursorState, setCursorState] = useState<NewsCursorState>(() => ({
     searchQuery,
@@ -42,7 +42,7 @@ function NewsQueueRoute({ token }: { token: string }) {
     cursor,
     limit: NEWS_PAGE_SIZE,
     q: searchQuery.trim() || null,
-    signal: signalFilter === "all" ? null : signalFilter,
+    status: lifecycleFilter === "all" ? null : lifecycleFilter,
   });
   const rows = query.data?.items ?? EMPTY_NEWS_ROWS;
   const resetCursor = () => setCursorState({ searchQuery, stack: [null] });
@@ -71,18 +71,18 @@ function NewsQueueRoute({ token }: { token: string }) {
     <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
       <div aria-label="News intel page container" className="news-table-wrap">
         <div className="news-compact-controls" aria-label="News filters">
-          <div className="news-signal-controls" aria-label="Signal filters">
-            {(["all", "bullish", "bearish", "neutral"] as const).map((value) => (
+          <div className="news-status-controls" aria-label="Lifecycle filters">
+            {(["all", "accepted", "attention", "rejected"] as const).map((value) => (
               <button
-                aria-pressed={signalFilter === value}
+                aria-pressed={lifecycleFilter === value}
                 key={value}
                 type="button"
                 onClick={() => {
-                  setSignalFilter(value);
+                  setLifecycleFilter(value);
                   resetCursor();
                 }}
               >
-                {signalFilterLabel(value)}
+                {lifecycleFilterLabel(value)}
               </button>
             ))}
             <label className="news-search-filter">
@@ -127,7 +127,7 @@ function NewsQueueRoute({ token }: { token: string }) {
         {!query.isLoading && !query.isError && !rows.length ? (
           <PageState.Empty
             title="No news rows"
-            hint="No provider signal rows match the current filters."
+            hint="No persisted news facts match the current filters."
           />
         ) : null}
         {!query.isLoading && !query.isError && rows.length ? (
@@ -212,9 +212,9 @@ function NewsItemRoute({ token, newsItemId }: { token: string; newsItemId: strin
   );
 }
 
-function signalFilterLabel(value: SignalFilter): string {
-  if (value === "bullish") return "利好";
-  if (value === "bearish") return "利空";
-  if (value === "neutral") return "中性";
-  return "全部";
+function lifecycleFilterLabel(value: LifecycleFilter): string {
+  if (value === "accepted") return "Accepted";
+  if (value === "attention") return "Attention";
+  if (value === "rejected") return "Rejected";
+  return "All";
 }

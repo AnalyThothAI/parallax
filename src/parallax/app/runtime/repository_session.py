@@ -42,7 +42,6 @@ from parallax.domains.news_intel.repositories.news_projection_dirty_target_repos
     NewsProjectionDirtyTargetRepository,
 )
 from parallax.domains.news_intel.repositories.news_source_repository import NewsSourceRepository
-from parallax.domains.news_intel.repositories.news_story_agent_repository import NewsStoryAgentRepository
 from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
 from parallax.domains.token_intel.interfaces import EventTokenProjectionQuery, SignalRepository
 from parallax.domains.token_intel.repositories.intent_resolution_repository import IntentResolutionRepository
@@ -101,7 +100,6 @@ class RepositorySession:
     watchlist: WatchlistQuery
     news_sources: NewsSourceRepository
     news_items: NewsItemRepository
-    news_story_agents: NewsStoryAgentRepository
     news_pages: NewsPageRepository
     news_projection_dirty_targets: NewsProjectionDirtyTargetRepository
     macro_intel: MacroIntelRepository
@@ -156,7 +154,6 @@ def repositories_for_connection(
         watchlist=WatchlistQuery(conn),
         news_sources=NewsSourceRepository(conn),
         news_items=NewsItemRepository(conn),
-        news_story_agents=NewsStoryAgentRepository(conn),
         news_pages=NewsPageRepository(conn),
         news_projection_dirty_targets=NewsProjectionDirtyTargetRepository(conn),
         macro_intel=MacroIntelRepository(conn),

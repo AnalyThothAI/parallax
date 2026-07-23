@@ -64,7 +64,6 @@ const modifierClassNames = new Set([
   "account_event",
   "active",
   "admission",
-  "agent",
   "bad",
   "bearish",
   "bear",

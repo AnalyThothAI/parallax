@@ -9,7 +9,6 @@ from typing import Any, Literal
 import yaml
 from pydantic import BaseModel, ConfigDict, Field, PrivateAttr, SecretStr, field_validator
 
-from parallax.platform.agent_execution import AgentRuntimePolicy
 from parallax.platform.config.news_provider_types import OPENNEWS_FETCH_POLICY_KEYS
 from parallax.platform.paths.runtime_paths import app_home, app_log_path, config_path, workers_config_path
 
@@ -20,7 +19,6 @@ NOTIFICATION_SEVERITIES = ("info", "warning", "high", "critical")
 NOTIFICATION_RULE_IDS = (
     "watched_account_activity",
     "watched_account_token_alert",
-    "news_high_signal",
 )
 SettingsNewsProviderType = Literal[
     "rss",
@@ -397,9 +395,6 @@ class NotificationsConfig(BaseModel):
     enabled: bool = True
     candidate_limit: int = Field(default=50, ge=1)
     watched_activity_window_ms: int = Field(default=3_600_000, ge=1)
-    news_high_signal_recency_window_ms: int = Field(default=7_200_000, ge=1)
-    news_high_signal_query_min_limit: int = Field(default=500, ge=1)
-    news_high_signal_query_multiplier: int = Field(default=20, ge=1)
     retention_days: int = Field(default=30, ge=1)
     rules: dict[str, NotificationRuleConfig] = Field(
         default_factory=lambda: {
@@ -830,16 +825,6 @@ class NewsItemProcessWorkerSettings(PerWorkerSettings):
     retry_delay_ms: int = Field(default=60_000, ge=1)
 
 
-class NewsStoryBriefWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=10.0, ge=0)
-    batch_size: int = Field(default=5, ge=1)
-    lease_ms: int = Field(default=120_000, ge=1)
-    max_attempts: int = Field(default=3, ge=1)
-    retry_ms: int = Field(default=60_000, ge=1)
-    statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    backpressure_cooldown_ms: int = Field(default=60_000, ge=1)
-
-
 class NewsPageProjectionWorkerSettings(PerWorkerSettings):
     batch_size: int = Field(default=100, ge=1)
     lease_ms: int = Field(default=120_000, ge=1)
@@ -851,7 +836,6 @@ class NewsPageProjectionWorkerSettings(PerWorkerSettings):
 class WorkersSettings(BaseModel):
     model_config = ConfigDict(extra="forbid")
 
-    agent_runtime: AgentRuntimePolicy = Field(default_factory=AgentRuntimePolicy)
     collector: CollectorWorkerSettings = Field(default_factory=CollectorWorkerSettings)
     market_tick_stream: MarketTickStreamWorkerSettings = Field(default_factory=MarketTickStreamWorkerSettings)
     market_tick_poll: MarketTickPollWorkerSettings = Field(default_factory=MarketTickPollWorkerSettings)
@@ -871,7 +855,6 @@ class WorkersSettings(BaseModel):
     )
     news_fetch: NewsFetchWorkerSettings = Field(default_factory=NewsFetchWorkerSettings)
     news_item_process: NewsItemProcessWorkerSettings = Field(default_factory=NewsItemProcessWorkerSettings)
-    news_story_brief: NewsStoryBriefWorkerSettings = Field(default_factory=NewsStoryBriefWorkerSettings)
     news_page_projection: NewsPageProjectionWorkerSettings = Field(default_factory=NewsPageProjectionWorkerSettings)
 
 
@@ -912,14 +895,6 @@ class Settings(BaseModel):
     @property
     def log_file(self) -> Path:
         return app_log_path(self._config_dir)
-
-    @property
-    def llm_configured(self) -> bool:
-        return bool(self.llm.api_key and self.workers.agent_runtime.model)
-
-    @property
-    def news_agent_execution_enabled(self) -> bool:
-        return bool(self.news_intel.enabled and self.llm_configured and self.workers.news_story_brief.enabled)
 
     @property
     def gmgn_configured(self) -> bool:
@@ -1087,9 +1062,6 @@ notifications:
   enabled: true
   candidate_limit: 50
   watched_activity_window_ms: 3600000
-  news_high_signal_recency_window_ms: 7200000
-  news_high_signal_query_min_limit: 500
-  news_high_signal_query_multiplier: 20
   retention_days: 30
   rules:
     watched_account_activity:
@@ -1098,10 +1070,6 @@ notifications:
     watched_account_token_alert:
       enabled: true
       channels: ["in_app"]
-    news_high_signal:
-      enabled: true
-      channels: ["in_app", "pushdeer"]
-      cooldown_seconds: 3600
   channels: {{}}
 """
 
@@ -1157,10 +1125,5 @@ def _default_notification_rule_payloads() -> dict[str, dict[str, Any]]:
             "enabled": True,
             "channels": ("in_app",),
             "cooldown_seconds": 900,
-        },
-        "news_high_signal": {
-            "enabled": True,
-            "channels": ("in_app", "pushdeer"),
-            "cooldown_seconds": 3600,
         },
     }

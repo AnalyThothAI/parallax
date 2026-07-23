@@ -27,9 +27,6 @@
   --risk: #d86679;
   --risk-soft: rgba(216, 102, 121, 0.16);
   --risk-line: rgba(216, 102, 121, 0.44);
-  --agent: #b79cff;
-  --agent-soft: rgba(183, 156, 255, 0.12);
-  --agent-line: rgba(183, 156, 255, 0.42);
   --background: var(--obsidian);
   --foreground: var(--bone-2);
   --card: var(--slab);
@@ -63,7 +60,6 @@
   --info-line-strong: #2d647d;
   --risk-ink: #f0a1ad;
   --risk-line-strong: #7a2c3b;
-  --agent-ink: #d9c7ff;
   --shadow-elevated: 0 22px 70px rgba(0, 0, 0, 0.28);
   --cockpit-topbar-height: 53px;
   --cockpit-mobile-topbar-height: 48px;

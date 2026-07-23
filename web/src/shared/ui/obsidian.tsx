@@ -36,7 +36,6 @@ type BaseProps = {
 };
 
 const SOURCE_LABELS: Record<ObsidianSource, string> = {
-  agent: "agent",
   deterministic: "deterministic",
   market: "market",
   official: "official",

@@ -72,5 +72,4 @@ def _notification_rule_engine(settings: Settings, repos: Any) -> NotificationRul
         settings=settings,
         evidence=repos.evidence,
         account_alerts=AccountAlertService(repos.signals),
-        news=repos.news_pages,
     )

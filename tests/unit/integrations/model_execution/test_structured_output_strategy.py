@@ -119,9 +119,9 @@ def _context(
     profile = capability_profile or resolve_agent_capability_profile(model="deepseek-v4-flash")
     return StructuredOutputContext(
         stage=AgentStageSpec(
-            lane="news.story_brief",
-            stage="news_story_brief",
-            instructions="Return JSON for the news brief.",
+            lane="structured_json.test",
+            stage="schema_test",
+            instructions="Return JSON matching the schema.",
             input_payload={"token": "ABC"},
             output_type=Payload,
             prompt_version="p1",

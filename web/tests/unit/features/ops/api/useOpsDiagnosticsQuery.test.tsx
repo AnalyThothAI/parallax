@@ -12,7 +12,7 @@ describe("ops query current contracts", () => {
 
   it("surfaces malformed diagnostics as a query error", async () => {
     const payload = { ...opsDiagnosticsFixture() } as Record<string, unknown>;
-    delete payload.agent_execution;
+    delete payload.overall;
     vi.spyOn(globalThis, "fetch").mockResolvedValue(jsonResponse({ ok: true, data: payload }));
 
     const { result } = renderHook(() => useOpsDiagnosticsQuery({ token: "secret" }), {

@@ -6,7 +6,6 @@ LEGACY_MARKET_FIELD = "market_overlay"
 
 
 def test_search_inspect_returns_canonical_token_result_without_agent_brief():
-    token_radar = FakeTokenRadar()
     service = SearchInspectService(
         search_query=FakeSearchQuery(
             candidates=[
@@ -21,33 +20,34 @@ def test_search_inspect_returns_canonical_token_result_without_agent_brief():
             ],
             target_hits=[hit("ev_1", route="target", target_id="cex_token:BTC")],
         ),
-        token_radar=token_radar,
         targets=FakeTargets(rows=[target_row("ev_1", phase_text="$BTC first social wave")]),
         profiles=FakeProfiles(profile={"status": "ready", "provider": "test_profile"}),
+        token_radar=FakeTokenRadar(),
     )
 
     result = service.inspect("$BTC", window="1h", scope="all", limit=50, now_ms=1_700_086_400_000)
 
     assert result["query"]["result_kind"] == "token_result"
+    assert set(result["resolver"]) == {"target_candidates", "selected_target", "reasons"}
     assert result["resolver"]["selected_target"]["target_id"] == "cex_token:BTC"
     assert list(result["token_result"]) == [
         "target",
         "profile",
         "timeline",
         "posts",
-        "narrative_admission",
         "market_live",
+        "current_radar",
     ]
     assert result["token_result"]["timeline"]["summary"]["posts"] == 1
     assert result["token_result"]["timeline"]["market_candles"]["target_type"] == "CexToken"
     assert result["token_result"]["posts"]["items"][0]["event_id"] == "ev_1"
     assert result["token_result"]["profile"] == {"status": "ready", "provider": "test_profile"}
     assert "agent_brief" not in result["token_result"]
-    assert result["token_result"]["narrative_admission"]["currentness"]["display_status"] == "not_ready"
+    assert "narrative_admission" not in result["token_result"]
     assert result["token_result"]["market_live"]["status"] == "missing"
     assert "radar_item" not in result["token_result"]
     assert LEGACY_MARKET_FIELD not in result["token_result"]
-    assert token_radar.current_row_calls[0]["target_id"] == "cex_token:BTC"
+    assert result["token_result"]["current_radar"] is None
 
 
 def test_search_inspect_returns_topic_result_for_keyword_query():
@@ -58,16 +58,16 @@ def test_search_inspect_returns_topic_result_for_keyword_query():
                 hit("ev_744", route="lexical", author_handle="aiinfra", text="AI compute mining"),
             ]
         ),
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[]),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     result = service.inspect("挖矿", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
 
     assert result["query"]["result_kind"] == "topic_result"
     assert result["topic_result"]["summary"] == {"posts": 2, "authors": 2}
-    assert result["topic_result"]["agent_brief"]["bull_bear"]["stance"] == "research"
+    assert list(result["topic_result"]) == ["summary", "items"]
 
 
 def test_search_inspect_returns_ambiguous_result_without_selecting_target():
@@ -93,9 +93,9 @@ def test_search_inspect_returns_ambiguous_result_without_selecting_target():
             ],
             route_hits=[hit("ev_dog", route="lexical", text="$DOG discussion")],
         ),
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[]),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     result = service.inspect("$DOG", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
@@ -103,15 +103,15 @@ def test_search_inspect_returns_ambiguous_result_without_selecting_target():
     assert result["query"]["result_kind"] == "ambiguous_result"
     assert result["resolver"]["selected_target"] is None
     assert len(result["ambiguous_result"]["candidates"]) == 2
-    assert result["ambiguous_result"]["agent_brief"]["schema_version"] == "search_agent_brief_v1"
+    assert list(result["ambiguous_result"]) == ["candidates", "summary", "items"]
 
 
 def test_search_inspect_returns_empty_result_for_empty_query():
     service = SearchInspectService(
         search_query=FakeSearchQuery(),
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[]),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     result = service.inspect("   ", window="24h", scope="all", limit=50, now_ms=1_700_086_400_000)
@@ -126,9 +126,9 @@ def test_search_inspect_returns_empty_result_for_empty_query():
 def test_search_inspect_rejects_malformed_limit_before_search(limit: object) -> None:
     service = SearchInspectService(
         search_query=FakeSearchQuery(),
-        token_radar=FakeTokenRadar(),
         targets=FakeTargets(rows=[]),
         profiles=FakeProfiles(),
+        token_radar=FakeTokenRadar(),
     )
 
     with pytest.raises(ValueError, match="search_inspect_limit_required"):
@@ -197,30 +197,6 @@ class FakeTargets:
         return None
 
 
-class FakeTokenRadar:
-    def __init__(self) -> None:
-        self.current_row_calls = []
-
-    def current_row_for_target(self, **kwargs):
-        self.current_row_calls.append(kwargs)
-
-    def latest_coverage(self, *, projection_version, windows, scopes):
-        return {
-            (window, scope): {
-                "status": "ready",
-                "reason": None,
-                "row_count": 0,
-                "source_rows": 0,
-                "computed_at_ms": 1_700_086_400_000,
-            }
-            for window in windows
-            for scope in scopes
-        }
-
-    def latest_current_rows(self, *, window, scope, limit, projection_version):
-        return []
-
-
 class FakeProfiles:
     def __init__(self, *, profile=None):
         self.profile = profile
@@ -230,6 +206,11 @@ class FakeProfiles:
 
     def profiles_for_targets(self, targets):
         return {}
+
+
+class FakeTokenRadar:
+    def current_row_for_target(self, **_kwargs):
+        return None
 
 
 def hit(

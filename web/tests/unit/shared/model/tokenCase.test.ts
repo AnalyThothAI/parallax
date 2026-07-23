@@ -3,7 +3,7 @@ import { buildTokenCaseView } from "@shared/model/tokenCase";
 import { describe, expect, it } from "vitest";
 
 describe("buildTokenCaseView", () => {
-  it("keeps official, community, narrative, market, and decision in one token case", () => {
+  it("keeps official, community, market, and decision facts in one token case", () => {
     const view = buildTokenCaseView(tokenFixture());
 
     expect(view.key).toBe("asset:dex:eth:0x1111111111111111111111111111111111111111");
@@ -15,16 +15,16 @@ describe("buildTokenCaseView", () => {
     expect(view.official.source).toBe("official");
     expect(view.community.value).toBe("4 posts · 3 authors");
     expect(view.community.detail).toContain("watched 2");
-    expect(view.narrative.value).toBe("expansion · catalyst");
     expect(view.market.value).toBe("$51M");
     expect(view.market.detail).toContain("+13%");
     expect(view.decision.value).toBe("driver");
     expect(view.decision.tone).toBe("opportunity");
     expect(view.actions.searchLabel).toBe("Search Intel");
     expect(view.evidence).toEqual(["resolved direct evidence", "independent expansion"]);
+    expect(view).not.toHaveProperty("narrative");
   });
 
-  it("labels missing official facts as unavailable without inventing agent text", () => {
+  it("labels missing official facts as unavailable without invented prose", () => {
     const view = buildTokenCaseView({
       ...tokenFixture(),
       profile: { status: "missing", source: { provider: "gmgn" } },
@@ -101,7 +101,7 @@ function tokenFixture(): TokenFlowItem {
       baseline_sample_count: 21,
     },
     social_heat: {
-      score_version: "token_factor_snapshot_v3_social_attention:social_heat",
+      score_version: "token_factor_snapshot_v4_transparent_factors:social_heat",
       score: 86,
       reasons: ["z_score_above_3"],
       risks: [],
@@ -121,9 +121,9 @@ function tokenFixture(): TokenFlowItem {
       status: "new_burst",
     },
     discussion_quality: {
-      score_version: "token_factor_snapshot_v3_social_attention:discussion_quality",
+      score_version: "token_factor_snapshot_v4_transparent_factors:discussion_quality",
       score: 78,
-      reasons: ["catalyst"],
+      reasons: ["informative_discussion"],
       risks: [],
       contributions: [],
       risk_caps: [],
@@ -135,7 +135,7 @@ function tokenFixture(): TokenFlowItem {
       watched_source_count: 2,
     },
     propagation: {
-      score_version: "token_factor_snapshot_v3_social_attention:propagation",
+      score_version: "token_factor_snapshot_v4_transparent_factors:propagation",
       score: 74,
       reasons: ["independent_expansion"],
       risks: [],
@@ -154,7 +154,7 @@ function tokenFixture(): TokenFlowItem {
       ],
     },
     tradeability: {
-      score_version: "token_factor_snapshot_v3_social_attention:gates",
+      score_version: "token_factor_snapshot_v4_transparent_factors:gates",
       score: 100,
       reasons: [],
       risks: [],
@@ -167,7 +167,7 @@ function tokenFixture(): TokenFlowItem {
       pool_present: true,
     },
     timing: {
-      score_version: "token_factor_snapshot_v3_social_attention:timing",
+      score_version: "token_factor_snapshot_v4_transparent_factors:timing",
       score: 88,
       status: "neutral",
       chase_risk: false,
@@ -177,14 +177,14 @@ function tokenFixture(): TokenFlowItem {
       market_observation_status: "ready",
     },
     opportunity: {
-      score_version: "token_factor_snapshot_v3_social_attention:composite",
+      score_version: "token_factor_snapshot_v4_transparent_factors:composite",
       score: 83,
       decision: "driver",
       reasons: ["resolved_direct_evidence", "independent_expansion"],
       risks: [],
       contributions: [],
       risk_caps: [],
-      components: { heat: 86, quality: 78, propagation: 74, timing: 88 },
+      components: { heat: 86, propagation: 74, timing: 88 },
     },
     watch: {
       status: "direct_watch",

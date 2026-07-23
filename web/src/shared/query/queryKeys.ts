@@ -1,4 +1,4 @@
-import type { ScopeKey, TokenPostRange, TokenPostServerSort, WindowKey } from "@lib/types";
+import type { ScopeKey, TokenPostRange, WindowKey } from "@lib/types";
 import type { TokenRadarVenueFilter } from "@lib/venue";
 import type { TokenCaseScope } from "@shared/model/tokenCaseViewModel";
 
@@ -20,8 +20,7 @@ export const queryKeys = {
     ["search-inspect", token, q, window, scope] as const,
   stocksRadar: (window: WindowKey, scope: ScopeKey, limit: number) =>
     ["stocks-radar", window, scope, limit] as const,
-  macro: () => ["macro"] as const,
-  macroModule: (moduleId: string) => ["macro", "module", moduleId] as const,
+  macroPage: (pageId: string) => ["macro", "page", pageId] as const,
   macroSeries: (conceptKeys: string[], window: string) =>
     ["macro", "series", [...conceptKeys].sort(), window] as const,
   newsRows: ({
@@ -56,15 +55,13 @@ export const queryKeys = {
     window: WindowKey,
     scope: ScopeKey | TokenCaseScope,
     range: TokenPostRange,
-    sort: TokenPostServerSort,
     limit: number,
-  ) => ["target-posts", targetKey, window, scope, range, sort, limit] as const,
+  ) => ["target-posts", targetKey, window, scope, range, limit] as const,
   notifications: () => ["notifications"] as const,
   opsDiagnostics: () => ["ops-diagnostics"] as const,
   opsQueue: (queueName: string | null, status: string | null, limit: number) =>
     ["ops-queue", queueName ?? "", status ?? "", limit] as const,
   watchlistHandlesOverview: () => ["watchlist-handles-overview"] as const,
-  macroAssetCorrelation: (window: string) => ["macro", "asset-correlation", window] as const,
   watchlistHandleOverview: (handle: string) => ["watchlist-handle-overview", handle] as const,
   watchlistHandleTimeline: (handle: string, limit: number) =>
     ["watchlist-handle-timeline", handle, limit] as const,

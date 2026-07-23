@@ -48,12 +48,15 @@ describe("SearchIntelPage", () => {
     expect(screen.getByText("Mention Timeline")).toBeInTheDocument();
     expect(screen.getByText("Live Market")).toBeInTheDocument();
     expect(screen.queryByRole("button", { name: "Load more" })).not.toBeInTheDocument();
-    expect(screen.getAllByText(/Runtime narrative/).length).toBeGreaterThan(0);
+    expect(screen.getAllByText(/Runtime source fact/).length).toBeGreaterThan(0);
     expect(screen.queryByRole("navigation", { name: "Search sections" })).not.toBeInTheDocument();
     expect(screen.queryByText("candidates")).not.toBeInTheDocument();
     expect(screen.queryByText("94% confidence")).not.toBeInTheDocument();
     expect(screen.queryByText(["search", "content", "grid"].join("-"))).not.toBeInTheDocument();
     expect(container.querySelector(".search-sidebar-candidates")).not.toBeInTheDocument();
+    const resolver = screen.getByLabelText("Search resolver");
+    expect(within(resolver).getByText("token_result")).toBeInTheDocument();
+    expect(within(resolver).getByText("one_resolved_target")).toBeInTheDocument();
 
     await waitFor(() => {
       expect(apiMock.readApi).toHaveBeenCalledWith(
@@ -96,7 +99,6 @@ describe("SearchIntelPage", () => {
         ],
         summary: { posts: 9, authors: 4 },
         items: [],
-        agent_brief: topicAgentBrief(),
       },
     };
     apiMock.readApiImpl = async () => ok(data);
@@ -122,7 +124,6 @@ function searchInspectData(): SearchInspectData {
       result_kind: "token_result",
     },
     resolver: {
-      confidence: 0.94,
       target_candidates: [
         {
           target_type: "Asset",
@@ -203,7 +204,6 @@ function searchInspectData(): SearchInspectData {
           window: "24h",
           scope: "all",
           range: "current_window",
-          sort: "recent",
         },
         score_window: { window: "24h" },
         total_count: tokenResult.posts.total_count,
@@ -211,7 +211,8 @@ function searchInspectData(): SearchInspectData {
         has_more: true,
         items: tokenResult.posts.items.map((item) => ({
           ...item,
-          text: item.event_id === "event-hansa-3" ? "Runtime narrative validates $RKC" : item.text,
+          text:
+            item.event_id === "event-hansa-3" ? "Runtime source fact validates $RKC" : item.text,
         })),
       },
       market_live: {
@@ -232,7 +233,7 @@ function searchInspectData(): SearchInspectData {
           symbol: "RKC",
           name: "Runtime Coin",
           logo_url: null,
-          description: "Runtime narrative token profile",
+          description: "Runtime token profile",
         },
         links: {
           website_url: "https://rkc.example",
@@ -249,37 +250,5 @@ function searchInspectData(): SearchInspectData {
     },
     topic_result: null,
     ambiguous_result: null,
-  };
-}
-
-function topicAgentBrief() {
-  return {
-    schema_version: "search_agent_brief_v1",
-    generated_by: "deterministic",
-    project_summary: {
-      one_liner: "$RKC remains ambiguous at search time",
-      summary_zh: "RKC 搜索仍需候选比较。",
-      current_state: "ambiguous",
-      data_gaps: [],
-      evidence_event_ids: [],
-    },
-    propagation: {
-      summary_zh: "topic evidence retained",
-      phases: [],
-      key_accounts: [],
-    },
-    bull_bear: {
-      stance: "research",
-      bull: {
-        thesis_zh: "",
-        evidence_event_ids: [],
-        triggers_zh: [],
-      },
-      bear: {
-        thesis_zh: "",
-        evidence_event_ids: [],
-        invalidations_zh: [],
-      },
-    },
   };
 }

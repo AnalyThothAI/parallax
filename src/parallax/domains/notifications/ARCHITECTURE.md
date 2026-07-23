@@ -2,81 +2,82 @@
 
 ## Boundary
 
-Notifications is a deterministic CQRS projection plus a durable side-effect
-ledger. It does not ingest provider frames or create market facts. The rule
-worker reads PostgreSQL-backed facts/current read models through domain
-interfaces, derives notification candidates, and writes the notification
-serving projection. The delivery worker consumes only persisted delivery work.
-Public HTTP and WebSocket reads never call providers.
+Notifications is a deterministic CQRS projection plus a durable external
+side-effect ledger. It does not ingest provider frames, create market facts,
+or consume generated prose. The rule worker reads persisted watched-account
+facts, derives candidates, and writes the notification serving projection.
+The delivery worker consumes only persisted delivery work. Public HTTP and
+WebSocket reads never call providers.
 
 ## Truth and ownership
 
 | State | Category | Runtime writer |
 |---|---|---|
-| `events`, `account_token_alerts` | upstream material facts | collector through the evidence ingest transaction |
-| `news_page_rows` | upstream rebuildable current read model | owning News projection worker |
+| `events`, `account_token_alerts` | upstream material facts | collector through the Evidence ingest transaction |
 | `notifications` | rebuildable notification serving projection | `NotificationWorker` (`notification_rule`) |
 | `notification_reads` | material operator read state | notification command/API surface |
 | `notification_deliveries` | durable external-delivery state machine | enqueue: `NotificationWorker`; claim/complete/fail: `NotificationDeliveryWorker` |
 
-Stable notification identity is `dedup_key`, derived from rule identity and
-persisted source identity/time. Runtime time may bound a query window, but it
-must not replace a missing source occurrence timestamp. Duplicate aggregation
-updates the existing stable row and does not create generation-, attempt-,
-timestamp-, or UUID-identified serving rows.
+Only two rule ids are supported:
 
-The database unique constraint on `dedup_key` is the sole semantic dedup
-authority. `payload_json.semantic_signature` is evidence carried to consumers,
-not a second lookup identity. External-push cooldown remains a separate
-side-effect policy across distinct `dedup_key` values. The notification list
-response contains both `items` and `summary`; there is no parallel summary
-endpoint.
+- `watched_account_activity`
+- `watched_account_token_alert`
+
+Stable notification identity is `dedup_key`, derived from rule id, persisted
+source identity/occurrence time, and the configured cooldown bucket. Runtime
+time may bound the source query, but it never replaces a missing source
+timestamp. Duplicate aggregation updates the same stable row and does not
+create generation-, attempt-, timestamp-, or UUID-identified serving state.
+
+The database unique constraint on `dedup_key` is the sole dedup authority.
+Payload JSON carries source evidence but is not scanned for another identity.
+The notification list response contains both `items` and `summary`; there is
+no parallel summary endpoint.
 
 ## Worker flows
 
 ```text
-PostgreSQL facts/current projections
+events + account_token_alerts
   -> NotificationRuleEngine.evaluate(now_ms)
   -> NotificationCandidate
-  -> notifications upsert/aggregate
-  -> notification_deliveries enqueue (external channels only)
+  -> notifications insert/aggregate
+  -> notification_deliveries enqueue for configured external channels
   -> commit
   -> WebSocket publish
 
 notification_deliveries due rows
   -> transactional claim and configuration validation
   -> external I/O outside the database transaction
-  -> transactional complete or retry/dead failure transition
+  -> transactional complete or retry/dead transition
 ```
 
 `NotificationWorker` evaluates and persists candidates in one repository unit
-of work. WebSocket publication happens only after that unit of work exits.
-`NotificationDeliveryWorker` never keeps a transaction open across
-network I/O; completion and failure are separate compare-and-set repository
-transitions using the persisted attempt contract.
+of work. It enqueues external delivery only for a newly created notification;
+repeated source evidence cannot reactivate a failed delivery. WebSocket
+publication happens only after the transaction exits.
+
+`NotificationDeliveryWorker` never keeps a transaction open across network
+I/O. Completion and failure are compare-and-set repository transitions using
+the persisted attempt contract.
 
 Both workers are interval-driven and re-read durable work on each bounded
-`interval_seconds` catch-up. Batch size, statement timeout, delivery
-attempts, running timeout, and stale-running terminalization batch size come
-from the formal worker settings.
+`interval_seconds` catch-up. Batch size, statement timeout, delivery attempts,
+running timeout, and stale-running terminalization batch size come from the
+formal worker settings.
 
 ## Hard boundaries
 
-- Rules read source timestamps and identities fail-closed; malformed rows are
-  not repaired with the worker clock, blank ids, or empty JSON defaults.
-- News recency is a required repository query boundary. The rule computes one
-  `since_ms`, News SQL filters `latest_at_ms` before its limit, and the rule
-  consumes typed `NewsNotificationCandidate` rows; stale wide rows are not
-  fetched and filtered in Python.
-- The rule engine does not write SQL. The repository owns notification,
+- Rules fail closed on missing source timestamps or identities; they do not
+  substitute the worker clock, blank ids, or empty JSON.
+- The rule engine does not read News projections or infer signal strength from
+  a headline, score, or generated field.
+- The rule engine does not write SQL. Repositories own notification,
   read-state, and delivery SQL; workers own transaction and side-effect order.
 - External providers are adapters used only by the delivery worker after a
   durable claim. They cannot change notification identity or serving state.
-- `notification_reads` is material operator state, not part of the rebuildable notification projection, and must not
-  be deleted by notification projection rebuild/repair work.
-- `notification_deliveries` is an operational audit/state-machine ledger, not a
-  derived API cache. Delivery retries must resume from persisted status and
-  attempt count.
-- Unchanged/duplicate candidates do not report a newly created notification or
-  enqueue a second delivery. A rule-specific aggregation may reactivate a
-  failed delivery only through the explicit repository transition.
+- `notification_reads` is material operator state and survives projection
+  rebuild/repair.
+- `notification_deliveries` is an operational audit/state-machine ledger, not
+  a derived API cache. Retry resumes from persisted status and attempt count.
+- Repeated evidence from the exact same source reference produces no serving
+  mutation or second delivery.

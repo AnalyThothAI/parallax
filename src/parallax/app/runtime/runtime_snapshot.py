@@ -32,7 +32,6 @@ class RuntimeSnapshot:
     startup_db_status: dict[str, Any]
     composition: dict[str, Any]
     news_provider_contract: dict[str, Any]
-    agent_execution: dict[str, Any] | None
     degradation_reasons: tuple[str, ...]
 
     @classmethod
@@ -50,7 +49,6 @@ class RuntimeSnapshot:
             startup_db_status=dict(startup_db_status),
             composition=dict(composition),
             news_provider_contract=dict(news_provider_contract),
-            agent_execution=None,
             degradation_reasons=(),
         )
 
@@ -79,7 +77,6 @@ def capture_runtime_snapshot(runtime: Any) -> RuntimeSnapshot:
         startup_db_status=dict(cached.startup_db_status),
         composition=dict(cached.composition),
         news_provider_contract=dict(cached.news_provider_contract),
-        agent_execution=_agent_execution_state(runtime.agent_execution_gateway),
         degradation_reasons=tuple(dict.fromkeys(str(reason) for reason in reasons)),
     )
 
@@ -127,20 +124,6 @@ def _provider_connection_state(provider: Any | None) -> dict[str, Any]:
             "last_state_change_at_ms": None,
             "error": "provider_connection_state_timestamp_missing",
         }
-    return dict(payload)
-
-
-def _agent_execution_state(gateway: Any | None) -> dict[str, Any] | None:
-    if gateway is None:
-        return None
-    try:
-        payload = gateway.status_snapshot()
-    except AttributeError:
-        return {"status": "unavailable", "error": "agent_execution_status_contract_missing"}
-    except Exception as exc:
-        return {"status": "unavailable", "error": type(exc).__name__}
-    if not isinstance(payload, Mapping):
-        return {"status": "unavailable", "error": "agent_execution_status_payload_not_mapping"}
     return dict(payload)
 
 

@@ -3,8 +3,10 @@ from __future__ import annotations
 from parallax.app.runtime.repository_session import repositories_for_connection
 from parallax.domains.news_intel.repositories.news_item_repository import NewsItemRepository
 from parallax.domains.news_intel.repositories.news_page_repository import NewsPageRepository
+from parallax.domains.news_intel.repositories.news_projection_dirty_target_repository import (
+    NewsProjectionDirtyTargetRepository,
+)
 from parallax.domains.news_intel.repositories.news_source_repository import NewsSourceRepository
-from parallax.domains.news_intel.repositories.news_story_agent_repository import NewsStoryAgentRepository
 from parallax.domains.news_intel.types import NewsSourceConfig
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
@@ -22,8 +24,8 @@ def test_repository_session_binds_four_concrete_news_repositories(tmp_path) -> N
 
     assert isinstance(repos.news_sources, NewsSourceRepository)
     assert isinstance(repos.news_items, NewsItemRepository)
-    assert isinstance(repos.news_story_agents, NewsStoryAgentRepository)
     assert isinstance(repos.news_pages, NewsPageRepository)
+    assert isinstance(repos.news_projection_dirty_targets, NewsProjectionDirtyTargetRepository)
     assert not hasattr(repos, "news")
 
 

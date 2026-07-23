@@ -11,7 +11,17 @@ Reliability is built from durable PostgreSQL state, stable identities, bounded r
 | `/api/status` | one current in-memory runtime snapshot | no |
 | authenticated ops diagnostics | queue detail, terminal evidence, provider diagnostics | yes, on demand |
 
-A degraded optional provider or a worker business error does not make the HTTP process unready. Startup migration/schema validation and composition are captured once; readiness performs only lightweight DB liveness against that cached result. Worker, collector, provider-connection, News-contract, and agent-execution state is captured by the single typed `RuntimeSnapshot`; status and ops diagnostics do not poll those components independently.
+A degraded optional provider, an evidence gap, or a worker business error does
+not make the HTTP process unready. Startup migration/schema validation and
+composition are captured once; readiness performs only lightweight DB
+liveness against that cached result. Worker, collector, provider-connection,
+and News-provider-contract state is captured by the single typed
+`RuntimeSnapshot`; status and Ops diagnostics do not poll those components
+independently.
+
+Macro claim readiness is a document-level contract. Missing or stale critical
+evidence makes the affected conclusion `insufficient_evidence`; optional gaps
+make it degraded. Neither condition changes process readiness.
 
 ## Durable catch-up
 
@@ -26,7 +36,8 @@ A degraded optional provider or a worker business error does not make the HTTP p
 
 Workers/application services own transactions. Repositories never commit implicitly or accept a `commit` switch.
 
-Provider, model, subprocess, filesystem, and network I/O must not occur inside a DB transaction. The normal shape is:
+Provider, subprocess, filesystem, and network I/O must not occur inside a DB
+transaction. The normal shape is:
 
 ```text
 short claim/load transaction
@@ -35,7 +46,9 @@ short claim/load transaction
   -> short persist/ack transaction
 ```
 
-WorkerBase supplies sequential iteration and duration telemetry. Provider, database, model, network, and subprocess boundaries own their explicit timeouts; the generic loop does not force-cancel domain work.
+WorkerBase supplies sequential iteration and duration telemetry. Provider,
+database, network, and subprocess boundaries own their explicit timeouts; the
+generic loop does not force-cancel domain work.
 
 ## Idempotency and current rows
 
@@ -65,12 +78,12 @@ Provider secrets are never emitted in status, terminal rows, logs, or diagnostic
 
 ## Side effects
 
-External delivery and model execution require durable audit/ledger rows:
+External notification delivery requires durable audit/ledger rows:
 
 - stable dedup/input identity;
 - claimed/in-flight state;
-- provider/model/channel identity without secrets;
-- result/error/usage/latency metadata;
+- provider/channel identity without secrets;
+- result/error/latency metadata;
 - compare-and-set completion or retry.
 
 The external action happens outside the transaction. Repeated execution must either be provider-idempotent or prevented by the ledger/dedup key.
@@ -81,8 +94,7 @@ Append-only facts and operational attempts have different policies:
 
 - material facts: retained according to evidence/product policy;
 - successful News fetch attempts: short retention (30 days);
-- failed/terminal fetch and model audit: longer product audit window;
-- unreferenced News story model runs: 180 days;
+- failed/terminal fetch attempts: longer operational audit window;
 - resolved queue terminal events: 30 days;
 - current read models: one stable row per product identity;
 - rebuildable queues/caches: only active/current work.

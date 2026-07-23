@@ -1,4 +1,4 @@
-import { MACRO_NAVIGATION_TREE, type MacroNavigationNode } from "@features/macro";
+import { MACRO_NAVIGATION_ITEMS } from "@features/macro/shell";
 import {
   BarChart3,
   BriefcaseBusiness,
@@ -23,23 +23,11 @@ export type AppNavigationGroup = {
   label: string;
 };
 
-const macroNavigationRoot = MACRO_NAVIGATION_TREE[0];
-
-function adaptMacroNavigationNode(node: MacroNavigationNode): AppNavigationItem {
-  const visibleChildren = node.children?.map(adaptMacroNavigationNode);
-  const children = visibleChildren?.length ? visibleChildren : undefined;
-  const matchPath = node.matchPath ?? (children?.length ? `${node.href}/*` : undefined);
-
-  return {
-    children,
-    end: !matchPath,
-    label: node.label,
-    matchPath,
-    to: node.href,
-  };
-}
-
-const macroNavigationChildren = macroNavigationRoot.children?.map(adaptMacroNavigationNode) ?? [];
+const macroNavigationChildren: AppNavigationItem[] = MACRO_NAVIGATION_ITEMS.map((item) => ({
+  end: item.href === "/macro",
+  label: item.label,
+  to: item.href,
+}));
 
 export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
   {
@@ -71,9 +59,9 @@ export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
       {
         children: macroNavigationChildren,
         icon: BriefcaseBusiness,
-        label: macroNavigationRoot.label,
+        label: "宏观",
         matchPath: "/macro/*",
-        to: macroNavigationRoot.href,
+        to: "/macro",
       },
       {
         icon: Star,

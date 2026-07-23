@@ -130,7 +130,7 @@ function token(options: {
       decision: "watch",
       decision_priority: 2,
       hard_risks: [],
-      components: { heat: 0, quality: 0, propagation: 0, timing: 0 },
+      components: { heat: 0, propagation: 0, timing: 0 },
     },
     watch: { status: "public_only", direct_mentions: 0, direct_authors: 0 },
     evidence_total_count: 0,

@@ -38,6 +38,16 @@ not run for this bounded Docker build repair
 exit code: not run
 ```
 
+Current regression receipt after the later Macro hard cut removed the historical
+chart model:
+
+```text
+$ PATH=/Users/qinghuan/Documents/code/parallax/web/node_modules/.bin:$PATH npm --prefix web test -- --run /Users/qinghuan/Documents/code/parallax/.worktrees/macro-evidence-ai-hard-cut/web/tests/unit/features/cockpit/model/statusCurrentContract.test.ts
+Test Files  1 passed (1)
+Tests       4 passed (4)
+exit code: 0
+```
+
 ## Coverage
 
 | metric | value | threshold | status |

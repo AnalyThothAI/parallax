@@ -3,10 +3,10 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from parallax.domains.macro_intel._constants import (
-    MACRO_CONCEPT_METADATA,
-    MACRO_CORE_CONCEPTS,
-    MACRO_MIN_CHART_POINTS,
+from parallax.domains.macro_intel._constants import MACRO_MIN_CHART_POINTS
+from parallax.domains.macro_intel.services.macro_concept_manifest import (
+    MACRO_CONCEPT_MANIFEST,
+    MACRO_EVIDENCE_CONCEPTS,
 )
 
 
@@ -34,6 +34,21 @@ _SERIES_QUERY_BOUNDS = {
     "3y": {"lookback_days": 1095, "limit_per_series": 800},
 }
 
+_EVENT_METADATA_FIELDS = (
+    "text_value",
+    "source_url",
+    "event_code",
+    "document_type",
+    "speaker",
+    "event_time",
+    "event_time_et",
+    "reference_period",
+    "cusip",
+    "announcement_date",
+    "settlement_date",
+    "reopening",
+)
+
 
 def macro_series_query_bounds(window: str) -> dict[str, int]:
     validate_macro_series_window(window)
@@ -47,7 +62,7 @@ def validate_macro_series_window(window: str) -> str:
 
 
 def validate_macro_series_concepts(concept_keys: Sequence[str]) -> tuple[str, ...]:
-    supported = set(MACRO_CORE_CONCEPTS)
+    supported = set(MACRO_EVIDENCE_CONCEPTS)
     normalized = tuple(
         dict.fromkeys(str(concept_key).strip() for concept_key in concept_keys if str(concept_key).strip())
     )
@@ -118,24 +133,14 @@ def _series_gap(code: str, concept_key: str) -> dict[str, Any]:
         "code": code,
         "label": label,
         "severity": severity,
-        "score_participation": False,
         "concept_key": concept_key,
     }
 
 
 def _concept_label(concept_key: str) -> str:
-    metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
-    label = _metadata_label(metadata)
-    if label:
-        return label
-    raise ValueError(f"Missing macro concept label metadata: {concept_key}")
-
-
-def _metadata_label(metadata: Mapping[str, Any]) -> str | None:
-    label = metadata.get("short_label") or metadata.get("label")
-    if isinstance(label, str) and label.strip():
-        return label
-    return None
+    if concept_key not in MACRO_CONCEPT_MANIFEST:
+        raise UnsupportedMacroConceptError(concept_key)
+    return concept_key
 
 
 def _point(observation: Mapping[str, Any]) -> dict[str, Any]:
@@ -143,8 +148,18 @@ def _point(observation: Mapping[str, Any]) -> dict[str, Any]:
         "observed_at": observation.get("observed_at"),
         "value": observation.get("value_numeric"),
         "source_name": observation.get("source_name"),
+        "series_key": observation.get("series_key"),
+        "unit": observation.get("unit"),
+        "frequency": observation.get("frequency"),
         "data_quality": _required_observation_quality(observation),
+        "event_metadata": _event_metadata(observation.get("event_metadata_json")),
     }
+
+
+def _event_metadata(value: object) -> dict[str, Any]:
+    if not isinstance(value, Mapping):
+        return {}
+    return {field: value[field] for field in _EVENT_METADATA_FIELDS if field in value and value[field] is not None}
 
 
 def _first_present(observations: Sequence[Mapping[str, Any]], key: str) -> object:

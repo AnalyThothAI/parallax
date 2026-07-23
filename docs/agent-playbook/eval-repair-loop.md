@@ -1,6 +1,10 @@
 # Development Agent Eval And Repair Loop
 
-This file defines how Parallax evaluates and repairs development-agent workflow quality. It is separate from product LLM agent evals and does not create runtime product truth.
+This file defines how Parallax evaluates and repairs development-agent workflow
+quality. It does not create runtime product truth. The retained
+provider-neutral model-execution library is dormant and has no production
+consumer, composition, status, configuration lane, or product-evaluation
+workflow.
 
 ## Reference Alignment
 

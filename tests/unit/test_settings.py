@@ -68,9 +68,11 @@ def test_load_settings_accepts_yaml_handle_list_as_public_subscription(tmp_path,
     assert settings.postgres_password_file == tmp_path / ".parallax" / "postgres_password"
     assert settings.storage.postgres.pool_max_size == 16
     assert settings.log_file == tmp_path / ".parallax" / "logs" / "parallax.log"
-    assert settings.llm_configured is False
     assert settings.llm.base_url == ""
-    assert settings.workers.agent_runtime.model == "deepseek-v4-flash"
+    assert not hasattr(settings, "llm_configured")
+    assert not hasattr(settings, "news_agent_execution_enabled")
+    assert not hasattr(settings.workers, "agent_runtime")
+    assert not hasattr(settings.workers, "news_story_brief")
     assert not hasattr(settings.workers, "enrichment")
     assert settings.workers.notification_delivery.running_timeout_ms == 300_000
     assert settings.workers.notification_delivery.stale_running_terminalization_batch_size == 100
@@ -355,7 +357,7 @@ def test_load_settings_rejects_unknown_top_level_keys(tmp_path, monkeypatch):
         load_settings()
 
 
-def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeypatch):
+def test_postgres_storage_and_dormant_llm_config_can_be_explicitly_configured(tmp_path, monkeypatch):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
@@ -377,16 +379,6 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
             },
         },
     )
-    write_workers_config(
-        tmp_path,
-        yaml.safe_load(default_workers_yaml())
-        | {
-            "agent_runtime": {
-                "model": "gpt-test",
-            },
-        },
-    )
-
     settings = load_settings()
 
     assert settings.storage.postgres.dsn == "postgresql://parallax_app:secret@postgres:5432/parallax"
@@ -395,71 +387,8 @@ def test_postgres_storage_and_llm_can_be_explicitly_configured(tmp_path, monkeyp
     assert settings.storage.postgres.pool_max_size == 12
     assert settings.storage.postgres.connect_timeout_seconds == 4
     assert not hasattr(settings, "sqlite_path")
-    assert settings.llm_configured is True
-    assert settings.workers.agent_runtime.model == "gpt-test"
+    assert settings.llm.api_key == "sk-test"
     assert settings.llm.base_url == "https://example.test/v1"
-
-
-def test_agent_runtime_flat_policy_loads_from_workers_yaml(tmp_path, monkeypatch):
-    monkeypatch.setenv("HOME", str(tmp_path))
-    write_config(
-        tmp_path,
-        {
-            "ws_token": "secret",
-            "handles": ["toly"],
-            "llm": {
-                "api_key": "sk-test",
-            },
-        },
-    )
-    workers = yaml.safe_load(default_workers_yaml())
-    workers["agent_runtime"].update(
-        {
-            "model": "gpt-story",
-            "provider_family": "litellm",
-            "max_tokens": 1800,
-            "max_concurrency": 2,
-            "rpm_limit": 30,
-            "timeout_seconds": 90,
-        }
-    )
-    write_workers_config(tmp_path, workers)
-
-    settings = load_settings()
-
-    assert settings.workers.agent_runtime.model == "gpt-story"
-    assert settings.workers.agent_runtime.provider_family.value == "litellm"
-    assert settings.workers.agent_runtime.max_tokens == 1800
-    assert settings.workers.agent_runtime.max_concurrency == 2
-    assert settings.workers.agent_runtime.rpm_limit == 30
-    assert settings.workers.agent_runtime.timeout_seconds == 90
-    assert settings.news_agent_execution_enabled is True
-
-
-def test_news_agent_execution_requires_domain_worker_and_llm_demand() -> None:
-    base = {
-        "ws_token": "secret",
-        "llm": {"api_key": "sk-test"},
-        "workers": {
-            "agent_runtime": {"model": "gpt-test"},
-            "news_story_brief": {"enabled": False},
-        },
-    }
-
-    no_worker = Settings.model_validate(base)
-    enabled = Settings.model_validate({**base, "workers": {**base["workers"], "news_story_brief": {"enabled": True}}})
-    disabled_domain = Settings.model_validate(
-        {
-            **base,
-            "news_intel": {"enabled": False},
-            "workers": {**base["workers"], "news_story_brief": {"enabled": True}},
-        }
-    )
-
-    assert no_worker.llm_configured is True
-    assert no_worker.news_agent_execution_enabled is False
-    assert enabled.news_agent_execution_enabled is True
-    assert disabled_domain.news_agent_execution_enabled is False
 
 
 def test_load_settings_rejects_legacy_llm_model_fields(tmp_path, monkeypatch):
@@ -483,7 +412,7 @@ def test_load_settings_rejects_legacy_llm_model_fields(tmp_path, monkeypatch):
         load_settings()
 
 
-def test_litellm_uses_minimal_nested_config(tmp_path, monkeypatch):
+def test_dormant_llm_config_is_not_exposed_as_runtime_status(tmp_path, monkeypatch):
     from parallax.app.surfaces.cli.commands.config import handle_config
 
     monkeypatch.setenv("HOME", str(tmp_path))
@@ -506,7 +435,8 @@ def test_litellm_uses_minimal_nested_config(tmp_path, monkeypatch):
     assert not hasattr(settings, "llm_trace_export_configured")
     assert not hasattr(settings.llm, "trace_enabled")
     assert code == 0
-    assert "trace_export_configured" not in payload["data"]["agent_execution"]
+    assert "agent_execution" not in payload["data"]
+    assert "llm" not in payload["data"]
 
 
 def test_load_settings_accepts_gmgn_openapi_config(tmp_path, monkeypatch):
@@ -764,11 +694,8 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
                 "enabled": True,
                 "candidate_limit": 40,
                 "watched_activity_window_ms": 7_200_000,
-                "news_high_signal_recency_window_ms": 3_600_000,
-                "news_high_signal_query_min_limit": 80,
-                "news_high_signal_query_multiplier": 4,
                 "rules": {
-                    "news_high_signal": {
+                    "watched_account_activity": {
                         "enabled": True,
                         "channels": ["in_app", "pushdeer"],
                         "cooldown_seconds": 1800,
@@ -791,19 +718,18 @@ def test_load_settings_accepts_notification_defaults_and_rule_overrides(tmp_path
     assert settings.notifications.enabled is True
     assert settings.notifications.candidate_limit == 40
     assert settings.notifications.watched_activity_window_ms == 7_200_000
-    assert settings.notifications.news_high_signal_recency_window_ms == 3_600_000
-    assert settings.notifications.news_high_signal_query_min_limit == 80
-    assert settings.notifications.news_high_signal_query_multiplier == 4
     activity_rule = settings.notifications.rules["watched_account_activity"]
-    assert activity_rule.channels == ("in_app",)
-    assert activity_rule.cooldown_seconds == 300
+    assert activity_rule.channels == ("in_app", "pushdeer")
+    assert activity_rule.cooldown_seconds == 1800
     alert_rule = settings.notifications.rules["watched_account_token_alert"]
     assert alert_rule.channels == ("in_app",)
     assert alert_rule.cooldown_seconds == 900
+    assert set(settings.notifications.rules) == {
+        "watched_account_activity",
+        "watched_account_token_alert",
+    }
     assert "hot_quality_token_5m" not in settings.notifications.rules
     assert "quality_token_5m" not in settings.notifications.rules
-    news_rule = settings.notifications.rules["news_high_signal"]
-    assert news_rule.cooldown_seconds == 1800
     assert settings.notifications.channels["pushdeer"].provider == "pushdeer"
     assert settings.notifications.channels["pushdeer"].url == "pushdeer://pushKey"
 
@@ -852,9 +778,6 @@ def test_notification_candidate_limit_rejects_zero(tmp_path, monkeypatch):
     "field",
     [
         "watched_activity_window_ms",
-        "news_high_signal_recency_window_ms",
-        "news_high_signal_query_min_limit",
-        "news_high_signal_query_multiplier",
     ],
 )
 def test_notification_query_policy_fields_reject_zero(tmp_path, monkeypatch, field):
@@ -883,8 +806,6 @@ def test_notification_query_policy_fields_reject_zero(tmp_path, monkeypatch, fie
         ("watched_account_token_alert", "window", "1h"),
         ("watched_account_token_alert", "scopes", ["all"]),
         ("watched_account_token_alert", "statuses", ["token_watch"]),
-        ("news_high_signal", "window", "1h"),
-        ("news_high_signal", "scopes", ["all"]),
     ],
 )
 def test_notification_settings_reject_unused_query_fields_for_non_signal_rules(
@@ -910,25 +831,36 @@ def test_notification_settings_reject_unused_query_fields_for_non_signal_rules(
         load_settings()
 
 
-@pytest.mark.parametrize("threshold_key", ["combined_score_min", "external_score_min"])
-def test_news_high_signal_rejects_removed_score_thresholds(tmp_path, monkeypatch, threshold_key):
+@pytest.mark.parametrize(
+    ("section", "payload"),
+    [
+        ("notifications", {"news_high_signal_recency_window_ms": 3_600_000}),
+        ("notifications", {"news_high_signal_query_min_limit": 80}),
+        ("notifications", {"news_high_signal_query_multiplier": 4}),
+        (
+            "notifications",
+            {
+                "rules": {
+                    "news_high_signal": {
+                        "enabled": True,
+                    },
+                }
+            },
+        ),
+    ],
+)
+def test_retired_news_high_signal_config_is_rejected(tmp_path, monkeypatch, section, payload):
     monkeypatch.setenv("HOME", str(tmp_path))
     write_config(
         tmp_path,
         {
             "ws_token": "secret",
             "handles": ["toly"],
-            "notifications": {
-                "rules": {
-                    "news_high_signal": {
-                        threshold_key: 85,
-                    },
-                },
-            },
+            section: payload,
         },
     )
 
-    with pytest.raises(ValidationError, match="Extra inputs are not permitted"):
+    with pytest.raises(ValidationError):
         load_settings()
 
 
@@ -1045,7 +977,7 @@ def test_config_example_excludes_worker_runtime_knobs() -> None:
 def test_default_workers_yaml_keys_match_manifest_worker_names() -> None:
     payload = yaml.safe_load(default_workers_yaml())
 
-    assert set(payload) == _manifest_worker_names() | {"agent_runtime"}
+    assert set(payload) == _manifest_worker_names()
     assert set(WorkersSettings.model_fields) == set(payload)
 
 

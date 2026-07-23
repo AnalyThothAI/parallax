@@ -104,7 +104,7 @@ def test_publication_state_round_trips_failed_state_without_rows(tmp_path):
 
 def test_failed_refresh_keeps_last_good_current_rows_readable(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    projection_version = "token-radar-v11-factor-alpha-gated"
+    projection_version = "token-radar-v14-transparent-factors"
     try:
         migrate(conn)
         _insert_token_intent(conn, intent_id="intent-1", event_id="event-1")
@@ -195,7 +195,7 @@ def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
         repo = TokenRadarRepository(conn)
         _publish_generation(
             repo,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_000_000,
@@ -207,7 +207,7 @@ def test_publish_and_latest_current_rows_persist_factor_snapshot_json(tmp_path):
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
             limit=10,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
         )
     finally:
         conn.close()
@@ -238,7 +238,7 @@ def test_publish_current_generation_replaces_current_and_updates_publication_sta
         repo = TokenRadarRepository(conn)
         _publish_generation(
             repo,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_000_000,
@@ -246,7 +246,7 @@ def test_publish_current_generation_replaces_current_and_updates_publication_sta
         )
         _publish_generation(
             repo,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_060_000,
@@ -257,10 +257,10 @@ def test_publish_current_generation_replaces_current_and_updates_publication_sta
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
             limit=10,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
         )
         state = repo.latest_publication_state(
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             windows=("1h",),
             scopes=("all",),
             venues=(TOKEN_RADAR_DEFAULT_VENUE,),
@@ -271,7 +271,7 @@ def test_publish_current_generation_replaces_current_and_updates_publication_sta
     assert [row["row_id"] for row in current] == ["row-factor-newer"]
     assert current[0]["listed_at_ms"] == 1_778_000_000_000
     assert state[("1h", "all", TOKEN_RADAR_DEFAULT_VENUE)]["current_generation_id"] == stable_generation_id(
-        projection_version="token-radar-v11-factor-alpha-gated",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -290,14 +290,14 @@ def test_publish_current_generation_unchanged_skips_current_rows_and_first_seen_
         repo = TokenRadarRepository(conn)
         _publish_generation(
             repo,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_000_000,
             rows=[row],
         )
         state_after_first = repo.latest_publication_state(
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             windows=("1h",),
             scopes=("all",),
             venues=(TOKEN_RADAR_DEFAULT_VENUE,),
@@ -312,7 +312,7 @@ def test_publish_current_generation_unchanged_skips_current_rows_and_first_seen_
         row["row_id"] = "row-factor-same-later"
         second_result = _publish_generation(
             repo,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_060_000,
@@ -334,14 +334,14 @@ def test_publish_current_generation_unchanged_skips_current_rows_and_first_seen_
               (
                 SELECT current_published_at_ms
                 FROM token_radar_publication_state
-                WHERE projection_version = 'token-radar-v11-factor-alpha-gated'
+                WHERE projection_version = 'token-radar-v14-transparent-factors'
                   AND "window" = '1h'
                   AND scope = 'all'
               ) AS state_published_at_ms,
               (
                 SELECT latest_attempt_status
                 FROM token_radar_publication_state
-                WHERE projection_version = 'token-radar-v11-factor-alpha-gated'
+                WHERE projection_version = 'token-radar-v14-transparent-factors'
                   AND "window" = '1h'
                   AND scope = 'all'
               ) AS latest_attempt_status
@@ -371,14 +371,14 @@ def test_upsert_target_feature_unchanged_payload_does_not_advance_score_timestam
         repo = TokenRadarRepository(conn)
         with conn.transaction():
             first_count = repo.upsert_target_feature(
-                projection_version="token-radar-v11-factor-alpha-gated",
+                projection_version="token-radar-v14-transparent-factors",
                 window="1h",
                 scope="all",
                 row=row,
                 computed_at_ms=1_778_000_000_000,
             )
             second_count = repo.upsert_target_feature(
-                projection_version="token-radar-v11-factor-alpha-gated",
+                projection_version="token-radar-v14-transparent-factors",
                 window="1h",
                 scope="all",
                 row=row,
@@ -777,7 +777,7 @@ def test_publish_current_generation_removes_exited_current_rows(tmp_path):
         repo = TokenRadarRepository(conn)
         _publish_generation(
             repo,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_000_000,
@@ -785,7 +785,7 @@ def test_publish_current_generation_removes_exited_current_rows(tmp_path):
         )
         _publish_generation(
             repo,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_060_000,
@@ -798,7 +798,7 @@ def test_publish_current_generation_removes_exited_current_rows(tmp_path):
             WHERE projection_version = %s AND "window" = %s AND scope = %s
             ORDER BY rank ASC
             """,
-            ("token-radar-v11-factor-alpha-gated", "1h", "all"),
+            ("token-radar-v14-transparent-factors", "1h", "all"),
         ).fetchall()
     finally:
         conn.close()
@@ -827,7 +827,7 @@ def test_publish_current_generation_can_replace_rank_swaps(tmp_path):
         repo = TokenRadarRepository(conn)
         _publish_generation(
             repo,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_000_000,
@@ -841,7 +841,7 @@ def test_publish_current_generation_can_replace_rank_swaps(tmp_path):
         second["rank_score"] = 90
         _publish_generation(
             repo,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_060_000,
@@ -854,7 +854,7 @@ def test_publish_current_generation_can_replace_rank_swaps(tmp_path):
             WHERE projection_version = %s AND "window" = %s AND scope = %s
             ORDER BY rank ASC
             """,
-            ("token-radar-v11-factor-alpha-gated", "1h", "all"),
+            ("token-radar-v14-transparent-factors", "1h", "all"),
         ).fetchall()
     finally:
         conn.close()
@@ -873,7 +873,7 @@ def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_genera
         repo = TokenRadarRepository(conn)
         with conn.transaction():
             repo.publish_current_generation(
-                projection_version="token-radar-v11-factor-alpha-gated",
+                projection_version="token-radar-v14-transparent-factors",
                 window="1h",
                 scope="all",
                 venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -886,7 +886,7 @@ def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_genera
 
         result = _publish_generation(
             repo,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             computed_at_ms=1_778_000_000_000,
@@ -897,7 +897,7 @@ def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_genera
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
             limit=10,
-            projection_version="token-radar-v11-factor-alpha-gated",
+            projection_version="token-radar-v14-transparent-factors",
         )
     finally:
         conn.close()
@@ -909,7 +909,7 @@ def test_publish_current_generation_rejects_old_rows_after_newer_zero_row_genera
 
 def test_ranked_market_targets_reads_only_compact_route_fields(tmp_path):
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    projection_version = "token-radar-v11-factor-alpha-gated"
+    projection_version = "token-radar-v14-transparent-factors"
     try:
         migrate(conn)
         _insert_registry_asset(conn)
@@ -1168,14 +1168,6 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
                 "facts": {},
                 "factors": {},
             },
-            "semantic_catalyst": {
-                "raw_score": 80,
-                "score": 80,
-                "weight": 0.25,
-                "data_health": "ready",
-                "facts": {},
-                "factors": {},
-            },
             "timing_risk": {
                 "raw_score": 80,
                 "score": 80,
@@ -1199,7 +1191,6 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
             "factor_ranks": {
                 "social_heat": None,
                 "social_propagation": None,
-                "semantic_catalyst": None,
                 "timing_risk": None,
             },
             "alpha_rank": None,
@@ -1209,7 +1200,6 @@ def _valid_factor_snapshot(*, rank_score: object = 12) -> dict[str, object]:
             "family_scores": {
                 "social_heat": 80,
                 "social_propagation": 80,
-                "semantic_catalyst": 80,
                 "timing_risk": 80,
             },
             "rank_score": rank_score,

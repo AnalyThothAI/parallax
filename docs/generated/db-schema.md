@@ -138,6 +138,27 @@
 | `first_seen_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `collector_pending_items`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `source` | `TEXT` | False | `None` |
+| `channel` | `TEXT` | False | `None` |
+| `item_key` | `TEXT` | False | `None` |
+| `internal_id` | `TEXT` | True | `None` |
+| `item_json` | `JSONB` | False | `None` |
+| `received_at_ms` | `BIGINT` | False | `None` |
+| `frame_item_index` | `BIGINT` | False | `None` |
+| `payload_hash` | `TEXT` | False | `None` |
+| `due_at_ms` | `BIGINT` | False | `None` |
+| `snapshot_state` | `TEXT` | False | `None` |
+| `leased_until_ms` | `BIGINT` | True | `None` |
+| `lease_owner` | `TEXT` | True | `None` |
+| `attempt_count` | `BIGINT` | False | `0` |
+| `last_error` | `TEXT` | True | `None` |
+| `first_observed_at_ms` | `BIGINT` | False | `None` |
+| `updated_at_ms` | `BIGINT` | False | `None` |
+
 ## `enriched_events`
 
 | Column | Type | Nullable | Default |
@@ -383,23 +404,18 @@
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|---------|
+| `snapshot_key` | `TEXT` | False | `None` |
 | `projection_version` | `TEXT` | False | `None` |
-| `asof_date` | `DATE` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `regime` | `TEXT` | False | `None` |
-| `overall_score` | `NUMERIC` | True | `None` |
-| `panels_json` | `JSONB` | False | `'{}'::jsonb` |
-| `indicators_json` | `JSONB` | False | `'{}'::jsonb` |
-| `triggers_json` | `JSONB` | False | `'[]'::jsonb` |
-| `data_gaps_json` | `JSONB` | False | `'[]'::jsonb` |
-| `source_coverage_json` | `JSONB` | False | `'{}'::jsonb` |
+| `fact_watermark` | `DATE` | True | `None` |
+| `market_cutoff` | `DATE` | True | `None` |
 | `computed_at_ms` | `BIGINT` | False | `None` |
-| `features_json` | `JSONB` | False | `'{}'::jsonb` |
-| `chain_json` | `JSONB` | False | `'{}'::jsonb` |
-| `scenario_json` | `JSONB` | False | `'{}'::jsonb` |
-| `scorecard_json` | `JSONB` | False | `'{}'::jsonb` |
+| `overview_json` | `JSONB` | False | `None` |
+| `cross_asset_json` | `JSONB` | False | `None` |
+| `rates_inflation_json` | `JSONB` | False | `None` |
+| `growth_labor_json` | `JSONB` | False | `None` |
+| `liquidity_funding_json` | `JSONB` | False | `None` |
+| `credit_json` | `JSONB` | False | `None` |
 | `payload_hash` | `TEXT` | False | `None` |
-| `module_views_json` | `JSONB` | False | `None` |
 
 ## `market_tick_current`
 
@@ -592,12 +608,6 @@
 | `story_key` | `TEXT` | False | `''::text` |
 | `story_identity_json` | `JSONB` | False | `'{}'::jsonb` |
 | `story_identity_version` | `TEXT` | False | `''::text` |
-| `agent_admission_status` | `TEXT` | False | `'needs_review'::text` |
-| `agent_admission_reason` | `TEXT` | False | `''::text` |
-| `agent_admission_json` | `JSONB` | False | `'{}'::jsonb` |
-| `agent_admission_version` | `TEXT` | False | `''::text` |
-| `agent_representative_news_item_id` | `TEXT` | False | `''::text` |
-| `agent_admission_computed_at_ms` | `BIGINT` | True | `None` |
 | `market_scope_json` | `JSONB` | False | `'{}'::jsonb` |
 
 ## `news_page_rows`
@@ -617,15 +627,10 @@
 | `source_json` | `JSONB` | False | `'{}'::jsonb` |
 | `computed_at_ms` | `BIGINT` | False | `None` |
 | `projection_version` | `TEXT` | False | `None` |
-| `agent_brief_json` | `JSONB` | False | `'{"status": "pending"}'::jsonb` |
-| `agent_status` | `TEXT` | False | `'pending'::text` |
-| `agent_brief_computed_at_ms` | `BIGINT` | True | `None` |
 | `content_class` | `TEXT` | False | `'low_signal'::text` |
 | `content_tags_json` | `JSONB` | False | `'[]'::jsonb` |
 | `content_classification_json` | `JSONB` | False | `'{}'::jsonb` |
 | `payload_hash` | `TEXT` | False | `''::text` |
-| `signal_json` | `JSONB` | False | `'{}'::jsonb` |
-| `token_impacts_json` | `JSONB` | False | `'[]'::jsonb` |
 | `canonical_item_key` | `TEXT` | False | `''::text` |
 | `duplicate_count` | `INTEGER` | False | `1` |
 | `source_ids_json` | `JSONB` | False | `'[]'::jsonb` |
@@ -634,14 +639,9 @@
 | `representative_news_item_id` | `TEXT` | True | `None` |
 | `story_key` | `TEXT` | False | `''::text` |
 | `story_json` | `JSONB` | False | `'{}'::jsonb` |
-| `agent_admission_status` | `TEXT` | False | `'needs_review'::text` |
-| `agent_admission_reason` | `TEXT` | False | `''::text` |
-| `agent_admission_json` | `JSONB` | False | `'{}'::jsonb` |
-| `agent_representative_news_item_id` | `TEXT` | False | `''::text` |
 | `search_text` | `TEXT` | False | `''::text` |
 | `market_scope_json` | `JSONB` | False | `'{}'::jsonb` |
 | `provider_rating_json` | `JSONB` | False | `'{}'::jsonb` |
-| `macro_event_flow_json` | `JSONB` | True | `None` |
 
 ## `news_projection_dirty_targets`
 
@@ -716,68 +716,7 @@
 | `sync_diagnostics_json` | `JSONB` | False | `'{}'::jsonb` |
 | `config_payload_hash` | `TEXT` | False | `None` |
 | `terminal_config_payload_hash` | `TEXT` | True | `None` |
-
-## `news_story_agent_briefs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `story_brief_key` | `TEXT` | False | `None` |
-| `story_key` | `TEXT` | False | `None` |
-| `story_identity_version` | `TEXT` | False | `None` |
-| `representative_news_item_id` | `TEXT` | False | `None` |
-| `member_news_item_ids_json` | `JSONB` | False | `None` |
-| `agent_run_id` | `TEXT` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `direction` | `TEXT` | False | `None` |
-| `decision_class` | `TEXT` | False | `None` |
-| `brief_json` | `JSONB` | False | `None` |
-| `input_hash` | `TEXT` | False | `None` |
-| `artifact_version_hash` | `TEXT` | False | `None` |
-| `prompt_version` | `TEXT` | False | `None` |
-| `schema_version` | `TEXT` | False | `None` |
-| `validator_version` | `TEXT` | False | `None` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `news_story_agent_runs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `run_id` | `TEXT` | False | `None` |
-| `story_brief_key` | `TEXT` | False | `None` |
-| `story_key` | `TEXT` | False | `None` |
-| `story_identity_version` | `TEXT` | False | `None` |
-| `representative_news_item_id` | `TEXT` | False | `None` |
-| `member_news_item_ids_json` | `JSONB` | False | `None` |
-| `provider` | `TEXT` | False | `None` |
-| `model` | `TEXT` | False | `None` |
-| `backend` | `TEXT` | False | `None` |
-| `execution_trace_id` | `TEXT` | True | `None` |
-| `workflow_name` | `TEXT` | False | `None` |
-| `agent_name` | `TEXT` | False | `None` |
-| `lane` | `TEXT` | False | `None` |
-| `artifact_version_hash` | `TEXT` | False | `None` |
-| `prompt_version` | `TEXT` | False | `None` |
-| `schema_version` | `TEXT` | False | `None` |
-| `validator_version` | `TEXT` | False | `None` |
-| `guardrail_version` | `TEXT` | False | `None` |
-| `input_hash` | `TEXT` | False | `None` |
-| `output_hash` | `TEXT` | True | `None` |
-| `execution_started` | `BOOLEAN` | False | `None` |
-| `status` | `TEXT` | False | `None` |
-| `outcome` | `TEXT` | False | `None` |
-| `error_class` | `TEXT` | True | `None` |
-| `error` | `TEXT` | True | `None` |
-| `request_json` | `JSONB` | False | `None` |
-| `response_json` | `JSONB` | True | `None` |
-| `validation_errors_json` | `JSONB` | False | `None` |
-| `trace_metadata_json` | `JSONB` | False | `None` |
-| `usage_json` | `JSONB` | False | `None` |
-| `latency_ms` | `INTEGER` | False | `None` |
-| `started_at_ms` | `BIGINT` | False | `None` |
-| `finished_at_ms` | `BIGINT` | False | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
+| `active_fetch_run_id` | `TEXT` | True | `None` |
 
 ## `news_token_mentions`
 
@@ -1246,8 +1185,6 @@
 | `social_heat_weight` | `DOUBLE PRECISION` | False | `0` |
 | `social_propagation_raw_score` | `DOUBLE PRECISION` | True | `None` |
 | `social_propagation_weight` | `DOUBLE PRECISION` | False | `0` |
-| `semantic_catalyst_raw_score` | `DOUBLE PRECISION` | True | `None` |
-| `semantic_catalyst_weight` | `DOUBLE PRECISION` | False | `0` |
 | `timing_risk_raw_score` | `DOUBLE PRECISION` | True | `None` |
 | `timing_risk_weight` | `DOUBLE PRECISION` | False | `0` |
 | `cohort_high_confidence_mentions` | `INTEGER` | False | `0` |

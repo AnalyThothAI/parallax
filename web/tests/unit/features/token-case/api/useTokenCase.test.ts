@@ -22,24 +22,8 @@ describe("useTokenCase post seeding", () => {
         window: "1h",
         scope: "all",
         range: "current_window",
-        serverSort: "recent",
       }),
     ).toBe(true);
-  });
-
-  it("does not seed catalyst queries from the dossier recent page", () => {
-    const initialPosts = tokenCaseFixture().posts;
-
-    expect(
-      canSeedTokenCasePosts({
-        initialPosts,
-        target,
-        window: "1h",
-        scope: "all",
-        range: "current_window",
-        serverSort: "catalyst",
-      }),
-    ).toBe(false);
   });
 
   it("treats internal matched and public watched scopes as the same seed scope", () => {
@@ -55,7 +39,6 @@ describe("useTokenCase post seeding", () => {
         window: "1h",
         scope: "watched",
         range: "current_window",
-        serverSort: "recent",
       }),
     ).toBe(true);
   });
@@ -68,7 +51,6 @@ describe("useTokenCase post seeding", () => {
         window: "1h",
         scope: "all",
         range: "current_window",
-        serverSort: "recent",
       }),
     ).toBe(false);
   });

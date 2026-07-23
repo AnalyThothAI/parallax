@@ -65,17 +65,6 @@ class NotificationRepository:
         normalized_severity = _normalize_severity(severity)
         normalized_channels = tuple(str(channel).strip() for channel in channels if str(channel).strip()) or ("in_app",)
         normalized_payload = dict(payload or {})
-        if self._external_push_cooldown_duplicate(
-            dedup_key=dedup_key,
-            rule_id=rule_id,
-            payload=normalized_payload,
-        ):
-            normalized_payload = {
-                **normalized_payload,
-                "external_push_eligible": False,
-                "external_push_suppression_reason": "external_cooldown_duplicate",
-            }
-            normalized_channels = ("in_app",)
         cursor = self.conn.execute(
             """
             INSERT INTO notifications(
@@ -150,33 +139,6 @@ class NotificationRepository:
             aggregated=False,
         )
 
-    def _external_push_cooldown_duplicate(
-        self,
-        *,
-        dedup_key: str,
-        rule_id: str,
-        payload: dict[str, Any],
-    ) -> bool:
-        if payload.get("external_push_eligible") is not True:
-            return False
-        external_push_signature = str(payload.get("external_push_signature") or "").strip()
-        if not external_push_signature:
-            return False
-        row = self.conn.execute(
-            """
-            SELECT notification_id
-            FROM notifications
-            WHERE rule_id = %s
-              AND dedup_key <> %s
-              AND payload_json->>'external_push_signature' = %s
-            ORDER BY last_seen_at_ms DESC, created_at_ms DESC
-            LIMIT 1
-            FOR UPDATE
-            """,
-            (rule_id, dedup_key, external_push_signature),
-        ).fetchone()
-        return row is not None
-
     def _aggregate_notification_row(
         self,
         *,
@@ -209,7 +171,7 @@ class NotificationRepository:
             existing_refs = _append_unique(existing_refs, existing_ref)
         incoming_ref = _aggregation_source_ref(source_table, source_id, event_id)
         same_source_ref_seen = bool(incoming_ref and incoming_ref in existing_refs)
-        if same_source_ref_seen and not _external_push_upgrade(existing_payload, payload):
+        if same_source_ref_seen:
             return False
         merged_refs = _append_unique(existing_refs, incoming_ref)
         next_payload = dict(payload)
@@ -512,62 +474,6 @@ class NotificationRepository:
             return None
         return self.delivery_by_id(delivery_id)
 
-    def enqueue_or_requeue_delivery(
-        self,
-        *,
-        notification_id: str,
-        channel_id: str,
-        provider: str,
-        max_attempts: int,
-        next_run_at_ms: int | None = None,
-    ) -> dict[str, Any] | None:
-        required_max_attempts = _required_positive_int(
-            max_attempts,
-            error_code="notification_delivery_max_attempts_required",
-        )
-
-        now_ms = _now_ms()
-        delivery_id = _id("delivery", notification_id, channel_id)
-        cursor = self.conn.execute(
-            """
-            INSERT INTO notification_deliveries(
-              delivery_id, notification_id, channel_id, provider, status, attempt_count, max_attempts,
-              next_run_at_ms, last_attempt_at_ms, delivered_at_ms, last_error, created_at_ms, updated_at_ms
-            )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(notification_id, channel_id) DO UPDATE SET
-              provider = EXCLUDED.provider,
-              status = 'pending',
-              attempt_count = 0,
-              max_attempts = EXCLUDED.max_attempts,
-              next_run_at_ms = EXCLUDED.next_run_at_ms,
-              last_attempt_at_ms = NULL,
-              delivered_at_ms = NULL,
-              last_error = NULL,
-              updated_at_ms = EXCLUDED.updated_at_ms
-            WHERE notification_deliveries.status IN ('failed', 'dead')
-            RETURNING *
-            """,
-            (
-                delivery_id,
-                notification_id,
-                channel_id,
-                provider,
-                "pending",
-                0,
-                required_max_attempts,
-                int(next_run_at_ms if next_run_at_ms is not None else now_ms),
-                None,
-                None,
-                None,
-                now_ms,
-                now_ms,
-            ),
-        )
-        row = cursor.fetchone()
-        returning_mutation_count(cursor, row, error_code="notification_delivery_requeue_rowcount_invalid")
-        return dict(row) if row is not None else None
-
     def delivery_by_id(self, delivery_id: str) -> dict[str, Any] | None:
         row = self.conn.execute(
             "SELECT * FROM notification_deliveries WHERE delivery_id = %s",
@@ -800,13 +706,6 @@ def _aggregation_source_ref(source_table: str, source_id: str, event_id: str | N
     if not source:
         return None
     return f"{table}:{source}" if table else source
-
-
-def _external_push_upgrade(existing_payload: dict[str, Any], incoming_payload: dict[str, Any]) -> bool:
-    return (
-        existing_payload.get("external_push_eligible") is not True
-        and incoming_payload.get("external_push_eligible") is True
-    )
 
 
 def _append_unique(values: list[str], value: str | None) -> list[str]:

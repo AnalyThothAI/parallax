@@ -7,13 +7,13 @@ from parallax.app.runtime.worker_manifest import worker_names
 
 
 def test_capture_runtime_snapshot_is_the_single_current_state_composer() -> None:
-    calls = {"workers": 0, "collector": 0, "gmgn": 0, "okx": 0, "agent": 0}
+    calls = {"workers": 0, "collector": 0, "gmgn": 0, "okx": 0}
 
     def worker_status() -> dict[str, dict[str, object]]:
         calls["workers"] += 1
         statuses = _all_worker_statuses()
         statuses["collector"].update({"running": True, "effective_status": "running"})
-        statuses["news_story_brief"].update({"effective_status": "failed"})
+        statuses["news_page_projection"].update({"effective_status": "failed"})
         return statuses
 
     def collector_status() -> dict[str, object]:
@@ -26,29 +26,6 @@ def test_capture_runtime_snapshot_is_the_single_current_state_composer() -> None
             return {"state": state, "last_state_change_at_ms": 9_000}
 
         return SimpleNamespace(connection_state_payload=payload)
-
-    def agent_status() -> dict[str, object]:
-        calls["agent"] += 1
-        return {
-            "lane": "news.story_brief",
-            "model": "gpt-news",
-            "provider_family": "openai",
-            "output_strategy": "json_object",
-            "schema_enforcement": "client_validate",
-            "max_concurrency": 1,
-            "rpm_limit": 60,
-            "timeout_seconds": 180.0,
-            "in_flight": 1,
-            "provider_running": 1,
-            "circuit_state": "closed",
-            "circuit_open_until_ms": None,
-            "capacity_denied_total": 0,
-            "circuit_open_total": 0,
-            "timeout_total": 0,
-            "last_denied_at_ms": None,
-            "last_timeout_at_ms": None,
-            "oldest_in_flight_age_ms": 25,
-        }
 
     cached = RuntimeSnapshot.startup(
         startup_db_status={"ok": True, "migration_version": "0186"},
@@ -72,42 +49,22 @@ def test_capture_runtime_snapshot_is_the_single_current_state_composer() -> None
             upstream_client=connection("gmgn", "connected"),
         ),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=connection("okx", "circuit_open"))),
-        agent_execution_gateway=SimpleNamespace(status_snapshot=agent_status),
     )
 
     snapshot = capture_runtime_snapshot(runtime)
 
-    assert calls == {"workers": 1, "collector": 1, "gmgn": 1, "okx": 1, "agent": 1}
+    assert calls == {"workers": 1, "collector": 1, "gmgn": 1, "okx": 1}
     assert snapshot.collector["frames_received"] == 7
     assert "details" not in snapshot.workers["collector"]
     assert snapshot.provider_states["gmgn_direct_ws"]["state"] == "connected"
     assert snapshot.provider_states["okx_dex_ws"]["state"] == "circuit_open"
-    assert snapshot.agent_execution == {
-        "lane": "news.story_brief",
-        "model": "gpt-news",
-        "provider_family": "openai",
-        "output_strategy": "json_object",
-        "schema_enforcement": "client_validate",
-        "max_concurrency": 1,
-        "rpm_limit": 60,
-        "timeout_seconds": 180.0,
-        "in_flight": 1,
-        "provider_running": 1,
-        "circuit_state": "closed",
-        "circuit_open_until_ms": None,
-        "capacity_denied_total": 0,
-        "circuit_open_total": 0,
-        "timeout_total": 0,
-        "last_denied_at_ms": None,
-        "last_timeout_at_ms": None,
-        "oldest_in_flight_age_ms": 25,
-    }
+    assert not hasattr(snapshot, "agent_execution")
     assert snapshot.startup_db_status == cached.startup_db_status
     assert snapshot.composition == {"ok": True}
     assert snapshot.news_provider_contract == cached.news_provider_contract
     assert snapshot.degradation_reasons == (
         "worker:news_fetch:errored:task crashed",
-        "worker:news_story_brief:failed",
+        "worker:news_page_projection:failed",
         "provider:okx_dex_ws:circuit_open",
     )
 
@@ -132,9 +89,6 @@ def test_capture_runtime_snapshot_represents_missing_or_broken_optional_provider
                 )
             )
         ),
-        agent_execution_gateway=SimpleNamespace(
-            status_snapshot=lambda: (_ for _ in ()).throw(RuntimeError("unavailable"))
-        ),
     )
 
     snapshot = capture_runtime_snapshot(runtime)
@@ -148,7 +102,7 @@ def test_capture_runtime_snapshot_represents_missing_or_broken_optional_provider
         "last_state_change_at_ms": None,
         "error": "ConnectionError",
     }
-    assert snapshot.agent_execution == {"status": "unavailable", "error": "RuntimeError"}
+    assert not hasattr(snapshot, "agent_execution")
     assert snapshot.degradation_reasons == ("provider:okx_dex_ws:failed",)
 
 
@@ -165,7 +119,6 @@ def test_capture_runtime_snapshot_rejects_missing_provider_connection_state() ->
             upstream_client=SimpleNamespace(connection_state_payload=lambda: {"last_state_change_at_ms": 9_000}),
         ),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
-        agent_execution_gateway=None,
     )
 
     snapshot = capture_runtime_snapshot(runtime)
@@ -194,7 +147,6 @@ def test_capture_runtime_snapshot_reports_terminal_news_source_degradation() -> 
             upstream_client=None,
         ),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
-        agent_execution_gateway=None,
     )
 
     snapshot = capture_runtime_snapshot(runtime)
@@ -219,7 +171,6 @@ def test_capture_runtime_snapshot_fails_closed_for_any_news_contract_error() -> 
             upstream_client=None,
         ),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
-        agent_execution_gateway=None,
     )
 
     snapshot = capture_runtime_snapshot(runtime)
@@ -240,7 +191,6 @@ def test_capture_runtime_snapshot_fails_closed_when_news_contract_status_is_miss
             upstream_client=None,
         ),
         providers=SimpleNamespace(asset_market=SimpleNamespace(stream_dex_market=None)),
-        agent_execution_gateway=None,
     )
 
     snapshot = capture_runtime_snapshot(runtime)

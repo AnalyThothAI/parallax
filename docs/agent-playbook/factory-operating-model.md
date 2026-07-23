@@ -1,6 +1,10 @@
 # Development Agent Factory Operating Model
 
-This file defines how Parallax uses coding agents and subagents for development work. It is not a product runtime design. Product LLM agents are not development-agent lanes, and development-agent traces are never product truth.
+This file defines how Parallax uses coding agents and subagents for development
+work. It is not a product runtime design, and development-agent traces are
+never product truth. The retained provider-neutral model-execution library is
+dormant; it has no production consumer, composition, status, configuration
+lane, or relationship to development-agent lanes.
 
 ## Reference Alignment
 
@@ -68,7 +72,8 @@ The Parent integrator owns:
 - Keeping work inside the SDD feature record and active coordination board.
 - Assigning one owner per touch set.
 - Reviewing every subagent diff and evidence line.
-- Keeping product LLM agent runtime boundaries separate from development workflow.
+- Keeping the dormant model-execution library separate from development
+  workflow and rejecting any production consumer without a new approved spec.
 - Refusing `Verified` until `make check-all` evidence exists.
 
 ## Kill / Defer Criteria

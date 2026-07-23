@@ -18,7 +18,7 @@ def test_news_page_query_uses_positive_limit_with_lookahead() -> None:
     result = NewsPageQuery(page_repository=repository, source_repository=repository).list_news(limit=1)
 
     assert [item["news_item_id"] for item in result["items"]] == ["news-2"]
-    assert repository.calls == [{"limit": 2, "cursor": None, "status": None, "signal": None, "q": None}]
+    assert repository.calls == [{"limit": 2, "cursor": None, "status": None, "q": None}]
 
 
 @pytest.mark.parametrize("limit", [0, -1, True, "10"])

@@ -1,1 +1,1 @@
-"""Macro regime read-model domain."""
+"""Evidence-first macro read-model domain."""

@@ -4,10 +4,9 @@ import type {
   TokenCaseDossier,
   TokenCasePostsData,
   TokenPostRange,
-  TokenPostServerSort,
   WindowKey,
 } from "@lib/types";
-import type { TokenCaseScope, TokenCaseSort } from "@shared/model/tokenCaseViewModel";
+import type { TokenCaseScope } from "@shared/model/tokenCaseViewModel";
 import { queryKeys } from "@shared/query/queryKeys";
 import { useInfiniteQuery, useQuery } from "@tanstack/react-query";
 
@@ -24,7 +23,6 @@ type UseTokenCaseArgs = {
 };
 
 type UseTokenCasePostsArgs = UseTokenCaseArgs & {
-  postSort: TokenCaseSort;
   range?: TokenPostRange;
   initialPosts?: TokenCasePostsData | null;
 };
@@ -54,11 +52,9 @@ export function useTokenCasePosts({
   window,
   scope,
   postsLimit = 24,
-  postSort,
   range = "current_window",
   initialPosts,
 }: UseTokenCasePostsArgs) {
-  const serverSort = postSort === "catalyst" ? "catalyst" : "recent";
   const apiScope = tokenCaseScopeToApiScope(scope);
   const seedPosts = canSeedTokenCasePosts({
     initialPosts,
@@ -66,7 +62,6 @@ export function useTokenCasePosts({
     window,
     scope: apiScope,
     range,
-    serverSort,
   })
     ? initialPosts
     : null;
@@ -81,7 +76,6 @@ export function useTokenCasePosts({
     window,
     scope,
     range,
-    serverSort,
     postsLimit,
   );
 
@@ -96,9 +90,8 @@ export function useTokenCasePosts({
           window,
           scope: apiScope,
           range,
-          sort: serverSort,
           limit: postsLimit,
-          cursor: serverSort === "catalyst" ? undefined : pageParam || undefined,
+          cursor: pageParam || undefined,
         },
       });
       return response.data;
@@ -110,8 +103,7 @@ export function useTokenCasePosts({
         }
       : undefined,
     initialPageParam: "",
-    getNextPageParam: (lastPage) =>
-      lastPage.query.sort === "catalyst" ? undefined : lastPage.next_cursor || undefined,
+    getNextPageParam: (lastPage) => lastPage.next_cursor || undefined,
     enabled: shouldFetchFirstPage,
     refetchOnMount: false,
     refetchOnReconnect: false,
@@ -141,14 +133,12 @@ export function canSeedTokenCasePosts({
   window,
   scope,
   range,
-  serverSort,
 }: {
   initialPosts?: TokenCasePostsData | null;
   target: TargetRef | null;
   window: WindowKey;
   scope: TokenCaseApiScope;
   range: TokenPostRange;
-  serverSort: TokenPostServerSort;
 }): boolean {
   if (!initialPosts || !target) {
     return false;
@@ -159,8 +149,7 @@ export function canSeedTokenCasePosts({
     query.target_id === target.target_id &&
     query.window === window &&
     tokenCaseScopeKey(query.scope) === tokenCaseScopeKey(scope) &&
-    query.range === range &&
-    (query.sort ?? "recent") === serverSort
+    query.range === range
   );
 }
 

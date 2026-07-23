@@ -264,10 +264,6 @@ def row(
         "market_open_interest_usd": market_open_interest_usd,
         "author_followers": kwargs.pop("author_followers", followers),
         "author_tags_json": kwargs.pop("author_tags", []),
-        "llm_direction_hint": kwargs.pop("llm_direction_hint", None),
-        "llm_impact_hint": kwargs.pop("llm_impact_hint", None),
-        "llm_semantic_novelty_hint": kwargs.pop("llm_semantic_novelty_hint", None),
-        "llm_label_confidence": kwargs.pop("llm_label_confidence", None),
         **kwargs,
     }
 
@@ -287,10 +283,6 @@ def test_weighted_mentions_uses_event_author_quality():
         "text_clean": "alice talks about $TOKEN",
         "search_text": "alice talks about $TOKEN",
         "resolution_status": "EXACT",
-        "llm_direction_hint": None,
-        "llm_impact_hint": None,
-        "llm_semantic_novelty_hint": None,
-        "llm_label_confidence": None,
     }
     features = build_radar_features(
         window_rows=[base_row],
@@ -323,10 +315,6 @@ def test_weighted_mentions_lower_for_no_tag_account():
             "text_clean": "talks about $TOKEN",
             "search_text": "talks about $TOKEN",
             "resolution_status": "EXACT",
-            "llm_direction_hint": None,
-            "llm_impact_hint": None,
-            "llm_semantic_novelty_hint": None,
-            "llm_label_confidence": None,
         }
 
     kol_features = build_radar_features(
@@ -348,39 +336,6 @@ def test_weighted_mentions_lower_for_no_tag_account():
     assert kol_features.heat["weighted_mentions"] > untagged_features.heat["weighted_mentions"]
 
 
-def test_quality_features_consume_llm_hints_when_present():
-    from parallax.domains.token_intel.scoring.token_radar_feature_builder import build_radar_features
-
-    now_ms = 1_700_000_000_000
-    row_data = {
-        "event_id": "e1",
-        "received_at_ms": now_ms - 60_000,
-        "author_handle": "alice",
-        "intent_confidence": 1.0,
-        "author_followers": 5_000,
-        "author_tags_json": [],
-        "is_watched": False,
-        "text_clean": "good things about $TOKEN",
-        "search_text": "good things about $TOKEN",
-        "resolution_status": "EXACT",
-        "llm_direction_hint": "bullish",
-        "llm_impact_hint": 0.8,
-        "llm_semantic_novelty_hint": 0.7,
-        "llm_label_confidence": 0.9,
-    }
-    features = build_radar_features(
-        window_rows=[row_data],
-        context_rows=[row_data],
-        previous_rows=[],
-        now_ms=now_ms,
-        window_ms=3_600_000,
-        total_window_events=1,
-    )
-    assert features.quality["llm_semantic_utility"] is not None
-    assert features.quality["llm_label_confidence"] is not None
-    assert 0.0 <= features.quality["llm_semantic_utility"] <= 1.0
-
-
 def test_weighted_mentions_keeps_floor_signal_without_author_tags():
     from parallax.domains.token_intel.scoring.token_radar_feature_builder import build_radar_features
 
@@ -396,10 +351,6 @@ def test_weighted_mentions_keeps_floor_signal_without_author_tags():
         "text_clean": "talks about $TOKEN",
         "search_text": "talks about $TOKEN",
         "resolution_status": "EXACT",
-        "llm_direction_hint": None,
-        "llm_impact_hint": None,
-        "llm_semantic_novelty_hint": None,
-        "llm_label_confidence": None,
     }
     features = build_radar_features(
         window_rows=[row],

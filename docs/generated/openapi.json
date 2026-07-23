@@ -36,160 +36,6 @@
         "title": "AccountAlertsData",
         "type": "object"
       },
-      "AgentExecutionStatusData": {
-        "additionalProperties": false,
-        "properties": {
-          "capacity_denied_total": {
-            "title": "Capacity Denied Total",
-            "type": "integer"
-          },
-          "circuit_open_total": {
-            "title": "Circuit Open Total",
-            "type": "integer"
-          },
-          "circuit_open_until_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Circuit Open Until Ms"
-          },
-          "circuit_state": {
-            "enum": [
-              "open",
-              "closed"
-            ],
-            "title": "Circuit State",
-            "type": "string"
-          },
-          "in_flight": {
-            "title": "In Flight",
-            "type": "integer"
-          },
-          "lane": {
-            "const": "news.story_brief",
-            "title": "Lane",
-            "type": "string"
-          },
-          "last_denied_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Denied At Ms"
-          },
-          "last_timeout_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Timeout At Ms"
-          },
-          "max_concurrency": {
-            "title": "Max Concurrency",
-            "type": "integer"
-          },
-          "model": {
-            "title": "Model",
-            "type": "string"
-          },
-          "oldest_in_flight_age_ms": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Oldest In Flight Age Ms"
-          },
-          "output_strategy": {
-            "const": "json_object",
-            "title": "Output Strategy",
-            "type": "string"
-          },
-          "provider_family": {
-            "title": "Provider Family",
-            "type": "string"
-          },
-          "provider_running": {
-            "title": "Provider Running",
-            "type": "integer"
-          },
-          "rpm_limit": {
-            "title": "Rpm Limit",
-            "type": "integer"
-          },
-          "schema_enforcement": {
-            "const": "client_validate",
-            "title": "Schema Enforcement",
-            "type": "string"
-          },
-          "timeout_seconds": {
-            "title": "Timeout Seconds",
-            "type": "number"
-          },
-          "timeout_total": {
-            "title": "Timeout Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "lane",
-          "model",
-          "provider_family",
-          "output_strategy",
-          "schema_enforcement",
-          "max_concurrency",
-          "rpm_limit",
-          "timeout_seconds",
-          "in_flight",
-          "provider_running",
-          "circuit_state",
-          "circuit_open_until_ms",
-          "capacity_denied_total",
-          "circuit_open_total",
-          "timeout_total",
-          "last_denied_at_ms",
-          "last_timeout_at_ms",
-          "oldest_in_flight_age_ms"
-        ],
-        "title": "AgentExecutionStatusData",
-        "type": "object"
-      },
-      "AgentExecutionUnavailableData": {
-        "additionalProperties": false,
-        "properties": {
-          "error": {
-            "title": "Error",
-            "type": "string"
-          },
-          "status": {
-            "const": "unavailable",
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status",
-          "error"
-        ],
-        "title": "AgentExecutionUnavailableData",
-        "type": "object"
-      },
       "ApiEnvelope_AccountAlertsData_": {
         "additionalProperties": false,
         "properties": {
@@ -328,13 +174,13 @@
         "title": "ApiEnvelope[LiveMarketData]",
         "type": "object"
       },
-      "ApiEnvelope_MacroAssetCorrelationData_": {
+      "ApiEnvelope_MacroCreditData_": {
         "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/MacroAssetCorrelationData"
+                "$ref": "#/components/schemas/MacroCreditData"
               },
               {
                 "type": "null"
@@ -371,16 +217,16 @@
         "required": [
           "ok"
         ],
-        "title": "ApiEnvelope[MacroAssetCorrelationData]",
+        "title": "ApiEnvelope[MacroCreditData]",
         "type": "object"
       },
-      "ApiEnvelope_MacroData_": {
+      "ApiEnvelope_MacroCrossAssetData_": {
         "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/MacroData"
+                "$ref": "#/components/schemas/MacroCrossAssetData"
               },
               {
                 "type": "null"
@@ -417,16 +263,16 @@
         "required": [
           "ok"
         ],
-        "title": "ApiEnvelope[MacroData]",
+        "title": "ApiEnvelope[MacroCrossAssetData]",
         "type": "object"
       },
-      "ApiEnvelope_MacroModuleData_": {
+      "ApiEnvelope_MacroGrowthLaborData_": {
         "additionalProperties": false,
         "properties": {
           "data": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/MacroModuleData"
+                "$ref": "#/components/schemas/MacroGrowthLaborData"
               },
               {
                 "type": "null"
@@ -463,7 +309,145 @@
         "required": [
           "ok"
         ],
-        "title": "ApiEnvelope[MacroModuleData]",
+        "title": "ApiEnvelope[MacroGrowthLaborData]",
+        "type": "object"
+      },
+      "ApiEnvelope_MacroLiquidityFundingData_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroLiquidityFundingData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[MacroLiquidityFundingData]",
+        "type": "object"
+      },
+      "ApiEnvelope_MacroOverviewData_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroOverviewData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[MacroOverviewData]",
+        "type": "object"
+      },
+      "ApiEnvelope_MacroRatesInflationData_": {
+        "additionalProperties": false,
+        "properties": {
+          "data": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroRatesInflationData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "error": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Error"
+          },
+          "field": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Field"
+          },
+          "ok": {
+            "title": "Ok",
+            "type": "boolean"
+          }
+        },
+        "required": [
+          "ok"
+        ],
+        "title": "ApiEnvelope[MacroRatesInflationData]",
         "type": "object"
       },
       "ApiEnvelope_MacroSeriesData_": {
@@ -1793,14 +1777,17 @@
         "title": "LiveMarketData",
         "type": "object"
       },
-      "MacroAssetCorrelationAssetData": {
+      "MacroAssetReturnData": {
         "additionalProperties": false,
         "properties": {
           "concept_key": {
             "title": "Concept Key",
             "type": "string"
           },
-          "end_date": {
+          "evidence": {
+            "$ref": "#/components/schemas/MacroEvidenceData"
+          },
+          "observed_at": {
             "anyOf": [
               {
                 "format": "date",
@@ -1810,222 +1797,151 @@
                 "type": "null"
               }
             ],
-            "title": "End Date"
+            "title": "Observed At"
           },
-          "latest_observed_at": {
+          "reason": {
             "anyOf": [
               {
-                "format": "date",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Latest Observed At"
+            "title": "Reason"
           },
-          "observations_count": {
-            "title": "Observations Count",
-            "type": "integer"
+          "return_20": {
+            "$ref": "#/components/schemas/MacroReturnWindowData"
           },
-          "return_count": {
-            "title": "Return Count",
-            "type": "integer"
+          "return_60": {
+            "$ref": "#/components/schemas/MacroReturnWindowData"
           },
-          "sources": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Sources",
-            "type": "array"
-          },
-          "start_date": {
+          "series_key": {
             "anyOf": [
               {
-                "format": "date",
                 "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Start Date"
+            "title": "Series Key"
           },
-          "title": {
-            "title": "Title",
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Status",
             "type": "string"
           }
         },
         "required": [
           "concept_key",
-          "title",
-          "observations_count",
-          "return_count",
-          "start_date",
-          "end_date",
-          "latest_observed_at",
-          "sources"
+          "status",
+          "reason",
+          "observed_at",
+          "source_name",
+          "series_key",
+          "return_20",
+          "return_60",
+          "evidence"
         ],
-        "title": "MacroAssetCorrelationAssetData",
+        "title": "MacroAssetReturnData",
         "type": "object"
       },
-      "MacroAssetCorrelationData": {
-        "additionalProperties": false,
-        "properties": {
-          "asof_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Asof Date"
-          },
-          "assets": {
-            "items": {
-              "$ref": "#/components/schemas/MacroAssetCorrelationAssetData"
-            },
-            "title": "Assets",
-            "type": "array"
-          },
-          "data_gaps": {
-            "items": {
-              "$ref": "#/components/schemas/MacroAssetCorrelationGapData"
-            },
-            "title": "Data Gaps",
-            "type": "array"
-          },
-          "matrix": {
-            "items": {
-              "$ref": "#/components/schemas/MacroAssetCorrelationMatrixRowData"
-            },
-            "title": "Matrix",
-            "type": "array"
-          },
-          "pairs": {
-            "items": {
-              "$ref": "#/components/schemas/MacroAssetCorrelationPairData"
-            },
-            "title": "Pairs",
-            "type": "array"
-          },
-          "window": {
-            "enum": [
-              "20d",
-              "60d",
-              "120d"
-            ],
-            "title": "Window",
-            "type": "string"
-          }
-        },
-        "required": [
-          "window",
-          "assets",
-          "matrix",
-          "pairs",
-          "data_gaps",
-          "asof_date"
-        ],
-        "title": "MacroAssetCorrelationData",
-        "type": "object"
-      },
-      "MacroAssetCorrelationGapData": {
-        "additionalProperties": false,
-        "properties": {
-          "code": {
-            "enum": [
-              "insufficient_history",
-              "insufficient_overlap",
-              "zero_variance"
-            ],
-            "title": "Code",
-            "type": "string"
-          },
-          "concept_key": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Concept Key"
-          },
-          "left": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Left"
-          },
-          "right": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Right"
-          },
-          "sample_size": {
-            "title": "Sample Size",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "code",
-          "sample_size"
-        ],
-        "title": "MacroAssetCorrelationGapData",
-        "type": "object"
-      },
-      "MacroAssetCorrelationMatrixRowData": {
+      "MacroConceptInputData": {
         "additionalProperties": false,
         "properties": {
           "concept_key": {
             "title": "Concept Key",
             "type": "string"
           },
-          "correlations": {
-            "additionalProperties": {
-              "anyOf": [
-                {
-                  "type": "number"
-                },
-                {
-                  "type": "null"
-                }
-              ]
-            },
-            "title": "Correlations",
-            "type": "object"
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
           }
         },
         "required": [
           "concept_key",
-          "correlations"
+          "value"
         ],
-        "title": "MacroAssetCorrelationMatrixRowData",
+        "title": "MacroConceptInputData",
         "type": "object"
       },
-      "MacroAssetCorrelationPairData": {
+      "MacroConclusionData": {
         "additionalProperties": false,
         "properties": {
-          "available": {
-            "title": "Available",
-            "type": "boolean"
+          "judgment": {
+            "title": "Judgment",
+            "type": "string"
           },
+          "rule_hits": {
+            "items": {
+              "$ref": "#/components/schemas/MacroRuleHitData"
+            },
+            "title": "Rule Hits",
+            "type": "array"
+          },
+          "rule_version": {
+            "title": "Rule Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "supported",
+              "degraded",
+              "insufficient_evidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "judgment",
+          "rule_version",
+          "rule_hits"
+        ],
+        "title": "MacroConclusionData",
+        "type": "object"
+      },
+      "MacroCorrelationData": {
+        "additionalProperties": false,
+        "properties": {
           "correlation": {
             "anyOf": [
               {
@@ -2036,18 +1952,6 @@
               }
             ],
             "title": "Correlation"
-          },
-          "end_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "End Date"
           },
           "left": {
             "title": "Left",
@@ -2068,291 +1972,1290 @@
             "title": "Right",
             "type": "string"
           },
-          "sample_size": {
-            "title": "Sample Size",
-            "type": "integer"
+          "sample": {
+            "$ref": "#/components/schemas/MacroSampleData"
           },
-          "start_date": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
+          "status": {
+            "enum": [
+              "available",
+              "unavailable"
             ],
-            "title": "Start Date"
+            "title": "Status",
+            "type": "string"
+          },
+          "window": {
+            "enum": [
+              "20_sessions",
+              "60_sessions"
+            ],
+            "title": "Window",
+            "type": "string"
           }
         },
         "required": [
           "left",
           "right",
-          "correlation",
-          "sample_size",
-          "start_date",
-          "end_date",
-          "available",
-          "reason"
+          "window",
+          "sample",
+          "status",
+          "reason",
+          "correlation"
         ],
-        "title": "MacroAssetCorrelationPairData",
+        "title": "MacroCorrelationData",
         "type": "object"
       },
-      "MacroCurrentnessData": {
+      "MacroCreditData": {
         "additionalProperties": false,
         "properties": {
-          "facts_max_observed_at": {
-            "anyOf": [
-              {
-                "format": "date",
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Facts Max Observed At"
+          "aggregate_spreads": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Aggregate Spreads",
+            "type": "array"
           },
-          "projection_behind_facts": {
-            "title": "Projection Behind Facts",
-            "type": "boolean"
+          "conclusion": {
+            "$ref": "#/components/schemas/MacroConclusionData"
           },
-          "projection_lag_days": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Projection Lag Days"
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Confirmations",
+            "type": "array"
           },
-          "publication_finished_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Publication Finished At Ms"
+          "contradictions": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Contradictions",
+            "type": "array"
           },
-          "publication_row_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Publication Row Count"
+          "credit_state": {
+            "$ref": "#/components/schemas/MacroCreditStateData"
           },
-          "publication_status": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Publication Status"
+          "credit_supply": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Credit Supply",
+            "type": "array"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "effective_yields": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Effective Yields",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "financial_conditions_liquidity": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Financial Conditions Liquidity",
+            "type": "array"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/MacroPageFreshnessData"
+          },
+          "horizon": {
+            "const": "1_4_weeks",
+            "title": "Horizon",
+            "type": "string"
+          },
+          "page_id": {
+            "const": "credit",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "rating_tail": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Rating Tail",
+            "type": "array"
+          },
+          "realized_damage": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Realized Damage",
+            "type": "array"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/MacroSnapshotData"
+          },
+          "treasury_spread_quadrant": {
+            "$ref": "#/components/schemas/MacroTreasurySpreadQuadrantData"
+          },
+          "unavailable_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroUnavailableEvidenceData"
+            },
+            "title": "Unavailable Evidence",
+            "type": "array"
+          },
+          "upgrade_invalidation": {
+            "$ref": "#/components/schemas/MacroUpgradeInvalidationData"
           }
         },
         "required": [
-          "publication_status",
-          "publication_row_count",
-          "publication_finished_at_ms",
-          "facts_max_observed_at",
-          "projection_lag_days",
-          "projection_behind_facts"
+          "snapshot",
+          "conclusion",
+          "horizon",
+          "drivers",
+          "confirmations",
+          "contradictions",
+          "upgrade_invalidation",
+          "evidence_refs",
+          "freshness",
+          "evidence",
+          "unavailable_evidence",
+          "page_id",
+          "aggregate_spreads",
+          "rating_tail",
+          "effective_yields",
+          "credit_supply",
+          "realized_damage",
+          "financial_conditions_liquidity",
+          "treasury_spread_quadrant",
+          "credit_state"
         ],
-        "title": "MacroCurrentnessData",
+        "title": "MacroCreditData",
         "type": "object"
       },
-      "MacroData": {
+      "MacroCreditStateData": {
         "additionalProperties": false,
         "properties": {
-          "chain": {
-            "additionalProperties": true,
-            "title": "Chain",
-            "type": "object"
+          "direction": {
+            "enum": [
+              "widening",
+              "narrowing",
+              "stable",
+              "insufficient_evidence"
+            ],
+            "title": "Direction",
+            "type": "string"
           },
-          "currentness": {
-            "$ref": "#/components/schemas/MacroCurrentnessData"
-          },
-          "data_gaps": {
+          "evidence_refs": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "type": "string"
             },
-            "title": "Data Gaps",
+            "title": "Evidence Refs",
             "type": "array"
           },
-          "features": {
-            "additionalProperties": true,
-            "title": "Features",
-            "type": "object"
+          "rule_version": {
+            "title": "Rule Version",
+            "type": "string"
           },
-          "indicators": {
-            "additionalProperties": true,
-            "title": "Indicators",
-            "type": "object"
+          "stage": {
+            "enum": [
+              "contained",
+              "tail_stress",
+              "broadening",
+              "systemic_tightening",
+              "repairing",
+              "insufficient_evidence"
+            ],
+            "title": "Stage",
+            "type": "string"
           },
-          "panels": {
-            "additionalProperties": true,
-            "title": "Panels",
-            "type": "object"
+          "status": {
+            "enum": [
+              "supported",
+              "insufficient_evidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "stage",
+          "direction",
+          "evidence_refs",
+          "rule_version"
+        ],
+        "title": "MacroCreditStateData",
+        "type": "object"
+      },
+      "MacroCrossAssetData": {
+        "additionalProperties": false,
+        "properties": {
+          "asset_returns": {
+            "items": {
+              "$ref": "#/components/schemas/MacroAssetReturnData"
+            },
+            "title": "Asset Returns",
+            "type": "array"
           },
-          "scenario": {
-            "additionalProperties": true,
-            "title": "Scenario",
-            "type": "object"
+          "conclusion": {
+            "$ref": "#/components/schemas/MacroConclusionData"
           },
-          "scorecard": {
-            "additionalProperties": true,
-            "title": "Scorecard",
-            "type": "object"
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          },
+          "contradictions": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Contradictions",
+            "type": "array"
+          },
+          "correlations_20": {
+            "items": {
+              "$ref": "#/components/schemas/MacroCorrelationData"
+            },
+            "title": "Correlations 20",
+            "type": "array"
+          },
+          "correlations_60": {
+            "items": {
+              "$ref": "#/components/schemas/MacroCorrelationData"
+            },
+            "title": "Correlations 60",
+            "type": "array"
+          },
+          "divergences": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Divergences",
+            "type": "array"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/MacroPageFreshnessData"
+          },
+          "horizon": {
+            "const": "1_4_weeks",
+            "title": "Horizon",
+            "type": "string"
+          },
+          "page_id": {
+            "const": "cross_asset",
+            "title": "Page Id",
+            "type": "string"
           },
           "snapshot": {
+            "$ref": "#/components/schemas/MacroSnapshotData"
+          },
+          "unavailable_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroUnavailableEvidenceData"
+            },
+            "title": "Unavailable Evidence",
+            "type": "array"
+          },
+          "upgrade_invalidation": {
+            "$ref": "#/components/schemas/MacroUpgradeInvalidationData"
+          },
+          "volatility": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Volatility",
+            "type": "array"
+          }
+        },
+        "required": [
+          "snapshot",
+          "conclusion",
+          "horizon",
+          "drivers",
+          "confirmations",
+          "contradictions",
+          "upgrade_invalidation",
+          "evidence_refs",
+          "freshness",
+          "evidence",
+          "unavailable_evidence",
+          "page_id",
+          "asset_returns",
+          "volatility",
+          "correlations_20",
+          "correlations_60",
+          "divergences"
+        ],
+        "title": "MacroCrossAssetData",
+        "type": "object"
+      },
+      "MacroCurveShapeData": {
+        "additionalProperties": false,
+        "properties": {
+          "change_window": {
+            "const": "20_sessions",
+            "title": "Change Window",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "level_classification": {
+            "title": "Level Classification",
+            "type": "string"
+          },
+          "move_classification": {
+            "title": "Move Classification",
+            "type": "string"
+          },
+          "rule_version": {
+            "title": "Rule Version",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "supported",
+              "insufficient_evidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "ten_year_change": {
             "anyOf": [
               {
-                "$ref": "#/components/schemas/MacroSnapshotData"
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Ten Year Change"
+          },
+          "two_year_change": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Two Year Change"
+          }
+        },
+        "required": [
+          "status",
+          "level_classification",
+          "move_classification",
+          "two_year_change",
+          "ten_year_change",
+          "change_window",
+          "evidence_refs",
+          "rule_version"
+        ],
+        "title": "MacroCurveShapeData",
+        "type": "object"
+      },
+      "MacroDecisionItemData": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          }
+        },
+        "required": [
+          "code",
+          "evidence_refs"
+        ],
+        "title": "MacroDecisionItemData",
+        "type": "object"
+      },
+      "MacroDerivationData": {
+        "additionalProperties": false,
+        "properties": {
+          "formula": {
+            "title": "Formula",
+            "type": "string"
+          },
+          "inputs": {
+            "items": {
+              "anyOf": [
+                {
+                  "$ref": "#/components/schemas/MacroObservedInputData"
+                },
+                {
+                  "$ref": "#/components/schemas/MacroConceptInputData"
+                },
+                {
+                  "$ref": "#/components/schemas/MacroLiquidityInputData"
+                }
+              ]
+            },
+            "title": "Inputs",
+            "type": "array"
+          },
+          "references": {
+            "items": {
+              "type": "string"
+            },
+            "title": "References",
+            "type": "array"
+          }
+        },
+        "required": [
+          "formula",
+          "inputs",
+          "references"
+        ],
+        "title": "MacroDerivationData",
+        "type": "object"
+      },
+      "MacroDominantShockData": {
+        "additionalProperties": false,
+        "properties": {
+          "affected_exposures": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Affected Exposures",
+            "type": "array"
+          },
+          "candidate": {
+            "anyOf": [
+              {
+                "enum": [
+                  "growth",
+                  "inflation",
+                  "policy_real_rates",
+                  "term_premium_supply",
+                  "liquidity_funding",
+                  "credit"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "critical_contradictions": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Critical Contradictions",
+            "type": "array"
+          },
+          "cross_domain_confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Cross Domain Confirmations",
+            "type": "array"
+          },
+          "hit_evidence": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Hit Evidence",
+            "type": "array"
+          },
+          "primary_trigger": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroDecisionItemData"
               },
               {
                 "type": "null"
               }
             ]
           },
-          "source_coverage": {
-            "additionalProperties": true,
-            "title": "Source Coverage",
-            "type": "object"
+          "rule_version": {
+            "title": "Rule Version",
+            "type": "string"
           },
-          "triggers": {
+          "status": {
+            "enum": [
+              "confirmed",
+              "provisional",
+              "divergent",
+              "insufficient_evidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "candidate",
+          "status",
+          "primary_trigger",
+          "cross_domain_confirmations",
+          "critical_contradictions",
+          "affected_exposures",
+          "rule_version",
+          "hit_evidence"
+        ],
+        "title": "MacroDominantShockData",
+        "type": "object"
+      },
+      "MacroEvidenceData": {
+        "additionalProperties": false,
+        "properties": {
+          "change": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change"
+          },
+          "change_window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Change Window"
+          },
+          "claim_effect": {
+            "title": "Claim Effect",
+            "type": "string"
+          },
+          "concept_key": {
+            "title": "Concept Key",
+            "type": "string"
+          },
+          "criticality": {
+            "enum": [
+              "critical",
+              "optional"
+            ],
+            "title": "Criticality",
+            "type": "string"
+          },
+          "data_quality": {
+            "title": "Data Quality",
+            "type": "string"
+          },
+          "derivation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroDerivationData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "frequency": {
+            "enum": [
+              "daily",
+              "weekly",
+              "monthly",
+              "quarterly",
+              "irregular",
+              "event"
+            ],
+            "title": "Frequency",
+            "type": "string"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/MacroEvidenceFreshnessData"
+          },
+          "observed_at": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Observed At"
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "role": {
+            "enum": [
+              "primary",
+              "confirmation",
+              "context",
+              "catalyst"
+            ],
+            "title": "Role",
+            "type": "string"
+          },
+          "sample": {
+            "$ref": "#/components/schemas/MacroSampleData"
+          },
+          "series_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Key"
+          },
+          "source_name": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Name"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "stale",
+              "unavailable",
+              "invalid"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          }
+        },
+        "required": [
+          "concept_key",
+          "role",
+          "status",
+          "reason",
+          "value",
+          "unit",
+          "change",
+          "change_window",
+          "observed_at",
+          "frequency",
+          "source_name",
+          "series_key",
+          "data_quality",
+          "freshness",
+          "sample",
+          "criticality",
+          "claim_effect",
+          "derivation"
+        ],
+        "title": "MacroEvidenceData",
+        "type": "object"
+      },
+      "MacroEvidenceFreshnessData": {
+        "additionalProperties": false,
+        "properties": {
+          "age_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Age Days"
+          },
+          "stale_after_days": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stale After Days"
+          },
+          "status": {
+            "enum": [
+              "fresh",
+              "stale",
+              "missing",
+              "derived"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "age_days",
+          "stale_after_days"
+        ],
+        "title": "MacroEvidenceFreshnessData",
+        "type": "object"
+      },
+      "MacroFundingCorridorData": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/MacroEvidenceData"
             },
-            "title": "Triggers",
+            "title": "Evidence",
             "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "spreads": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Spreads",
+            "type": "array"
+          },
+          "state": {
+            "title": "State",
+            "type": "string"
+          },
+          "status": {
+            "enum": [
+              "supported",
+              "insufficient_evidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "state",
+          "evidence_refs",
+          "spreads",
+          "evidence"
+        ],
+        "title": "MacroFundingCorridorData",
+        "type": "object"
+      },
+      "MacroFundingLayerData": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "spreads": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Spreads",
+            "type": "array"
+          }
+        },
+        "required": [
+          "evidence",
+          "spreads"
+        ],
+        "title": "MacroFundingLayerData",
+        "type": "object"
+      },
+      "MacroGrowthLaborData": {
+        "additionalProperties": false,
+        "properties": {
+          "conclusion": {
+            "$ref": "#/components/schemas/MacroConclusionData"
+          },
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          },
+          "contradictions": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Contradictions",
+            "type": "array"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/MacroPageFreshnessData"
+          },
+          "growth_lagging": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Growth Lagging",
+            "type": "array"
+          },
+          "growth_leading": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Growth Leading",
+            "type": "array"
+          },
+          "growth_metrics": {
+            "items": {
+              "$ref": "#/components/schemas/MacroMetricData"
+            },
+            "title": "Growth Metrics",
+            "type": "array"
+          },
+          "horizon": {
+            "const": "1_4_weeks",
+            "title": "Horizon",
+            "type": "string"
+          },
+          "labor_lagging": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Labor Lagging",
+            "type": "array"
+          },
+          "labor_leading": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Labor Leading",
+            "type": "array"
+          },
+          "page_id": {
+            "const": "growth_labor",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/MacroSnapshotData"
+          },
+          "unavailable_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroUnavailableEvidenceData"
+            },
+            "title": "Unavailable Evidence",
+            "type": "array"
+          },
+          "upgrade_invalidation": {
+            "$ref": "#/components/schemas/MacroUpgradeInvalidationData"
           }
         },
         "required": [
           "snapshot",
-          "currentness",
-          "panels",
-          "indicators",
-          "triggers",
-          "data_gaps",
-          "source_coverage",
-          "features",
-          "chain",
-          "scenario",
-          "scorecard"
+          "conclusion",
+          "horizon",
+          "drivers",
+          "confirmations",
+          "contradictions",
+          "upgrade_invalidation",
+          "evidence_refs",
+          "freshness",
+          "evidence",
+          "unavailable_evidence",
+          "page_id",
+          "growth_leading",
+          "growth_lagging",
+          "labor_leading",
+          "labor_lagging",
+          "growth_metrics"
         ],
-        "title": "MacroData",
+        "title": "MacroGrowthLaborData",
         "type": "object"
       },
-      "MacroModuleAvailabilityTableData": {
+      "MacroInflationReleaseData": {
         "additionalProperties": false,
         "properties": {
-          "id": {
-            "const": "availability_proxy_notes",
-            "title": "Id",
-            "type": "string"
+          "evidence": {
+            "$ref": "#/components/schemas/MacroEvidenceData"
           },
-          "rows": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Rows",
-            "type": "array"
+          "release_change": {
+            "$ref": "#/components/schemas/MacroMetricData"
           },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
+          "year_over_year": {
+            "$ref": "#/components/schemas/MacroMetricData"
           }
         },
         "required": [
-          "id",
-          "title",
-          "status",
-          "rows"
+          "evidence",
+          "release_change",
+          "year_over_year"
         ],
-        "title": "MacroModuleAvailabilityTableData",
+        "title": "MacroInflationReleaseData",
         "type": "object"
       },
-      "MacroModuleChartData": {
+      "MacroLiquidityFundingData": {
         "additionalProperties": false,
         "properties": {
-          "id": {
-            "title": "Id",
-            "type": "string"
+          "central_bank_balance_sheet": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Central Bank Balance Sheet",
+            "type": "array"
           },
-          "kind": {
-            "const": "time_series",
-            "title": "Kind",
-            "type": "string"
+          "conclusion": {
+            "$ref": "#/components/schemas/MacroConclusionData"
           },
-          "min_points": {
-            "title": "Min Points",
-            "type": "integer"
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Confirmations",
+            "type": "array"
           },
-          "missing_concept_keys": {
+          "contradictions": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Contradictions",
+            "type": "array"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_refs": {
             "items": {
               "type": "string"
             },
-            "title": "Missing Concept Keys",
+            "title": "Evidence Refs",
             "type": "array"
           },
-          "series": {
+          "freshness": {
+            "$ref": "#/components/schemas/MacroPageFreshnessData"
+          },
+          "horizon": {
+            "const": "1_4_weeks",
+            "title": "Horizon",
+            "type": "string"
+          },
+          "net_liquidity": {
+            "$ref": "#/components/schemas/MacroEvidenceData"
+          },
+          "page_id": {
+            "const": "liquidity_funding",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "reserves": {
             "items": {
-              "$ref": "#/components/schemas/MacroModuleChartSeriesData"
+              "$ref": "#/components/schemas/MacroEvidenceData"
             },
-            "title": "Series",
+            "title": "Reserves",
             "type": "array"
           },
-          "status": {
-            "title": "Status",
-            "type": "string"
+          "reverse_repo": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Reverse Repo",
+            "type": "array"
           },
-          "status_label": {
-            "title": "Status Label",
-            "type": "string"
+          "secured_funding": {
+            "$ref": "#/components/schemas/MacroFundingLayerData"
           },
-          "subtitle": {
-            "title": "Subtitle",
-            "type": "string"
+          "snapshot": {
+            "$ref": "#/components/schemas/MacroSnapshotData"
           },
-          "title": {
-            "title": "Title",
-            "type": "string"
+          "treasury_cash": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Treasury Cash",
+            "type": "array"
+          },
+          "unavailable_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroUnavailableEvidenceData"
+            },
+            "title": "Unavailable Evidence",
+            "type": "array"
+          },
+          "unsecured_funding": {
+            "$ref": "#/components/schemas/MacroFundingLayerData"
+          },
+          "upgrade_invalidation": {
+            "$ref": "#/components/schemas/MacroUpgradeInvalidationData"
           }
         },
         "required": [
-          "id",
-          "kind",
-          "title",
-          "subtitle",
-          "status",
-          "status_label",
-          "min_points",
-          "missing_concept_keys",
-          "series"
+          "snapshot",
+          "conclusion",
+          "horizon",
+          "drivers",
+          "confirmations",
+          "contradictions",
+          "upgrade_invalidation",
+          "evidence_refs",
+          "freshness",
+          "evidence",
+          "unavailable_evidence",
+          "page_id",
+          "central_bank_balance_sheet",
+          "treasury_cash",
+          "reverse_repo",
+          "reserves",
+          "net_liquidity",
+          "secured_funding",
+          "unsecured_funding"
         ],
-        "title": "MacroModuleChartData",
+        "title": "MacroLiquidityFundingData",
         "type": "object"
       },
-      "MacroModuleChartPointData": {
+      "MacroLiquidityInputData": {
+        "additionalProperties": false,
+        "properties": {
+          "concept_key": {
+            "title": "Concept Key",
+            "type": "string"
+          },
+          "source_unit": {
+            "title": "Source Unit",
+            "type": "string"
+          },
+          "value_millions_usd": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value Millions Usd"
+          }
+        },
+        "required": [
+          "concept_key",
+          "source_unit",
+          "value_millions_usd"
+        ],
+        "title": "MacroLiquidityInputData",
+        "type": "object"
+      },
+      "MacroMetricData": {
+        "additionalProperties": false,
+        "properties": {
+          "concept_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Concept Key"
+          },
+          "derivation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroDerivationData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sample": {
+            "$ref": "#/components/schemas/MacroSampleData"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "window": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Window"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "value",
+          "unit",
+          "window",
+          "sample",
+          "derivation"
+        ],
+        "title": "MacroMetricData",
+        "type": "object"
+      },
+      "MacroObservedInputData": {
         "additionalProperties": false,
         "properties": {
           "observed_at": {
@@ -2376,225 +3279,461 @@
           "observed_at",
           "value"
         ],
-        "title": "MacroModuleChartPointData",
+        "title": "MacroObservedInputData",
         "type": "object"
       },
-      "MacroModuleChartSeriesData": {
+      "MacroOfficialCatalystData": {
         "additionalProperties": false,
         "properties": {
           "concept_key": {
             "title": "Concept Key",
             "type": "string"
           },
-          "label": {
-            "title": "Label",
+          "event_date": {
+            "format": "date",
+            "title": "Event Date",
             "type": "string"
           },
-          "points": {
-            "items": {
-              "$ref": "#/components/schemas/MacroModuleChartPointData"
-            },
-            "title": "Points",
-            "type": "array"
+          "event_time": {
+            "title": "Event Time",
+            "type": "string"
           },
-          "unit_label": {
-            "title": "Unit Label",
+          "evidence_ref": {
+            "title": "Evidence Ref",
+            "type": "string"
+          },
+          "release_status": {
+            "enum": [
+              "today",
+              "upcoming"
+            ],
+            "title": "Release Status",
+            "type": "string"
+          },
+          "series_key": {
+            "title": "Series Key",
+            "type": "string"
+          },
+          "source_name": {
+            "title": "Source Name",
+            "type": "string"
+          },
+          "source_url": {
+            "title": "Source Url",
+            "type": "string"
+          },
+          "timezone": {
+            "title": "Timezone",
             "type": "string"
           }
         },
         "required": [
           "concept_key",
-          "label",
-          "unit_label",
-          "points"
+          "event_date",
+          "event_time",
+          "timezone",
+          "source_name",
+          "series_key",
+          "source_url",
+          "release_status",
+          "evidence_ref"
         ],
-        "title": "MacroModuleChartSeriesData",
+        "title": "MacroOfficialCatalystData",
         "type": "object"
       },
-      "MacroModuleData": {
+      "MacroOverviewData": {
         "additionalProperties": false,
         "properties": {
-          "daily_brief": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Daily Brief"
+          "conclusion": {
+            "$ref": "#/components/schemas/MacroConclusionData"
           },
-          "data_health": {
-            "$ref": "#/components/schemas/MacroModuleDataHealthData"
-          },
-          "module_evidence": {
-            "$ref": "#/components/schemas/MacroModuleEvidenceData"
-          },
-          "module_read": {
-            "additionalProperties": true,
-            "title": "Module Read",
-            "type": "object"
-          },
-          "primary_chart": {
-            "$ref": "#/components/schemas/MacroModuleChartData"
-          },
-          "provenance": {
-            "$ref": "#/components/schemas/MacroModuleProvenanceData"
-          },
-          "related_routes": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Related Routes",
-            "type": "array"
-          },
-          "snapshot": {
-            "$ref": "#/components/schemas/MacroModuleSnapshotData"
-          },
-          "tables": {
-            "items": {
-              "anyOf": [
-                {
-                  "$ref": "#/components/schemas/MacroModuleTableData"
-                },
-                {
-                  "$ref": "#/components/schemas/MacroModuleAvailabilityTableData"
-                }
-              ]
-            },
-            "title": "Tables",
-            "type": "array"
-          },
-          "tiles": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Tiles",
-            "type": "array"
-          },
-          "transmission": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Transmission",
-            "type": "array"
-          }
-        },
-        "required": [
-          "snapshot",
-          "tiles",
-          "primary_chart",
-          "tables",
-          "module_read",
-          "module_evidence",
-          "transmission",
-          "data_health",
-          "provenance",
-          "related_routes"
-        ],
-        "title": "MacroModuleData",
-        "type": "object"
-      },
-      "MacroModuleDataHealthData": {
-        "additionalProperties": false,
-        "properties": {
-          "chart_gaps": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Chart Gaps",
-            "type": "array"
-          },
-          "global_gaps": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Global Gaps",
-            "type": "array"
-          },
-          "module_gaps": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Module Gaps",
-            "type": "array"
-          },
-          "summary_label": {
-            "title": "Summary Label",
-            "type": "string"
-          },
-          "summary_status": {
-            "title": "Summary Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "summary_status",
-          "summary_label",
-          "module_gaps",
-          "chart_gaps",
-          "global_gaps"
-        ],
-        "title": "MacroModuleDataHealthData",
-        "type": "object"
-      },
-      "MacroModuleEvidenceData": {
-        "additionalProperties": false,
-        "properties": {
           "confirmations": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/MacroDecisionItemData"
             },
             "title": "Confirmations",
             "type": "array"
           },
           "contradictions": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/MacroDecisionItemData"
             },
             "title": "Contradictions",
             "type": "array"
           },
-          "invalidations": {
+          "dominant_shock": {
+            "$ref": "#/components/schemas/MacroDominantShockData"
+          },
+          "drivers": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/MacroDecisionItemData"
             },
-            "title": "Invalidations",
+            "title": "Drivers",
             "type": "array"
           },
-          "watch_triggers": {
+          "evidence": {
             "items": {
-              "additionalProperties": true,
-              "type": "object"
+              "$ref": "#/components/schemas/MacroEvidenceData"
             },
-            "title": "Watch Triggers",
+            "title": "Evidence",
             "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/MacroPageFreshnessData"
+          },
+          "horizon": {
+            "const": "1_4_weeks",
+            "title": "Horizon",
+            "type": "string"
+          },
+          "official_catalysts": {
+            "items": {
+              "$ref": "#/components/schemas/MacroOfficialCatalystData"
+            },
+            "title": "Official Catalysts",
+            "type": "array"
+          },
+          "page_id": {
+            "const": "overview",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/MacroSnapshotData"
+          },
+          "unavailable_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroUnavailableEvidenceData"
+            },
+            "title": "Unavailable Evidence",
+            "type": "array"
+          },
+          "upgrade_invalidation": {
+            "$ref": "#/components/schemas/MacroUpgradeInvalidationData"
           }
         },
         "required": [
+          "snapshot",
+          "conclusion",
+          "horizon",
+          "drivers",
           "confirmations",
           "contradictions",
-          "watch_triggers",
-          "invalidations"
+          "upgrade_invalidation",
+          "evidence_refs",
+          "freshness",
+          "evidence",
+          "unavailable_evidence",
+          "page_id",
+          "dominant_shock",
+          "official_catalysts"
         ],
-        "title": "MacroModuleEvidenceData",
+        "title": "MacroOverviewData",
         "type": "object"
       },
-      "MacroModuleProvenanceCurrentnessData": {
+      "MacroPageFreshnessData": {
         "additionalProperties": false,
         "properties": {
-          "facts_max_observed_at": {
+          "critical_missing": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Critical Missing",
+            "type": "array"
+          },
+          "critical_stale": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Critical Stale",
+            "type": "array"
+          },
+          "optional_unavailable": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Optional Unavailable",
+            "type": "array"
+          },
+          "status": {
+            "enum": [
+              "fresh",
+              "degraded",
+              "insufficient_evidence"
+            ],
+            "title": "Status",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "critical_missing",
+          "critical_stale",
+          "optional_unavailable"
+        ],
+        "title": "MacroPageFreshnessData",
+        "type": "object"
+      },
+      "MacroRatesInflationData": {
+        "additionalProperties": false,
+        "properties": {
+          "breakevens": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Breakevens",
+            "type": "array"
+          },
+          "conclusion": {
+            "$ref": "#/components/schemas/MacroConclusionData"
+          },
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          },
+          "contradictions": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Contradictions",
+            "type": "array"
+          },
+          "curve_shape": {
+            "$ref": "#/components/schemas/MacroCurveShapeData"
+          },
+          "curve_slopes": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Curve Slopes",
+            "type": "array"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Evidence",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "freshness": {
+            "$ref": "#/components/schemas/MacroPageFreshnessData"
+          },
+          "horizon": {
+            "const": "1_4_weeks",
+            "title": "Horizon",
+            "type": "string"
+          },
+          "inflation_releases": {
+            "items": {
+              "$ref": "#/components/schemas/MacroInflationReleaseData"
+            },
+            "title": "Inflation Releases",
+            "type": "array"
+          },
+          "nominal_curve": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Nominal Curve",
+            "type": "array"
+          },
+          "page_id": {
+            "const": "rates_inflation",
+            "title": "Page Id",
+            "type": "string"
+          },
+          "policy_funding_corridor": {
+            "$ref": "#/components/schemas/MacroFundingCorridorData"
+          },
+          "real_yields": {
+            "items": {
+              "$ref": "#/components/schemas/MacroEvidenceData"
+            },
+            "title": "Real Yields",
+            "type": "array"
+          },
+          "snapshot": {
+            "$ref": "#/components/schemas/MacroSnapshotData"
+          },
+          "term_premium": {
+            "$ref": "#/components/schemas/MacroUnavailableEvidenceData"
+          },
+          "unavailable_evidence": {
+            "items": {
+              "$ref": "#/components/schemas/MacroUnavailableEvidenceData"
+            },
+            "title": "Unavailable Evidence",
+            "type": "array"
+          },
+          "upgrade_invalidation": {
+            "$ref": "#/components/schemas/MacroUpgradeInvalidationData"
+          }
+        },
+        "required": [
+          "snapshot",
+          "conclusion",
+          "horizon",
+          "drivers",
+          "confirmations",
+          "contradictions",
+          "upgrade_invalidation",
+          "evidence_refs",
+          "freshness",
+          "evidence",
+          "unavailable_evidence",
+          "page_id",
+          "nominal_curve",
+          "curve_slopes",
+          "real_yields",
+          "breakevens",
+          "term_premium",
+          "policy_funding_corridor",
+          "inflation_releases",
+          "curve_shape"
+        ],
+        "title": "MacroRatesInflationData",
+        "type": "object"
+      },
+      "MacroReturnWindowData": {
+        "additionalProperties": false,
+        "properties": {
+          "derivation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroDerivationData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reason"
+          },
+          "sample": {
+            "$ref": "#/components/schemas/MacroSampleData"
+          },
+          "status": {
+            "enum": [
+              "available",
+              "unavailable"
+            ],
+            "title": "Status",
+            "type": "string"
+          },
+          "unit": {
+            "const": "percent",
+            "title": "Unit",
+            "type": "string"
+          },
+          "value": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "number"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Value"
+          },
+          "window": {
+            "enum": [
+              "20_sessions",
+              "60_sessions"
+            ],
+            "title": "Window",
+            "type": "string"
+          }
+        },
+        "required": [
+          "status",
+          "reason",
+          "window",
+          "value",
+          "unit",
+          "sample",
+          "derivation"
+        ],
+        "title": "MacroReturnWindowData",
+        "type": "object"
+      },
+      "MacroRuleHitData": {
+        "additionalProperties": false,
+        "properties": {
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "outcome": {
+            "enum": [
+              "trigger",
+              "confirmation",
+              "contradiction",
+              "invalidation"
+            ],
+            "title": "Outcome",
+            "type": "string"
+          },
+          "rule_id": {
+            "title": "Rule Id",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rule_id",
+          "outcome",
+          "evidence_refs"
+        ],
+        "title": "MacroRuleHitData",
+        "type": "object"
+      },
+      "MacroSampleData": {
+        "additionalProperties": false,
+        "properties": {
+          "count": {
+            "title": "Count",
+            "type": "integer"
+          },
+          "end": {
             "anyOf": [
               {
                 "format": "date",
@@ -2604,205 +3743,27 @@
                 "type": "null"
               }
             ],
-            "title": "Facts Max Observed At"
+            "title": "End"
           },
-          "projection_behind_facts": {
-            "title": "Projection Behind Facts",
-            "type": "boolean"
-          },
-          "projection_lag_days": {
+          "start": {
             "anyOf": [
               {
-                "type": "integer"
+                "format": "date",
+                "type": "string"
               },
               {
                 "type": "null"
               }
             ],
-            "title": "Projection Lag Days"
+            "title": "Start"
           }
         },
         "required": [
-          "facts_max_observed_at",
-          "projection_lag_days",
-          "projection_behind_facts"
+          "start",
+          "end",
+          "count"
         ],
-        "title": "MacroModuleProvenanceCurrentnessData",
-        "type": "object"
-      },
-      "MacroModuleProvenanceData": {
-        "additionalProperties": false,
-        "properties": {
-          "currentness": {
-            "$ref": "#/components/schemas/MacroModuleProvenanceCurrentnessData"
-          },
-          "projection_version": {
-            "title": "Projection Version",
-            "type": "string"
-          },
-          "rows": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Rows",
-            "type": "array"
-          }
-        },
-        "required": [
-          "projection_version",
-          "currentness",
-          "rows"
-        ],
-        "title": "MacroModuleProvenanceData",
-        "type": "object"
-      },
-      "MacroModuleSnapshotData": {
-        "additionalProperties": false,
-        "properties": {
-          "asof_date": {
-            "format": "date",
-            "title": "Asof Date",
-            "type": "string"
-          },
-          "asof_label": {
-            "title": "Asof Label",
-            "type": "string"
-          },
-          "computed_at_label": {
-            "title": "Computed At Label",
-            "type": "string"
-          },
-          "computed_at_ms": {
-            "title": "Computed At Ms",
-            "type": "integer"
-          },
-          "module_id": {
-            "title": "Module Id",
-            "type": "string"
-          },
-          "projection_version": {
-            "title": "Projection Version",
-            "type": "string"
-          },
-          "question": {
-            "title": "Question",
-            "type": "string"
-          },
-          "route_path": {
-            "title": "Route Path",
-            "type": "string"
-          },
-          "section": {
-            "title": "Section",
-            "type": "string"
-          },
-          "source_projection_version": {
-            "title": "Source Projection Version",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "status_label": {
-            "title": "Status Label",
-            "type": "string"
-          },
-          "subtitle": {
-            "title": "Subtitle",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "module_id",
-          "route_path",
-          "title",
-          "subtitle",
-          "question",
-          "section",
-          "projection_version",
-          "status",
-          "status_label",
-          "asof_date",
-          "asof_label",
-          "computed_at_ms",
-          "computed_at_label",
-          "source_projection_version"
-        ],
-        "title": "MacroModuleSnapshotData",
-        "type": "object"
-      },
-      "MacroModuleTableColumnData": {
-        "additionalProperties": false,
-        "properties": {
-          "key": {
-            "title": "Key",
-            "type": "string"
-          },
-          "label": {
-            "title": "Label",
-            "type": "string"
-          }
-        },
-        "required": [
-          "key",
-          "label"
-        ],
-        "title": "MacroModuleTableColumnData",
-        "type": "object"
-      },
-      "MacroModuleTableData": {
-        "additionalProperties": false,
-        "properties": {
-          "columns": {
-            "items": {
-              "$ref": "#/components/schemas/MacroModuleTableColumnData"
-            },
-            "title": "Columns",
-            "type": "array"
-          },
-          "id": {
-            "title": "Id",
-            "type": "string"
-          },
-          "missing_concept_keys": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Missing Concept Keys",
-            "type": "array"
-          },
-          "rows": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Rows",
-            "type": "array"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "title": {
-            "title": "Title",
-            "type": "string"
-          }
-        },
-        "required": [
-          "id",
-          "title",
-          "status",
-          "missing_concept_keys",
-          "columns",
-          "rows"
-        ],
-        "title": "MacroModuleTableData",
+        "title": "MacroSampleData",
         "type": "object"
       },
       "MacroSeriesData": {
@@ -2842,6 +3803,147 @@
         "title": "MacroSeriesData",
         "type": "object"
       },
+      "MacroSeriesEventMetadataData": {
+        "additionalProperties": false,
+        "properties": {
+          "announcement_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Announcement Date"
+          },
+          "cusip": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Cusip"
+          },
+          "document_type": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Document Type"
+          },
+          "event_code": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Code"
+          },
+          "event_time": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Time"
+          },
+          "event_time_et": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event Time Et"
+          },
+          "reference_period": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reference Period"
+          },
+          "reopening": {
+            "anyOf": [
+              {
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Reopening"
+          },
+          "settlement_date": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Settlement Date"
+          },
+          "source_url": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Source Url"
+          },
+          "speaker": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Speaker"
+          },
+          "text_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Text Value"
+          }
+        },
+        "title": "MacroSeriesEventMetadataData",
+        "type": "object"
+      },
       "MacroSeriesGapData": {
         "additionalProperties": false,
         "properties": {
@@ -2857,11 +3959,11 @@
             "title": "Label",
             "type": "string"
           },
-          "score_participation": {
-            "title": "Score Participation",
-            "type": "boolean"
-          },
           "severity": {
+            "enum": [
+              "warning",
+              "error"
+            ],
             "title": "Severity",
             "type": "string"
           }
@@ -2870,7 +3972,6 @@
           "code",
           "label",
           "severity",
-          "score_participation",
           "concept_key"
         ],
         "title": "MacroSeriesGapData",
@@ -2961,10 +4062,35 @@
             "title": "Data Quality",
             "type": "string"
           },
+          "event_metadata": {
+            "$ref": "#/components/schemas/MacroSeriesEventMetadataData"
+          },
+          "frequency": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Frequency"
+          },
           "observed_at": {
             "format": "date",
             "title": "Observed At",
             "type": "string"
+          },
+          "series_key": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Series Key"
           },
           "source_name": {
             "anyOf": [
@@ -2976,6 +4102,17 @@
               }
             ],
             "title": "Source Name"
+          },
+          "unit": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Unit"
           },
           "value": {
             "anyOf": [
@@ -2996,7 +4133,11 @@
           "observed_at",
           "value",
           "source_name",
-          "data_quality"
+          "series_key",
+          "unit",
+          "frequency",
+          "data_quality",
+          "event_metadata"
         ],
         "title": "MacroSeriesPointData",
         "type": "object"
@@ -3004,16 +4145,73 @@
       "MacroSnapshotData": {
         "additionalProperties": false,
         "properties": {
-          "asof_date": {
-            "format": "date",
-            "title": "Asof Date",
-            "type": "string"
-          },
           "computed_at_ms": {
             "title": "Computed At Ms",
             "type": "integer"
           },
-          "overall_score": {
+          "fact_watermark": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Fact Watermark"
+          },
+          "market_cutoff": {
+            "anyOf": [
+              {
+                "format": "date",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Market Cutoff"
+          },
+          "projection_version": {
+            "const": "macro_evidence_v1",
+            "title": "Projection Version",
+            "type": "string"
+          }
+        },
+        "required": [
+          "projection_version",
+          "fact_watermark",
+          "market_cutoff",
+          "computed_at_ms"
+        ],
+        "title": "MacroSnapshotData",
+        "type": "object"
+      },
+      "MacroTreasurySpreadQuadrantData": {
+        "additionalProperties": false,
+        "properties": {
+          "change_window": {
+            "const": "20_sessions",
+            "title": "Change Window",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "quadrant": {
+            "title": "Quadrant",
+            "type": "string"
+          },
+          "rule_version": {
+            "title": "Rule Version",
+            "type": "string"
+          },
+          "spread_change": {
             "anyOf": [
               {
                 "type": "integer"
@@ -3025,463 +4223,91 @@
                 "type": "null"
               }
             ],
-            "title": "Overall Score"
-          },
-          "projection_version": {
-            "title": "Projection Version",
-            "type": "string"
-          },
-          "regime": {
-            "title": "Regime",
-            "type": "string"
+            "title": "Spread Change"
           },
           "status": {
+            "enum": [
+              "supported",
+              "insufficient_evidence"
+            ],
             "title": "Status",
             "type": "string"
-          }
-        },
-        "required": [
-          "projection_version",
-          "asof_date",
-          "status",
-          "regime",
-          "overall_score",
-          "computed_at_ms"
-        ],
-        "title": "MacroSnapshotData",
-        "type": "object"
-      },
-      "NarrativeAdmissionData": {
-        "additionalProperties": false,
-        "properties": {
-          "computed_at_ms": {
+          },
+          "yield_change": {
             "anyOf": [
               {
                 "type": "integer"
               },
               {
+                "type": "number"
+              },
+              {
                 "type": "null"
               }
             ],
-            "title": "Computed At Ms"
-          },
-          "coverage": {
-            "$ref": "#/components/schemas/NarrativeCoverageData"
-          },
-          "currentness": {
-            "$ref": "#/components/schemas/NarrativeCurrentnessData"
-          },
-          "data_gaps": {
-            "items": {
-              "additionalProperties": true,
-              "type": "object"
-            },
-            "title": "Data Gaps",
-            "type": "array"
-          },
-          "is_current": {
-            "title": "Is Current",
-            "type": "boolean"
+            "title": "Yield Change"
+          }
+        },
+        "required": [
+          "status",
+          "quadrant",
+          "yield_change",
+          "spread_change",
+          "change_window",
+          "evidence_refs",
+          "rule_version"
+        ],
+        "title": "MacroTreasurySpreadQuadrantData",
+        "type": "object"
+      },
+      "MacroUnavailableEvidenceData": {
+        "additionalProperties": false,
+        "properties": {
+          "capability": {
+            "title": "Capability",
+            "type": "string"
           },
           "reason": {
             "title": "Reason",
             "type": "string"
           },
           "status": {
-            "enum": [
-              "admitted",
-              "suppressed",
-              "missing"
-            ],
+            "const": "not_assessed",
             "title": "Status",
             "type": "string"
           }
         },
         "required": [
+          "capability",
           "status",
-          "reason",
-          "is_current",
-          "computed_at_ms",
-          "currentness",
-          "data_gaps",
-          "coverage"
-        ],
-        "title": "NarrativeAdmissionData",
-        "type": "object"
-      },
-      "NarrativeCoverageData": {
-        "additionalProperties": false,
-        "properties": {
-          "independent_authors": {
-            "title": "Independent Authors",
-            "type": "integer"
-          },
-          "source_mentions": {
-            "title": "Source Mentions",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "source_mentions",
-          "independent_authors"
-        ],
-        "title": "NarrativeCoverageData",
-        "type": "object"
-      },
-      "NarrativeCurrentnessData": {
-        "additionalProperties": false,
-        "properties": {
-          "display_status": {
-            "enum": [
-              "current",
-              "not_ready",
-              "out_of_frontier",
-              "unsupported_window"
-            ],
-            "title": "Display Status",
-            "type": "string"
-          },
-          "reason": {
-            "title": "Reason",
-            "type": "string"
-          }
-        },
-        "required": [
-          "display_status",
           "reason"
         ],
-        "title": "NarrativeCurrentnessData",
+        "title": "MacroUnavailableEvidenceData",
         "type": "object"
       },
-      "NewsAgentAdmission": {
+      "MacroUpgradeInvalidationData": {
         "additionalProperties": false,
         "properties": {
-          "basis": {
-            "additionalProperties": true,
-            "title": "Basis",
-            "type": "object"
-          },
-          "eligible": {
-            "title": "Eligible",
-            "type": "boolean"
-          },
-          "reason": {
-            "title": "Reason",
-            "type": "string"
-          },
-          "representative_news_item_id": {
-            "title": "Representative News Item Id",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "version": {
-            "title": "Version",
-            "type": "string"
-          }
-        },
-        "required": [
-          "eligible",
-          "status",
-          "reason",
-          "representative_news_item_id",
-          "basis",
-          "version"
-        ],
-        "title": "NewsAgentAdmission",
-        "type": "object"
-      },
-      "NewsAgentBrief": {
-        "additionalProperties": false,
-        "properties": {
-          "affected_entities": {
-            "items": {},
-            "title": "Affected Entities",
-            "type": "array"
-          },
-          "bear_strength": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bear Strength"
-          },
-          "bear_view": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bear View"
-          },
-          "bull_strength": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bull Strength"
-          },
-          "bull_view": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Bull View"
-          },
-          "computed_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Computed At Ms"
-          },
-          "data_gap_count": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Data Gap Count"
-          },
-          "data_gaps": {
-            "items": {},
-            "title": "Data Gaps",
-            "type": "array"
-          },
-          "decision_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decision Class"
-          },
-          "direction": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Direction"
-          },
-          "event_type": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Event Type"
-          },
-          "evidence_refs": {
-            "items": {},
-            "title": "Evidence Refs",
-            "type": "array"
-          },
-          "invalidation_conditions": {
+          "invalidation": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/MacroDecisionItemData"
             },
-            "title": "Invalidation Conditions",
+            "title": "Invalidation",
             "type": "array"
           },
-          "market_domains": {
+          "upgrade": {
             "items": {
-              "type": "string"
+              "$ref": "#/components/schemas/MacroDecisionItemData"
             },
-            "title": "Market Domains",
-            "type": "array"
-          },
-          "market_impacts": {
-            "items": {},
-            "title": "Market Impacts",
-            "type": "array"
-          },
-          "market_read_zh": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Market Read Zh"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "summary_zh": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Summary Zh"
-          },
-          "title_zh": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title Zh"
-          },
-          "transmission_paths": {
-            "items": {},
-            "title": "Transmission Paths",
-            "type": "array"
-          },
-          "watch_triggers": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Watch Triggers",
+            "title": "Upgrade",
             "type": "array"
           }
         },
         "required": [
-          "status"
+          "upgrade",
+          "invalidation"
         ],
-        "title": "NewsAgentBrief",
-        "type": "object"
-      },
-      "NewsAgentSignal": {
-        "additionalProperties": false,
-        "properties": {
-          "decision_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decision Class"
-          },
-          "direction": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Direction"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "status"
-        ],
-        "title": "NewsAgentSignal",
-        "type": "object"
-      },
-      "NewsAlertEligibility": {
-        "additionalProperties": false,
-        "properties": {
-          "agent_status": {
-            "title": "Agent Status",
-            "type": "string"
-          },
-          "decision_class": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Decision Class"
-          },
-          "external_push_basis": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "External Push Basis"
-          },
-          "external_push_block_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "External Push Block Reason"
-          },
-          "external_push_ready": {
-            "title": "External Push Ready",
-            "type": "boolean"
-          },
-          "in_app_eligible": {
-            "title": "In App Eligible",
-            "type": "boolean"
-          },
-          "market_scope": {
-            "$ref": "#/components/schemas/NewsMarketScope"
-          }
-        },
-        "required": [
-          "in_app_eligible",
-          "external_push_ready",
-          "agent_status",
-          "market_scope"
-        ],
-        "title": "NewsAlertEligibility",
+        "title": "MacroUpgradeInvalidationData",
         "type": "object"
       },
       "NewsData": {
@@ -3743,35 +4569,6 @@
       "NewsObjectData": {
         "additionalProperties": false,
         "properties": {
-          "agent_admission": {
-            "$ref": "#/components/schemas/NewsAgentAdmission"
-          },
-          "agent_admission_computed_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Admission Computed At Ms"
-          },
-          "agent_admission_reason": {
-            "title": "Agent Admission Reason",
-            "type": "string"
-          },
-          "agent_admission_status": {
-            "title": "Agent Admission Status",
-            "type": "string"
-          },
-          "agent_brief": {
-            "$ref": "#/components/schemas/NewsAgentBrief"
-          },
-          "agent_representative_news_item_id": {
-            "title": "Agent Representative News Item Id",
-            "type": "string"
-          },
           "body_text": {
             "title": "Body Text",
             "type": "string"
@@ -3848,6 +4645,9 @@
             "title": "Lifecycle Status",
             "type": "string"
           },
+          "market_scope": {
+            "$ref": "#/components/schemas/NewsMarketScope"
+          },
           "news_item_id": {
             "title": "News Item Id",
             "type": "string"
@@ -3906,9 +4706,6 @@
             "title": "Representative News Item Id",
             "type": "string"
           },
-          "signal": {
-            "$ref": "#/components/schemas/NewsSignalEnvelope"
-          },
           "source": {
             "$ref": "#/components/schemas/NewsSourceDetailData"
           },
@@ -3934,13 +4731,6 @@
           "title": {
             "title": "Title",
             "type": "string"
-          },
-          "token_impacts": {
-            "items": {
-              "$ref": "#/components/schemas/NewsTokenLane"
-            },
-            "title": "Token Impacts",
-            "type": "array"
           },
           "token_lanes": {
             "items": {
@@ -3980,22 +4770,15 @@
           "representative_news_item_id",
           "story_key",
           "story",
-          "agent_admission_status",
-          "agent_admission_reason",
-          "agent_admission",
-          "agent_representative_news_item_id",
-          "agent_admission_computed_at_ms",
           "content_tags",
           "content_classification",
-          "signal",
           "provider_rating",
-          "token_impacts",
+          "market_scope",
           "token_lanes",
           "fact_lanes",
           "source",
           "provider_item",
           "fetch_run",
-          "agent_brief",
           "observation_edges",
           "provider_observations",
           "entities",
@@ -4125,37 +4908,8 @@
       "NewsRow": {
         "additionalProperties": false,
         "properties": {
-          "agent_admission": {
-            "$ref": "#/components/schemas/NewsAgentAdmission"
-          },
-          "agent_admission_reason": {
-            "title": "Agent Admission Reason",
-            "type": "string"
-          },
-          "agent_admission_status": {
-            "title": "Agent Admission Status",
-            "type": "string"
-          },
-          "agent_brief": {
-            "$ref": "#/components/schemas/NewsAgentBrief"
-          },
-          "agent_brief_computed_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Brief Computed At Ms"
-          },
-          "agent_representative_news_item_id": {
-            "title": "Agent Representative News Item Id",
-            "type": "string"
-          },
-          "agent_status": {
-            "title": "Agent Status",
+          "canonical_item_key": {
+            "title": "Canonical Item Key",
             "type": "string"
           },
           "canonical_url": {
@@ -4205,17 +4959,8 @@
             "title": "Lifecycle Status",
             "type": "string"
           },
-          "macro_event_flow": {
-            "anyOf": [
-              {
-                "additionalProperties": true,
-                "type": "object"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Macro Event Flow"
+          "market_scope": {
+            "$ref": "#/components/schemas/NewsMarketScope"
           },
           "news_item_id": {
             "title": "News Item Id",
@@ -4224,6 +4969,13 @@
           "projection_version": {
             "title": "Projection Version",
             "type": "string"
+          },
+          "provider_article_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Provider Article Keys",
+            "type": "array"
           },
           "provider_rating": {
             "$ref": "#/components/schemas/NewsProviderRating"
@@ -4235,9 +4987,6 @@
           "row_id": {
             "title": "Row Id",
             "type": "string"
-          },
-          "signal": {
-            "$ref": "#/components/schemas/NewsSignalEnvelope"
           },
           "source": {
             "$ref": "#/components/schemas/NewsSourceSummary"
@@ -4271,13 +5020,6 @@
             "title": "Summary",
             "type": "string"
           },
-          "token_impacts": {
-            "items": {
-              "$ref": "#/components/schemas/NewsTokenLane"
-            },
-            "title": "Token Impacts",
-            "type": "array"
-          },
           "token_lanes": {
             "items": {
               "$ref": "#/components/schemas/NewsTokenLane"
@@ -4298,151 +5040,23 @@
           "summary",
           "source_domain",
           "canonical_url",
+          "canonical_item_key",
           "duplicate_count",
           "source_ids",
           "source_domains",
+          "provider_article_keys",
           "token_lanes",
           "fact_lanes",
-          "signal",
           "provider_rating",
-          "token_impacts",
           "content_class",
           "content_tags",
           "content_classification",
           "source",
-          "agent_brief",
-          "agent_status",
-          "agent_brief_computed_at_ms",
-          "agent_admission_status",
-          "agent_admission_reason",
-          "agent_admission",
-          "agent_representative_news_item_id",
+          "market_scope",
           "computed_at_ms",
           "projection_version"
         ],
         "title": "NewsRow",
-        "type": "object"
-      },
-      "NewsSignalEnvelope": {
-        "additionalProperties": false,
-        "properties": {
-          "agent_signal": {
-            "$ref": "#/components/schemas/NewsAgentSignal"
-          },
-          "alert_eligibility": {
-            "$ref": "#/components/schemas/NewsAlertEligibility"
-          },
-          "display_signal": {
-            "$ref": "#/components/schemas/NewsSignalSummary"
-          }
-        },
-        "required": [
-          "display_signal",
-          "agent_signal",
-          "alert_eligibility"
-        ],
-        "title": "NewsSignalEnvelope",
-        "type": "object"
-      },
-      "NewsSignalSummary": {
-        "additionalProperties": false,
-        "properties": {
-          "direction": {
-            "title": "Direction",
-            "type": "string"
-          },
-          "label_zh": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Label Zh"
-          },
-          "method": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Method"
-          },
-          "provider": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Provider"
-          },
-          "signal": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Signal"
-          },
-          "source": {
-            "title": "Source",
-            "type": "string"
-          },
-          "status": {
-            "title": "Status",
-            "type": "string"
-          },
-          "summary_en": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Summary En"
-          },
-          "summary_zh": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Summary Zh"
-          },
-          "title_zh": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Title Zh"
-          }
-        },
-        "required": [
-          "source",
-          "status",
-          "direction"
-        ],
-        "title": "NewsSignalSummary",
         "type": "object"
       },
       "NewsSourceDetailData": {
@@ -4754,6 +5368,13 @@
             "title": "Member News Item Ids",
             "type": "array"
           },
+          "provider_article_keys": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Provider Article Keys",
+            "type": "array"
+          },
           "representative_news_item_id": {
             "title": "Representative News Item Id",
             "type": "string"
@@ -4763,6 +5384,13 @@
               "type": "string"
             },
             "title": "Source Domains",
+            "type": "array"
+          },
+          "source_ids": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Source Ids",
             "type": "array"
           },
           "story_key": {
@@ -5169,214 +5797,6 @@
         "title": "NotificationsData",
         "type": "object"
       },
-      "OpsAgentExecutionCountersData": {
-        "additionalProperties": false,
-        "properties": {
-          "capacity_denied_total": {
-            "title": "Capacity Denied Total",
-            "type": "integer"
-          },
-          "circuit_open_total": {
-            "title": "Circuit Open Total",
-            "type": "integer"
-          },
-          "circuit_open_until_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Circuit Open Until Ms"
-          },
-          "circuit_state": {
-            "enum": [
-              "open",
-              "closed"
-            ],
-            "title": "Circuit State",
-            "type": "string"
-          },
-          "in_flight": {
-            "title": "In Flight",
-            "type": "integer"
-          },
-          "last_denied_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Denied At Ms"
-          },
-          "last_timeout_at_ms": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Last Timeout At Ms"
-          },
-          "oldest_in_flight_age_ms": {
-            "anyOf": [
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Oldest In Flight Age Ms"
-          },
-          "provider_running": {
-            "title": "Provider Running",
-            "type": "integer"
-          },
-          "timeout_total": {
-            "title": "Timeout Total",
-            "type": "integer"
-          }
-        },
-        "required": [
-          "in_flight",
-          "provider_running",
-          "circuit_state",
-          "circuit_open_until_ms",
-          "capacity_denied_total",
-          "circuit_open_total",
-          "timeout_total",
-          "last_denied_at_ms",
-          "last_timeout_at_ms",
-          "oldest_in_flight_age_ms"
-        ],
-        "title": "OpsAgentExecutionCountersData",
-        "type": "object"
-      },
-      "OpsAgentExecutionData": {
-        "additionalProperties": false,
-        "properties": {
-          "counters": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OpsAgentExecutionCountersData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "error": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Error"
-          },
-          "policy": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/OpsAgentExecutionPolicyData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "status": {
-            "enum": [
-              "ok",
-              "degraded",
-              "disabled",
-              "unavailable",
-              "unknown"
-            ],
-            "title": "Status",
-            "type": "string"
-          },
-          "status_reason": {
-            "anyOf": [
-              {
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Status Reason"
-          }
-        },
-        "required": [
-          "status",
-          "policy",
-          "counters"
-        ],
-        "title": "OpsAgentExecutionData",
-        "type": "object"
-      },
-      "OpsAgentExecutionPolicyData": {
-        "additionalProperties": false,
-        "properties": {
-          "lane": {
-            "const": "news.story_brief",
-            "title": "Lane",
-            "type": "string"
-          },
-          "max_concurrency": {
-            "title": "Max Concurrency",
-            "type": "integer"
-          },
-          "model": {
-            "title": "Model",
-            "type": "string"
-          },
-          "output_strategy": {
-            "const": "json_object",
-            "title": "Output Strategy",
-            "type": "string"
-          },
-          "provider_family": {
-            "title": "Provider Family",
-            "type": "string"
-          },
-          "rpm_limit": {
-            "title": "Rpm Limit",
-            "type": "integer"
-          },
-          "schema_enforcement": {
-            "const": "client_validate",
-            "title": "Schema Enforcement",
-            "type": "string"
-          },
-          "timeout_seconds": {
-            "title": "Timeout Seconds",
-            "type": "number"
-          }
-        },
-        "required": [
-          "lane",
-          "model",
-          "provider_family",
-          "output_strategy",
-          "schema_enforcement",
-          "max_concurrency",
-          "rpm_limit",
-          "timeout_seconds"
-        ],
-        "title": "OpsAgentExecutionPolicyData",
-        "type": "object"
-      },
       "OpsAssetMarketDomainData": {
         "additionalProperties": false,
         "properties": {
@@ -5460,10 +5880,6 @@
             "title": "Handles Count",
             "type": "integer"
           },
-          "llm_configured": {
-            "title": "Llm Configured",
-            "type": "boolean"
-          },
           "news_enabled": {
             "title": "News Enabled",
             "type": "boolean"
@@ -5503,7 +5919,6 @@
           "upstream_channels",
           "gmgn_configured",
           "okx_dex_configured",
-          "llm_configured",
           "news_enabled",
           "notifications_enabled"
         ],
@@ -5588,9 +6003,6 @@
       "OpsDiagnosticsData": {
         "additionalProperties": false,
         "properties": {
-          "agent_execution": {
-            "$ref": "#/components/schemas/OpsAgentExecutionData"
-          },
           "collector": {
             "anyOf": [
               {
@@ -5670,7 +6082,6 @@
           "providers",
           "workers",
           "queues",
-          "agent_execution",
           "domains",
           "suggested_checks"
         ],
@@ -6517,20 +6928,49 @@
         "title": "SearchData",
         "type": "object"
       },
+      "SearchInspectAmbiguousData": {
+        "additionalProperties": false,
+        "properties": {
+          "candidates": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Candidates",
+            "type": "array"
+          },
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SearchInspectTopicSummaryData"
+          }
+        },
+        "required": [
+          "candidates",
+          "summary",
+          "items"
+        ],
+        "title": "SearchInspectAmbiguousData",
+        "type": "object"
+      },
       "SearchInspectData": {
         "additionalProperties": false,
         "properties": {
           "ambiguous_result": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/SearchInspectAmbiguousData"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Ambiguous Result"
+            ]
           },
           "query": {
             "$ref": "#/components/schemas/SearchInspectQueryData"
@@ -6541,26 +6981,22 @@
           "token_result": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/TokenCaseData"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Token Result"
+            ]
           },
           "topic_result": {
             "anyOf": [
               {
-                "additionalProperties": true,
-                "type": "object"
+                "$ref": "#/components/schemas/SearchInspectTopicData"
               },
               {
                 "type": "null"
               }
-            ],
-            "title": "Topic Result"
+            ]
           }
         },
         "required": [
@@ -6616,17 +7052,6 @@
       "SearchInspectResolverData": {
         "additionalProperties": false,
         "properties": {
-          "confidence": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "number"
-              }
-            ],
-            "title": "Confidence"
-          },
           "reasons": {
             "items": {
               "type": "string"
@@ -6656,12 +7081,52 @@
           }
         },
         "required": [
-          "confidence",
           "target_candidates",
           "selected_target",
           "reasons"
         ],
         "title": "SearchInspectResolverData",
+        "type": "object"
+      },
+      "SearchInspectTopicData": {
+        "additionalProperties": false,
+        "properties": {
+          "items": {
+            "items": {
+              "additionalProperties": true,
+              "type": "object"
+            },
+            "title": "Items",
+            "type": "array"
+          },
+          "summary": {
+            "$ref": "#/components/schemas/SearchInspectTopicSummaryData"
+          }
+        },
+        "required": [
+          "summary",
+          "items"
+        ],
+        "title": "SearchInspectTopicData",
+        "type": "object"
+      },
+      "SearchInspectTopicSummaryData": {
+        "additionalProperties": false,
+        "properties": {
+          "authors": {
+            "title": "Authors",
+            "type": "integer"
+          },
+          "posts": {
+            "title": "Posts",
+            "type": "integer"
+          }
+        },
+        "required": [
+          "posts",
+          "authors"
+        ],
+        "title": "SearchInspectTopicSummaryData",
         "type": "object"
       },
       "SearchPageData": {
@@ -6822,20 +7287,6 @@
       "StatusData": {
         "additionalProperties": false,
         "properties": {
-          "agent_execution": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/AgentExecutionStatusData"
-              },
-              {
-                "$ref": "#/components/schemas/AgentExecutionUnavailableData"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Agent Execution"
-          },
           "db": {
             "additionalProperties": true,
             "title": "Db",
@@ -6898,7 +7349,6 @@
           "snapshot_gate",
           "db",
           "provider_states",
-          "agent_execution",
           "news_provider_contract",
           "workers"
         ],
@@ -7412,10 +7862,6 @@
             "title": "Scope",
             "type": "string"
           },
-          "sort": {
-            "title": "Sort",
-            "type": "string"
-          },
           "target_id": {
             "title": "Target Id",
             "type": "string"
@@ -7434,8 +7880,7 @@
           "target_id",
           "window",
           "scope",
-          "range",
-          "sort"
+          "range"
         ],
         "title": "TargetPostsQueryData",
         "type": "object"
@@ -7587,13 +8032,20 @@
       "TokenCaseData": {
         "additionalProperties": false,
         "properties": {
+          "current_radar": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/TokenRadarFactRowData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "market_live": {
             "additionalProperties": true,
             "title": "Market Live",
             "type": "object"
-          },
-          "narrative_admission": {
-            "$ref": "#/components/schemas/NarrativeAdmissionData"
           },
           "posts": {
             "additionalProperties": true,
@@ -7628,8 +8080,8 @@
           "profile",
           "timeline",
           "posts",
-          "narrative_admission",
-          "market_live"
+          "market_live",
+          "current_radar"
         ],
         "title": "TokenCaseData",
         "type": "object"
@@ -7684,9 +8136,6 @@
       "TokenFactorFamiliesData": {
         "additionalProperties": false,
         "properties": {
-          "semantic_catalyst": {
-            "$ref": "#/components/schemas/TokenFactorFamilyData"
-          },
           "social_heat": {
             "$ref": "#/components/schemas/TokenFactorFamilyData"
           },
@@ -7700,7 +8149,6 @@
         "required": [
           "social_heat",
           "social_propagation",
-          "semantic_catalyst",
           "timing_risk"
         ],
         "title": "TokenFactorFamiliesData",
@@ -7771,17 +8219,6 @@
       "TokenFactorFamilyValuesData": {
         "additionalProperties": false,
         "properties": {
-          "semantic_catalyst": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "number"
-              }
-            ],
-            "title": "Semantic Catalyst"
-          },
           "social_heat": {
             "anyOf": [
               {
@@ -7819,7 +8256,6 @@
         "required": [
           "social_heat",
           "social_propagation",
-          "semantic_catalyst",
           "timing_risk"
         ],
         "title": "TokenFactorFamilyValuesData",
@@ -8049,20 +8485,6 @@
       "TokenFactorRankValuesData": {
         "additionalProperties": false,
         "properties": {
-          "semantic_catalyst": {
-            "anyOf": [
-              {
-                "type": "integer"
-              },
-              {
-                "type": "number"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Semantic Catalyst"
-          },
           "social_heat": {
             "anyOf": [
               {
@@ -8109,7 +8531,6 @@
         "required": [
           "social_heat",
           "social_propagation",
-          "semantic_catalyst",
           "timing_risk"
         ],
         "title": "TokenFactorRankValuesData",
@@ -8142,7 +8563,7 @@
             "$ref": "#/components/schemas/TokenFactorProvenanceData"
           },
           "schema_version": {
-            "const": "token_factor_snapshot_v3_social_attention",
+            "const": "token_factor_snapshot_v4_transparent_factors",
             "title": "Schema Version",
             "type": "string"
           },
@@ -8328,6 +8749,35 @@
           "projection"
         ],
         "title": "TokenRadarData",
+        "type": "object"
+      },
+      "TokenRadarFactRowData": {
+        "additionalProperties": false,
+        "properties": {
+          "factor_snapshot": {
+            "$ref": "#/components/schemas/TokenFactorSnapshotData"
+          },
+          "intent": {
+            "$ref": "#/components/schemas/TokenRadarIntentData"
+          },
+          "quality": {
+            "$ref": "#/components/schemas/TokenRadarQualityData"
+          },
+          "radar": {
+            "$ref": "#/components/schemas/TokenRadarMetaData"
+          },
+          "resolution": {
+            "$ref": "#/components/schemas/TokenRadarResolutionData"
+          }
+        },
+        "required": [
+          "intent",
+          "radar",
+          "resolution",
+          "quality",
+          "factor_snapshot"
+        ],
+        "title": "TokenRadarFactRowData",
         "type": "object"
       },
       "TokenRadarIntentData": {
@@ -8684,16 +9134,6 @@
           "intent": {
             "$ref": "#/components/schemas/TokenRadarIntentData"
           },
-          "narrative_admission": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/NarrativeAdmissionData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
           "profile": {
             "anyOf": [
               {
@@ -8812,15 +9252,15 @@
             "title": "Clusters Truncated",
             "type": "boolean"
           },
-          "metrics": {
-            "$ref": "#/components/schemas/WatchlistOverviewMetrics"
-          },
-          "narrative_clusters": {
+          "hashtag_clusters": {
             "items": {
               "$ref": "#/components/schemas/WatchlistOverviewCluster"
             },
-            "title": "Narrative Clusters",
+            "title": "Hashtag Clusters",
             "type": "array"
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/WatchlistOverviewMetrics"
           },
           "query": {
             "$ref": "#/components/schemas/WatchlistOverviewQuery"
@@ -8845,7 +9285,7 @@
           "metrics",
           "resolved_token_clusters",
           "candidate_mention_clusters",
-          "narrative_clusters",
+          "hashtag_clusters",
           "clusters_truncated",
           "risk_notes"
         ],
@@ -8954,7 +9394,7 @@
             "enum": [
               "resolved_token",
               "candidate_mention",
-              "narrative"
+              "hashtag"
             ],
             "title": "Kind",
             "type": "string"
@@ -9025,6 +9465,10 @@
             "title": "Candidate Mention Count",
             "type": "integer"
           },
+          "hashtag_count": {
+            "title": "Hashtag Count",
+            "type": "integer"
+          },
           "last_source_event_at_ms": {
             "anyOf": [
               {
@@ -9035,10 +9479,6 @@
               }
             ],
             "title": "Last Source Event At Ms"
-          },
-          "narrative_count": {
-            "title": "Narrative Count",
-            "type": "integer"
           },
           "resolved_token_count": {
             "title": "Resolved Token Count",
@@ -9053,7 +9493,7 @@
           "source_event_count",
           "resolved_token_count",
           "candidate_mention_count",
-          "narrative_count",
+          "hashtag_count",
           "last_source_event_at_ms"
         ],
         "title": "WatchlistOverviewMetrics",
@@ -9506,85 +9946,127 @@
         ]
       }
     },
-    "/api/macro": {
+    "/api/macro/credit": {
       "get": {
-        "operationId": "macro_api_macro_get",
+        "operationId": "macro_credit_api_macro_credit_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_MacroData_"
+                  "$ref": "#/components/schemas/ApiEnvelope_MacroCreditData_"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Macro",
+        "summary": "Macro Credit",
         "tags": [
           "api"
         ]
       }
     },
-    "/api/macro/assets/correlation": {
+    "/api/macro/cross-asset": {
       "get": {
-        "operationId": "macro_asset_correlation_api_macro_assets_correlation_get",
+        "operationId": "macro_cross_asset_api_macro_cross_asset_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_MacroAssetCorrelationData_"
+                  "$ref": "#/components/schemas/ApiEnvelope_MacroCrossAssetData_"
                 }
               }
             },
             "description": "Successful Response"
           }
         },
-        "summary": "Macro Asset Correlation",
+        "summary": "Macro Cross Asset",
         "tags": [
           "api"
         ]
       }
     },
-    "/api/macro/modules/{module_id}": {
+    "/api/macro/growth-labor": {
       "get": {
-        "operationId": "macro_module_api_macro_modules__module_id__get",
-        "parameters": [
-          {
-            "in": "path",
-            "name": "module_id",
-            "required": true,
-            "schema": {
-              "title": "Module Id",
-              "type": "string"
-            }
-          }
-        ],
+        "operationId": "macro_growth_labor_api_macro_growth_labor_get",
         "responses": {
           "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/ApiEnvelope_MacroModuleData_"
+                  "$ref": "#/components/schemas/ApiEnvelope_MacroGrowthLaborData_"
                 }
               }
             },
             "description": "Successful Response"
-          },
-          "422": {
+          }
+        },
+        "summary": "Macro Growth Labor",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/macro/liquidity-funding": {
+      "get": {
+        "operationId": "macro_liquidity_funding_api_macro_liquidity_funding_get",
+        "responses": {
+          "200": {
             "content": {
               "application/json": {
                 "schema": {
-                  "$ref": "#/components/schemas/HTTPValidationError"
+                  "$ref": "#/components/schemas/ApiEnvelope_MacroLiquidityFundingData_"
                 }
               }
             },
-            "description": "Validation Error"
+            "description": "Successful Response"
           }
         },
-        "summary": "Macro Module",
+        "summary": "Macro Liquidity Funding",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/macro/overview": {
+      "get": {
+        "operationId": "macro_overview_api_macro_overview_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_MacroOverviewData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Macro Overview",
+        "tags": [
+          "api"
+        ]
+      }
+    },
+    "/api/macro/rates-inflation": {
+      "get": {
+        "operationId": "macro_rates_inflation_api_macro_rates_inflation_get",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ApiEnvelope_MacroRatesInflationData_"
+                }
+              }
+            },
+            "description": "Successful Response"
+          }
+        },
+        "summary": "Macro Rates Inflation",
         "tags": [
           "api"
         ]
@@ -9673,16 +10155,6 @@
             "schema": {
               "default": "",
               "title": "Status",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "signal",
-            "required": false,
-            "schema": {
-              "default": "",
-              "title": "Signal",
               "type": "string"
             }
           },
@@ -10520,16 +10992,6 @@
             "schema": {
               "default": "current_window",
               "title": "Range",
-              "type": "string"
-            }
-          },
-          {
-            "in": "query",
-            "name": "sort",
-            "required": false,
-            "schema": {
-              "default": "recent",
-              "title": "Sort",
               "type": "string"
             }
           },

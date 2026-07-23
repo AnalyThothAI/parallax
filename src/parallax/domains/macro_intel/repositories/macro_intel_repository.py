@@ -4,14 +4,14 @@ import hashlib
 import json
 from collections.abc import Mapping, Sequence
 from datetime import date
-from typing import Any, NotRequired, TypedDict, cast
+from decimal import Decimal
+from typing import Any, NotRequired, TypedDict
 
 from psycopg.types.json import Jsonb
 
 from parallax.domains.macro_intel._constants import (
     MACRO_EVENT_CONCEPTS,
-    MACRO_MODULE_IDS,
-    MACRO_VIEW_PROJECTION_VERSION,
+    MACRO_EVIDENCE_PROJECTION_VERSION,
 )
 from parallax.domains.macro_intel.observation_identity import (
     macro_observation_fact_payload_hash,
@@ -1207,6 +1207,7 @@ class MacroIntelRepository:
         limit_per_series: int,
         claimed_targets: Sequence[Mapping[str, Any]] = (),
         concept_keys: Sequence[str] = (),
+        prune_unrequested: bool = False,
     ) -> MacroSeriesRefreshResult:
         target_concept_keys = _refresh_target_concept_keys(claimed_targets=claimed_targets, concept_keys=concept_keys)
         if not target_concept_keys:
@@ -1266,6 +1267,12 @@ class MacroIntelRepository:
                 "source_signature": source_signature,
                 "latest_attempt_error": latest_attempt_error,
             }
+        pruned_rows = 0
+        if prune_unrequested:
+            pruned_rows = self._delete_unrequested_observation_series_rows(
+                projection_version=projection_version,
+                concept_keys=target_concept_keys,
+            )
         changed_concept_keys = _changed_series_concept_keys(
             concept_keys=target_concept_keys,
             selected_rows=selected_rows,
@@ -1274,7 +1281,7 @@ class MacroIntelRepository:
         if not changed_concept_keys:
             self._upsert_macro_series_publication_state(
                 projection_version=projection_version,
-                status="unchanged",
+                status="published" if pruned_rows else "unchanged",
                 source_signature=source_signature,
                 row_count=len(selected_rows),
                 started_at_ms=int(now_ms),
@@ -1283,8 +1290,8 @@ class MacroIntelRepository:
                 preserve_current=False,
             )
             return {
-                "status": "unchanged",
-                "rows_written": 0,
+                "status": "published" if pruned_rows else "unchanged",
+                "rows_written": pruned_rows,
                 "source_rows": len(selected_rows),
                 "source_signature": source_signature,
             }
@@ -1292,7 +1299,7 @@ class MacroIntelRepository:
         rows_to_insert = [
             row for row in selected_rows if str(row.get("concept_key") or "") in set(changed_concept_keys)
         ]
-        rows_written = self._delete_exited_observation_series_rows(
+        rows_written = pruned_rows + self._delete_exited_observation_series_rows(
             projection_version=projection_version,
             concept_keys=changed_concept_keys,
             current_rows=rows_to_insert,
@@ -1407,6 +1414,23 @@ class MacroIntelRepository:
             (projection_version, list(concept_keys)),
         ).fetchall()
         return [dict(row) for row in rows]
+
+    def _delete_unrequested_observation_series_rows(
+        self,
+        *,
+        projection_version: str,
+        concept_keys: Sequence[str],
+    ) -> int:
+        cursor = self.conn.execute(
+            """
+            DELETE FROM macro_observation_series_rows
+            WHERE projection_version = %s
+              AND NOT (concept_key = ANY(%s))
+            RETURNING 1 AS deleted
+            """,
+            (projection_version, list(concept_keys)),
+        )
+        return len(cursor.fetchall())
 
     def _delete_exited_observation_series_rows(
         self,
@@ -1599,7 +1623,7 @@ class MacroIntelRepository:
         concept_keys: Sequence[str],
         lookback_days: int,
         limit_per_series: int,
-        projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
+        projection_version: str = MACRO_EVIDENCE_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
         bounded_concept_keys = _normalize_concept_keys(concept_keys)
         if not bounded_concept_keys:
@@ -1635,7 +1659,7 @@ class MacroIntelRepository:
         self,
         concept_keys: Sequence[str],
         lookback_days: int,
-        projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
+        projection_version: str = MACRO_EVIDENCE_PROJECTION_VERSION,
     ) -> list[dict[str, Any]]:
         rows = self.conn.execute(
             """
@@ -1671,102 +1695,110 @@ class MacroIntelRepository:
         ).fetchall()
         return [dict(row) for row in rows]
 
+    def material_fact_max_observed_at(
+        self,
+        *,
+        concept_keys: Sequence[str],
+        through_date: date,
+    ) -> date | None:
+        bounded_concept_keys = _normalize_concept_keys(concept_keys)
+        if not bounded_concept_keys:
+            return None
+        row = self.conn.execute(
+            """
+            SELECT MAX(observed_at) AS max_observed_at
+            FROM macro_observations
+            WHERE concept_key = ANY(%s::text[])
+              AND observed_at <= %s
+            """,
+            (list(bounded_concept_keys), through_date),
+        ).fetchone()
+        if row is None:
+            return None
+        value = dict(row).get("max_observed_at")
+        return value if isinstance(value, date) else normalize_macro_date(value) if value is not None else None
+
     def insert_snapshot(self, snapshot: Mapping[str, Any]) -> bool:
         payload = _macro_snapshot_payload(snapshot)
         payload_hash = stable_current_payload_hash(_macro_snapshot_hash_payload(payload))
         cursor = self.conn.execute(
             """
             INSERT INTO macro_view_snapshots(
-              projection_version, asof_date, status, regime, overall_score, panels_json,
-              indicators_json, triggers_json, data_gaps_json, source_coverage_json, features_json,
-              chain_json, scenario_json, scorecard_json, module_views_json,
-              computed_at_ms, payload_hash
+              snapshot_key,
+              projection_version,
+              fact_watermark,
+              market_cutoff,
+              computed_at_ms,
+              overview_json,
+              cross_asset_json,
+              rates_inflation_json,
+              growth_labor_json,
+              liquidity_funding_json,
+              credit_json,
+              payload_hash
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT(projection_version) DO UPDATE SET
-              asof_date = excluded.asof_date,
-              status = excluded.status,
-              regime = excluded.regime,
-              overall_score = excluded.overall_score,
-              panels_json = excluded.panels_json,
-              indicators_json = excluded.indicators_json,
-              triggers_json = excluded.triggers_json,
-              data_gaps_json = excluded.data_gaps_json,
-              source_coverage_json = excluded.source_coverage_json,
-              features_json = excluded.features_json,
-              chain_json = excluded.chain_json,
-              scenario_json = excluded.scenario_json,
-              scorecard_json = excluded.scorecard_json,
-              module_views_json = excluded.module_views_json,
+            VALUES ('current', %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT(snapshot_key) DO UPDATE SET
+              projection_version = excluded.projection_version,
+              fact_watermark = excluded.fact_watermark,
+              market_cutoff = excluded.market_cutoff,
               computed_at_ms = excluded.computed_at_ms,
+              overview_json = excluded.overview_json,
+              cross_asset_json = excluded.cross_asset_json,
+              rates_inflation_json = excluded.rates_inflation_json,
+              growth_labor_json = excluded.growth_labor_json,
+              liquidity_funding_json = excluded.liquidity_funding_json,
+              credit_json = excluded.credit_json,
               payload_hash = excluded.payload_hash
             WHERE macro_view_snapshots.payload_hash IS DISTINCT FROM excluded.payload_hash
             RETURNING true AS changed
             """,
             (
-                snapshot["projection_version"],
-                snapshot["asof_date"],
-                snapshot["status"],
-                snapshot["regime"],
-                payload["overall_score"],
-                Jsonb(payload["panels_json"]),
-                Jsonb(payload["indicators_json"]),
-                Jsonb(payload["triggers_json"]),
-                Jsonb(payload["data_gaps_json"]),
-                Jsonb(payload["source_coverage_json"]),
-                Jsonb(payload["features_json"]),
-                Jsonb(payload["chain_json"]),
-                Jsonb(payload["scenario_json"]),
-                Jsonb(payload["scorecard_json"]),
-                Jsonb(payload["module_views_json"]),
-                int(snapshot["computed_at_ms"]),
+                payload["projection_version"],
+                payload["fact_watermark"],
+                payload["market_cutoff"],
+                payload["computed_at_ms"],
+                Jsonb(_macro_snapshot_json_document(payload["overview"])),
+                Jsonb(_macro_snapshot_json_document(payload["cross_asset"])),
+                Jsonb(_macro_snapshot_json_document(payload["rates_inflation"])),
+                Jsonb(_macro_snapshot_json_document(payload["growth_labor"])),
+                Jsonb(_macro_snapshot_json_document(payload["liquidity_funding"])),
+                Jsonb(_macro_snapshot_json_document(payload["credit"])),
                 payload_hash,
             ),
         )
         row = cursor.fetchone()
         return row is not None
 
-    def latest_snapshot(
-        self,
-        *,
-        projection_version: str | None = MACRO_VIEW_PROJECTION_VERSION,
-    ) -> dict[str, Any] | None:
-        if projection_version is None:
-            raise ValueError("projection_version is required")
+    def latest_snapshot(self) -> dict[str, Any] | None:
         row = self.conn.execute(
             """
             SELECT *
             FROM macro_view_snapshots
-            WHERE projection_version = %s
+            WHERE snapshot_key = 'current'
             LIMIT 1
-            """,
-            (projection_version,),
+            """
         ).fetchone()
         return dict(row) if row is not None else None
 
-    def module_view(
-        self,
-        *,
-        module_id: str,
-        projection_version: str = MACRO_VIEW_PROJECTION_VERSION,
-    ) -> dict[str, Any] | None:
+    def snapshot_page(self, page_id: str) -> dict[str, Any] | None:
+        column = _MACRO_EVIDENCE_PAGE_COLUMNS.get(str(page_id))
+        if column is None:
+            raise ValueError(f"macro_evidence_page_unknown:{page_id}")
         row = self.conn.execute(
-            """
-            SELECT module_views_json -> %s AS module_view
+            f"""
+            SELECT {column} AS page
             FROM macro_view_snapshots
-            WHERE projection_version = %s
+            WHERE snapshot_key = 'current'
             LIMIT 1
-            """,
-            (module_id, projection_version),
+            """
         ).fetchone()
         if row is None:
             return None
-        module_view = dict(row).get("module_view")
-        if module_view is None:
-            return None
-        if not isinstance(module_view, Mapping):
-            raise RuntimeError(f"macro_module_view_payload_invalid:{module_id}")
-        return dict(module_view)
+        page = dict(row).get("page")
+        if not isinstance(page, Mapping):
+            raise RuntimeError(f"macro_evidence_page_payload_invalid:{page_id}")
+        return dict(page)
 
     def observations_count(self) -> int:
         row = self.conn.execute("SELECT COUNT(*) AS count FROM macro_observations").fetchone()
@@ -1961,46 +1993,100 @@ def _first_non_empty_text(*values: object) -> str | None:
     return None
 
 
+_MACRO_EVIDENCE_PAGE_COLUMNS = {
+    "overview": "overview_json",
+    "cross_asset": "cross_asset_json",
+    "rates_inflation": "rates_inflation_json",
+    "growth_labor": "growth_labor_json",
+    "liquidity_funding": "liquidity_funding_json",
+    "credit": "credit_json",
+}
+
+
 def _macro_snapshot_payload(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    payload = {
-        "projection_version": snapshot["projection_version"],
-        "asof_date": snapshot["asof_date"],
-        "status": snapshot["status"],
-        "regime": snapshot["regime"],
-        "overall_score": snapshot.get("overall_score"),
-        "panels_json": _required_snapshot_mapping(snapshot, "panels_json"),
-        "indicators_json": _required_snapshot_mapping(snapshot, "indicators_json"),
-        "triggers_json": _required_snapshot_list(snapshot, "triggers_json"),
-        "data_gaps_json": _required_snapshot_list(snapshot, "data_gaps_json"),
-        "source_coverage_json": _required_snapshot_mapping(snapshot, "source_coverage_json"),
-        "features_json": _required_snapshot_mapping(snapshot, "features_json"),
-        "chain_json": _required_snapshot_mapping(snapshot, "chain_json"),
-        "scenario_json": _required_snapshot_mapping(snapshot, "scenario_json"),
-        "scorecard_json": _required_snapshot_mapping(snapshot, "scorecard_json"),
-        "module_views_json": _required_module_views(snapshot),
+    expected = {
+        "projection_version",
+        "fact_watermark",
+        "market_cutoff",
+        "computed_at_ms",
+        *_MACRO_EVIDENCE_PAGE_COLUMNS,
     }
+    actual = set(snapshot)
+    if actual != expected:
+        missing = ",".join(sorted(expected - actual))
+        extra = ",".join(sorted(actual - expected))
+        raise RuntimeError(f"macro_evidence_snapshot_shape_invalid:missing={missing}:extra={extra}")
+    projection_version = str(snapshot["projection_version"])
+    if projection_version != MACRO_EVIDENCE_PROJECTION_VERSION:
+        raise RuntimeError(f"macro_evidence_projection_version_invalid:{projection_version}")
+    fact_watermark = _optional_macro_snapshot_date(snapshot["fact_watermark"], "fact_watermark")
+    market_cutoff = _optional_macro_snapshot_date(snapshot["market_cutoff"], "market_cutoff")
+    computed_at_ms = snapshot["computed_at_ms"]
+    if isinstance(computed_at_ms, bool) or not isinstance(computed_at_ms, int) or computed_at_ms < 0:
+        raise RuntimeError("macro_evidence_snapshot_computed_at_ms_invalid")
+    metadata = {
+        "projection_version": projection_version,
+        "fact_watermark": fact_watermark,
+        "market_cutoff": market_cutoff,
+        "computed_at_ms": computed_at_ms,
+    }
+    payload: dict[str, Any] = dict(metadata)
+    for page_id in _MACRO_EVIDENCE_PAGE_COLUMNS:
+        page = _required_snapshot_mapping(snapshot, page_id)
+        _require_page_snapshot_metadata(page_id=page_id, page=page, metadata=metadata)
+        payload[page_id] = page
     return payload
 
 
 def _macro_snapshot_hash_payload(payload: Mapping[str, Any]) -> dict[str, Any]:
-    return cast("dict[str, Any]", _without_lifecycle_clocks(payload))
+    value = _without_lifecycle_clocks(payload)
+    if not isinstance(value, dict):
+        raise RuntimeError("macro_evidence_snapshot_hash_payload_invalid")
+    return value
 
 
-def _required_module_views(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    module_views = _required_snapshot_mapping(snapshot, "module_views_json")
-    expected = set(MACRO_MODULE_IDS)
-    actual = set(module_views)
-    if actual != expected:
-        missing = ",".join(sorted(expected - actual))
-        extra = ",".join(sorted(actual - expected))
-        raise RuntimeError(f"macro_module_views_catalog_mismatch:missing={missing}:extra={extra}")
-    for module_id, module_view in module_views.items():
-        if not isinstance(module_view, Mapping):
-            raise RuntimeError(f"macro_module_view_payload_invalid:{module_id}")
-        header = module_view.get("snapshot")
-        if not isinstance(header, Mapping) or str(header.get("module_id") or "") != module_id:
-            raise RuntimeError(f"macro_module_view_snapshot_invalid:{module_id}")
-    return module_views
+def _require_page_snapshot_metadata(
+    *,
+    page_id: str,
+    page: Mapping[str, Any],
+    metadata: Mapping[str, Any],
+) -> None:
+    if str(page.get("page_id") or "") != page_id:
+        raise RuntimeError(f"macro_evidence_page_id_invalid:{page_id}")
+    page_snapshot = page.get("snapshot")
+    if not isinstance(page_snapshot, Mapping):
+        raise RuntimeError(f"macro_evidence_page_snapshot_invalid:{page_id}")
+    normalized_page_snapshot = {
+        "projection_version": str(page_snapshot.get("projection_version") or ""),
+        "fact_watermark": _optional_macro_snapshot_date(
+            page_snapshot.get("fact_watermark"), f"{page_id}.fact_watermark"
+        ),
+        "market_cutoff": _optional_macro_snapshot_date(page_snapshot.get("market_cutoff"), f"{page_id}.market_cutoff"),
+        "computed_at_ms": page_snapshot.get("computed_at_ms"),
+    }
+    if normalized_page_snapshot != metadata or set(page_snapshot) != set(metadata):
+        raise RuntimeError(f"macro_evidence_page_snapshot_mismatch:{page_id}")
+
+
+def _optional_macro_snapshot_date(value: Any, field_name: str) -> date | None:
+    if value is None:
+        return None
+    try:
+        return normalize_macro_date(value)
+    except (TypeError, ValueError) as exc:
+        raise RuntimeError(f"macro_evidence_snapshot_date_invalid:{field_name}") from exc
+
+
+def _macro_snapshot_json_document(value: Any) -> Any:
+    if isinstance(value, Mapping):
+        return {str(key): _macro_snapshot_json_document(item) for key, item in value.items()}
+    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
+        return [_macro_snapshot_json_document(item) for item in value]
+    if isinstance(value, Decimal):
+        return str(value.normalize())
+    if isinstance(value, date):
+        return value.isoformat()
+    return value
 
 
 def _without_lifecycle_clocks(value: Any) -> Any:
@@ -2019,26 +2105,12 @@ def _required_snapshot_mapping(snapshot: Mapping[str, Any], field_name: str) -> 
     try:
         value = snapshot[field_name]
     except KeyError as exc:
-        raise RuntimeError(f"macro_view_snapshot_payload_required:{field_name}") from exc
+        raise RuntimeError(f"macro_evidence_snapshot_payload_required:{field_name}") from exc
     if value is None:
-        raise RuntimeError(f"macro_view_snapshot_payload_required:{field_name}")
+        raise RuntimeError(f"macro_evidence_snapshot_payload_required:{field_name}")
     if not isinstance(value, Mapping):
-        raise RuntimeError(f"macro_view_snapshot_payload_invalid:{field_name}")
+        raise RuntimeError(f"macro_evidence_snapshot_payload_invalid:{field_name}")
     return dict(value)
-
-
-def _required_snapshot_list(snapshot: Mapping[str, Any], field_name: str) -> list[Any]:
-    try:
-        value = snapshot[field_name]
-    except KeyError as exc:
-        raise RuntimeError(f"macro_view_snapshot_payload_required:{field_name}") from exc
-    if value is None:
-        raise RuntimeError(f"macro_view_snapshot_payload_required:{field_name}")
-    if isinstance(value, Mapping | str | bytes | bytearray):
-        raise RuntimeError(f"macro_view_snapshot_payload_invalid:{field_name}")
-    if not isinstance(value, Sequence):
-        raise RuntimeError(f"macro_view_snapshot_payload_invalid:{field_name}")
-    return list(value)
 
 
 def _required_observation_text(observation: Mapping[str, Any], field_name: str) -> str:

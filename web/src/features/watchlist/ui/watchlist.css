@@ -180,10 +180,6 @@
     border-color: var(--info-line);
   }
 
-  .watchlist-signal-card.agent {
-    border-color: var(--agent-line);
-  }
-
   .watchlist-monitor-grid {
     display: grid;
     grid-template-columns: minmax(0, 1.35fr) minmax(310px, 0.65fr);

@@ -2,7 +2,6 @@ import pytest
 import yaml
 from pydantic import ValidationError
 
-from parallax.platform.agent_execution import AgentRuntimePolicy
 from parallax.platform.config.settings import (
     WorkersSettings,
     default_workers_yaml,
@@ -19,8 +18,7 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     payload = yaml.safe_load(default_workers_yaml())
     settings = WorkersSettings(**payload)
 
-    assert set(payload) - {"agent_runtime"} == _manifest_worker_names()
-    assert settings.agent_runtime.model == "deepseek-v4-flash"
+    assert set(payload) == _manifest_worker_names()
     assert settings.collector.mode == "continuous"
     assert settings.collector.snapshot_timeout_seconds == 0.5
     assert settings.collector.backoff.model_dump() == {"base_ms": 1000, "max_ms": 60_000}
@@ -93,7 +91,8 @@ def test_default_workers_yaml_contains_canonical_worker_defaults():
     assert settings.notification_delivery.batch_size == 1
     assert settings.notification_delivery.max_attempts == 5
     assert settings.notification_delivery.statement_timeout_seconds == 30
-    assert settings.news_story_brief.enabled is True
+    assert not hasattr(settings, "news_story_brief")
+    assert not hasattr(settings, "agent_runtime")
 
 
 def test_default_workers_yaml_round_trips_typed_defaults() -> None:
@@ -105,7 +104,7 @@ def test_default_workers_yaml_round_trips_typed_defaults() -> None:
 
 
 def test_worker_settings_schema_matches_manifest_worker_names() -> None:
-    worker_fields = set(WorkersSettings.model_fields) - {"agent_runtime"}
+    worker_fields = set(WorkersSettings.model_fields)
 
     assert worker_fields == _manifest_worker_names()
 
@@ -124,46 +123,6 @@ def test_worker_settings_reject_unknown_nested_key():
 
     with pytest.raises(ValidationError):
         WorkersSettings(**payload)
-
-
-def test_agent_runtime_settings_have_one_flat_policy() -> None:
-    settings = WorkersSettings()
-
-    assert settings.agent_runtime.model == "deepseek-v4-flash"
-    assert settings.agent_runtime.provider_family is None
-    assert settings.agent_runtime.max_tokens == 2200
-    assert settings.agent_runtime.max_concurrency == 1
-    assert settings.agent_runtime.rpm_limit == 60
-    assert settings.agent_runtime.timeout_seconds == 180
-    assert settings.agent_runtime.circuit_breaker.failure_threshold == 5
-    assert settings.agent_runtime.circuit_breaker.window_seconds == 300
-    assert settings.agent_runtime.circuit_breaker.open_seconds == 120
-
-
-def test_agent_runtime_settings_accept_flat_override() -> None:
-    settings = WorkersSettings(
-        agent_runtime={
-            "model": "gpt-news",
-            "provider_family": "litellm",
-            "max_tokens": 1800,
-            "max_concurrency": 2,
-            "rpm_limit": 30,
-            "timeout_seconds": 90,
-            "circuit_breaker": {
-                "failure_threshold": 3,
-                "window_seconds": 120,
-                "open_seconds": 60,
-            },
-        }
-    )
-
-    assert settings.agent_runtime.model == "gpt-news"
-    assert settings.agent_runtime.provider_family.value == "litellm"
-    assert settings.agent_runtime.max_tokens == 1800
-    assert settings.agent_runtime.max_concurrency == 2
-    assert settings.agent_runtime.rpm_limit == 30
-    assert settings.agent_runtime.timeout_seconds == 90
-    assert settings.agent_runtime.circuit_breaker.failure_threshold == 3
 
 
 def test_worker_settings_reject_zero_asset_profile_refresh_policies():
@@ -202,46 +161,8 @@ def test_news_workers_have_defaults():
     assert settings.news_item_process.max_attempts == 3
     assert settings.news_item_process.retry_delay_ms == 60_000
     assert settings.news_item_process.statement_timeout_seconds == 30
-    assert settings.news_story_brief.interval_seconds == 10
-    assert settings.news_story_brief.batch_size == 5
-    assert settings.news_story_brief.lease_ms == 120_000
-    assert settings.news_story_brief.max_attempts == 3
-    assert settings.news_story_brief.retry_ms == 60_000
-    assert settings.news_story_brief.statement_timeout_seconds == 30
-    assert settings.news_story_brief.backpressure_cooldown_ms == 60_000
     assert settings.news_page_projection.batch_size == 100
     assert settings.news_page_projection.lease_ms == 120_000
     assert settings.news_page_projection.max_attempts == 3
     assert settings.news_page_projection.retry_ms == 30_000
     assert settings.news_page_projection.statement_timeout_seconds == 30
-
-
-def test_agent_runtime_capability_fields_default_to_model_registry() -> None:
-    settings = WorkersSettings()
-
-    assert settings.agent_runtime.provider_family is None
-    assert settings.agent_runtime.max_tokens == 2200
-
-
-def test_agent_runtime_default_model_uses_registered_capability_profile() -> None:
-    settings = WorkersSettings(agent_runtime={"model": "deepseek-v4-flash"})
-    profile = settings.agent_runtime.capability_profile()
-
-    assert profile.provider_family.value == "deepseek"
-    assert profile.request_options.extra_body == {"thinking": {"type": "disabled"}}
-
-
-def test_platform_agent_runtime_policy_default_matches_workers_settings_default() -> None:
-    assert AgentRuntimePolicy() == WorkersSettings().agent_runtime
-
-
-def test_agent_runtime_accepts_capability_overrides() -> None:
-    settings = WorkersSettings(
-        agent_runtime={
-            "provider_family": "deepseek",
-            "max_tokens": 1800,
-        }
-    )
-
-    assert settings.agent_runtime.provider_family.value == "deepseek"
-    assert settings.agent_runtime.max_tokens == 1800

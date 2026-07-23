@@ -138,28 +138,6 @@ def test_enabled_notification_delivery_without_channel_is_unavailable() -> None:
     assert worker.unavailable_reason == "missing_notification_delivery_channel"
 
 
-def test_enabled_news_story_brief_without_llm_is_unavailable() -> None:
-    settings = Settings(
-        ws_token="test-token",
-        workers={name: {"enabled": name == "news_story_brief"} for name in worker_names()},
-    )
-
-    worker = construct_worker(
-        worker_name="news_story_brief",
-        settings=settings,
-        db=_FakeDB(),
-        telemetry=SimpleNamespace(),
-        asset_market=None,
-        news_intel=NewsIntelProviders(),
-        hub=None,
-        collector=None,
-        collector_enabled=False,
-    )
-
-    assert worker.effective_status == "unavailable"
-    assert worker.unavailable_reason == "missing_llm_configuration"
-
-
 def test_composition_fails_when_a_factory_omits_a_worker(monkeypatch: pytest.MonkeyPatch) -> None:
     monkeypatch.setattr(composition, "worker_names", lambda: ("expected",))
     monkeypatch.setattr(composition, "worker_factories", lambda: (lambda _ctx: {},))

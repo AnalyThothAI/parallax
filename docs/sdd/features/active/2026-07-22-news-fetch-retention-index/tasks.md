@@ -25,7 +25,7 @@
 - **Owner**: parent
 - **Depends on**: none
 - **Touch set**: `tests/unit/test_postgres_schema.py`, `tests/integration/test_postgres_schema_runtime.py`, `src/parallax/platform/db/alembic/versions/20260722_0187_news_fetch_run_fk_index.py`
-- **Conflict set**: `src/parallax/platform/db/alembic/versions/20260721_0185_backend_kiss_hard_cut.py`; `src/parallax/platform/db/alembic/versions/20260722_0186_runtime_projection_hard_cut.py`; coordinate with 2026-07-22-backend-kiss-deep-audit for tests/unit/test_postgres_schema.py and tests/integration/test_postgres_schema_runtime.py
+- **Conflict set**: `src/parallax/platform/db/alembic/versions/20260721_0185_backend_kiss_hard_cut.py`; `src/parallax/platform/db/alembic/versions/20260722_0186_runtime_projection_hard_cut.py`; coordinate with 2026-07-22-backend-kiss-deep-audit for tests/unit/test_postgres_schema.py and tests/integration/test_postgres_schema_runtime.py; coordinate with 2026-07-23-macro-evidence-ai-hard-cut for tests/unit/test_postgres_schema.py and tests/integration/test_postgres_schema_runtime.py
 - **Failing test first**: `tests/unit/test_postgres_schema.py::test_news_fetch_run_fk_index_is_canonical_and_reversible` — requires revision 0187 and its exact index contract.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated

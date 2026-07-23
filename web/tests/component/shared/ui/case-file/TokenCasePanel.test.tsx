@@ -8,7 +8,7 @@ describe("TokenCasePanel", () => {
   it("renders the shared token case anatomy", () => {
     const vm = buildTokenCaseViewModel({
       dossier: tokenCaseFixture(),
-      route: { window: "1h", scope: "all", postSort: "catalyst" },
+      route: { window: "1h", scope: "all", postSort: "recent" },
     });
 
     render(

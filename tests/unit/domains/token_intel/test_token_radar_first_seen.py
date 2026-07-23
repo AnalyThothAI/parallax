@@ -21,7 +21,7 @@ def test_first_seen_lookup_reads_compact_table_only() -> None:
     )
 
     listed_at = TokenRadarRepository(conn).first_seen_by_identity(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -37,7 +37,7 @@ def test_first_seen_lookup_reads_compact_table_only() -> None:
     assert conn.params == (
         ["Asset", "Intent"],
         ["asset-1", "intent-attention"],
-        "token-radar-v13-social-attention",
+        "token-radar-v14-transparent-factors",
         "1h",
         "all",
         TOKEN_RADAR_DEFAULT_VENUE,
@@ -48,7 +48,7 @@ def test_first_seen_lookup_skips_empty_input_without_querying() -> None:
     conn = FirstSeenLookupConn()
 
     listed_at = TokenRadarRepository(conn).first_seen_by_identity(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -78,7 +78,7 @@ def test_upsert_first_seen_batch_uses_identity_key_and_keeps_first_seen_stable()
     ]
 
     count = TokenRadarRepository(conn).upsert_first_seen_batch(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -102,7 +102,7 @@ def test_upsert_first_seen_batch_returns_postgres_rowcount_not_candidate_count()
     conn = UpsertFirstSeenConn(rowcount=0)
 
     count = TokenRadarRepository(conn).upsert_first_seen_batch(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -121,7 +121,7 @@ def test_upsert_first_seen_batch_requires_cursor_rowcount() -> None:
 
     with pytest.raises(TypeError, match="token_radar_repository_rowcount_invalid"):
         TokenRadarRepository(conn).upsert_first_seen_batch(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -136,7 +136,7 @@ def test_upsert_first_seen_batch_rejects_invalid_cursor_rowcount(rowcount: Any) 
 
     with pytest.raises(TypeError, match="token_radar_repository_rowcount_invalid"):
         TokenRadarRepository(conn).upsert_first_seen_batch(
-            projection_version="token-radar-v13-social-attention",
+            projection_version="token-radar-v14-transparent-factors",
             window="1h",
             scope="all",
             venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -150,7 +150,7 @@ def test_publish_current_generation_uses_compact_first_seen_before_insert_and_up
     row = _valid_factor_row()
 
     TokenRadarRepository(conn).publish_current_generation(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="1h",
         scope="all",
         venue=TOKEN_RADAR_DEFAULT_VENUE,
@@ -322,10 +322,9 @@ def _valid_factor_snapshot() -> dict[str, object]:
                 "factors": {},
             }
             for name, weight in (
-                ("social_heat", 0.35),
-                ("social_propagation", 0.30),
-                ("semantic_catalyst", 0.25),
-                ("timing_risk", 0.10),
+                ("social_heat", 0.55),
+                ("social_propagation", 0.45),
+                ("timing_risk", 0.0),
             )
         },
         "gates": {
@@ -342,7 +341,6 @@ def _valid_factor_snapshot() -> dict[str, object]:
             "factor_ranks": {
                 "social_heat": None,
                 "social_propagation": None,
-                "semantic_catalyst": None,
                 "timing_risk": None,
             },
             "alpha_rank": 0.5,
@@ -353,7 +351,6 @@ def _valid_factor_snapshot() -> dict[str, object]:
             "family_scores": {
                 "social_heat": 0,
                 "social_propagation": 0,
-                "semantic_catalyst": 0,
                 "timing_risk": 0,
             },
             "recommended_decision": "discard",

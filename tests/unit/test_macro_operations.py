@@ -45,48 +45,49 @@ def test_snapshot_status_uses_only_exact_current_sections() -> None:
     from parallax.app.operations import macro as operation
 
     snapshot = _macro_snapshot()
-    snapshot["source_coverage_json"] = {
-        "latest_coverage_ratio": 0,
-        "history_coverage_ratio": 0,
-        "observed_concept_count": 0,
-        "required_concept_count": 0,
-        "history_ready_concept_count": 0,
-        "required_history_concept_count": 0,
-        "concepts_below_min_history": [],
-    }
-    snapshot["scorecard_json"] = {
-        "latest_coverage_ratio": 0.9,
-        "history_coverage_ratio": 0.8,
-        "observed_concept_count": 99,
-        "required_concept_count": 100,
-    }
 
     summary = operation._snapshot_status_summary(snapshot)
 
-    assert summary is not None
-    assert summary["coverage"] == {
-        "latest_coverage_ratio": 0,
-        "history_coverage_ratio": 0,
-        "observed_concept_count": 0,
-        "required_concept_count": 0,
-        "history_ready_concept_count": 0,
-        "required_history_concept_count": 0,
-        "concepts_below_min_history": [],
+    assert summary == {
+        "projection_version": "macro_evidence_v1",
+        "fact_watermark": "2026-07-20",
+        "market_cutoff": "2026-07-21",
+        "computed_at_ms": 1_779_000_000_000,
+        "pages": {
+            page_id: {
+                "status": "degraded" if page_id == "credit" else "supported",
+                "judgment": f"{page_id}_judgment",
+                "freshness_status": "degraded" if page_id == "credit" else "fresh",
+                "evidence_count": 1,
+                "unavailable_evidence_count": 1 if page_id == "credit" else 0,
+            }
+            for page_id in (
+                "overview",
+                "cross_asset",
+                "rates_inflation",
+                "growth_labor",
+                "liquidity_funding",
+                "credit",
+            )
+        },
     }
 
 
-@pytest.mark.parametrize("panels", [None, [], {"rates": "not-an-object"}])
-def test_snapshot_status_rejects_malformed_panels_without_chain_fallback(panels: object) -> None:
+@pytest.mark.parametrize(
+    ("page", "error"),
+    [
+        (None, "overview_json"),
+        ([], "overview_json"),
+        ({"conclusion": "not-an-object", "freshness": {}}, "conclusion"),
+    ],
+)
+def test_snapshot_status_rejects_malformed_page_contract(page: object, error: str) -> None:
     from parallax.app.operations import macro as operation
 
     snapshot = _macro_snapshot()
-    if panels is None:
-        snapshot.pop("panels_json")
-    else:
-        snapshot["panels_json"] = panels
-    snapshot["chain_json"] = {"rates": {"score": 99, "regime": "risk_on"}}
+    snapshot["overview_json"] = page
 
-    with pytest.raises(ValueError, match="panels_json"):
+    with pytest.raises(ValueError, match=error):
         operation._snapshot_status_summary(snapshot)
 
 
@@ -139,24 +140,32 @@ def test_sync_macro_window_composes_provider_and_service(monkeypatch) -> None:
 
 
 def _macro_snapshot() -> dict[str, object]:
-    return {
-        "projection_version": "macro_regime_v4",
-        "asof_date": "2026-07-21",
-        "status": "partial",
-        "regime": "mixed",
-        "overall_score": 50,
+    snapshot: dict[str, object] = {
+        "snapshot_key": "current",
+        "projection_version": "macro_evidence_v1",
+        "fact_watermark": "2026-07-20",
+        "market_cutoff": "2026-07-21",
         "computed_at_ms": 1_779_000_000_000,
-        "panels_json": {"rates": {"score": 50, "regime": "mixed", "evidence": [], "data_gaps": []}},
-        "indicators_json": {},
-        "triggers_json": [],
-        "data_gaps_json": [],
-        "source_coverage_json": {},
-        "features_json": {},
-        "chain_json": {},
-        "scenario_json": {},
-        "scorecard_json": {},
-        "module_views_json": {},
     }
+    for page_id in (
+        "overview",
+        "cross_asset",
+        "rates_inflation",
+        "growth_labor",
+        "liquidity_funding",
+        "credit",
+    ):
+        status = "degraded" if page_id == "credit" else "supported"
+        freshness = "degraded" if page_id == "credit" else "fresh"
+        snapshot[f"{page_id}_json"] = {
+            "conclusion": {"status": status, "judgment": f"{page_id}_judgment"},
+            "freshness": {"status": freshness},
+            "evidence": [{"concept_key": f"test:{page_id}"}],
+            "unavailable_evidence": (
+                [{"capability": "trace_transactions", "status": "not_assessed"}] if page_id == "credit" else []
+            ),
+        }
+    return snapshot
 
 
 def test_sync_macro_window_preserves_redacted_diagnostics_on_failure(monkeypatch) -> None:

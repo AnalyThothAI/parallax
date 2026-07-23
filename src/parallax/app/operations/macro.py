@@ -3,23 +3,23 @@ from __future__ import annotations
 import time
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
-from datetime import date
+from datetime import UTC, date, datetime
 from typing import Any
 
 from parallax.app.runtime.repository_session import repositories
 from parallax.domains.macro_intel._constants import (
-    MACRO_CONCEPT_METADATA,
     MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT,
-    MACRO_HISTORY_REQUIRED_CONCEPTS,
-    MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT,
+    MACRO_EVIDENCE_HISTORY_LOOKBACK_DAYS,
+    MACRO_EVIDENCE_PROJECTION_VERSION,
     MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_PROVIDER_SERIES_TO_CONCEPT,
-    MACRO_REQUIRED_STAT_POINTS,
-    MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
-    MACRO_VIEW_PROJECTION_VERSION,
 )
 from parallax.domains.macro_intel.observation_identity import normalize_macro_date
-from parallax.domains.macro_intel.services.macro_module_shared import required_list, required_mapping
+from parallax.domains.macro_intel.services.macro_concept_manifest import (
+    MACRO_CONCEPT_MANIFEST,
+    MACRO_EVIDENCE_CONCEPTS,
+    MACRO_PAGE_IDS,
+)
 from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 from parallax.domains.macro_intel.services.macrodata_bundle_importer import import_macrodata_bundle
@@ -45,6 +45,13 @@ class MacroStatusOperationError(RuntimeError):
         super().__init__("macro_status_operation_failed")
         self.cause = cause
         self.diagnostics = dict(diagnostics)
+
+
+_MATERIAL_CLAIM_CONCEPTS = tuple(
+    concept_key
+    for concept_key in MACRO_EVIDENCE_CONCEPTS
+    if MACRO_CONCEPT_MANIFEST[concept_key].claim_effect != "catalyst_only"
+)
 
 
 def import_macro_bundle(
@@ -105,19 +112,23 @@ def macro_status(settings: Settings, *, now_ms: int | None = None) -> dict[str, 
             required_bundles=tuple(settings.workers.macro_sync.bundle_names),
             required_bundle_series=_required_macrodata_bundle_series(settings.workers.macro_sync.bundle_names),
         )
+        effective_now_ms = _now_ms() if now_ms is None else int(now_ms)
         with repositories(settings) as repos:
             history = repos.macro_intel.concept_history_counts(
-                concept_keys=MACRO_HISTORY_REQUIRED_CONCEPTS,
-                lookback_days=MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
+                concept_keys=MACRO_EVIDENCE_CONCEPTS,
+                lookback_days=MACRO_EVIDENCE_HISTORY_LOOKBACK_DAYS,
             )
-            latest_snapshot = repos.macro_intel.latest_snapshot(
-                projection_version=MACRO_VIEW_PROJECTION_VERSION,
+            latest_snapshot = repos.macro_intel.latest_snapshot()
+            publication_state = repos.macro_intel.macro_series_publication_state(MACRO_EVIDENCE_PROJECTION_VERSION)
+            facts_max_observed_at = _to_date(
+                repos.macro_intel.material_fact_max_observed_at(
+                    concept_keys=_MATERIAL_CLAIM_CONCEPTS,
+                    through_date=datetime.fromtimestamp(effective_now_ms / 1000, tz=UTC).date(),
+                )
             )
-            publication_state = repos.macro_intel.macro_series_publication_state(MACRO_VIEW_PROJECTION_VERSION)
-            facts_max_observed_at = _snapshot_latest_observed_at(latest_snapshot)
-            snapshot_asof = _to_date(latest_snapshot.get("asof_date") if latest_snapshot else None)
+            snapshot_fact_watermark = _to_date(latest_snapshot.get("fact_watermark") if latest_snapshot else None)
             projection_behind_facts = facts_max_observed_at is not None and (
-                snapshot_asof is None or snapshot_asof < facts_max_observed_at
+                snapshot_fact_watermark is None or snapshot_fact_watermark < facts_max_observed_at
             )
             return {
                 "migration_ready": True,
@@ -125,14 +136,11 @@ def macro_status(settings: Settings, *, now_ms: int | None = None) -> dict[str, 
                 "macrodata_cli": diagnostics["macrodata_cli"],
                 "observations_count": repos.macro_intel.observations_count(),
                 "concept_count": repos.macro_intel.concept_count(),
-                "required_history_concept_count": len(MACRO_HISTORY_REQUIRED_CONCEPTS),
-                **_history_readiness_payload(history),
-                "sync_queue": _json_ready(
-                    repos.macro_intel.macro_sync_queue_summary(now_ms=_now_ms() if now_ms is None else int(now_ms))
-                ),
+                "manifest": _manifest_inventory_payload(history),
+                "sync_queue": _json_ready(repos.macro_intel.macro_sync_queue_summary(now_ms=effective_now_ms)),
                 "publication_state": _publication_state_status(publication_state),
                 "facts_max_observed_at": _json_ready(facts_max_observed_at),
-                "projection_lag_days": _projection_lag_days(facts_max_observed_at, snapshot_asof),
+                "projection_lag_days": _projection_lag_days(facts_max_observed_at, snapshot_fact_watermark),
                 "projection_behind_facts": projection_behind_facts,
                 "latest_snapshot": _snapshot_status_summary(latest_snapshot),
             }
@@ -186,43 +194,24 @@ def _projection_lag_days(facts_max_observed_at: date | None, snapshot_asof: date
 def _snapshot_status_summary(snapshot: Mapping[str, Any] | None) -> dict[str, Any] | None:
     if snapshot is None:
         return None
-    panels = _required_object_map(snapshot, "panels_json")
-    features = required_mapping(snapshot, "features_json")
-    indicators = required_mapping(snapshot, "indicators_json")
-    required_list(snapshot, "triggers_json")
-    data_gaps = required_list(snapshot, "data_gaps_json")
-    source_coverage = required_mapping(snapshot, "source_coverage_json")
-    for field_name in ("chain_json", "scenario_json", "scorecard_json", "module_views_json"):
-        required_mapping(snapshot, field_name)
+    pages: dict[str, Any] = {}
+    for page_id in MACRO_PAGE_IDS:
+        page = _required_mapping(snapshot, f"{page_id}_json")
+        conclusion = _required_mapping(page, "conclusion")
+        freshness = _required_mapping(page, "freshness")
+        pages[page_id] = {
+            "status": conclusion.get("status"),
+            "judgment": conclusion.get("judgment"),
+            "freshness_status": freshness.get("status"),
+            "evidence_count": len(_sequence(page.get("evidence"))),
+            "unavailable_evidence_count": len(_sequence(page.get("unavailable_evidence"))),
+        }
     return {
         "projection_version": snapshot.get("projection_version"),
-        "asof_date": _json_ready(snapshot.get("asof_date")),
-        "status": snapshot.get("status"),
-        "regime": snapshot.get("regime"),
-        "overall_score": snapshot.get("overall_score"),
+        "fact_watermark": _json_ready(snapshot.get("fact_watermark")),
+        "market_cutoff": _json_ready(snapshot.get("market_cutoff")),
         "computed_at_ms": snapshot.get("computed_at_ms"),
-        "feature_count": len(features),
-        "indicator_count": len(indicators),
-        "data_gap_count": len(data_gaps),
-        "data_gap_codes": _edge_sample([str(gap.get("code")) for gap in data_gaps if isinstance(gap, Mapping)]),
-        "coverage": {
-            "latest_coverage_ratio": source_coverage.get("latest_coverage_ratio"),
-            "history_coverage_ratio": source_coverage.get("history_coverage_ratio"),
-            "observed_concept_count": source_coverage.get("observed_concept_count"),
-            "required_concept_count": source_coverage.get("required_concept_count"),
-            "history_ready_concept_count": source_coverage.get("history_ready_concept_count"),
-            "required_history_concept_count": source_coverage.get("required_history_concept_count"),
-            "concepts_below_min_history": list(source_coverage.get("concepts_below_min_history") or []),
-        },
-        "panels": {
-            str(panel_id): {
-                "score": panel.get("score"),
-                "regime": panel.get("regime"),
-                "evidence_count": len(_sequence(panel.get("evidence"))),
-                "data_gap_count": len(_sequence(panel.get("data_gaps"))),
-            }
-            for panel_id, panel in panels.items()
-        },
+        "pages": pages,
     }
 
 
@@ -238,48 +227,19 @@ def _publication_state_status(state: Mapping[str, Any] | None) -> dict[str, Any]
     }
 
 
-def _snapshot_latest_observed_at(snapshot: Mapping[str, Any] | None) -> date | None:
-    coverage = _mapping(snapshot.get("source_coverage_json") if snapshot else None)
-    return _to_date(coverage.get("latest_observed_at") or (snapshot or {}).get("asof_date"))
-
-
-def _history_readiness_payload(history_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
+def _manifest_inventory_payload(history_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
     rows_by_concept = {str(row.get("concept_key")): row for row in history_rows}
-    below_min: list[dict[str, Any]] = []
-    ready_count = 0
-    for concept_key in MACRO_HISTORY_REQUIRED_CONCEPTS:
+    observed: list[str] = []
+    missing: list[str] = []
+    for concept_key in MACRO_EVIDENCE_CONCEPTS:
         row = rows_by_concept.get(concept_key, {})
-        points = int(row.get("points") or 0)
-        required_points = MACRO_HISTORY_REQUIRED_POINTS_BY_CONCEPT.get(concept_key, MACRO_REQUIRED_STAT_POINTS)
-        if points >= required_points:
-            ready_count += 1
-            continue
-        metadata = MACRO_CONCEPT_METADATA.get(concept_key, {})
-        below_min.append(
-            {
-                "concept_key": concept_key,
-                "label": metadata.get("label") or concept_key,
-                "short_label": metadata.get("short_label") or concept_key,
-                "points": points,
-                "required_points": required_points,
-                "latest_observed_at": _json_ready(row.get("latest_observed_at")),
-                "oldest_observed_at": _json_ready(row.get("oldest_observed_at")),
-                "sources": list(row.get("sources") or []),
-            }
-        )
-
-    required_count = len(MACRO_HISTORY_REQUIRED_CONCEPTS)
-    coverage_ratio = round(ready_count / required_count, 6) if required_count else 1.0
+        (observed if int(row.get("points") or 0) > 0 else missing).append(concept_key)
     return {
-        "history_ready": not below_min,
-        "history_coverage": {
-            "required_points": MACRO_REQUIRED_STAT_POINTS,
-            "required_concept_count": required_count,
-            "ready_concept_count": ready_count,
-            "coverage_ratio": coverage_ratio,
-            "lookback_days": MACRO_VIEW_HISTORY_LOOKBACK_DAYS,
-        },
-        "concepts_below_min_history": below_min,
+        "declared_concept_count": len(MACRO_EVIDENCE_CONCEPTS),
+        "observed_concept_count": len(observed),
+        "missing_concept_count": len(missing),
+        "missing_concept_sample": _edge_sample(missing),
+        "lookback_days": MACRO_EVIDENCE_HISTORY_LOOKBACK_DAYS,
     }
 
 
@@ -296,16 +256,11 @@ def _edge_sample(values: Sequence[Any], *, edge_count: int = 3) -> list[Any]:
     return [*values[:edge_count], "...", *values[-edge_count:]]
 
 
-def _mapping(value: object) -> Mapping[str, Any]:
-    return value if isinstance(value, Mapping) else {}
-
-
-def _required_object_map(value: Mapping[str, Any], field_name: str) -> dict[str, Mapping[str, Any]]:
-    items = required_mapping(value, field_name)
-    invalid_key = next((str(key) for key, item in items.items() if not isinstance(item, Mapping)), None)
-    if invalid_key is not None:
-        raise ValueError(f"macro_view_snapshot_section_invalid:{field_name}.{invalid_key}")
-    return {str(key): item for key, item in items.items() if isinstance(item, Mapping)}
+def _required_mapping(value: Mapping[str, Any], field_name: str) -> Mapping[str, Any]:
+    item = value.get(field_name)
+    if not isinstance(item, Mapping):
+        raise ValueError(f"macro_evidence_snapshot_section_invalid:{field_name}")
+    return item
 
 
 def _sequence(value: object) -> Sequence[Any]:

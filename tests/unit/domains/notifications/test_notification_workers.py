@@ -130,10 +130,6 @@ class NotificationRepositoryDouble:
         self.deliveries.append((str(kwargs["notification_id"]), str(kwargs["channel_id"]), False))
         return dict(kwargs)
 
-    def enqueue_or_requeue_delivery(self, **kwargs: Any) -> dict[str, Any]:
-        self.deliveries.append((str(kwargs["notification_id"]), str(kwargs["channel_id"]), True))
-        return dict(kwargs)
-
 
 class DeliveryRepositoryDouble:
     def __init__(self, *, delivery: dict[str, Any] | None, notification: dict[str, Any] | None) -> None:
@@ -169,7 +165,7 @@ class RecordingPushAdapter:
             raise RuntimeError(self.error)
 
 
-def _candidate(dedup_key: str, *, rule_id: str = "news_high_signal") -> NotificationCandidate:
+def _candidate(dedup_key: str, *, rule_id: str = "watched_account_activity") -> NotificationCandidate:
     return NotificationCandidate(
         dedup_key=dedup_key,
         rule_id=rule_id,
@@ -181,7 +177,7 @@ def _candidate(dedup_key: str, *, rule_id: str = "news_high_signal") -> Notifica
         source_table="news_items",
         source_id=dedup_key,
         occurrence_at_ms=NOW_MS,
-        payload={"semantic_signature": dedup_key},
+        payload={"event_id": dedup_key},
         channels=("in_app",),
     )
 
@@ -299,27 +295,6 @@ def test_rule_worker_commits_notification_and_delivery_together() -> None:
     assert [row["dedup_key"] for row in rows] == ["external"]
     assert repository.deliveries == [("notification:external", "push", False)]
     assert (state.enters, state.exits) == (1, 1)
-
-
-def test_rule_worker_requeues_aggregated_external_delivery() -> None:
-    state = TransactionState()
-    repository = NotificationRepositoryDouble(aggregated={"aggregate"})
-    candidate = replace(
-        _candidate("aggregate"),
-        payload={"semantic_signature": "aggregate", "external_push_eligible": True},
-        channels=("in_app", "push"),
-    )
-    worker = _rule_worker(
-        repository,
-        state,
-        [candidate],
-        delivery_channels={
-            "push": SimpleNamespace(enabled=True, provider="pushdeer", url="pushdeer://key", min_severity="info")
-        },
-    )
-
-    assert asyncio.run(worker.process_once(now_ms=NOW_MS)) == []
-    assert repository.deliveries == [("notification:aggregate", "push", True)]
 
 
 def test_delivery_worker_keeps_external_io_outside_transactions() -> None:

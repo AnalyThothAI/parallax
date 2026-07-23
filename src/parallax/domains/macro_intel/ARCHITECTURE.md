@@ -1,36 +1,25 @@
 # Macro Intel Architecture
 
-Macro Intel is a Kappa/CQRS domain. PostgreSQL observations are the only
-business truth; API routes read deterministic projections and never call a
-macro provider. The normal ingest lane is `MacroSyncWorker`. `macro
-import-bundle` is an offline replay/seed entrypoint into the same fact and
-attempt contracts.
+Macro Intel is a completed-snapshot Kappa/CQRS domain. PostgreSQL
+`macro_observations` are the only business truth. The normal ingest lane is
+`MacroSyncWorker`; `macro import-bundle` is an offline replay/seed entrypoint
+into the same fact and attempt contracts. Public reads select persisted current
+documents or compact series and never call a provider.
 
 ## Ownership
 
 | Object | Kind | Single runtime writer |
-| --- | --- | --- |
-| `macro_observations` | Material fact | `MacroSyncWorker`; offline import may replay the same fact contract. |
-| `macro_sync_windows` | Scheduling/control state | `MacroSyncWorker`. |
-| `macro_sync_runs` | Sync or offline-import attempt ledger | `MacroSyncWorker` and the offline import command. |
-| `macro_projection_dirty_targets` | Projection queue | Fact import enqueues changed concepts; `MacroViewProjectionWorker` claims and completes them. |
-| `macro_observation_series_rows` | Rebuildable bounded-history read model | `MacroViewProjectionWorker`. |
-| `macro_observation_series_publication_state` | Projection attempt/currentness state | `MacroViewProjectionWorker`. |
-| `macro_view_snapshots` | Stable current macro snapshot | `MacroViewProjectionWorker`. |
+|---|---|---|
+| `macro_observations` | Material fact | `MacroSyncWorker`; offline import may replay the same fact contract |
+| `macro_sync_windows` | Scheduling/control state | `MacroSyncWorker` |
+| `macro_sync_runs` | Sync/offline-import attempt ledger | `MacroSyncWorker` and the offline import command |
+| `macro_projection_dirty_targets` | Projection queue | fact import enqueues; `MacroViewProjectionWorker` claims/completes |
+| `macro_observation_series_rows` | Rebuildable bounded-history read model | `MacroViewProjectionWorker` |
+| `macro_observation_series_publication_state` | Series attempt/currentness state | `MacroViewProjectionWorker` |
+| `macro_view_snapshots` | Stable current six-document snapshot | `MacroViewProjectionWorker` |
 
-There is no second import-attempt table. `macro_sync_runs` records both
-provider-window attempts and offline imports; an offline row has
-`sync_window_id=NULL` and may have no requested date range when the imported
-bundle contains neither observations nor an as-of date. Coverage, missing
-series, provider errors, reason codes, fact write counts, watermarks, timing,
-and redacted diagnostics live on that one attempt row. Attempt rows are audit
-metadata, not product truth.
-
-There is also no separate daily-brief table, column, or worker. The assets
-daily brief is embedded only in the `assets` entry of `module_views_json`.
-Every catalog module payload is built in the same projection transaction.
-Schema revision `20260722_0186` drops the retired top-level
-`macro_view_snapshots.assets_brief_json` column.
+`macro_sync_runs` is the only import/sync attempt ledger. Attempt identity and
+timestamps are audit metadata, not product identity.
 
 ## Data flow
 
@@ -39,44 +28,45 @@ macro_sync_windows
   -> MacroSyncWorker bounded claim
   -> configured macrodata history bundle
   -> macro_observations + macro_sync_runs
-  -> changed concept dirty targets
+  -> changed-concept dirty targets
   -> MacroViewProjectionWorker bounded catch-up
-  -> macro_observation_series_rows
-  -> macro_regime_v4 + module_views_json in macro_view_snapshots
-  -> /api/macro, /api/macro/series, /api/macro/modules/{module_id}
+  -> compact observation series
+  -> clock recheck when the UTC date or completed-market-session cutoff advances
+  -> one atomic macro_evidence_v1 snapshot with six typed documents
+  -> six page reads + one independent series read
 ```
 
 The projection worker runs on its configured interval, claims a bounded batch,
-and re-reads PostgreSQL. Provider raw frames and child-process output are
-inputs, never serving facts.
+and re-reads PostgreSQL. When no target is due, it re-evaluates persisted
+compact rows once per `(UTC date, latest completed US session)` bucket so
+freshness and the market cutoff cannot freeze when providers publish no new
+facts. A restart performs the same bounded PostgreSQL re-read; the in-memory
+bucket only suppresses duplicate work within one process and is not a
+correctness boundary. Provider frames and child-process output are inputs,
+never serving facts. Provider execution occurs outside database transactions.
 
 The provider boundary returns one exact `MacrodataBundleRunResult` containing
-an envelope and redacted diagnostics. Runtime invokes only the installed
-package entrypoint through the current Python interpreter; there is no
-console-script, `PATH`, legacy catalog, or result-shape fallback.
+an envelope and redacted diagnostics. Runtime invokes the installed package
+entrypoint through the current Python interpreter. Fact upserts, attempt
+recording, sync-window completion, watermarks, and dirty-target enqueue share
+one repository-session transaction.
 
-## Fact identity and ingest
+## Fact identity
 
-`macro_observations` keeps provider evidence, including raw payload, source
-priority, provider timestamp, and ingestion timestamp. Its material identity
-is concept/source/series/date. The fact payload hash excludes runtime fetch and
-sync identifiers, so a replay of identical evidence is a no-op. A material
-change updates the fact and enqueues the affected concept; unchanged evidence
-writes no serving row and creates no dirty target.
+`macro_observations` preserves source/series/concept/date identity, numeric or
+event value, unit/frequency/quality, provider provenance, source and ingestion
+times, and the raw evidence payload. Its material identity is
+concept/source/series/date. The fact payload hash excludes fetch and sync
+identifiers, so identical replay writes nothing. A material change updates the
+fact and enqueues the affected concept.
 
-Provider execution happens outside database transactions. Fact upserts,
-attempt recording, sync-window completion, state watermarks, and dirty-target
-enqueue happen in one repository-session transaction. A stale lease or failed
-terminal transition rolls that transaction back.
+The offline importer validates and normalizes the complete envelope before it
+opens the write transaction. It then writes facts, dirty targets, and one
+`macro_sync_runs` row atomically.
 
-The offline importer first validates and normalizes the complete envelope,
-then writes facts, dirty targets, and one `macro_sync_runs` row in one
-`RepositorySession.transaction`. It does not open a raw connection transaction
-or keep a separate import ledger.
+## Compact series
 
-## Compact series read model
-
-`macro_observation_series_rows` intentionally contains only:
+`macro_observation_series_rows` contains only:
 
 - `projection_version`
 - `concept_key`
@@ -89,60 +79,135 @@ or keep a separate import ledger.
 - `data_quality`
 - `event_metadata_json`
 
-Its stable key is `(projection_version, concept_key, observed_at)`. The source
-winner is selected while projecting from facts. The table does not persist a
-rank, source priority, provider timestamp, raw provider payload, ingestion or
-projection clocks, or a duplicate row payload hash. Changed/unchanged
-comparison uses the compact content in memory and the upsert has a row-value
-`IS DISTINCT FROM` guard. An unchanged refresh therefore writes zero serving
-rows.
+Its stable key is `(projection_version, concept_key, observed_at)`. Source
+selection occurs during projection. Lifecycle clocks, source priority, raw
+provider payload, and duplicate payload hashes are absent. Row-value
+`IS DISTINCT FROM` guards make unchanged refreshes zero-write.
 
-`event_metadata_json` is the only payload exception. It is a flat whitelist
-needed by official calendar, Treasury auction, and Fed communication display:
-event code/text, source URL, document type/speaker, event time/reference
-period, CUSIP, announcement/settlement dates, and reopening flag. Full raw
-evidence remains only in `macro_observations`.
+`event_metadata_json` is a flat whitelist required by official calendars,
+Treasury auctions, and Federal Reserve communications: event code/text, source
+URL, document type/speaker, event time/reference period, CUSIP,
+announcement/settlement dates, and reopening flag. Full evidence remains in
+`macro_observations`.
 
-Serving history queries require explicit concepts, lookback, and per-concept
-limit. They use requested concepts plus a `LATERAL` indexed scan ordered by
-`observed_at DESC`, so one concept cannot consume another concept's budget and
-the request path does not globally rank or sort the wide fact table. The
-primary key supports this fixed-prefix reverse scan; a second history-order
-index would duplicate it.
+Series queries require explicit concepts, a supported window, and bounded
+per-concept scans. The public windows are `20d`, `60d`, `120d`, `1y`, and
+`3y`. A refresh that selects no rows for a concept with an already-published
+partition fails closed and preserves that partition.
 
-A refresh selecting no rows for a concept that already has current rows fails
-closed and preserves the last published partition. Dirty-target claim, compact
-series mutation, snapshot write, and target completion are caller-owned by the
-projection transaction. Failed work rolls back partial projection writes
-before retry state is recorded.
+## Evidence snapshot deep module
 
-## Snapshot and public surfaces
+`macro_concept_manifest.py` is the one ownership table for evidence concepts.
+Every entry fixes its page, section, role, output and source unit, frequency,
+freshness limit, legal change window, change method/periods, criticality, and
+claim effect.
 
-`macro_view_snapshots` has one stable row per `projection_version`. The current
-contract is `macro_regime_v4`; runtime code does not fall back to older
-projection or module versions. The snapshot stores deterministic panels,
-indicators, triggers, gaps, feature history, source coverage, transmission
-chain, scenarios, scorecard, and one
-`module_views_json` entry for every stable `MACRO_MODULE_IDS` key. The assets
-brief exists only as `module_views_json.assets.daily_brief`. Missing JSON
-sections or module keys are malformed rows, not values to repair with empty
-compatibility defaults.
+`build_macro_evidence_snapshot(...)` accepts persisted observations and one
+computation time. It returns shared snapshot metadata plus exactly:
 
-`/api/macro/modules/{module_id}` reads its precomputed module object directly
-from `module_views_json`; it does not query observations, call the module
-builder, or join News at request time. The independent `/api/macro/series`
-surface reads compact series rows. Missing facts or coverage surface as
-explicit gaps/partial status. Event rows consume `event_metadata_json`; they
-never fall back to raw payload or provenance blobs. UI and LLM-facing code
-render persisted deterministic conclusions rather than recomputing provider
-evidence.
+1. `overview`
+2. `cross_asset`
+3. `rates_inflation`
+4. `growth_labor`
+5. `liquidity_funding`
+6. `credit`
+
+Each page carries:
+
+- snapshot version, fact watermark, latest completed US-session market cutoff,
+  and computation time;
+- a 1–4 week horizon;
+- strict conclusion status, judgment, rule version, and actual rule hits;
+- drivers, confirmations, contradictions, and upgrade/invalidation conditions;
+- evidence references, page freshness, full evidence rows, and named
+  unavailable capabilities.
+
+Evidence rows retain value, unit, frequency-aware change/window, observation
+date, source, series, quality, freshness/age, real sample range/count,
+criticality, claim effect, and derivation inputs/formula/references where
+needed. Critical missing, stale, or malformed evidence makes the affected
+conclusion `insufficient_evidence`. Optional absence makes it `degraded`.
+Unsupported capabilities are `not_assessed` with a reason and no numeric value.
+
+Overview's dominant-shock candidate is limited to `growth`, `inflation`,
+`policy_real_rates`, `term_premium_supply`, `liquidity_funding`, or `credit`.
+Its state is `confirmed`, `provisional`, `divergent`, or
+`insufficient_evidence`; candidate is null when no rule establishes one.
+Conclusions contain no global score, percentage confidence, probability,
+positioning instruction, or trade output.
+
+## Page-specific contracts
+
+- **Overview**: dominant trigger, cross-domain confirmation/contradiction,
+  affected exposures, and official catalysts in the next seven days. Catalysts
+  expose official date/time/timezone/source/URL and `today`/`upcoming` status;
+  no consensus, forecast, surprise, or event score is inferred.
+- **Cross-asset**: cutoff-aligned 20/60-session returns, volatility evidence,
+  20/60-session correlations using actual common samples, and explicit
+  divergences/gaps. Raw levels are never compared as returns.
+- **Rates & Inflation**: ordered nominal tenors/slopes, real yields,
+  breakevens, true term-premium capability, policy/funding corridor,
+  release-aware inflation changes, and separate curve level/move
+  classification.
+- **Growth & Labor**: leading and lagging growth/labor layers remain separate;
+  release growth carries its real sample and formula.
+- **Liquidity & Funding**: central-bank balance sheet, Treasury cash,
+  reverse-repo, reserves, secured funding, and unsecured funding remain
+  separate. `Fed assets - TGA - (RRP × 1000)` is labelled an accounting proxy
+  in millions of dollars and never a causal risk-asset claim.
+- **Credit**: aggregate spreads, rating tail, effective yields, credit supply,
+  realized damage, and financial-conditions/liquidity layers. It derives
+  `CCC OAS - BB OAS`, classifies the 10-year Treasury change × HY spread-change
+  quadrant, and keeps stage separate from direction. Stages are `contained`,
+  `tail_stress`, `broadening`, `systemic_tightening`, `repairing`, or
+  `insufficient_evidence`.
+
+TRACE transactions, ETF premium/discount, dealer inventory, FedWatch,
+consensus, economic surprise, and true term-premium data remain named
+unavailable capabilities until material source facts exist. They are never
+represented by placeholders or proxies.
+
+## Atomic current snapshot
+
+`macro_view_snapshots` has exactly one supported identity:
+`snapshot_key = 'current'`. The row stores `macro_evidence_v1`, shared
+watermarks/cutoff/time, six required JSON objects, and one stable payload hash.
+All page documents repeat the same four metadata fields; repository validation
+rejects a mismatch.
+
+Dirty-target claim, compact-series changes, snapshot upsert, publication state,
+and exact claim acknowledgement share the projection transaction. A clock
+recheck has no synthetic queue row: it reads only persisted compact rows and
+upserts through the same single-writer repository transaction. The snapshot
+hash excludes computation clocks recursively. Replaying an unchanged semantic
+payload therefore writes zero serving rows, while a real age, cutoff, or
+freshness change replaces the same current identity.
+
+## Public surfaces
+
+The only Macro HTTP reads are:
+
+```text
+/api/macro/overview
+/api/macro/cross-asset
+/api/macro/rates-inflation
+/api/macro/growth-labor
+/api/macro/liquidity-funding
+/api/macro/credit
+/api/macro/series
+```
+
+Each page endpoint selects its stored document directly. The series endpoint
+reads compact persisted rows independently. No request path scans wide
+observations, builds a page, invokes a worker/provider, joins News, or creates
+an intraday judgment. Unmatched Macro paths return the ordinary application
+`404`.
 
 ## Runtime configuration
 
 Live execution uses operator-owned `~/.parallax/config.yaml` and
-`~/.parallax/workers.yaml`. `uv run parallax config` is the authority for the
-resolved paths. `workers.macro_sync` owns bundle names, provider execution
-timeout, window size, claim lease, retry cadence, and batch size.
-`workers.macro_view_projection` owns statement timeout, dirty-target batch,
-lease/retry budget, lookback, and per-series cap. Credentials are reported only
-as redacted configuration state.
+`~/.parallax/workers.yaml`; `uv run parallax config` is the resolved-path
+authority. `workers.macro_sync` owns bundle names, provider timeout, window,
+claim lease, retry cadence, and batch size. `workers.macro_view_projection`
+owns statement timeout, dirty-target batch/lease/retry policy, lookback, and
+per-series cap. Credentials are reported only as redacted configured state.

@@ -183,60 +183,52 @@ def test_insert_notification_aggregates_each_source_once_per_dedup_key(tmp_path)
     assert rows[0]["payload_json"]["event_id"] == "event-2"
 
 
-def test_insert_notification_allows_distinct_dedup_keys_with_the_same_semantic_payload(tmp_path):
+def test_insert_notification_allows_distinct_dedup_keys_with_the_same_fact_payload(tmp_path):
     repo = repository(tmp_path)
 
     first = insert_notification_row(
         repo,
-        dedup_key="news_high_signal:semantic:external",
-        rule_id="news_high_signal",
-        severity="critical",
-        title="News high signal",
-        body="Agent brief",
-        entity_type="news_item",
-        entity_key="news_item:news-1",
-        symbol="BOV",
-        source_table="news_page_rows",
-        source_id="news-1",
+        dedup_key="watched_account_activity:event-1:first",
+        rule_id="watched_account_activity",
+        severity="info",
+        title="toly has new activity",
+        body="A watched account posted.",
+        entity_type="account",
+        entity_key="account:toly",
+        author_handle="toly",
+        event_id="event-1",
+        source_table="events",
+        source_id="event-1",
         occurrence_at_ms=1_700_000_000_000,
-        payload={
-            "news_item_id": "news-1",
-            "semantic_signature": "sha256:news-semantic",
-            "external_push_signature": "sha256:news-external",
-            "external_push_eligible": True,
-        },
-        channels=["in_app", "pushdeer"],
+        payload={"event_id": "event-1", "event_type": "post"},
+        channels=["in_app"],
     )
     second = insert_notification_row(
         repo,
-        dedup_key="news_high_signal:semantic:external:new-row",
-        rule_id="news_high_signal",
-        severity="critical",
-        title="News high signal update",
-        body="Agent brief again",
-        entity_type="news_item",
-        entity_key="news_item:news-1",
-        symbol="BOV",
-        source_table="news_page_rows",
-        source_id="news-1-duplicate",
+        dedup_key="watched_account_activity:event-1:second",
+        rule_id="watched_account_activity",
+        severity="info",
+        title="toly has new activity",
+        body="The same fact is routed as a distinct notification.",
+        entity_type="account",
+        entity_key="account:toly",
+        author_handle="toly",
+        event_id="event-1",
+        source_table="events",
+        source_id="event-1",
         occurrence_at_ms=1_700_000_060_000,
-        payload={
-            "news_item_id": "news-1",
-            "semantic_signature": "sha256:news-semantic",
-            "external_push_signature": "sha256:news-external-next-bucket",
-            "external_push_eligible": True,
-        },
-        channels=["in_app", "pushdeer"],
+        payload={"event_id": "event-1", "event_type": "post"},
+        channels=["in_app"],
     )
 
-    rows = repo.list_notifications(limit=10, rule_id="news_high_signal")
+    rows = repo.list_notifications(limit=10, rule_id="watched_account_activity")
 
     assert first is not None
     assert second is not None
     assert len(rows) == 2
     assert {row["dedup_key"] for row in rows} == {
-        "news_high_signal:semantic:external",
-        "news_high_signal:semantic:external:new-row",
+        "watched_account_activity:event-1:first",
+        "watched_account_activity:event-1:second",
     }
     assert all(row["occurrence_count"] == 1 for row in rows)
 
@@ -245,61 +237,52 @@ def test_insert_notification_with_outcome_reports_created_and_aggregated_rows(tm
     repo = repository(tmp_path)
 
     created = repo.insert_notification_with_outcome(
-        dedup_key="news_high_signal:semantic:first",
-        rule_id="news_high_signal",
-        severity="critical",
-        title="News high signal",
-        body="Agent brief",
-        entity_type="news_item",
-        entity_key="news_item:news-1",
-        source_table="news_page_rows",
-        source_id="news-1",
+        dedup_key="watched_account_activity:toly:bucket",
+        rule_id="watched_account_activity",
+        severity="info",
+        title="toly has new activity",
+        body="First post.",
+        entity_type="account",
+        entity_key="account:toly",
+        author_handle="toly",
+        event_id="event-1",
+        source_table="events",
+        source_id="event-1",
         occurrence_at_ms=1_700_000_000_000,
-        payload={
-            "news_item_id": "news-1",
-            "semantic_signature": "sha256:news-semantic",
-            "external_push_signature": "sha256:news-external",
-            "external_push_eligible": True,
-        },
-        channels=["in_app", "pushdeer"],
+        payload={"event_id": "event-1"},
+        channels=["in_app"],
     )
     aggregated = repo.insert_notification_with_outcome(
-        dedup_key="news_high_signal:semantic:first",
-        rule_id="news_high_signal",
-        severity="critical",
-        title="News high signal update",
-        body="Agent brief update",
-        entity_type="news_item",
-        entity_key="news_item:news-2",
-        source_table="news_page_rows",
-        source_id="news-2",
+        dedup_key="watched_account_activity:toly:bucket",
+        rule_id="watched_account_activity",
+        severity="info",
+        title="toly has new activity",
+        body="Second post.",
+        entity_type="account",
+        entity_key="account:toly",
+        author_handle="toly",
+        event_id="event-2",
+        source_table="events",
+        source_id="event-2",
         occurrence_at_ms=1_700_000_060_000,
-        payload={
-            "news_item_id": "news-2",
-            "semantic_signature": "sha256:news-semantic",
-            "external_push_signature": "sha256:news-external",
-            "external_push_eligible": True,
-        },
-        channels=["in_app", "pushdeer"],
+        payload={"event_id": "event-2"},
+        channels=["in_app"],
     )
     canonical_duplicate = repo.insert_notification_with_outcome(
-        dedup_key="news_high_signal:semantic:first",
-        rule_id="news_high_signal",
-        severity="critical",
-        title="News high signal legacy update",
-        body="Agent brief legacy update",
-        entity_type="news_item",
-        entity_key="news_item:news-3",
-        source_table="news_page_rows",
-        source_id="news-3",
+        dedup_key="watched_account_activity:toly:bucket",
+        rule_id="watched_account_activity",
+        severity="info",
+        title="toly has new activity",
+        body="Third post.",
+        entity_type="account",
+        entity_key="account:toly",
+        author_handle="toly",
+        event_id="event-3",
+        source_table="events",
+        source_id="event-3",
         occurrence_at_ms=1_700_000_120_000,
-        payload={
-            "news_item_id": "news-3",
-            "semantic_signature": "sha256:news-semantic",
-            "external_push_signature": "sha256:news-external",
-            "external_push_eligible": True,
-        },
-        channels=["in_app", "pushdeer"],
+        payload={"event_id": "event-3"},
+        channels=["in_app"],
     )
 
     assert created.created is True
@@ -312,191 +295,10 @@ def test_insert_notification_with_outcome_reports_created_and_aggregated_rows(tm
     assert aggregated.row["occurrence_count"] == 2
     assert canonical_duplicate.created is False
     assert canonical_duplicate.aggregated is True
-    rows = repo.list_notifications(limit=10, rule_id="news_high_signal")
+    rows = repo.list_notifications(limit=10, rule_id="watched_account_activity")
     assert len(rows) == 1
     assert rows[0]["occurrence_count"] == 3
-    assert rows[0]["payload_json"]["external_push_eligible"] is True
-
-
-def test_external_push_cooldown_still_suppresses_a_distinct_dedup_key(tmp_path):
-    repo = repository(tmp_path)
-
-    first = repo.insert_notification_with_outcome(
-        dedup_key="news_high_signal:semantic:first",
-        rule_id="news_high_signal",
-        severity="critical",
-        title="First story",
-        body="First body",
-        entity_type="news_item",
-        entity_key="news_item:news-1",
-        source_table="news_page_rows",
-        source_id="news-1",
-        occurrence_at_ms=1_700_000_000_000,
-        payload={
-            "semantic_signature": "sha256:first",
-            "external_push_signature": "sha256:shared-external",
-            "external_push_eligible": True,
-        },
-        channels=["in_app", "pushdeer"],
-    )
-    second = repo.insert_notification_with_outcome(
-        dedup_key="news_high_signal:semantic:second",
-        rule_id="news_high_signal",
-        severity="critical",
-        title="Second story",
-        body="Second body",
-        entity_type="news_item",
-        entity_key="news_item:news-2",
-        source_table="news_page_rows",
-        source_id="news-2",
-        occurrence_at_ms=1_700_000_060_000,
-        payload={
-            "semantic_signature": "sha256:second",
-            "external_push_signature": "sha256:shared-external",
-            "external_push_eligible": True,
-        },
-        channels=["in_app", "pushdeer"],
-    )
-
-    assert first.created is True
-    assert second.created is True
-    assert second.row is not None
-    assert second.row["channels_json"] == ["in_app"]
-    assert second.row["payload_json"]["external_push_eligible"] is False
-    assert second.row["payload_json"]["external_push_suppression_reason"] == "external_cooldown_duplicate"
-
-
-def test_insert_notification_creates_new_news_row_when_semantic_signature_changes(tmp_path):
-    repo = repository(tmp_path)
-
-    created = repo.insert_notification_with_outcome(
-        dedup_key="news_high_signal:sha256:provider-context",
-        rule_id="news_high_signal",
-        severity="critical",
-        title="Provider headline",
-        body="Provider body",
-        entity_type="news_item",
-        entity_key="news_item:news-1",
-        source_table="news_page_rows",
-        source_id="news-1",
-        occurrence_at_ms=1_700_000_000_000,
-        payload={
-            "news_item_id": "news-1",
-            "semantic_signature": "sha256:provider-context",
-            "external_push_signature": None,
-            "external_push_eligible": False,
-        },
-        channels=["in_app"],
-    )
-    upgraded = repo.insert_notification_with_outcome(
-        dedup_key="news_high_signal:sha256:agent-driver",
-        rule_id="news_high_signal",
-        severity="critical",
-        title="Agent title",
-        body="Agent body",
-        entity_type="news_item",
-        entity_key="news_item:news-1",
-        source_table="news_page_rows",
-        source_id="news-1",
-        occurrence_at_ms=1_700_000_120_000,
-        payload={
-            "news_item_id": "news-1",
-            "semantic_signature": "sha256:agent-driver",
-            "external_push_signature": "sha256:agent-push",
-            "external_push_eligible": True,
-        },
-        channels=["in_app", "pushdeer"],
-    )
-
-    rows = repo.list_notifications(limit=10, rule_id="news_high_signal")
-
-    assert created.created is True
-    assert upgraded.created is True
-    assert upgraded.aggregated is False
-    assert len(rows) == 2
-    assert {row["title"] for row in rows} == {"Provider headline", "Agent title"}
-    assert {row["payload_json"]["semantic_signature"] for row in rows} == {
-        "sha256:provider-context",
-        "sha256:agent-driver",
-    }
-
-
-def test_insert_notification_suppresses_same_semantic_signature_only(tmp_path):
-    repo = repository(tmp_path)
-
-    first = insert_notification_row(
-        repo,
-        dedup_key="watched_account_token_alert:alert-1:sha256:first",
-        rule_id="watched_account_token_alert",
-        severity="high",
-        title="$SLOP token watch",
-        body="Token alert",
-        entity_type="token",
-        entity_key="token:SLOP",
-        symbol="SLOP",
-        source_table="token_alerts",
-        source_id="alert-1",
-        occurrence_at_ms=1_700_000_000_000,
-        payload={
-            "alert_id": "alert-1",
-            "status": "token_watch",
-            "symbol": "SLOP",
-            "semantic_signature": "sha256:first",
-        },
-        channels=["in_app", "pushdeer"],
-    )
-    same_signature = repo.insert_notification_with_outcome(
-        dedup_key="watched_account_token_alert:alert-1:sha256:first",
-        rule_id="watched_account_token_alert",
-        severity="high",
-        title="$SLOP token watch",
-        body="Token alert",
-        entity_type="token",
-        entity_key="token:SLOP",
-        symbol="SLOP",
-        source_table="token_alerts",
-        source_id="alert-1",
-        occurrence_at_ms=1_700_000_060_000,
-        payload={
-            "alert_id": "alert-1",
-            "status": "token_watch",
-            "symbol": "SLOP",
-            "semantic_signature": "sha256:first",
-        },
-        channels=["in_app", "pushdeer"],
-    )
-    changed_signature = insert_notification_row(
-        repo,
-        dedup_key="watched_account_token_alert:alert-1:sha256:second",
-        rule_id="watched_account_token_alert",
-        severity="high",
-        title="$SLOP token watch",
-        body="Token alert",
-        entity_type="token",
-        entity_key="token:SLOP",
-        symbol="SLOP",
-        source_table="token_alerts",
-        source_id="alert-1",
-        occurrence_at_ms=1_700_000_120_000,
-        payload={
-            "alert_id": "alert-1",
-            "status": "token_watch",
-            "symbol": "SLOP",
-            "semantic_signature": "sha256:second",
-        },
-        channels=["in_app", "pushdeer"],
-    )
-
-    rows = repo.list_notifications(limit=10, rule_id="watched_account_token_alert")
-
-    assert first is not None
-    assert same_signature.created is False
-    assert same_signature.aggregated is False
-    assert changed_signature is not None
-    assert len(rows) == 2
-    assert rows[0]["dedup_key"] == "watched_account_token_alert:alert-1:sha256:second"
-    assert rows[1]["dedup_key"] == "watched_account_token_alert:alert-1:sha256:first"
-    assert rows[0]["occurrence_count"] == 1
+    assert rows[0]["payload_json"]["event_id"] == "event-3"
 
 
 def test_summary_and_mark_read_use_subscriber_read_state(tmp_path):
@@ -520,20 +322,20 @@ def test_summary_and_mark_read_use_subscriber_read_state(tmp_path):
     )
     high = insert_notification_row(
         repo,
-        dedup_key="news:pepe",
-        rule_id="news_high_signal",
+        dedup_key="watched-account-token-alert:pepe",
+        rule_id="watched_account_token_alert",
         severity="high",
-        title="PEPE news",
-        body="agent news driver",
+        title="$PEPE token watch",
+        body="A watched account referenced PEPE.",
         entity_type="token",
         entity_key="token:eth:pepe",
         symbol="PEPE",
         chain="eth",
         address="0xpepe",
-        source_table="news_items",
+        source_table="token_alerts",
         source_id="token:eth:pepe",
         occurrence_at_ms=1_700_000_060_000,
-        payload={"decision_class": "driver"},
+        payload={"alert_id": "token:eth:pepe", "status": "token_watch"},
         channels=["in_app"],
     )
     assert info is not None
@@ -639,13 +441,13 @@ def test_claim_next_delivery_skips_row_locked_by_another_worker(tmp_path):
         locked_notification = insert_notification_row(
             repo,
             dedup_key="delivery:locked",
-            rule_id="news_high_signal",
+            rule_id="watched_account_token_alert",
             severity="high",
             title="locked",
             body="locked",
             entity_type="token",
             entity_key="token:eth:locked",
-            source_table="news_items",
+            source_table="token_alerts",
             source_id="token:eth:locked",
             occurrence_at_ms=1_700_000_000_000,
             payload={},
@@ -654,13 +456,13 @@ def test_claim_next_delivery_skips_row_locked_by_another_worker(tmp_path):
         available_notification = insert_notification_row(
             repo,
             dedup_key="delivery:available",
-            rule_id="news_high_signal",
+            rule_id="watched_account_token_alert",
             severity="high",
             title="available",
             body="available",
             entity_type="token",
             entity_key="token:eth:available",
-            source_table="news_items",
+            source_table="token_alerts",
             source_id="token:eth:available",
             occurrence_at_ms=1_700_000_000_001,
             payload={},
@@ -726,13 +528,13 @@ def test_claim_next_delivery_reclaims_stale_running_delivery(tmp_path):
     notification = insert_notification_row(
         repo,
         dedup_key="delivery:stale",
-        rule_id="news_high_signal",
+        rule_id="watched_account_token_alert",
         severity="high",
         title="stale",
         body="stale",
         entity_type="token",
         entity_key="token:eth:stale",
-        source_table="news_items",
+        source_table="token_alerts",
         source_id="token:eth:stale",
         occurrence_at_ms=1_700_000_000_000,
         payload={},
@@ -772,13 +574,13 @@ def test_complete_and_fail_delivery_ignore_stale_claim_after_reclaim(tmp_path):
     notification = insert_notification_row(
         repo,
         dedup_key="delivery:stale-claim-cas",
-        rule_id="news_high_signal",
+        rule_id="watched_account_token_alert",
         severity="high",
         title="stale claim",
         body="stale claim",
         entity_type="token",
         entity_key="token:eth:stale-claim",
-        source_table="news_page_rows",
+        source_table="token_alerts",
         source_id="token:eth:stale-claim",
         occurrence_at_ms=1_700_000_000_000,
         payload={},
@@ -841,14 +643,14 @@ def test_claim_next_delivery_terminalizes_stale_running_rows_in_bounded_batches(
             )
             SELECT 'notif-stale-' || item::text,
                    'dedup-stale-' || item::text,
-                   'news_high_signal',
+                   'watched_account_token_alert',
                    'high',
                    'stale',
                    'stale',
-                   'news_item',
-                   'news:' || item::text,
-                   'news_items',
-                   'news:' || item::text,
+                   'token',
+                   'token:' || item::text,
+                   'token_alerts',
+                   'token:' || item::text,
                    %s,
                    %s,
                    %s,
@@ -890,75 +692,3 @@ def test_claim_next_delivery_terminalizes_stale_running_rows_in_bounded_batches(
 
     assert claimed is None
     assert dead_count == 100
-
-
-def test_enqueue_or_requeue_delivery_only_reactivates_failed_or_dead_rows(tmp_path):
-    repo = repository(tmp_path)
-    rows_by_status = {}
-    for index, status in enumerate(("pending", "running", "delivered", "failed", "dead"), start=1):
-        notification = insert_notification_row(
-            repo,
-            dedup_key=f"delivery:reactivate:{status}",
-            rule_id="news_high_signal",
-            severity="critical",
-            title=status,
-            body=status,
-            entity_type="news_item",
-            entity_key=f"news_item:{status}",
-            source_table="news_page_rows",
-            source_id=f"news-{status}",
-            occurrence_at_ms=1_700_000_000_000 + index,
-            payload={},
-            channels=["pushdeer"],
-        )
-        assert notification is not None
-        delivery = repo.enqueue_delivery(
-            notification_id=notification["notification_id"],
-            channel_id="pushdeer",
-            provider="pushdeer",
-            max_attempts=5,
-            next_run_at_ms=1_700_000_100_000,
-        )
-        assert delivery is not None
-        repo.conn.execute(
-            """
-            UPDATE notification_deliveries
-               SET status = %s,
-                   attempt_count = 3,
-                   last_error = 'previous_error',
-                   delivered_at_ms = CASE WHEN %s = 'delivered' THEN 1700000120000 ELSE NULL END,
-                   updated_at_ms = 1700000110000
-             WHERE delivery_id = %s
-            """,
-            (status, status, delivery["delivery_id"]),
-        )
-        rows_by_status[status] = (notification, delivery)
-    repo.conn.commit()
-
-    results = {}
-    for status, (notification, delivery) in rows_by_status.items():
-        result = repo.enqueue_or_requeue_delivery(
-            notification_id=notification["notification_id"],
-            channel_id="pushdeer",
-            provider="pushdeer",
-            max_attempts=5,
-            next_run_at_ms=1_700_000_200_000,
-        )
-        stored = repo.delivery_by_id(delivery["delivery_id"])
-        assert stored is not None
-        results[status] = (result, stored)
-
-    for status in ("failed", "dead"):
-        result, stored = results[status]
-        assert result is not None
-        assert stored["status"] == "pending"
-        assert stored["attempt_count"] == 0
-        assert stored["last_error"] is None
-        assert stored["next_run_at_ms"] == 1_700_000_200_000
-
-    for status in ("pending", "running", "delivered"):
-        result, stored = results[status]
-        assert result is None
-        assert stored["status"] == status
-        assert stored["attempt_count"] == 3
-        assert stored["last_error"] == "previous_error"

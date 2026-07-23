@@ -59,13 +59,6 @@ def handle_config(_args: object) -> tuple[int, dict[str, Any]]:
                     "channels": list(settings.upstream.channels),
                     "chains": list(settings.upstream.chains),
                 },
-                "agent_execution": {
-                    "llm_configured": settings.llm_configured,
-                    "model": settings.workers.agent_runtime.model,
-                    "provider_family": settings.workers.agent_runtime.capability_profile().provider_family.value,
-                    "base_url": settings.llm.base_url,
-                    "backend": "litellm_sdk",
-                },
                 "providers": {
                     "gmgn": {
                         "configured": settings.gmgn_configured,

@@ -6,8 +6,6 @@ from parallax.domains.token_intel.interfaces import TOKEN_RADAR_PROJECTION_VERSI
 from parallax.domains.token_intel.scoring.factor_snapshot_contract import require_token_factor_snapshot
 from parallax.platform.validation import require_nonnegative_int
 
-from .token_radar_narrative_admission import narrative_admission_from_current_row
-
 WINDOW_MS = {
     "5m": 5 * 60 * 1000,
     "1h": 60 * 60 * 1000,
@@ -78,7 +76,7 @@ class AssetFlowService:
         row_computed_at_ms = max((int(row.get("computed_at_ms") or 0) for row in rows), default=0) or None
         published_at_ms = (publication_state or {}).get("current_published_at_ms")
         computed_at_ms = published_at_ms if published_at_ms is not None else row_computed_at_ms
-        public_rows = [_public_row(row, window=window) for row in rows]
+        public_rows = [{**public_token_radar_row(row), "_lane": row.get("lane")} for row in rows]
         _hydrate_profiles(public_rows, profiles=self.profiles)
         unresolved = _unresolved_diagnostics(rows)
         targetful_rows = [row for row in public_rows if _public_target(row).get("target_id")]
@@ -119,11 +117,9 @@ class AssetFlowService:
         }
 
 
-def _public_row(row: dict[str, Any], *, window: str) -> dict[str, Any]:
+def public_token_radar_row(row: dict[str, Any]) -> dict[str, Any]:
     factor_snapshot = require_token_factor_snapshot(row.get("factor_snapshot_json"), field_name="factor_snapshot_json")
-    target = _target_from_snapshot(factor_snapshot)
     return {
-        "_lane": row.get("lane"),
         "intent": row.get("intent_json") or {},
         "radar": _radar_from_row(row),
         "resolution": _resolution_from_row(row),
@@ -131,9 +127,6 @@ def _public_row(row: dict[str, Any], *, window: str) -> dict[str, Any]:
             "status": row.get("quality_status"),
             "degraded_reasons": _string_list(row.get("degraded_reasons_json")),
         },
-        "narrative_admission": (
-            narrative_admission_from_current_row(row, window=window) if target.get("target_id") else None
-        ),
         "factor_snapshot": factor_snapshot,
     }
 

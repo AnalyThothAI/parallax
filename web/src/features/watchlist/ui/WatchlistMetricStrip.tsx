@@ -4,7 +4,7 @@ export type WatchlistMetrics = {
   source_event_count: number;
   resolved_token_count: number;
   candidate_mention_count: number;
-  narrative_count: number;
+  hashtag_count: number;
 };
 
 export function WatchlistMetricStrip({
@@ -42,9 +42,9 @@ export function WatchlistMetricStrip({
       />
       <SignalCard
         detail="hashtags in source posts"
-        label="Narratives"
-        tone={metrics?.narrative_count ? "health" : "neutral"}
-        value={metrics?.narrative_count ?? 0}
+        label="Hashtags"
+        tone={metrics?.hashtag_count ? "health" : "neutral"}
+        value={metrics?.hashtag_count ?? 0}
       />
     </section>
   );
@@ -58,7 +58,7 @@ function SignalCard({
 }: {
   detail: ReactNode;
   label: string;
-  tone: "agent" | "health" | "info" | "neutral" | "opportunity";
+  tone: "health" | "info" | "neutral" | "opportunity";
   value: ReactNode;
 }) {
   return (

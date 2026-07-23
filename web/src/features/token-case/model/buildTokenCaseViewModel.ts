@@ -1,11 +1,5 @@
 import { compactNumber, formatTokenPriceUsd, formatUsdCompact, shortAddress } from "@lib/format";
-import type {
-  NarrativeAdmission,
-  TokenCaseDossier,
-  TokenCasePostsData,
-  TokenPostItem,
-} from "@lib/types";
-import { narrativeGapLabels } from "@shared/model/narrativeDataGaps";
+import type { TokenCaseDossier, TokenCasePostsData, TokenPostItem } from "@lib/types";
 import type {
   TokenCaseMarketView,
   TokenCasePostEvent,
@@ -47,14 +41,9 @@ export function buildTokenCaseViewModel({
   const mergedPosts = posts ?? dossier.posts;
   const market = buildMarketView(dossier);
   const livePrice = numberValue(dossier.market_live.price_usd);
-  const timelineItems = sortTimelineItems(
-    mergedPosts.items.map((post) => buildPostEvent(post, livePrice)),
-    route.postSort,
-  );
+  const timelineItems = mergedPosts.items.map((post) => buildPostEvent(post, livePrice));
   const visibleTimelineItems =
     route.postSort === "watched" ? timelineItems.filter((item) => item.isWatched) : timelineItems;
-  const admission = dossier.narrative_admission;
-  const dataGaps = narrativeGapLabels(admission.data_gaps);
 
   return {
     target: {
@@ -81,36 +70,7 @@ export function buildTokenCaseViewModel({
         : null,
       actions: heroActions(dossier),
     },
-    metrics: [
-      {
-        key: "mentions",
-        label: "mentions",
-        value: compactNumber(dossier.timeline.summary.posts),
-        detail: `${compactNumber(dossier.timeline.summary.authors)} authors`,
-        tone: dossier.timeline.summary.posts > 0 ? "health" : "neutral",
-      },
-      {
-        key: "admission",
-        label: "admission",
-        value: admissionStatusLabel(admission),
-        detail: admissionCoverageLabel(admission),
-        tone: admissionTone(admission),
-      },
-      {
-        key: "watched",
-        label: "watched",
-        value: compactNumber(dossier.timeline.summary.watched_posts ?? 0),
-        detail: route.scope === "watched" ? "watched-only route" : "all public mentions",
-        tone: (dossier.timeline.summary.watched_posts ?? 0) > 0 ? "health" : "risk",
-      },
-      {
-        key: "readiness",
-        label: "readiness",
-        value: market.status,
-        detail: dataGaps.length ? `${dataGaps.length} data gaps` : "no reported gaps",
-        tone: market.tone,
-      },
-    ],
+    metrics: tokenCaseMetrics(dossier, route),
     timeline: {
       sort: route.postSort,
       items: visibleTimelineItems,
@@ -120,8 +80,64 @@ export function buildTokenCaseViewModel({
       emptyLabel: visibleTimelineItems.length ? null : "No matching posts in this window.",
     },
     market,
-    dataGaps,
+    dataGaps: [],
   };
+}
+
+function tokenCaseMetrics(
+  dossier: TokenCaseDossier,
+  route: TokenCaseRouteState,
+): TokenCaseViewModel["metrics"] {
+  const currentRadar = dossier.current_radar;
+  const rank = currentRadar?.radar.rank;
+  const lane = cleanText(currentRadar?.radar.lane);
+  const decision = currentRadar?.factor_snapshot.composite.recommended_decision;
+  const rankScore = numberValue(currentRadar?.factor_snapshot.composite.rank_score);
+  const listedDetail = `current ${route.window} / ${route.scope} row`;
+  const missingDetail = `no current ${route.window} / ${route.scope} row`;
+
+  return [
+    {
+      key: "mentions",
+      label: "mentions",
+      value: compactNumber(dossier.timeline.summary.posts),
+      detail: `${compactNumber(dossier.timeline.summary.authors)} authors`,
+      tone: dossier.timeline.summary.posts > 0 ? "health" : "neutral",
+    },
+    {
+      key: "radar-rank",
+      label: "radar rank",
+      value: rank === null || rank === undefined ? "not listed" : `#${rank}`,
+      detail: currentRadar ? listedDetail : missingDetail,
+      tone: currentRadar ? "info" : "neutral",
+    },
+    {
+      key: "radar-lane",
+      label: "radar lane",
+      value: lane ?? "not listed",
+      detail: currentRadar ? `quality ${currentRadar.quality.status}` : missingDetail,
+      tone: currentRadar ? "info" : "neutral",
+    },
+    {
+      key: "radar-decision",
+      label: "radar decision",
+      value: decision ?? "not listed",
+      detail:
+        currentRadar && rankScore !== null
+          ? `rank score ${compactNumber(rankScore)}`
+          : currentRadar
+            ? "rank score unavailable"
+            : missingDetail,
+      tone:
+        decision === "high_alert"
+          ? "opportunity"
+          : decision === "discard"
+            ? "risk"
+            : currentRadar
+              ? "info"
+              : "neutral",
+    },
+  ];
 }
 
 function buildPostEvent(post: TokenPostItem, livePriceUsd: number | null): TokenCasePostEvent {
@@ -196,18 +212,6 @@ function buildPostMarket(
   });
 }
 
-function sortTimelineItems(
-  items: TokenCasePostEvent[],
-  sort: TokenCaseRouteState["postSort"],
-): TokenCasePostEvent[] {
-  if (sort === "catalyst") {
-    return [...items].sort(
-      (left, right) => (right.quality.score ?? -1) - (left.quality.score ?? -1),
-    );
-  }
-  return items;
-}
-
 function postPills(post: TokenPostItem): Array<{ label: string; tone: TokenCaseTone }> {
   const pricePill = tokenPricePill(post.price?.price_usd, post.price?.status);
   return pricePill ? [pricePill] : [];
@@ -242,35 +246,6 @@ function heroActions(dossier: TokenCaseDossier): TokenCaseViewModel["hero"]["act
     actions.push({ label: "GMGN", href: gmgn, tone: "opportunity" });
   }
   return actions;
-}
-
-function admissionStatusLabel(admission: NarrativeAdmission): string {
-  const labels: Record<string, string> = {
-    admitted: "admitted",
-    missing: "not admitted",
-    suppressed: "suppressed",
-    unsupported_window: "unsupported",
-  };
-  return labels[admission.status] ?? admission.status.replaceAll("_", " ");
-}
-
-function admissionCoverageLabel(admission: NarrativeAdmission): string {
-  return `${compactNumber(admission.coverage.source_mentions)} posts · ${compactNumber(
-    admission.coverage.independent_authors,
-  )} authors`;
-}
-
-function admissionTone(admission: NarrativeAdmission): TokenCaseTone {
-  if (admission.status === "admitted" && admission.currentness.display_status === "current") {
-    return "health";
-  }
-  if (
-    admission.status === "suppressed" ||
-    admission.currentness.display_status === "out_of_frontier"
-  ) {
-    return "warn";
-  }
-  return "info";
 }
 
 function shortId(value: string): string {

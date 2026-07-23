@@ -42,35 +42,11 @@ QUEUE_ALLOWED_STATUSES = {"pending", "running", "failed", "dead", "done", "deliv
 NOTIFICATION_QUEUE_NAME = "notification_deliveries"
 NOTIFICATION_QUEUE_TABLE = "notification_deliveries"
 NOTIFICATION_QUEUE_WORKER = "notification_delivery"
-AGENT_EXECUTION_RECENT_SIGNAL_MS = 5 * 60 * 1000
 DIAGNOSTIC_STATUSES = frozenset({"blocked", "degraded", "disabled", "failed", "idle", "ok", "unavailable", "unknown"})
 HEALTHY_CONNECTION_STATES = frozenset(
     {"authenticating", "connected", "connecting", "running", "streaming", "subscribed"}
 )
 BLOCKED_CONNECTION_STATES = frozenset({"circuit_open", "disconnected", "failed", "failed_terminal"})
-AGENT_EXECUTION_POLICY_KEYS = (
-    "lane",
-    "model",
-    "provider_family",
-    "output_strategy",
-    "schema_enforcement",
-    "max_concurrency",
-    "rpm_limit",
-    "timeout_seconds",
-)
-AGENT_EXECUTION_COUNTER_KEYS = (
-    "in_flight",
-    "provider_running",
-    "circuit_state",
-    "circuit_open_until_ms",
-    "capacity_denied_total",
-    "circuit_open_total",
-    "timeout_total",
-    "last_denied_at_ms",
-    "last_timeout_at_ms",
-    "oldest_in_flight_age_ms",
-)
-AGENT_EXECUTION_FIELDS = frozenset({*AGENT_EXECUTION_POLICY_KEYS, *AGENT_EXECUTION_COUNTER_KEYS})
 
 
 def ops_diagnostics_payload(
@@ -85,7 +61,6 @@ def ops_diagnostics_payload(
     providers = _providers_payload(runtime, snapshot)
     workers = _workers_payload(snapshot.workers)
     queues = _queues_payload(runtime, now_ms=generated_at_ms)
-    agent_execution = _agent_execution_payload(snapshot.agent_execution, now_ms=generated_at_ms)
     domains = _domains_payload(runtime)
     payload = {
         "schema_version": OPS_DIAGNOSTICS_SCHEMA_VERSION,
@@ -96,7 +71,6 @@ def ops_diagnostics_payload(
             providers=providers,
             workers=workers,
             queues=queues,
-            agent_execution=agent_execution,
             domains=domains,
         ),
         "config": _config_payload(runtime),
@@ -105,7 +79,6 @@ def ops_diagnostics_payload(
         "providers": providers,
         "workers": workers,
         "queues": queues,
-        "agent_execution": agent_execution,
         "domains": domains,
         "suggested_checks": _suggested_checks(queues=queues, domains=domains),
     }
@@ -501,97 +474,6 @@ def _notifications_domain(runtime: Any) -> dict[str, Any]:
     return {"status": status, "summary": summary}
 
 
-def _agent_execution_payload(raw_snapshot: Mapping[str, Any] | None, *, now_ms: int) -> dict[str, Any]:
-    if raw_snapshot is None:
-        return {"status": "disabled", "policy": None, "counters": None}
-    if not isinstance(raw_snapshot, Mapping):
-        return {
-            "status": "unavailable",
-            "status_reason": "unavailable",
-            "error": "agent_execution_status_payload_not_mapping",
-            "policy": None,
-            "counters": None,
-        }
-    if raw_snapshot.get("status") == "unavailable":
-        return {
-            "status": "unavailable",
-            "status_reason": "unavailable",
-            "error": raw_snapshot.get("error"),
-            "policy": None,
-            "counters": None,
-        }
-    actual_fields = frozenset(raw_snapshot)
-    if actual_fields != AGENT_EXECUTION_FIELDS:
-        return _invalid_agent_execution_payload(
-            "agent_execution_status_fields_mismatch:"
-            f"missing={sorted(AGENT_EXECUTION_FIELDS - actual_fields)}:"
-            f"unknown={sorted(actual_fields - AGENT_EXECUTION_FIELDS)}"
-        )
-
-    policy = _agent_policy_fields(raw_snapshot)
-    counters = _agent_counter_fields(raw_snapshot)
-    return {
-        "status": _agent_execution_status(policy=policy, counters=counters, now_ms=now_ms),
-        "policy": policy,
-        "counters": counters,
-    }
-
-
-def _agent_policy_fields(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    return {key: snapshot[key] for key in AGENT_EXECUTION_POLICY_KEYS}
-
-
-def _agent_counter_fields(snapshot: Mapping[str, Any]) -> dict[str, Any]:
-    return {key: snapshot[key] for key in AGENT_EXECUTION_COUNTER_KEYS}
-
-
-def _agent_execution_status(
-    *,
-    policy: Mapping[str, Any],
-    counters: Mapping[str, Any],
-    now_ms: int,
-) -> str:
-    if str(counters.get("circuit_state") or "").lower() == "open":
-        return "degraded"
-    timeout_seconds = _float_or_none(policy.get("timeout_seconds"))
-    oldest_in_flight_age_ms = _float_or_none(counters.get("oldest_in_flight_age_ms"))
-    if (
-        timeout_seconds is not None
-        and oldest_in_flight_age_ms is not None
-        and oldest_in_flight_age_ms >= timeout_seconds * 1000
-        and _positive_counter(counters.get("provider_running"))
-    ):
-        return "degraded"
-    recent_fields = ("last_denied_at_ms", "last_timeout_at_ms")
-    if any(_is_recent_ms(counters.get(field), now_ms=now_ms) for field in recent_fields):
-        return "degraded"
-    return "ok"
-
-
-def _positive_counter(value: Any) -> bool:
-    try:
-        return int(value or 0) > 0
-    except (TypeError, ValueError):
-        return False
-
-
-def _float_or_none(value: Any) -> float | None:
-    if value is None:
-        return None
-    try:
-        return float(value)
-    except (TypeError, ValueError):
-        return None
-
-
-def _is_recent_ms(value: Any, *, now_ms: int) -> bool:
-    try:
-        timestamp_ms = int(value)
-    except (TypeError, ValueError):
-        return False
-    return 0 <= int(now_ms) - timestamp_ms <= AGENT_EXECUTION_RECENT_SIGNAL_MS
-
-
 def _overall_payload(
     *,
     database: dict[str, Any],
@@ -599,7 +481,6 @@ def _overall_payload(
     providers: list[dict[str, Any]],
     workers: list[dict[str, Any]],
     queues: list[dict[str, Any]],
-    agent_execution: dict[str, Any],
     domains: dict[str, dict[str, Any]],
 ) -> dict[str, Any]:
     statuses = [
@@ -608,7 +489,6 @@ def _overall_payload(
         *(str(item.get("status")) for item in providers),
         *(str(item.get("status")) for item in workers),
         *(str(item.get("status")) for item in queues),
-        str(agent_execution.get("status")),
         *(str(item.get("status")) for item in domains.values()),
     ]
     counts = dict(Counter(statuses))
@@ -619,8 +499,6 @@ def _overall_payload(
             for item in source
             if item.get("status") in {"blocked", "degraded", "failed", "unavailable", "unknown"}
         )
-    if agent_execution.get("status") in {"blocked", "degraded", "unknown"}:
-        reasons.append(f"agent_execution_{agent_execution.get('status')}")
     if database.get("status") != "ok":
         reasons.append(str(database.get("reason") or "database_not_ready"))
     status = (
@@ -649,7 +527,6 @@ def _config_payload(runtime: Any) -> dict[str, Any]:
         "upstream_channels": list(settings.upstream.channels),
         "gmgn_configured": bool(settings.gmgn_configured),
         "okx_dex_configured": bool(settings.okx_dex_configured),
-        "llm_configured": bool(settings.llm_configured),
         "news_enabled": bool(settings.news_intel.enabled),
         "notifications_enabled": bool(settings.notifications.enabled),
     }
@@ -662,16 +539,6 @@ def _required_connection_state(connection: Mapping[str, Any]) -> str:
     ):
         raise ValueError("provider_connection_state_invalid")
     return state
-
-
-def _invalid_agent_execution_payload(error: str) -> dict[str, Any]:
-    return {
-        "status": "unknown",
-        "status_reason": "invalid_contract",
-        "error": error,
-        "policy": None,
-        "counters": None,
-    }
 
 
 def _suggested_checks(*, queues: list[dict[str, Any]], domains: dict[str, Any]) -> list[dict[str, Any]]:

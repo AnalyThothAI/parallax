@@ -80,13 +80,28 @@ def test_openapi_ts_matches_committed_artefact(tmp_path: Path) -> None:
 
 
 @pytest.mark.contract
-def test_news_signal_envelope_openapi_type_has_no_top_level_index_signature() -> None:
-    """Generated OpenAPI TS must not allow flat compatibility fields on NewsSignalEnvelope."""
-    text = OPENAPI_TS_PATH.read_text(encoding="utf-8")
-    section = text.split("/** NewsSignalEnvelope */", 1)[1].split("/** NewsSignalSummary */", 1)[0]
+def test_generated_contracts_have_no_retired_product_ai_surface() -> None:
+    openapi_text = OPENAPI_PATH.read_text(encoding="utf-8")
+    openapi_ts_text = OPENAPI_TS_PATH.read_text(encoding="utf-8")
+    retired_contract_tokens = {
+        "AgentExecutionStatusData",
+        "AgentExecutionUnavailableData",
+        "NewsSignalEnvelope",
+        "NewsSignalSummary",
+        "NarrativeAdmissionData",
+        "OpsAgentExecutionData",
+        "agent_admission",
+        "agent_brief",
+        "agent_execution",
+        "macro_event_flow",
+        "narrative_admission",
+        "semantic_catalyst",
+        "token_impacts",
+    }
 
-    assert "\n            [key: string]" not in section
-    assert "provider_signal" not in section
+    for token in retired_contract_tokens:
+        assert token not in openapi_text
+        assert token not in openapi_ts_text
 
 
 @pytest.mark.contract

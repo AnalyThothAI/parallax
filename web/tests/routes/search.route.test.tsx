@@ -62,7 +62,6 @@ function searchTokenInspectFixture(q: string): SearchInspectData {
       result_kind: "token_result",
     },
     resolver: {
-      confidence: 0.94,
       target_candidates: [tokenResult.target],
       selected_target: tokenResult.target,
       reasons: ["one_resolved_target"],

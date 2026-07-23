@@ -11,7 +11,6 @@ from parallax.platform.agent_capabilities import (
     resolve_agent_capability_profile,
 )
 from parallax.platform.agent_execution import (
-    AGENT_RUNTIME_LANE,
     RUNTIME_VERSION,
     AgentCapacityReservation,
     AgentCircuitBreakerPolicy,
@@ -30,6 +29,8 @@ from parallax.platform.agent_hashing import (
     text_sha256,
     trace_id_for,
 )
+
+TEST_LANE = "structured_json.test"
 
 
 class _HashPayload(BaseModel):
@@ -114,8 +115,8 @@ def test_json_sha256_handles_pydantic_model_payloads_explicitly() -> None:
 
 def test_agent_stage_spec_request_audit_shape() -> None:
     spec = AgentStageSpec(
-        lane=AGENT_RUNTIME_LANE,
-        stage="news_story_brief",
+        lane=TEST_LANE,
+        stage="schema_test",
         instructions="Return JSON.",
         input_payload={"event_id": "e1"},
         output_type=dict,
@@ -135,8 +136,8 @@ def test_agent_stage_spec_request_audit_shape() -> None:
 
     assert audit.provider == "litellm"
     assert audit.backend == "litellm_sdk"
-    assert audit.lane == AGENT_RUNTIME_LANE
-    assert audit.stage == "news_story_brief"
+    assert audit.lane == TEST_LANE
+    assert audit.stage == "schema_test"
     assert audit.runtime_version == RUNTIME_VERSION
     assert audit.input_hash == json_sha256({"event_id": "e1"})
     assert audit.execution_started is False
@@ -149,8 +150,8 @@ def test_agent_stage_spec_request_audit_shape() -> None:
 
 def test_request_audit_shape_includes_capability_profile() -> None:
     spec = AgentStageSpec(
-        lane=AGENT_RUNTIME_LANE,
-        stage="news_story_brief",
+        lane=TEST_LANE,
+        stage="schema_test",
         instructions="Return JSON.",
         input_payload={"event_id": "e1"},
         output_type=dict,
@@ -238,10 +239,10 @@ def test_policy_models_forbid_extra_fields_and_invalid_non_positive_values() -> 
             model(**kwargs)
 
 
-def test_stage_spec_requires_the_fixed_news_story_brief_audit_lane() -> None:
-    with pytest.raises(ValidationError, match=r"agent_stage_lane_required:news\.story_brief"):
+def test_stage_spec_requires_a_nonempty_provider_neutral_lane() -> None:
+    with pytest.raises(ValidationError, match="agent_stage_lane_required"):
         AgentStageSpec(
-            lane="other.lane",
+            lane="",
             stage="stage",
             instructions="Return JSON.",
             input_payload={},
@@ -256,7 +257,7 @@ def test_stage_spec_requires_the_fixed_news_story_brief_audit_lane() -> None:
 def test_result_audit_and_result_keep_execution_facts_separate() -> None:
     audit = AgentExecutionResultAudit(
         model="qwen3.6",
-        lane=AGENT_RUNTIME_LANE,
+        lane=TEST_LANE,
         stage="stage",
         workflow_name="workflow",
         agent_name="agent",
@@ -286,7 +287,7 @@ def test_result_audit_and_result_keep_execution_facts_separate() -> None:
 def test_audit_rejects_invalid_status_and_error_class() -> None:
     base = {
         "model": "qwen3.6",
-        "lane": AGENT_RUNTIME_LANE,
+        "lane": TEST_LANE,
         "stage": "stage",
         "workflow_name": "workflow",
         "agent_name": "agent",

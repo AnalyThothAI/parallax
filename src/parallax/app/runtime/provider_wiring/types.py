@@ -13,7 +13,7 @@ from parallax.domains.asset_market.providers import (
     ProviderHealth,
 )
 from parallax.domains.ingestion.providers import UpstreamClientProtocol
-from parallax.domains.news_intel.providers import NewsSourceProvider, NewsStoryBriefProvider
+from parallax.domains.news_intel.providers import NewsSourceProvider
 
 UpstreamClientFactory = Callable[[Callable[[str], Awaitable[None]]], UpstreamClientProtocol | None]
 
@@ -68,13 +68,11 @@ class OkxProviderBundle:
 @dataclass(frozen=True, slots=True)
 class NewsIntelProviders:
     feed_client: NewsSourceProvider | None = None
-    story_brief_provider: NewsStoryBriefProvider | None = None
 
     async def aclose(self) -> None:
         errors: list[Exception] = []
         seen: set[int] = set()
         _close_sync_provider(errors, seen, self.feed_client)
-        await _close_async_provider(errors, seen, self.story_brief_provider)
         if errors:
             raise ExceptionGroup("news_intel_provider_cleanup_failed", errors)
 

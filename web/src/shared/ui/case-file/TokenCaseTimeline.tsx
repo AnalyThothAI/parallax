@@ -10,7 +10,6 @@ type TokenCaseTimelineProps = {
 };
 
 const SORTS: Array<{ key: TokenCaseSort; label: string }> = [
-  { key: "catalyst", label: "Catalyst" },
   { key: "recent", label: "Recent" },
   { key: "watched", label: "Watched" },
 ];

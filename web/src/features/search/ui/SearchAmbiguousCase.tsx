@@ -4,7 +4,6 @@ import { useMemo } from "react";
 
 import { buildSearchCaseView } from "../model/searchCase";
 
-import { SearchAgentBrief } from "./SearchAgentBrief";
 import { SearchDossier } from "./SearchDossier";
 import { SearchTopicTimeline } from "./SearchTopicTimeline";
 import { SearchTwitterResults } from "./SearchTwitterResults";
@@ -44,9 +43,6 @@ export function SearchAmbiguousCase({
         <div className="search-result-primary">
           <SearchTopicTimeline items={result.items} />
           <SearchTwitterResults title="Ambiguous Evidence" items={result.items} />
-        </div>
-        <div className="search-result-insights">
-          <SearchAgentBrief brief={result.agent_brief} />
         </div>
       </div>
     </div>

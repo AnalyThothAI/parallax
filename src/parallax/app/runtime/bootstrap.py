@@ -9,7 +9,6 @@ from typing import Any
 
 from parallax.app.runtime.db_pool_bundle import DBPoolBundle
 from parallax.app.runtime.provider_wiring import wire_providers
-from parallax.app.runtime.provider_wiring.model_execution import build_agent_execution_gateway
 from parallax.app.runtime.provider_wiring.types import WiredProviders
 from parallax.app.runtime.runtime_snapshot import RuntimeSnapshot, capture_runtime_snapshot
 from parallax.app.runtime.telemetry import TelemetryRegistry
@@ -47,7 +46,6 @@ class Runtime:
     scheduler: WorkerScheduler
     snapshot: RuntimeSnapshot
     ingest: _PooledIngestStore
-    agent_execution_gateway: Any | None = None
 
     def repositories(self):
         return self.db.api_session()
@@ -84,7 +82,6 @@ def bootstrap(
         raise ValueError("ws_token is required in config.yaml")
     telemetry = TelemetryRegistry()
     db: DBPoolBundle | None = None
-    agent_execution_gateway: Any | None = None
     providers: WiredProviders | None = None
     try:
         db = DBPoolBundle.create(settings, telemetry=telemetry)
@@ -94,15 +91,9 @@ def bootstrap(
             raise RuntimeError(f"postgres health check failed: {startup_db}")
         news_provider_contract = _load_news_provider_contract(settings, db)
 
-        if settings.news_agent_execution_enabled:
-            agent_execution_gateway = build_agent_execution_gateway(
-                settings,
-                telemetry=telemetry,
-            )
         providers = wire_providers(
             settings,
             start_collector=start_collector,
-            agent_execution_gateway=agent_execution_gateway,
         )
         runtime = _assemble_runtime(
             settings=settings,
@@ -110,7 +101,6 @@ def bootstrap(
             telemetry=telemetry,
             providers=providers,
             start_collector=start_collector,
-            agent_execution_gateway=agent_execution_gateway,
             startup_db_status=startup_db,
             news_provider_contract=news_provider_contract,
             publisher_factory=publisher_factory,
@@ -134,7 +124,6 @@ def _assemble_runtime(
     telemetry: TelemetryRegistry,
     providers: WiredProviders,
     start_collector: bool,
-    agent_execution_gateway: Any | None = None,
     startup_db_status: dict[str, object],
     news_provider_contract: dict[str, Any],
     publisher_factory: PublisherFactory | None = None,
@@ -184,7 +173,6 @@ def _assemble_runtime(
         collector=collector,
         scheduler=scheduler,
         snapshot=snapshot,
-        agent_execution_gateway=agent_execution_gateway,
         ingest=ingest,
     )
     if worker_collector_enabled:

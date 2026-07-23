@@ -7,12 +7,7 @@ from parallax.domains.token_intel.interfaces import (
     TOKEN_RADAR_PROJECTION_VERSION,
 )
 
-from .token_radar_narrative_admission import (
-    SUPPORTED_WINDOW as NARRATIVE_ADMISSION_WINDOW,
-)
-from .token_radar_narrative_admission import (
-    narrative_admission_from_current_row,
-)
+from .asset_flow_service import public_token_radar_row
 from .token_target_posts_service import TokenTargetPostsService
 from .token_target_social_timeline_service import TokenTargetSocialTimelineService
 
@@ -37,14 +32,14 @@ class TokenCaseService:
     def __init__(
         self,
         *,
-        token_radar: Any,
         targets: Any,
         profiles: Any,
+        token_radar: Any,
         market_candles: Any | None = None,
     ) -> None:
-        self.token_radar = token_radar
         self.targets = targets
         self.profiles = profiles
+        self.token_radar = token_radar
         self.market_candles = market_candles
 
     def dossier(
@@ -78,48 +73,30 @@ class TokenCaseService:
             window=window,
             scope=service_scope,
             post_range="current_window",
-            sort="recent",
             limit=posts_limit,
             now_ms=now_ms,
         )
         timeline["query"]["scope"] = response_scope
         posts["query"]["scope"] = response_scope
         profile = self.profiles.profile_for_target(target_type=target_type, target_id=target_id)
-        narrative_admission = self._narrative_admission(
-            target_type=target_type,
-            target_id=target_id,
+        market_live = self._market_live(target=target, now_ms=now_ms)
+        current_radar_row = self.token_radar.current_row_for_target(
+            projection_version=TOKEN_RADAR_PROJECTION_VERSION,
             window=window,
             scope=service_scope,
+            venue=TOKEN_RADAR_DEFAULT_VENUE,
+            target_type=target_type,
+            target_id=target_id,
         )
-        market_live = self._market_live(target=target, now_ms=now_ms)
+        current_radar = public_token_radar_row(current_radar_row) if current_radar_row is not None else None
         return {
             "target": target,
             "profile": profile,
             "timeline": timeline,
             "posts": posts,
-            "narrative_admission": narrative_admission,
             "market_live": market_live,
+            "current_radar": current_radar,
         }
-
-    def _narrative_admission(
-        self,
-        *,
-        target_type: str,
-        target_id: str,
-        window: str,
-        scope: str,
-    ) -> dict[str, Any]:
-        current_row = None
-        if window == NARRATIVE_ADMISSION_WINDOW:
-            current_row = self.token_radar.current_row_for_target(
-                projection_version=TOKEN_RADAR_PROJECTION_VERSION,
-                window=window,
-                scope=scope,
-                venue=TOKEN_RADAR_DEFAULT_VENUE,
-                target_type=target_type,
-                target_id=target_id,
-            )
-        return narrative_admission_from_current_row(current_row, window=window)
 
     def _market_live(self, *, target: dict[str, Any], now_ms: int | None) -> dict[str, Any]:
         target_type = str(target.get("target_type") or "")

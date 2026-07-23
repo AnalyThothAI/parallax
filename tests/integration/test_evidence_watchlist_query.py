@@ -88,7 +88,8 @@ def test_watchlist_handle_overview_uses_raw_events_for_clusters(tmp_path):
     assert overview["resolved_token_clusters"][0]["kind"] == "resolved_token"
     assert overview["resolved_token_clusters"][0]["target_type"] == "CexToken"
     assert "candidate_mentions_unresolved" in overview["risk_notes"]
-    assert any(cluster["label"] == "#fed" for cluster in overview["narrative_clusters"])
+    assert any(cluster["label"] == "#fed" for cluster in overview["hashtag_clusters"])
+    assert all(cluster["kind"] == "hashtag" for cluster in overview["hashtag_clusters"])
 
 
 def test_watchlist_handle_overview_metrics_are_not_limited_by_cluster_sample(tmp_path):

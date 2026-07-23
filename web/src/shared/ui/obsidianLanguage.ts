@@ -1,6 +1,6 @@
-export type ObsidianTone = "opportunity" | "health" | "info" | "risk" | "agent" | "neutral";
+export type ObsidianTone = "opportunity" | "health" | "info" | "risk" | "neutral";
 
-export type ObsidianSource = "official" | "deterministic" | "agent" | "market" | "social";
+export type ObsidianSource = "official" | "deterministic" | "market" | "social";
 
 export type ObsidianStringField = {
   detail: string;

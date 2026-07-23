@@ -1,32 +1,4 @@
-import type { OpsAgentExecution, OpsDiagnostics, OpsQueueData } from "@features/ops";
-
-export function activeOpsAgentExecutionFixture(): OpsAgentExecution {
-  return {
-    status: "ok",
-    policy: {
-      lane: "news.story_brief",
-      model: "deepseek-v4-flash",
-      provider_family: "deepseek",
-      output_strategy: "json_object",
-      schema_enforcement: "client_validate",
-      max_concurrency: 1,
-      rpm_limit: 60,
-      timeout_seconds: 180,
-    },
-    counters: {
-      in_flight: 0,
-      provider_running: 0,
-      circuit_state: "closed",
-      circuit_open_until_ms: null,
-      capacity_denied_total: 0,
-      circuit_open_total: 0,
-      timeout_total: 0,
-      last_denied_at_ms: null,
-      last_timeout_at_ms: null,
-      oldest_in_flight_age_ms: null,
-    },
-  };
-}
+import type { OpsDiagnostics, OpsQueueData } from "@features/ops";
 
 export function opsDiagnosticsFixture(): OpsDiagnostics {
   return {
@@ -46,7 +18,6 @@ export function opsDiagnosticsFixture(): OpsDiagnostics {
       upstream_channels: ["new_pairs"],
       gmgn_configured: true,
       okx_dex_configured: true,
-      llm_configured: false,
       news_enabled: true,
       notifications_enabled: true,
     },
@@ -102,11 +73,6 @@ export function opsDiagnosticsFixture(): OpsDiagnostics {
         reason: "dead_jobs_present",
       },
     ],
-    agent_execution: {
-      status: "disabled",
-      policy: null,
-      counters: null,
-    },
     domains: {
       token_radar: { status: "ok", publication: { status: "ready" } },
       asset_market: { status: "ok", configured_provider_count: 1, provider_count: 1 },

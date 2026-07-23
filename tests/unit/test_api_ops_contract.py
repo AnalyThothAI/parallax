@@ -176,7 +176,6 @@ class FakeRuntime:
             upstream=SimpleNamespace(channels=("twitter_monitor_basic",)),
             gmgn_configured=True,
             okx_dex_configured=False,
-            llm_configured=False,
             news_intel=SimpleNamespace(enabled=True),
             notifications=SimpleNamespace(enabled=True),
         )
@@ -203,7 +202,6 @@ class FakeRuntime:
                 for name in worker_names()
             },
         )
-        self.agent_execution_gateway = None
         self.snapshot = RuntimeSnapshot.startup(
             startup_db_status={"ok": True},
             composition={"ok": True},

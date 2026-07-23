@@ -98,6 +98,7 @@ def test_require_database_at_alembic_head_fails_closed(
         "cex_derivative_series",
         "market_tick_current_dirty_targets",
         "narrative_admissions",
+        "news_story_agent_briefs",
         "projection_runs",
         "pulse_candidates",
         "token_capture_tier",

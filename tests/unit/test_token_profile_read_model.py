@@ -429,7 +429,6 @@ def radar_row(*, target_type: str, target_id: str, symbol: str) -> dict[str, Any
             },
             attention={"mentions_1h": 1},
             social_quality={"independent_authors": 1},
-            social_semantics={},
             market={
                 "event_anchor": {
                     "source": "event_anchor",

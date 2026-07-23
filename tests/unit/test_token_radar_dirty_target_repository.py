@@ -8,6 +8,7 @@ import pytest
 from psycopg import pq
 
 from parallax.app.runtime.repository_session import repositories_for_connection
+from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION
 from parallax.domains.token_intel.repositories.token_radar_dirty_target_repository import (
     TokenRadarDirtyTargetRepository,
     dirty_payload_hash,
@@ -556,7 +557,7 @@ def test_enqueue_market_product_targets_uses_stable_hash_and_persists_future_due
     assert "token_radar_dirty_targets.last_error IS NOT NULL" in sql
     assert "market_dirty = token_radar_dirty_targets.market_dirty OR EXCLUDED.market_dirty" in sql
     assert "repair_dirty = token_radar_dirty_targets.repair_dirty OR EXCLUDED.repair_dirty" in sql
-    assert conn.params[-1]["projection_version"] == "token-radar-v13-social-attention"
+    assert conn.params[-1]["projection_version"] == TOKEN_RADAR_PROJECTION_VERSION
     assert conn.params[-1]["market_dirty_min_interval_ms"] == 60_000
     assert conn.params[-1]["market_dirty"] is True
     assert conn.params[-1]["repair_dirty"] is False
@@ -589,7 +590,7 @@ def test_enqueue_recent_resolved_targets_is_bounded_freshness_gated_catch_up() -
     assert conn.params[-1]["since_ms"] == 1_700_000_000_000
     assert conn.params[-1]["now_ms"] == 1_700_000_060_000
     assert conn.params[-1]["limit"] == 10
-    assert conn.params[-1]["projection_version"] == "token-radar-v13-social-attention"
+    assert conn.params[-1]["projection_version"] == TOKEN_RADAR_PROJECTION_VERSION
 
 
 def test_recent_resolved_target_candidate_counts_reuse_bounded_fact_query() -> None:
@@ -614,7 +615,7 @@ def test_recent_resolved_target_candidate_counts_reuse_bounded_fact_query() -> N
     assert "latest_feature" in conn.sql[1]
     assert "target_coverage" not in conn.sql[1]
     assert conn.params[0]["since_ms"] == 1_700_000_000_000
-    assert conn.params[1]["projection_version"] == "token-radar-v13-social-attention"
+    assert conn.params[1]["projection_version"] == TOKEN_RADAR_PROJECTION_VERSION
 
 
 @pytest.mark.parametrize("limit", [-1, True, "25"])
@@ -740,7 +741,7 @@ def test_market_current_target_candidate_counts_are_read_only() -> None:
     assert "latest_feature" in conn.sql[1]
     assert "target_coverage" not in conn.sql[1]
     assert conn.params[0]["since_ms"] == 123
-    assert conn.params[1]["projection_version"] == "token-radar-v13-social-attention"
+    assert conn.params[1]["projection_version"] == TOKEN_RADAR_PROJECTION_VERSION
 
 
 def test_repository_session_exposes_token_radar_dirty_targets() -> None:

@@ -7,6 +7,10 @@ export function RouteErrorElement() {
   return <PageState.Error error={routeErrorMessage(error)} />;
 }
 
+export function RouteNotFoundElement() {
+  return <PageState.Error error={new Error("404 Not Found")} />;
+}
+
 function routeErrorMessage(error: unknown): string {
   if (isRouteErrorResponse(error)) {
     return `${error.status} ${error.statusText}`;

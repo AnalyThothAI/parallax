@@ -8,30 +8,16 @@ import { describe, expect, it } from "vitest";
 describe("statusCurrentContract", () => {
   it("accepts the fixed current status payload", () => {
     expect(requireStatusData(appStatusFixture())).toBeTruthy();
-    expect(
-      requireStatusData(appStatusFixture({ agent_execution: activeAgentExecution() })),
-    ).toBeTruthy();
-    expect(
-      requireStatusData(
-        appStatusFixture({
-          agent_execution: { status: "unavailable", error: "gateway offline" },
-        }),
-      ),
-    ).toBeTruthy();
   });
 
-  it("rejects loose or partial agent execution status objects", () => {
-    expect(() =>
-      requireStatusData(appStatusFixture({ agent_execution: {} as never })),
-    ).toThrowError("status_current_contract:status.agent_execution.lane");
-
-    expect(() =>
-      requireStatusData(
-        appStatusFixture({
-          agent_execution: { status: "unavailable" } as never,
-        }),
-      ),
-    ).toThrowError("status_current_contract:status.agent_execution.error");
+  it("rejects unknown top-level status buckets", () => {
+    const payload = {
+      ...appStatusFixture(),
+      retired_bucket: {},
+    };
+    expect(() => requireStatusData(payload)).toThrowError(
+      "status_current_contract:status.retired_bucket",
+    );
   });
 
   it("rejects status without the required news provider contract", () => {
@@ -58,26 +44,3 @@ describe("statusCurrentContract", () => {
     ).toThrowError("status_current_contract:worker.details");
   });
 });
-
-function activeAgentExecution() {
-  return {
-    lane: "news.story_brief" as const,
-    model: "deepseek-v4-flash",
-    provider_family: "deepseek",
-    output_strategy: "json_object" as const,
-    schema_enforcement: "client_validate" as const,
-    max_concurrency: 1,
-    rpm_limit: 60,
-    timeout_seconds: 180,
-    in_flight: 0,
-    provider_running: 0,
-    circuit_state: "closed" as const,
-    circuit_open_until_ms: null,
-    capacity_denied_total: 0,
-    circuit_open_total: 0,
-    timeout_total: 0,
-    last_denied_at_ms: null,
-    last_timeout_at_ms: null,
-    oldest_in_flight_age_ms: null,
-  };
-}

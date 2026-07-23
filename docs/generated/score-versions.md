@@ -5,5 +5,5 @@
 | Version | File | Line | Context |
 |---------|------|------|---------|
 | `post_quality_v1` | `src/parallax/domains/token_intel/scoring/post_text_quality.py` | 86 | `score_version="post_quality_v1",` |
-| `token-radar-v13-social-attention` | `src/parallax/domains/token_intel/_constants.py` | 7 | `TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v13-social-attention"` |
-| `token_factor_snapshot_v3_social_attention` | `src/parallax/domains/token_intel/_constants.py` | 12 | `TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v3_social_attention"` |
+| `token-radar-v14-transparent-factors` | `src/parallax/domains/token_intel/_constants.py` | 7 | `TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v14-transparent-factors"` |
+| `token_factor_snapshot_v4_transparent_factors` | `src/parallax/domains/token_intel/_constants.py` | 12 | `TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v4_transparent_factors"` |

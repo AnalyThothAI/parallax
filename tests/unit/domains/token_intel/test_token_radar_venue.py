@@ -45,14 +45,14 @@ def test_stable_generation_id_is_scoped_by_venue_product_key() -> None:
     }
 
     all_generation = stable_generation_id(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="4h",
         scope="all",
         venue="all",
         rows=[row],
     )
     bsc_generation = stable_generation_id(
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
         window="4h",
         scope="all",
         venue="bsc",
@@ -70,7 +70,7 @@ def test_latest_current_rows_requires_venue_and_filters_server_side() -> None:
         scope="all",
         venue="bsc",
         limit=20,
-        projection_version="token-radar-v13-social-attention",
+        projection_version="token-radar-v14-transparent-factors",
     )
 
     assert "current_rows.venue = %s" in conn.sql
@@ -105,7 +105,6 @@ def _factor_snapshot(*, chain: str) -> dict[str, object]:
         },
         attention={},
         social_quality={},
-        social_semantics={},
         market={
             "event_anchor": None,
             "decision_latest": None,

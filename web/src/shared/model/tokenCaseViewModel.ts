@@ -1,14 +1,7 @@
 export type TokenCaseScope = "all" | "watched";
-export type TokenCaseSort = "catalyst" | "recent" | "watched";
+export type TokenCaseSort = "recent" | "watched";
 export type TokenCaseWindow = "5m" | "1h" | "4h" | "24h";
-export type TokenCaseTone =
-  | "neutral"
-  | "health"
-  | "info"
-  | "warn"
-  | "risk"
-  | "agent"
-  | "opportunity";
+export type TokenCaseTone = "neutral" | "health" | "info" | "warn" | "risk" | "opportunity";
 
 export type TokenCaseMetric = {
   key: string;

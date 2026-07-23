@@ -6,23 +6,13 @@ from collections.abc import Callable, Mapping
 from dataclasses import fields, is_dataclass
 from typing import Any
 
-from parallax.domains.news_intel.runtime.news_projection_work import (
-    enqueue_page_reprojection,
-    enqueue_story_brief_work,
-)
+from parallax.domains.news_intel.runtime.news_projection_work import enqueue_page_reprojection
 from parallax.domains.news_intel.services.news_content_classification import classify_news_item_content
 from parallax.domains.news_intel.services.news_entity_extraction import extract_news_entities
 from parallax.domains.news_intel.services.news_fact_candidates import build_fact_candidates
-from parallax.domains.news_intel.services.news_item_agent_admission import (
-    decide_news_item_agent_admission,
-)
 from parallax.domains.news_intel.services.news_market_scope import classify_news_market_scope
-from parallax.domains.news_intel.services.news_story_agent_policy import (
-    news_story_brief_priority,
-)
 from parallax.domains.news_intel.services.news_story_identity import build_news_story_identity
 from parallax.domains.news_intel.services.news_token_mentions import build_news_token_mentions
-from parallax.domains.news_intel.types.news_item_agent_admission import NewsItemAgentAdmissionContext
 from parallax.domains.news_intel.types.news_market_scope import NewsMarketScope
 from parallax.domains.news_intel.types.news_story_identity import NewsStoryIdentity
 from parallax.domains.token_intel.interfaces import TokenIdentityLookup
@@ -181,41 +171,6 @@ class NewsItemProcessWorker(WorkerBase):
                         now_ms=now,
                         source_watermark_ms_by_news_item_id={news_item_id: _source_watermark_ms(processed_item)},
                     )
-                    context_payload = _agent_admission_context(
-                        repos.news_items.load_agent_admission_contexts(news_item_ids=[news_item_id], now_ms=now),
-                        news_item_id=news_item_id,
-                    )
-                    context_item = context_payload["item"]
-                    context_token_mentions = context_payload["token_mentions"]
-                    context_fact_candidates = context_payload["fact_candidates"]
-                    agent_admission = decide_news_item_agent_admission(
-                        item=context_item,
-                        entities=context_payload["entities"],
-                        token_mentions=context_token_mentions,
-                        fact_candidates=context_fact_candidates,
-                        context=NewsItemAgentAdmissionContext.from_repository_context(context_payload),
-                        now_ms=now,
-                    )
-                    repos.news_items.update_item_agent_admission(
-                        news_item_id=news_item_id,
-                        admission=agent_admission,
-                        now_ms=now,
-                    )
-                    if agent_admission.eligible:
-                        story_key = _required_text(context_item, "story_key")
-                        brief_priority = news_story_brief_priority(
-                            item=context_item,
-                            admission=agent_admission,
-                        )
-                        source_watermark_ms = _source_watermark_ms(processed_item)
-                        enqueue_story_brief_work(
-                            repos,
-                            story_keys=[story_key],
-                            priority_by_story_key={story_key: brief_priority},
-                            source_watermark_ms_by_story_key={story_key: source_watermark_ms},
-                            reason="news_item_processed",
-                            now_ms=now,
-                        )
                 processed += 1
             except _StaleClaimError:
                 stale_claims += 1
@@ -308,89 +263,6 @@ def _optional_item_process_mapping(value: object, field_name: str) -> dict[str, 
     if isinstance(value, Mapping):
         return dict(value)
     raise ValueError(f"news_item_process_{field_name}_required")
-
-
-def _agent_admission_context(
-    rows: object,
-    *,
-    news_item_id: str,
-) -> dict[str, Any]:
-    if not isinstance(rows, list):
-        raise ValueError(f"news item {news_item_id} missing agent admission context")
-    normalized_rows: list[dict[str, Any]] = []
-    for candidate in rows:
-        if not isinstance(candidate, Mapping):
-            raise ValueError(f"news_item_process_agent_admission_context_rows_required:{news_item_id}")
-        normalized_rows.append(dict(candidate))
-    row = next(iter(normalized_rows), None)
-    if row is None:
-        raise ValueError(f"news item {news_item_id} missing agent admission context")
-    required_keys = (
-        "item",
-        "entities",
-        "token_mentions",
-        "fact_candidates",
-        "exact_duplicate_candidates",
-        "story_candidates",
-    )
-    missing = [key for key in required_keys if key not in row]
-    if missing:
-        missing_text = ", ".join(missing)
-        raise ValueError(f"news item {news_item_id} missing agent admission context fields: {missing_text}")
-    return {
-        **row,
-        "item": _required_agent_context_mapping(row["item"], "item", news_item_id=news_item_id),
-        "entities": _required_agent_context_mapping_list(row["entities"], "entities", news_item_id=news_item_id),
-        "token_mentions": _required_agent_context_mapping_list(
-            row["token_mentions"],
-            "token_mentions",
-            news_item_id=news_item_id,
-        ),
-        "fact_candidates": _required_agent_context_mapping_list(
-            row["fact_candidates"],
-            "fact_candidates",
-            news_item_id=news_item_id,
-        ),
-        "exact_duplicate_candidates": _required_agent_context_mapping_list(
-            row["exact_duplicate_candidates"],
-            "exact_duplicate_candidates",
-            news_item_id=news_item_id,
-        ),
-        "story_candidates": _required_agent_context_mapping_list(
-            row["story_candidates"],
-            "story_candidates",
-            news_item_id=news_item_id,
-        ),
-    }
-
-
-def _required_agent_context_mapping(
-    value: object,
-    field_name: str,
-    *,
-    news_item_id: str,
-) -> dict[str, Any]:
-    if isinstance(value, Mapping):
-        payload = dict(value)
-        if payload:
-            return payload
-    raise ValueError(f"news_item_process_agent_admission_context_{field_name}_required:{news_item_id}")
-
-
-def _required_agent_context_mapping_list(
-    value: object,
-    field_name: str,
-    *,
-    news_item_id: str,
-) -> list[dict[str, Any]]:
-    if not isinstance(value, list):
-        raise ValueError(f"news_item_process_agent_admission_context_{field_name}_required:{news_item_id}")
-    rows: list[dict[str, Any]] = []
-    for row in value:
-        if not isinstance(row, Mapping):
-            raise ValueError(f"news_item_process_agent_admission_context_{field_name}_required:{news_item_id}")
-        rows.append(dict(row))
-    return rows
 
 
 def _processing_attempts(item: Mapping[str, Any]) -> int:
