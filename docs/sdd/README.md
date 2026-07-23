@@ -1,61 +1,39 @@
 # Spec-Driven Development
 
-Parallax uses a hard-cut Spec-Driven Development lane for non-trivial coding-agent work. The lane is intentionally small, current, and enforceable by tests.
-
-## Layout
+Non-trivial work uses one dated feature directory with exactly four files:
 
 ```text
-docs/sdd/
-  _templates/
-  features/
-    active/
-    completed/
+docs/sdd/features/
+  active/YYYY-MM-DD-<slug>/
+    spec.md
+    plan.md
+    tasks.md
+    verification.md
+  completed/
 ```
 
-Each feature is a dated directory containing exactly four artifacts:
-
-- `spec.md`
-- `plan.md`
-- `tasks.md`
-- `verification.md`
-
-Historical one-off plans are not retained here. Canonical project truth lives in root governance docs, domain `ARCHITECTURE.md` files, code, tests, and generated contracts.
-Any extra file or subdirectory under a feature record fails the executable
-harness as `unexpected-artifact`.
+Canonical project truth remains in root governance docs, domain architecture,
+code, tests, and generated contracts. SDD records explain one bounded change.
 
 ## Loop
 
-1. Define project invariants in canonical docs.
-2. Write `spec.md` for the feature intent and acceptance criteria.
-3. Clarify ambiguities and run a checklist before planning.
-4. Write `plan.md` with file-level edits and verification commands.
-5. Write `tasks.md` for TDD-ordered execution.
-6. Analyze spec, plan, and tasks for contradictions before implementation.
-7. Generate a bounded context packet and dry-run handoff before any subagent handoff.
-8. Validate any returned subagent report and record `Subagent report` plus `Review result` on the task.
-9. Implement in an isolated `.worktrees/<slug>/` worktree.
-10. Fill `verification.md` with evidence, including `make check-all`, then run
-    `make check-sdd-completion FEATURE=<slug>` for the single feature and record
-    it under `## Completion gate`.
-11. Move the feature directory from `active/` to `completed/`.
+1. Write and approve the spec.
+2. Clarify ambiguity and check requirement quality.
+3. Write the file-level plan and acceptance commands.
+4. Write TDD-ordered tasks with ownership and conflict sets.
+5. Analyze spec, plan, and tasks for contradictions.
+6. Implement in an isolated worktree.
+7. Record successful direct commands against every acceptance criterion.
+8. Run the SDD verify gate and move the four files to `completed/`.
 
-Active feature records are bounded execution loops, not omnibus ledgers. Keep
-each active `tasks.md` at or below 40 structured tasks; when the work needs more
-than 40 structured tasks, split or supersede the record and continue in a new
-feature. The validator reports `active-feature-too-large` before oversized
-active records can satisfy the harness.
+Keep active task boards at or below 40 tasks. Split larger work into a successor
+feature.
 
-Run these checks after changing SDD records or generated SDD coordination data:
+## Commands
 
 ```bash
 uv run python scripts/validate_sdd_artifacts.py
-uv run python scripts/check_sdd_gate.py --all-active
 uv run python scripts/regen_sdd_work_index.py --check
-```
-
-Run the relevant lane gate before moving a feature through that lane:
-
-```bash
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate clarify
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate checklist
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate analyze
@@ -63,15 +41,12 @@ uv run python scripts/check_sdd_gate.py --feature <slug> --gate implement
 uv run python scripts/check_sdd_gate.py --feature <slug> --gate verify
 ```
 
-Run the final completion target only when the feature is ready to claim
-completion; this target reruns `make check-all` and then verifies the selected
-feature:
+The plan selects direct test, lint, build, generated-contract, database, or
+browser commands according to risk. Verification may contain multiple command
+blocks. Every cited command needs matching exit-code-zero evidence; omitted
+lanes are risks, not passes.
 
-```bash
-make check-sdd-completion FEATURE=<slug>
-```
-
-Run these only for delegated task handoffs:
+Delegated tasks additionally use:
 
 ```bash
 uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode read-only
@@ -79,31 +54,8 @@ uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mo
 uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode read-only --report <report.md>
 ```
 
-The gate checker gives the Spec Kit-style `clarify`, `checklist`, `analyze`,
-`implement`, and `verify` lanes first-class non-mutating checks. `verify` runs
-full feature-level SDD artifact validation before checking final
-`verification.md` evidence and requires every task to be `[x]`; the default
-all-active sweep remains pre-verify so unfinished active feature records can
-keep moving. `make check-sdd-completion FEATURE=<slug>` reruns `make check-all`
-before the single-feature verify gate, while `make check-all` runs the
-all-active sweep before generated index freshness and produces the final command
-transcript. Final completion evidence must report zero skipped tests. The
-completion gate transcript is meta-verification and belongs under
-`## Completion gate`, not the final `## Verification commands` section. The full
-validator still rejects false `Verified` records, missing gate sections, missing
-approval metadata, incomplete task coordination fields, and active touch-set
-conflicts without an explicit coordination rule.
+## Status
 
-## Status Rules
-
-Every artifact has a `Status:` line in the first 40 lines. Active feature artifacts use `Draft`, `Approved`, `In Progress`, `Review`, or `Blocked`. Completed feature artifacts use `Verified` or `Superseded`.
-Every artifact in a `Superseded` feature must also include `**Superseded by**:`
-with an existing repo path to the successor SDD record; prose references do not
-count.
-
-Run this check after changing the lane:
-
-```bash
-uv run python scripts/validate_sdd_artifacts.py
-uv run python scripts/regen_sdd_work_index.py --check
-```
+All four artifacts share one status. Active records use `Draft`, `Approved`,
+`In Progress`, `Review`, or `Blocked`. Completed records use `Verified` or
+`Superseded`. A superseded record names an existing successor path.

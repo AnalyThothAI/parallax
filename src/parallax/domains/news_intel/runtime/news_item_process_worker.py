@@ -175,7 +175,7 @@ class NewsItemProcessWorker(WorkerBase):
             except _StaleClaimError:
                 stale_claims += 1
                 continue
-            except Exception as exc:  # pragma: no cover - exercised by integration/ops paths.
+            except Exception as exc:
                 marked = self._mark_item_failed(
                     news_item_id=news_item_id,
                     error=exc,

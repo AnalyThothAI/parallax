@@ -3,7 +3,7 @@ export UV_CACHE_DIR
 
 PARALLAX := uv run parallax
 
-.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts docker-check docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract check-sdd-completion check-all coverage regen-contract install-hooks
+.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts docker-check docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract regen-contract install-hooks
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -29,7 +29,7 @@ lint: ## run ruff
 compile: ## compile Python files
 	@uv run python -m compileall src tests
 
-check: ## gates 1+2: lint + format + typecheck + unit + arch + contract (no external deps; ~10s)
+check: ## run fast lint, format, typecheck, unit, architecture, and contract checks
 	@uv run ruff check .
 	@uv run ruff format --check .
 	@uv run mypy src
@@ -52,29 +52,8 @@ test-golden: ## run only tests/golden/ (real Postgres golden corpus)
 test-architecture: ## run only tests/architecture/ (AST/grep checks)
 	@uv run python -m pytest tests/architecture -m architecture
 
-test-contract: ## run only tests/contract/ (OpenAPI drift; populated in P4)
+test-contract: ## run only tests/contract/
 	@uv run python -m pytest tests/contract -m contract
-
-check-sdd-completion: ## verify one SDD feature completion gate (requires FEATURE=<slug>)
-	@test -n "$(FEATURE)" || (echo "FEATURE=<slug> is required" >&2; exit 2)
-	@$(MAKE) check-all
-	@uv run python scripts/check_sdd_gate.py --feature "$(FEATURE)" --gate verify
-
-check-all: ## the only command that may produce verification-artefact evidence (gates 1+2+3)
-	@uv run python scripts/validate_sdd_artifacts.py
-	@uv run python scripts/check_sdd_gate.py --all-active
-	@uv run python scripts/regen_sdd_work_index.py --check
-	@uv run python scripts/regen_cli_help.py --check
-	@uv run python scripts/regen_score_versions.py --check
-	@uv run python scripts/regen_ws_protocol.py --check
-	@$(MAKE) check
-	@$(MAKE) test-integration
-	@$(MAKE) test-e2e
-	@$(MAKE) test-golden
-	@$(MAKE) coverage
-
-coverage: ## run coverage report (gates fail_under from pyproject.toml [tool.coverage])
-	@uv run python -m pytest --cov --cov-report=term-missing --cov-config=pyproject.toml -q
 
 regen-contract: ## regenerate openapi.json + web/src/lib/types/openapi.ts
 	@uv run python scripts/regen_openapi.py

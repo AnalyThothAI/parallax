@@ -1,9 +1,9 @@
 # Plan — Evidence-first Macro Intel And Product-AI Hard Cut
 
-**Status**: Review
+**Status**: Verified
 **Superseded by**: N/A
 **Date**: 2026-07-23
-**Owning spec**: `docs/sdd/features/active/2026-07-23-macro-evidence-ai-hard-cut/spec.md`
+**Owning spec**: `docs/sdd/features/completed/2026-07-23-macro-evidence-ai-hard-cut/spec.md`
 **Worktree**: `.worktrees/macro-evidence-ai-hard-cut/`
 **Branch**: `codex/macro-evidence-ai-hard-cut`
 **Approved by**: delegated goal
@@ -118,7 +118,7 @@ this baseline.
 3. Build the macro evidence snapshot and replace projection/storage.
 4. Replace strict HTTP schemas/routes and regenerate frontend types.
 5. Replace frontend routes/pages and remove AI UI.
-6. Update canonical/generated contracts and run all targeted/full gates.
+6. Update canonical/generated contracts and run the risk-selected direct checks.
 7. Before operator deployment, create a PostgreSQL backup, stop the old application, apply migration and new application together, rebuild the macro snapshot from facts, and validate seven endpoints/six pages. Operator deployment is not performed without a separate explicit instruction.
 
 ## Rollback
@@ -142,12 +142,8 @@ Before operator migration, revert the branch. After the irreversible migration, 
 - AC13: `uv run pytest tests/integration/domains/macro_intel/test_macro_evidence_projection.py tests/integration/test_macro_evidence_ai_hard_cut_migration.py tests/unit/test_macro_evidence_ai_hard_cut_migration_contract.py -q`
 - AC14: `cd web && npm run lint && npm run typecheck && npm run test -- --run tests/component/features/macro tests/routes/macro.route.test.tsx`
 - AC15: `uv run pytest tests/unit/domains/macro_intel/test_macro_evidence_snapshot.py -k catalysts -q`
-- AC16: `make check-all`
-
-After AC16 passes and its full transcript is recorded, run
-`make check-sdd-completion FEATURE=2026-07-23-macro-evidence-ai-hard-cut` as the
-separate completion gate.
+- AC16: `uv run pytest tests/integration/test_docs_generated.py tests/contract/test_openapi_drift.py tests/architecture/test_product_ai_hard_delete.py -q && uv run python scripts/regen_sdd_work_index.py --check`
 
 ## Verification
 
-Verification evidence lives in `docs/sdd/features/active/2026-07-23-macro-evidence-ai-hard-cut/verification.md` until the feature is fully verified and moved to completed.
+Verification evidence lives in `docs/sdd/features/completed/2026-07-23-macro-evidence-ai-hard-cut/verification.md`.

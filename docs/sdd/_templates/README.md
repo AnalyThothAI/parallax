@@ -43,7 +43,8 @@ notes, and other attachments fail as `unexpected-artifact`.
 5. **Tasks** - fill `tasks.md` for multi-step work; keep it TDD-ordered.
 6. **Analyze** - check spec, plan, and tasks for contradictions before implementation.
 7. **Implement** - work in a `.worktrees/<slug>/` worktree.
-8. **Verify** - fill `verification.md`; only `make check-all` is completion evidence.
+8. **Verify** - fill `verification.md` with successful commands selected by the
+   plan and mapped to every acceptance criterion.
 9. **Complete** - move the full feature directory from `active/` to `completed/`.
 
 ## Status Discipline

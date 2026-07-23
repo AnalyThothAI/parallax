@@ -24,7 +24,7 @@ Every non-trivial feature should leave enough evidence to replay the development
 - SDD `spec.md`, `plan.md`, `tasks.md`, and `verification.md`.
 - Generated `docs/generated/sdd-work-index.md` coordination state.
 - Commit diff and touched files.
-- Commands run, exit status, skipped tests, and stopped gates.
+- Commands run, exit status, and intentionally omitted risk lanes.
 - Review defect notes, if any.
 - Subagent handoffs, context packets, and validated subagent reports when delegation happened.
 
@@ -37,10 +37,10 @@ Track these metrics when reviewing agent workflow quality:
 | Metric | Meaning |
 |--------|---------|
 | review defect rate | Count of reviewer-found issues per feature or PR. |
-| harness failure rate | Count of validator, architecture, generated-doc, or completion-gate failures. |
+| harness failure rate | Count of validator, architecture, or generated-doc failures. |
 | repair loop count | Number of red-green-fix cycles needed after first failed verification. |
 | token cost | Approximate agent effort spent on the feature, when available. |
-| false completion attempts | Any claim that out-runs evidence, especially incomplete `make check-all`. |
+| false completion attempts | Any claim that out-runs the recorded command evidence. |
 | touch conflict count | Number of active lanes touching the same path without coordination. |
 | review result | Parent decision for delegated work: `accepted`, `needs-repair`, or `blocked`. |
 
@@ -56,9 +56,11 @@ Use this loop after a harness failure or review defect:
 4. Validate any returned subagent report with `uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode <mode> --report <report.md>`.
 5. Re-run the targeted command that failed.
 6. Update the SDD verification record with the command and exit status.
-7. Re-run `make check-all` before claiming `Verified`.
+7. Run the direct commands selected by the plan and map successful evidence to
+   every acceptance criterion before claiming `Verified`.
 
-No production claim without verification evidence. If `make check-all` is intentionally stopped, keep the SDD record active and record who stopped it and why.
+No production claim without verification evidence. Record omitted lanes as
+risks; do not represent them as passing.
 
 ## Repair Outputs
 

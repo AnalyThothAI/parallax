@@ -161,7 +161,7 @@ class NewsFeedProviderRegistry:
             seen.add(provider_id)
             try:
                 provider.close()
-            except Exception as exc:  # pragma: no cover - defensive close path.
+            except Exception as exc:
                 if first_error is None:
                     first_error = exc
         if first_error is not None:

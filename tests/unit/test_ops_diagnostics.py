@@ -83,7 +83,7 @@ def test_ops_diagnostics_requires_asset_market_provider_bundle_root() -> None:
         ops_diagnostics_payload(runtime, now_ms=10_000)
     except AttributeError as exc:
         assert "asset_market" in str(exc)
-    else:  # pragma: no cover - RED guard expectation
+    else:
         raise AssertionError("ops diagnostics must not convert missing provider root into an empty provider list")
 
 
@@ -95,7 +95,7 @@ def test_ops_diagnostics_requires_asset_market_provider_health_contract() -> Non
         _asset_market_provider_health(runtime)
     except AttributeError as exc:
         assert "provider_health" in str(exc)
-    else:  # pragma: no cover - RED guard expectation
+    else:
         raise AssertionError("asset-market diagnostics must not hide missing provider_health as an empty list")
 
 
@@ -109,7 +109,7 @@ def test_ops_diagnostics_rejects_reflective_asset_market_provider_health_items()
         _asset_market_provider_health(runtime)
     except TypeError as exc:
         assert "asset_market_provider_health_item" in str(exc)
-    else:  # pragma: no cover - RED guard expectation
+    else:
         raise AssertionError("asset-market diagnostics must not accept provider_health items via vars() reflection")
 
 
@@ -121,7 +121,7 @@ def test_ops_diagnostics_collector_status_contract_failure_is_unknown_section() 
         runtime.current_snapshot()
     except AttributeError as exc:
         assert "status" in str(exc)
-    else:  # pragma: no cover - RED guard expectation
+    else:
         raise AssertionError("collector diagnostics must not hide missing collector.status as empty details")
 
 
@@ -133,7 +133,7 @@ def test_ops_diagnostics_config_requires_runtime_settings_contract() -> None:
         _config_payload(runtime)
     except AttributeError as exc:
         assert "settings" in str(exc)
-    else:  # pragma: no cover - RED guard expectation
+    else:
         raise AssertionError("ops diagnostics config must not hide missing runtime.settings as empty config")
 
 
@@ -166,7 +166,7 @@ def test_ops_diagnostics_watchlist_requires_runtime_settings_contract() -> None:
         _watchlist_domain(runtime)
     except AttributeError as exc:
         assert "settings" in str(exc)
-    else:  # pragma: no cover - RED guard expectation
+    else:
         raise AssertionError("watchlist diagnostics must not hide missing runtime.settings as idle")
 
 
@@ -178,7 +178,7 @@ def test_ops_diagnostics_queues_require_api_pool_connection_contract() -> None:
         _queues_payload(runtime, now_ms=10_000)
     except AttributeError as exc:
         assert "api_pool" in str(exc)
-    else:  # pragma: no cover - RED guard expectation
+    else:
         raise AssertionError("ops diagnostics queues must not hide missing db.api_pool as an empty queue list")
 
 

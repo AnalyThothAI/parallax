@@ -197,7 +197,8 @@ Answer must separate:
 
 ## Agent Workflow Or Documentation Harness
 
-Use for changes to `AGENTS.md`, `CLAUDE.md`, `docs/sdd`, sub-agent work, specs/plans, generated docs, or completion gates.
+Use for changes to `AGENTS.md`, `CLAUDE.md`, `docs/sdd`, sub-agent work,
+specs/plans, generated docs, or verification policy.
 
 Required reading:
 

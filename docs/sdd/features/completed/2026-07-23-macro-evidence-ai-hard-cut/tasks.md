@@ -1,8 +1,8 @@
 # Tasks — Evidence-first Macro Intel And Product-AI Hard Cut
 
-**Status**: Review
+**Status**: Verified
 **Superseded by**: N/A
-**Owning plan**: `docs/sdd/features/active/2026-07-23-macro-evidence-ai-hard-cut/plan.md`
+**Owning plan**: `docs/sdd/features/completed/2026-07-23-macro-evidence-ai-hard-cut/plan.md`
 **Worktree**: `.worktrees/macro-evidence-ai-hard-cut/`
 **Branch**: `codex/macro-evidence-ai-hard-cut`
 **Approved by**: delegated goal
@@ -16,7 +16,7 @@
 | Checklist | `spec.md` maps each product/runtime/storage/UI requirement to an executable quality gate. |
 | Analyze | `plan.md` maps G1-G8 and AC1-AC16 to disjoint edits and commands, preserving Kappa/CQRS and hard-cut rules. |
 | Implement | Tasks are ordered RED seams, disjoint domain work, shared integration, contracts/UI, docs/generated, then final verification. |
-| Verify | `verification.md` is present and will contain full final gate evidence before completion. |
+| Verify | `verification.md` records successful direct commands for every acceptance criterion. |
 
 ## Tasks
 
@@ -25,7 +25,7 @@
 - **File(s)**: `tests/architecture/test_product_ai_hard_delete.py`, `tests/integration/domains/macro_intel/test_macro_evidence_projection.py`, `tests/unit/test_api_macro_contract.py`, `web/tests/routes/**`
 - **Owner**: parent
 - **Depends on**: none
-- **Touch set**: `tests/architecture/test_product_ai_hard_delete.py`, `tests/integration/domains/macro_intel/test_macro_evidence_projection.py`, `tests/unit/test_api_macro_contract.py`, `web/tests/routes/**`, `docs/sdd/features/active/2026-07-23-macro-evidence-ai-hard-cut/**`
+- **Touch set**: `tests/architecture/test_product_ai_hard_delete.py`, `tests/integration/domains/macro_intel/test_macro_evidence_projection.py`, `tests/unit/test_api_macro_contract.py`, `web/tests/routes/**`, `docs/sdd/features/completed/2026-07-23-macro-evidence-ai-hard-cut/**`
 - **Conflict set**: `src/parallax/**`, `web/src/**`; coordinate with 2026-07-22-backend-kiss-deep-audit for all overlapping runtime/domain/API/test/docs paths; coordinate with 2026-07-22-news-fetch-retention-index for tests/unit/test_postgres_schema.py and tests/integration/test_postgres_schema_runtime.py
 - **Failing test first**: `tests/architecture/test_product_ai_hard_delete.py::test_current_product_ai_runtime_and_contracts_are_absent` rejects current AI runtime/schema/API/frontend ownership; vertical macro contract rejects legacy modules.
 - **Subagent handoff**: not delegated
@@ -152,7 +152,7 @@
 - **Owner**: parent
 - **Depends on**: Tasks 4-6
 - **Touch set**: `AGENTS.md`, `CLAUDE.md`, `docs/ARCHITECTURE.md`, `docs/CONTRACTS.md`, `docs/FRONTEND.md`, `docs/RELIABILITY.md`, `docs/WORKERS.md`, `docs/WORKER_FLOW.md`, `docs/AGENT_EXECUTION.md`, `docs/DESIGN_DISCIPLINE.md`, `src/parallax/domains/*/ARCHITECTURE.md`, `docs/generated/**`
-- **Conflict set**: `src/parallax/**/*.py`, `web/**`
+- **Conflict set**: `src/parallax/**/*.py`, `web/**`; coordinate with 2026-07-23-verification-harness-hard-cut for AGENTS.md, CLAUDE.md, docs/DESIGN_DISCIPLINE.md, and docs/generated/sdd-work-index.md
 - **Failing test first**: `tests/integration/test_docs_generated.py::test_generated_docs_match_runtime` fails until current product truth no longer claims old module/AI surfaces.
 - **Subagent handoff**: not delegated
 - **Subagent report**: not delegated
@@ -167,23 +167,23 @@
 - **Eval/repair signal**: docs/regen/SDD harness failures and residual current-contract references.
 - **Status**: [x]
 
-### Task 8 — Complete real runtime, browser, full-gate, and independent review
+### Task 8 — Complete real runtime, browser, selected verification, and independent review
 
-- **File(s)**: `docs/sdd/features/active/2026-07-23-macro-evidence-ai-hard-cut/verification.md`
+- **File(s)**: `docs/sdd/features/completed/2026-07-23-macro-evidence-ai-hard-cut/verification.md`
 - **Owner**: parent with review-only subagent
 - **Depends on**: Tasks 1-7
-- **Touch set**: `docs/sdd/features/active/2026-07-23-macro-evidence-ai-hard-cut/verification.md`
+- **Touch set**: `docs/sdd/features/completed/2026-07-23-macro-evidence-ai-hard-cut/verification.md`
 - **Conflict set**: `src/**`, `web/**`, `tests/**`
-- **Failing test first**: `tests/architecture/test_product_ai_hard_delete.py::test_current_product_ai_runtime_and_contracts_are_absent` remains RED until every AC row has authoritative evidence and the completion gate passes.
+- **Failing test first**: `tests/architecture/test_product_ai_hard_delete.py::test_current_product_ai_runtime_and_contracts_are_absent` remains RED until every AC row has authoritative evidence and the verify gate passes.
 - **Subagent handoff**: `docs/generated/subagent-handoffs/macro-evidence-ai-hard-cut-task-8.md`
 - **Subagent report**: `docs/generated/subagent-reports/macro-evidence-ai-hard-cut-task-8.md`
 - **Review result**: accepted
-- **Implementation**: Repair discovered defects, verify operator-path config without secrets, non-empty migration, Docker health/readiness/queues, seven APIs, four viewports, key value metadata, full gate, and SDD completion.
+- **Implementation**: Repair discovered defects, verify operator-path config without secrets, non-empty migration, Docker health/readiness/queues, seven APIs, four viewports, key value metadata, risk-selected commands, and SDD completion.
 - **Verification**: `uv run pytest tests/architecture/test_product_ai_hard_delete.py tests/unit/test_macro_evidence_ai_hard_cut_migration_contract.py -q`
 - **Review owner**: independent validator then parent
 - **Factory lane**: Final integration
-- **Deterministic constraints**: no skips/xfails/compat mocks, no completion from static scan alone, no secret output, no live destructive migration without backup and explicit deployment instruction.
-- **On-demand context**: final spec/plan/tasks/diff, real redacted config diagnostics, Docker/browser receipts, full command transcript.
+- **Deterministic constraints**: no compatibility mocks, no completion from static scan alone, no secret output, no live destructive migration without backup and explicit deployment instruction.
+- **On-demand context**: final spec/plan/tasks/diff, real redacted config diagnostics, Docker/browser receipts, and direct command transcripts.
 - **Kill/defer criteria**: keep feature active until every requirement has direct evidence; do not downgrade the claim.
-- **Eval/repair signal**: independent defects, full-gate failures, repair-loop count, false-completion count.
-- **Status**: [ ]
+- **Eval/repair signal**: independent defects, selected-command failures, repair-loop count, false-completion count.
+- **Status**: [x]

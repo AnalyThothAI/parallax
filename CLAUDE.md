@@ -28,7 +28,7 @@ Frontend CSS is harness-constrained, not convention-only. Before changing `web/s
 | Public surfaces (config, WS, HTTP, CLI) | `docs/CONTRACTS.md` |
 | Spec→plan→tasks→verification flow | `docs/WORKFLOW.md` |
 | Design rules (audit, reuse, scoring) | `docs/DESIGN_DISCIPLINE.md` |
-| Testing & completion gates, including worker development gates | `docs/TESTING.md` |
+| Testing strategy and worker development checks | `docs/TESTING.md` |
 | Secrets, config, authn changes | `docs/SECURITY.md` |
 | Operational invariants | `docs/RELIABILITY.md` |
 | PostgreSQL performance & queue diagnostics | `docs/references/POSTGRES_PERFORMANCE.md` |

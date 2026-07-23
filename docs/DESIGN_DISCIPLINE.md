@@ -1,6 +1,6 @@
 # Design Discipline
 
-> **Scope.** Owns the rules that govern *what* a spec or plan may contain and *how* a feature must be designed in this repo. Workflow mechanics (lane filenames, worktree, completion gates) live in `WORKFLOW.md`.
+> **Scope.** Owns the rules that govern *what* a spec or plan may contain and *how* a feature must be designed in this repo. Workflow mechanics, worktrees, and verification records live in `WORKFLOW.md`.
 
 ## Spec vs plan boundary
 

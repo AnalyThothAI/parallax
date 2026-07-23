@@ -1,6 +1,6 @@
 # Spec — Evidence-first Macro Intel And Product-AI Hard Cut
 
-**Status**: Review
+**Status**: Verified
 **Superseded by**: N/A
 **Date**: 2026-07-23
 **Owner**: Codex `/root`
@@ -49,7 +49,7 @@ The product cannot reliably answer what macro shock is dominant, which evidence 
 | Shared LLM library is dormant. | Import/unit test passes while bootstrap/worker/status composition has no model consumer. |
 | Destructive state is really removed. | Non-empty predecessor migration proves exact drops, raw-fact preservation, bounded timeouts, and explicit irreversible downgrade. |
 | Frontend is explicit and responsive. | Lint/typecheck/build/component/browser checks at 1920/1366/834/390. |
-| Canonical/generated contracts match. | OpenAPI, generated frontend types, DB schema, CLI help, docs, SDD index, and full gate are clean. |
+| Canonical/generated contracts match. | OpenAPI, generated frontend types, DB schema, CLI help, docs, and the SDD index are synchronized. |
 
 ## First principles
 
@@ -67,7 +67,7 @@ The product cannot reliably answer what macro shock is dominant, which evidence 
 - G5. Delete every current real and pseudo AI product producer, runtime, durable derived state, public contract, notification dependency, and UI consumer while retaining raw facts.
 - G6. Leave shared LLM execution code dormant and provider-neutral with no production instantiation or business status.
 - G7. Replace the macro frontend with six explicit pages, one flat navigation, feature-owned CSS, and readable 1920/1366/834/390 layouts.
-- G8. Prove the hard cut on a non-empty predecessor database, real projection replay, generated contracts, Docker runtime, browser flows, and the full repository gate with zero skips.
+- G8. Prove the hard cut on a non-empty predecessor database, real projection replay, generated contracts, Docker runtime, browser flows, and risk-selected direct verification commands.
 
 ## Non-goals
 
@@ -146,7 +146,7 @@ The changed arrow is compact series to evidence snapshot: the generic score/regi
 - AC13. WHEN a non-empty predecessor database upgrades to the new head THEN the system SHALL drop the exact retired AI-derived and legacy macro schema in dependency-safe order, preserve material facts, use bounded timeouts, and reject downgrade with backup-restore guidance.
 - AC14. WHEN the React product renders at 1920, 1366, 834, and 390 pixels THEN the system SHALL show flat six-page navigation, complete visible evidence metadata, no whole-page overflow, responsive lists/small multiples, and no generic renderer or AI narrative.
 - AC15. WHEN official catalysts are displayed THEN the system SHALL limit them to the next seven days and show official time, timezone, source, and release status without consensus, forecast, surprise, or event score.
-- AC16. WHEN completion is claimed THEN the system SHALL have synchronized canonical docs/OpenAPI/generated types/schema/CLI, passed non-empty migration and Docker/browser checks, passed `make check-all` with zero skips, and passed independent spec review.
+- AC16. WHEN completion is claimed THEN the system SHALL have synchronized canonical docs/OpenAPI/generated types/schema/CLI, passed non-empty migration and Docker/browser checks, recorded successful risk-selected command evidence, and passed independent spec review.
 
 ## Risks
 

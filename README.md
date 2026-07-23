@@ -246,22 +246,16 @@ feature or component, shared UI primitives own their own styles, and
 
 ## Verification
 
-Fast local gates:
+Run the fast static and unit checks:
 
 ```bash
 make check
 ```
 
-Full completion gate:
-
-```bash
-make check-all
-```
-
-`make check-all` runs backend lint/type/unit/architecture/contract checks,
-frontend type/lint/architecture checks, integration/e2e/golden lanes, and
-coverage. See [docs/TESTING.md](docs/TESTING.md) and
-[docs/WORKFLOW.md](docs/WORKFLOW.md) before claiming a behavior change is done.
+Then select the direct integration, E2E, golden, contract, build, or browser
+commands required by the changed seam. Record what ran and what was omitted.
+See [docs/TESTING.md](docs/TESTING.md) and
+[docs/WORKFLOW.md](docs/WORKFLOW.md).
 
 ## Documentation Map
 
@@ -273,7 +267,7 @@ coverage. See [docs/TESTING.md](docs/TESTING.md) and
 | Public config/API/WS/CLI contracts | [docs/CONTRACTS.md](docs/CONTRACTS.md) |
 | Worker inventory and runtime ownership | [docs/WORKERS.md](docs/WORKERS.md) |
 | Worker flow and debugging | [docs/WORKER_FLOW.md](docs/WORKER_FLOW.md) |
-| Testing and completion gates | [docs/TESTING.md](docs/TESTING.md) |
+| Testing strategy | [docs/TESTING.md](docs/TESTING.md) |
 | Spec, plan, verification workflow | [docs/WORKFLOW.md](docs/WORKFLOW.md) |
 | Security and secrets handling | [docs/SECURITY.md](docs/SECURITY.md) |
 | Reliability invariants | [docs/RELIABILITY.md](docs/RELIABILITY.md) |

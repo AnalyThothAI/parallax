@@ -28,13 +28,15 @@ References:
 Deterministic constraints are always loaded or enforced by harness:
 
 - `AGENTS.md` / `CLAUDE.md` route agents to canonical docs without duplicating rules.
-- `docs/WORKFLOW.md` owns SDD lane mechanics, worktree policy, and completion gates.
-- `scripts/validate_sdd_artifacts.py` fails false completion claims, missing gate sections, missing task fields, and active touch conflicts.
+- `docs/WORKFLOW.md` owns SDD lane mechanics, worktree policy, and verification records.
+- `scripts/validate_sdd_artifacts.py` fails unsupported acceptance claims,
+  missing sections, missing task fields, and active touch conflicts.
 - `scripts/regen_sdd_work_index.py --check` keeps the coordination board current.
 - `scripts/build_agent_context_packet.py` generates bounded subagent context from a validated active SDD task.
 - `scripts/dispatch_sdd_task.py` generates a dry-run subagent handoff and refuses completed or non-dispatchable tasks.
 - `scripts/validate_subagent_report.py` validates subagent return reports before parent integration.
-- `make check-all` is the only completion command for a `Verified` SDD record.
+- `scripts/check_sdd_gate.py --feature <slug> --gate verify` checks acceptance
+  evidence and complete tasks without prescribing a universal test command.
 
 Do not replace deterministic constraints with prompt instructions. If a rule must always hold, encode it in docs, templates, scripts, tests, generated indexes, or Makefile gates.
 
@@ -74,7 +76,8 @@ The Parent integrator owns:
 - Reviewing every subagent diff and evidence line.
 - Keeping the dormant model-execution library separate from development
   workflow and rejecting any production consumer without a new approved spec.
-- Refusing `Verified` until `make check-all` evidence exists.
+- Refusing `Verified` until every acceptance criterion cites successful,
+  relevant command evidence.
 
 ## Kill / Defer Criteria
 

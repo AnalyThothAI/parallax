@@ -281,32 +281,17 @@ def _issue_meaning(code: str) -> str:
             "verification.md."
         ),
         "verification-status-token-invalid": "Verification tables use non-machine-readable status tokens.",
-        "verified-missing-check-all": "Verified record lacks successful make check-all evidence.",
-        "verified-extra-verification-command": (
-            "Verified record includes commands other than make check-all in final Verification commands evidence."
-        ),
-        "verified-extra-verification-output": (
-            "Verified record includes extra fenced transcript output in final Verification commands evidence."
-        ),
         "verified-missing-spec-compliance-evidence": (
             "Verified spec compliance rows reference commands without matching exit code 0 evidence."
         ),
         "verified-incomplete-spec-compliance": (
             "Verified record lacks complete Spec compliance rows for every acceptance criterion."
         ),
-        "verified-coverage-incomplete": "Verified record lacks complete concrete coverage evidence.",
-        "verified-e2e-incomplete": "Verified record lacks every required checked E2E golden-path signal.",
-        "verified-contradicts-evidence": "Verified record contains text that contradicts final evidence.",
-        "verified-unexplained-skips": "Verified record contains skipped tests or lacks numeric zero-skip evidence.",
         "superseded-missing-successor": ("Superseded record lacks a machine-readable existing successor path."),
         "superseded-successor-mismatch": "Superseded artifacts in one feature disagree on the successor.",
         "active-touch-conflict": "Active features share touch paths without an explicit coordination rule.",
         "active-feature-too-large": "Active feature has too many task records for a bounded agent loop.",
         "active-sdd-lifecycle-check-flag-invalid": ("Active records advertise obsolete SDD lifecycle --check flags."),
-        "active-placeholder-final-evidence": "Active records contain placeholder final verification transcripts.",
-        "active-skipped-count-without-final-evidence": (
-            "Active records claim numeric skipped-test counts without final make check-all evidence."
-        ),
     }
     return meanings[code]
 

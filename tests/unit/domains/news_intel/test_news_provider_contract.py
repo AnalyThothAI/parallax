@@ -235,7 +235,7 @@ class FakeConstraintConn:
 class FakeCapabilityProbeProvider:
     provider_type = "fake"
 
-    def fetch(self, *args, **kwargs):  # pragma: no cover - contract failure exits before fetch
+    def fetch(self, *args, **kwargs):
         raise AssertionError("provider fetch should not run when contract validation fails")
 
     def close(self) -> None:
@@ -311,7 +311,7 @@ class FailingRuntimeDB:
     @contextmanager
     def api_session(self):
         raise OSError("schema unavailable")
-        yield  # pragma: no cover
+        yield
 
 
 class FakeConn:

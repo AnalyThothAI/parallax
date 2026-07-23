@@ -121,7 +121,7 @@ def test_projection_worker_calls_dirty_incremental_projection_not_window_rebuild
                 "windows": {"5m:all": {"status": "ready", "rows_written": 2, "source_rows": 3}},
             }
 
-        def rebuild(self, **kwargs):  # pragma: no cover - must not be called by runtime worker
+        def rebuild(self, **kwargs):
             raise AssertionError("worker must not call full-window rebuild")
 
     monkeypatch.setattr(module, "TokenRadarProjector", FakeProjection)
@@ -429,7 +429,7 @@ def test_projection_worker_runs_bounded_private_cache_retention_from_formal_sett
         def __init__(self, *, repos):
             self.repos = repos
 
-        def rebuild_dirty_targets(self, **kwargs):  # pragma: no cover - retention-only path must stay idle
+        def rebuild_dirty_targets(self, **kwargs):
             raise AssertionError("retention test should not run dirty projection")
 
     def fake_retention(**kwargs):

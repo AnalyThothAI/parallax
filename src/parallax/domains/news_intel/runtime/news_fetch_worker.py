@@ -253,7 +253,7 @@ class NewsFetchWorker(WorkerBase):
                     http_status=exc.status_code,
                 )
             return WorkerResult(failed=1, notes={"source_id": source_id, "error": exc.error_code})
-        except Exception as exc:  # pragma: no cover - failure path covered by integration/ops.
+        except Exception as exc:
             self._mark_source_failed(source_id=source_id, fetch_run_id=fetch_run_id, now_ms=now_ms, error=exc)
             return WorkerResult(failed=1, notes={"source_id": source_id, "error": str(exc)})
 

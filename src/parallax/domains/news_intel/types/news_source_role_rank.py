@@ -17,7 +17,7 @@ SOURCE_ROLE_RANK: dict[str, int] = {
 
 _UNKNOWN_SOURCE_ROLE_RANK = 10
 
-if set(SOURCE_ROLE_RANK) != set(SOURCE_ROLES):  # pragma: no cover - import-time contract guard.
+if set(SOURCE_ROLE_RANK) != set(SOURCE_ROLES):
     raise RuntimeError("SOURCE_ROLE_RANK must cover SOURCE_ROLES exactly")
 
 

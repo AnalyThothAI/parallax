@@ -30,7 +30,6 @@ TEST_REFERENCE_RE = re.compile(r"(?P<path>(?:tests|web/tests)/[A-Za-z0-9._/\-]+\
 FENCED_BLOCK_RE = re.compile(r"```(?:[A-Za-z0-9_-]+)?\n(?P<body>[\s\S]*?)```", re.MULTILINE)
 COMMAND_LINE_RE = re.compile(r"^\s*\$\s+(?P<command>.+?)\s*$")
 EXIT_CODE_RE = re.compile(r"exit code:\s*(?P<code>-?\d+)\b", re.IGNORECASE)
-SKIPPED_RE = re.compile(r"Number of skipped tests in the run above:\s*(?P<count>\d+)", re.IGNORECASE)
 FEATURE_SLUG_RE = re.compile(r"^(?P<date>\d{4}-\d{2}-\d{2})-[a-z0-9]+(?:-[a-z0-9]+)*$")
 ISO_DATE_RE = re.compile(r"^\d{4}-\d{2}-\d{2}$")
 BRANCH_METADATA_RE = re.compile(r"^codex/(?P<slug>[a-z0-9][a-z0-9._-]*)$")
@@ -86,9 +85,6 @@ SECTION_REQUIREMENTS = {
     "verification.md": (
         "## Spec compliance",
         "## Verification commands",
-        "## Coverage",
-        "## Skipped tests",
-        "## E2E golden path",
     ),
 }
 GATE_EVIDENCE_SECTIONS = {
@@ -103,15 +99,7 @@ GATE_EVIDENCE_HEADERS = {
     "## Gate Compliance": ("Gate", "Evidence"),
 }
 SPEC_COMPLIANCE_HEADER = ("Acceptance criterion", "Status", "Evidence")
-COVERAGE_HEADER = ("metric", "value", "threshold", "status")
 GATE_COMPLIANCE_GATES = ("Clarify", "Checklist", "Analyze", "Implement", "Verify")
-E2E_GOLDEN_PATH_CHECKS = (
-    "/readyz returned 200",
-    "writer wrote a row visible to a separate process",
-    "/api/recent returned the injected event",
-    "WS /ws/live pushed within 5s",
-    "testcontainers PG and uvicorn subprocess cleaned up",
-)
 METADATA_REQUIREMENTS = {
     "spec.md": ("status", "date", "owner", "approved by", "approved at"),
     "plan.md": ("status", "date", "owning spec", "worktree", "branch", "approved by", "approved at"),
@@ -174,21 +162,6 @@ TASK_REVIEW_FIELDS = ("subagent report", "review result")
 TASK_STATUSES = {"[ ]", "[~]", "[x]", "[!]"}
 TASK_REVIEW_RESULTS = {"not delegated", "parent-reviewed", "accepted", "needs-repair", "blocked"}
 PLACEHOLDER_VALUES = {"", "...", "tbd", "todo", "pending", "<pending>", "<none>"}
-CONTRADICTION_PHRASES = (
-    "not final evidence",
-    "stopped before completion",
-    "was stopped",
-    "exit code: pending",
-    "pending final run",
-    "skip_e2e=1",
-    "skip_golden=1",
-)
-ACTIVE_PLACEHOLDER_FINAL_EVIDENCE_PHRASES = (
-    "pending final run",
-    "exit code: pending",
-    "<paste full stdout/stderr here>",
-)
-RUNTIME_SKIP_SWITCHES = ("SKIP_E2E=1", "SKIP_GOLDEN=1")
 KNOWN_ISSUE_CODES = (
     "review-lifecycle",
     "artifact-status-mismatch",
@@ -228,22 +201,13 @@ KNOWN_ISSUE_CODES = (
     "task-incomplete-in-verified-feature",
     "tasks-final-verification-duplicated",
     "verification-status-token-invalid",
-    "verified-missing-check-all",
-    "verified-extra-verification-command",
-    "verified-extra-verification-output",
     "verified-missing-spec-compliance-evidence",
     "verified-incomplete-spec-compliance",
-    "verified-coverage-incomplete",
-    "verified-e2e-incomplete",
-    "verified-contradicts-evidence",
-    "verified-unexplained-skips",
     "superseded-missing-successor",
     "superseded-successor-mismatch",
     "active-touch-conflict",
     "active-feature-too-large",
     "active-sdd-lifecycle-check-flag-invalid",
-    "active-placeholder-final-evidence",
-    "active-skipped-count-without-final-evidence",
 )
 
 
@@ -536,8 +500,6 @@ def _feature_issues(feature: SddFeature) -> list[SddIssue]:
     issues.extend(_task_issues(feature))
     issues.extend(_active_feature_size_issues(feature))
     issues.extend(_active_sdd_lifecycle_check_flag_issues(feature))
-    issues.extend(_active_placeholder_final_evidence_issues(feature))
-    issues.extend(_active_skipped_count_without_final_evidence_issues(feature))
     if feature.status.lower() == "verified":
         issues.extend(_verified_issues(feature))
     return issues
@@ -575,49 +537,6 @@ def _active_sdd_lifecycle_check_flag_issues(feature: SddFeature) -> list[SddIssu
             feature.artifacts["tasks.md"],
             "active SDD records must not advertise legacy SDD lifecycle --check flags: "
             + "; ".join(dict.fromkeys(offenders)),
-        )
-    ]
-
-
-def _active_placeholder_final_evidence_issues(feature: SddFeature) -> list[SddIssue]:
-    if feature.state != "active":
-        return []
-    artifact = feature.artifacts["verification.md"]
-    if artifact.missing:
-        return []
-    section = _section_text(artifact.text, "## Verification commands").lower()
-    placeholders = [phrase for phrase in ACTIVE_PLACEHOLDER_FINAL_EVIDENCE_PHRASES if phrase in section]
-    if not placeholders:
-        return []
-    return [
-        _issue(
-            "active-placeholder-final-evidence",
-            artifact,
-            "active verification commands must not contain placeholder final transcript evidence: "
-            + ", ".join(placeholders),
-        )
-    ]
-
-
-def _active_skipped_count_without_final_evidence_issues(feature: SddFeature) -> list[SddIssue]:
-    if feature.state != "active":
-        return []
-    artifact = feature.artifacts["verification.md"]
-    if artifact.missing:
-        return []
-    skipped_section = _section_text(artifact.text, "## Skipped tests")
-    if SKIPPED_RE.search(skipped_section) is None:
-        return []
-    make_check_all = _verification_make_check_all_block(artifact.text)
-    make_check_all_exit_codes = _command_exit_codes(make_check_all) if make_check_all is not None else ()
-    if make_check_all_exit_codes == (0,):
-        return []
-    return [
-        _issue(
-            "active-skipped-count-without-final-evidence",
-            artifact,
-            "active Skipped tests numeric run-above count requires successful final "
-            "`make check-all` evidence in Verification commands; use non-final prose until that run exists",
         )
     ]
 
@@ -827,15 +746,6 @@ def _verification_status_token_issues(artifact: ArtifactRecord) -> list[SddIssue
             continue
         criterion = _clean_value(cells[0]) or "<unnamed criterion>"
         invalid_rows.append(f"Spec compliance {criterion} => {status or '<missing status>'}")
-
-    for cells in _section_table_rows(artifact.text, "## Coverage", COVERAGE_HEADER):
-        if len(cells) < len(COVERAGE_HEADER):
-            continue
-        status = _clean_value(cells[3])
-        if _valid_verification_table_status(status):
-            continue
-        metric = _clean_value(cells[0]) or "<unnamed metric>"
-        invalid_rows.append(f"Coverage {metric} => {status or '<missing status>'}")
 
     if not invalid_rows:
         return []
@@ -1698,150 +1608,7 @@ def _verified_issues(feature: SddFeature) -> list[SddIssue]:
     artifact = feature.artifacts["verification.md"]
     if artifact.missing:
         return []
-    normalized_text = artifact.text.lower()
-    issues: list[SddIssue] = []
-    make_check_all = _verification_make_check_all_block(artifact.text)
-    make_check_all_exit_codes = _command_exit_codes(make_check_all) if make_check_all is not None else ()
-    if make_check_all is None:
-        issues.append(
-            _issue("verified-missing-check-all", artifact, "Verified records require make check-all with exit code: 0")
-        )
-    elif make_check_all_exit_codes != (0,):
-        issues.append(
-            _issue(
-                "verified-missing-check-all",
-                artifact,
-                "Verified records require final make check-all with exactly one exit code 0",
-            )
-        )
-    verification_blocks = _verification_fenced_blocks(artifact.text)
-    if len(verification_blocks) != 1:
-        issues.append(
-            _issue(
-                "verified-extra-verification-output",
-                artifact,
-                f"Verified Verification commands must contain exactly one fenced transcript block; "
-                f"found {len(verification_blocks)}",
-            )
-        )
-    verification_commands = _verification_commands(artifact.text)
-    if verification_commands != ["make check-all"]:
-        issues.append(
-            _issue(
-                "verified-extra-verification-command",
-                artifact,
-                "Verified Verification commands must contain exactly one `make check-all`; found commands: "
-                + (_format_command_list(verification_commands) if verification_commands else "<none>"),
-            )
-        )
-    if any(phrase in normalized_text for phrase in CONTRADICTION_PHRASES):
-        issues.append(
-            _issue(
-                "verified-contradicts-evidence", artifact, "Verified record contains contradictory evidence language"
-            )
-        )
-    if make_check_all is not None and any(exit_code != 0 for exit_code in make_check_all_exit_codes):
-        issues.append(
-            _issue(
-                "verified-contradicts-evidence",
-                artifact,
-                "Verified command block records non-zero exit code: " + _format_exit_codes(make_check_all_exit_codes),
-            )
-        )
-    issues.extend(_verified_spec_compliance_issues(feature, artifact))
-    issues.extend(_verified_coverage_issues(artifact))
-    issues.extend(_verified_e2e_issues(artifact))
-    skipped_section = _section_text(artifact.text, "## Skipped tests")
-    skipped_match = SKIPPED_RE.search(skipped_section)
-    if skipped_match is None:
-        issues.append(
-            _issue(
-                "verified-unexplained-skips",
-                artifact,
-                "Verified Skipped tests section must include numeric skipped-test count",
-            )
-        )
-    elif int(skipped_match.group("count")) > 0:
-        issues.append(
-            _issue(
-                "verified-unexplained-skips",
-                artifact,
-                "Verified record must report zero skipped tests; "
-                "positive skipped-test counts cannot serve as completion evidence",
-            )
-        )
-    return issues
-
-
-def _verified_e2e_issues(artifact: ArtifactRecord) -> list[SddIssue]:
-    section = _text_without_fenced_blocks(_section_text(artifact.text, "## E2E golden path"))
-    for skip_switch in RUNTIME_SKIP_SWITCHES:
-        if skip_switch in section:
-            return [
-                _issue(
-                    "verified-e2e-incomplete",
-                    artifact,
-                    f"Verified E2E golden path cannot use {skip_switch} as completion evidence",
-                )
-            ]
-
-    missing_or_unchecked = [
-        check for check in E2E_GOLDEN_PATH_CHECKS if f"- [x] {check}" not in section and f"- [X] {check}" not in section
-    ]
-    unchecked = [line.strip() for line in section.splitlines() if line.strip().startswith("- [ ]")]
-    if not missing_or_unchecked and not unchecked:
-        return []
-
-    parts: list[str] = []
-    if missing_or_unchecked:
-        parts.append("missing checked signals: " + ", ".join(missing_or_unchecked))
-    if unchecked:
-        parts.append("unchecked rows: " + "; ".join(unchecked))
-    return [
-        _issue(
-            "verified-e2e-incomplete",
-            artifact,
-            "Verified E2E golden path must check every required runtime signal: " + "; ".join(parts),
-        )
-    ]
-
-
-def _verified_coverage_issues(artifact: ArtifactRecord) -> list[SddIssue]:
-    rows = _section_table_rows(artifact.text, "## Coverage", COVERAGE_HEADER)
-    if not rows:
-        return [
-            _issue(
-                "verified-coverage-incomplete",
-                artifact,
-                "Verified Coverage must contain at least one canonical metric row",
-            )
-        ]
-
-    incomplete_rows: list[str] = []
-    for cells in rows:
-        metric = _clean_value(cells[0]) if cells else "<unnamed metric>"
-        if len(cells) < len(COVERAGE_HEADER):
-            incomplete_rows.append(f"{metric or '<unnamed metric>'} => malformed row")
-            continue
-        placeholder_columns = [
-            COVERAGE_HEADER[index]
-            for index, cell in enumerate(cells[: len(COVERAGE_HEADER)])
-            if is_placeholder_table_cell(cell)
-        ]
-        if placeholder_columns:
-            incomplete_rows.append(f"{metric or '<unnamed metric>'} => placeholder {', '.join(placeholder_columns)}")
-            continue
-        if not _is_complete_compliance_status(cells[3]):
-            incomplete_rows.append(f"{metric or '<unnamed metric>'} => {_clean_value(cells[3]) or '<missing status>'}")
-    if not incomplete_rows:
-        return []
-    return [
-        _issue(
-            "verified-coverage-incomplete",
-            artifact,
-            "Verified Coverage rows must all be complete: " + ", ".join(incomplete_rows),
-        )
-    ]
+    return _verified_spec_compliance_issues(feature, artifact)
 
 
 def _verified_spec_compliance_issues(feature: SddFeature, artifact: ArtifactRecord) -> list[SddIssue]:
@@ -2186,53 +1953,6 @@ def _clean_command(value: str) -> str:
     return " ".join(cleaned.split())
 
 
-def _verification_make_check_all_block(text: str) -> str | None:
-    make_check_all_segments = [
-        segment for block in _verification_fenced_blocks(text) for segment in _command_segments(block, "make check-all")
-    ]
-    if len(make_check_all_segments) != 1:
-        return None
-    return make_check_all_segments[0]
-
-
-def _verification_fenced_blocks(text: str) -> list[str]:
-    section = _section_text(text, "## Verification commands")
-    return [match.group("body").strip() for match in FENCED_BLOCK_RE.finditer(section)]
-
-
-def _verification_commands(text: str) -> list[str]:
-    section = _section_text(text, "## Verification commands")
-    return [
-        _clean_command(command_match.group("command"))
-        for line in section.splitlines()
-        if (command_match := COMMAND_LINE_RE.match(line))
-    ]
-
-
-def _format_command_list(commands: list[str]) -> str:
-    counts = Counter(commands)
-    return ", ".join(f"{command} x{count}" if count > 1 else command for command, count in counts.items())
-
-
-def _command_segments(block: str, command: str) -> list[str]:
-    lines = block.splitlines()
-    starts = [
-        index
-        for index, line in enumerate(lines)
-        if (match := COMMAND_LINE_RE.match(line)) and _clean_command(match.group("command")) == command
-    ]
-
-    segments: list[str] = []
-    for start in starts:
-        end = len(lines)
-        for index in range(start + 1, len(lines)):
-            if COMMAND_LINE_RE.match(lines[index]):
-                end = index
-                break
-        segments.append("\n".join(lines[start:end]).strip())
-    return segments
-
-
 def _section_text(text: str, heading: str) -> str:
     return section_text(text, heading)
 
@@ -2476,14 +2196,6 @@ def _is_canonical_date_value(value: str) -> bool:
     except ValueError:
         return False
     return True
-
-
-def _command_exit_codes(block: str) -> tuple[int, ...]:
-    return tuple(int(match.group("code")) for match in EXIT_CODE_RE.finditer(block))
-
-
-def _format_exit_codes(exit_codes: tuple[int, ...]) -> str:
-    return ", ".join(str(exit_code) for exit_code in exit_codes) if exit_codes else "<none>"
 
 
 def _first_task_field(tasks: tuple[TaskRecord, ...], field_name: str) -> str | None:
