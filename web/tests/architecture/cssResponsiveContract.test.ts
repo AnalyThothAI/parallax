@@ -55,6 +55,9 @@ describe("responsive CSS contract", () => {
     const radarToolbarRules = rules.filter((rule) =>
       selectorContains(rule.selector, ".radar-toolbar"),
     );
+    const radarToolbarPrimaryRules = rules.filter((rule) =>
+      selectorContains(rule.selector, ".radar-toolbar-primary"),
+    );
 
     expect(
       livePageRules.some(
@@ -74,9 +77,25 @@ describe("responsive CSS contract", () => {
     ).toBe(true);
     expect(
       radarToolbarRules.some(
-        (rule) => declarationValue(rule.body, "grid-template-rows") === "auto auto",
+        (rule) =>
+          declarationValue(rule.body, "grid-template-columns") === "minmax(0, 1fr) auto" &&
+          declarationValue(rule.body, "grid-template-rows") === "auto",
       ),
-      ".radar-toolbar must keep status/title above route controls",
+      ".radar-toolbar must stay compact on wide screens",
+    ).toBe(true);
+    expect(
+      radarToolbarRules.some(
+        (rule) =>
+          declarationValue(rule.body, "grid-template-columns") === "minmax(0, 1fr)" &&
+          declarationValue(rule.body, "grid-template-rows") === "auto auto",
+      ),
+      ".radar-toolbar must stack controls below the title group on narrow screens",
+    ).toBe(true);
+    expect(
+      radarToolbarPrimaryRules.some(
+        (rule) => declarationValue(rule.body, "justify-content") === "flex-start",
+      ),
+      ".radar-toolbar-primary must keep content age beside the title and case count",
     ).toBe(true);
   });
 

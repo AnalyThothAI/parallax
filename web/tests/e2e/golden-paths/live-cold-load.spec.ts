@@ -88,9 +88,29 @@ test("cold live load renders one full-height Radar with local content age", asyn
 
   const primaryBox = await page.locator(".radar-toolbar-primary").boundingBox();
   const controlsBox = await page.getByLabel("token radar scan controls").boundingBox();
+  const titleBox = await page.locator(".radar-scan-title").boundingBox();
+  const statusBox = await page.getByTestId("radar-content-status").boundingBox();
   expect(primaryBox).not.toBeNull();
   expect(controlsBox).not.toBeNull();
-  expect(primaryBox!.y + primaryBox!.height).toBeLessThanOrEqual(controlsBox!.y + 1);
+  expect(titleBox).not.toBeNull();
+  expect(statusBox).not.toBeNull();
+  expect(statusBox!.x).toBeGreaterThanOrEqual(titleBox!.x + titleBox!.width);
+  expect(statusBox!.x - (titleBox!.x + titleBox!.width)).toBeLessThanOrEqual(20);
+  if ((viewport?.width ?? 0) > 860) {
+    const toolbarBox = await page.locator(".radar-toolbar").boundingBox();
+    expect(toolbarBox).not.toBeNull();
+    expect(
+      Math.abs(
+        primaryBox!.y +
+          primaryBox!.height / 2 -
+          (controlsBox!.y + controlsBox!.height / 2),
+      ),
+    ).toBeLessThanOrEqual(2);
+    expect(primaryBox!.x + primaryBox!.width).toBeLessThanOrEqual(controlsBox!.x);
+    expect(toolbarBox!.height).toBeLessThanOrEqual(64);
+  } else {
+    expect(primaryBox!.y + primaryBox!.height).toBeLessThanOrEqual(controlsBox!.y + 1);
+  }
   await expect(page.getByTestId("radar-content-status")).toHaveAttribute(
     "data-health",
     "healthy",
