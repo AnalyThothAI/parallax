@@ -1,12 +1,11 @@
 import { NotificationBell } from "@features/notifications";
 import { formatRelativeTime } from "@lib/format";
 import type { NotificationSummary, OpenApiStatusData } from "@lib/types";
-import { opsPath } from "@shared/routing/paths";
 import { IconButton } from "@shared/ui/IconButton";
 import clsx from "clsx";
-import { Clock3, Home, RefreshCw, Search, ServerCog, Wifi, Zap } from "lucide-react";
+import { Clock3, Home, RefreshCw, Search, Wifi, Zap } from "lucide-react";
 import { useState, type ReactNode, type RefObject } from "react";
-import { useMatch, useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router-dom";
 
 import "./CockpitTopbar.css";
 
@@ -43,7 +42,6 @@ export function CockpitTopbar({
   onRefresh,
 }: CockpitTopbarProps) {
   const navigate = useNavigate();
-  const opsRouteMatch = useMatch("/ops/*");
   const [searchDraft, setSearchDraft] = useState("");
   return (
     <header className="topbar">
@@ -93,17 +91,6 @@ export function CockpitTopbar({
         />
         <button type="submit">检索</button>
       </form>
-
-      <button
-        aria-current={opsRouteMatch ? "page" : undefined}
-        aria-label="Open ops diagnostics"
-        className={clsx("topbar-ops-button", opsRouteMatch && "active")}
-        title="Open ops diagnostics"
-        type="button"
-        onClick={() => navigate(opsPath())}
-      >
-        <ServerCog aria-hidden />
-      </button>
 
       <div className="topbar-notification-slot">
         <NotificationBell

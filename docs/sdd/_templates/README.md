@@ -1,6 +1,6 @@
 # SDD Templates
 
-These templates encode the feature-directory workflow described in `docs/WORKFLOW.md`.
+These templates encode the feature-directory workflow described in `docs/DEVELOPMENT.md`.
 Copy the full set into one dated feature directory; do not edit templates in place.
 
 ## Feature Directory
@@ -25,7 +25,7 @@ notes, and other attachments fail as `unexpected-artifact`.
 |------|---------|
 | `spec.md` | Why and what. Product/system intent, goals, non-goals, acceptance criteria. |
 | `plan.md` | How and when. File-level edits, SQL, rollout, rollback, test commands. |
-| `tasks.md` | TDD-ordered task checklist and subagent handoff boundaries. |
+| `tasks.md` | Dependency-ordered implementation checklist with ownership and verification. |
 | `verification.md` | Evidence that the spec and plan were satisfied. |
 
 ## Naming

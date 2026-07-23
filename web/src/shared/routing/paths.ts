@@ -46,10 +46,6 @@ export function macroPath(): string {
   return "/macro";
 }
 
-export function opsPath(): string {
-  return "/ops";
-}
-
 export function newsItemPath(newsItemId: string): string {
   return `/news/items/${encodeURIComponent(newsItemId)}`;
 }

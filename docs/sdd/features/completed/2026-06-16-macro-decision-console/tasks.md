@@ -1,7 +1,7 @@
 # Tasks — Macro Decision Console
 
 **Status**: Superseded
-**Superseded by**: `docs/reviews/backend-kiss-architecture-audit-zh-2026-07-21.md`
+**Superseded by**: `docs/ARCHITECTURE.md`
 **Owning plan**: `docs/sdd/features/completed/2026-06-16-macro-decision-console/plan.md`
 **Worktree**: `.worktrees/macro-decision-console`
 **Branch**: `codex/macro-decision-console`

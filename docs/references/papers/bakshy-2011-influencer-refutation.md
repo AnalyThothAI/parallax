@@ -1,7 +1,7 @@
 # Bakshy et al. 2011 — Everyone's an Influencer
 
 **Citation:** Bakshy, E., Hofman, J. M., Mason, W. A., & Watts, D. J. (2011). *Everyone's an Influencer: Quantifying Influence on Twitter.* WSDM.
-**Cited by:** `docs/DESIGN_DISCIPLINE.md` (Scoring and ranking design)
+**Cited by:** `docs/DEVELOPMENT.md` (design discipline)
 
 ## Claim
 

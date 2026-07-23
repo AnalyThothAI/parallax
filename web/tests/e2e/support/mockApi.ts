@@ -10,7 +10,6 @@ import {
 } from "@tests/fixtures/macroFixture";
 import { marketContextFixture, marketObservationFixture } from "@tests/fixtures/marketFixtures";
 import { newsItemFixture, newsRowFixture } from "@tests/fixtures/newsFixture";
-import { opsDiagnosticsFixture, opsQueueFixture } from "@tests/fixtures/opsFixture";
 import { tokenCaseFixture, tokenCasePostsFixture } from "@tests/fixtures/tokenCaseFixture";
 
 const NOW = 1_777_746_300_000;
@@ -83,9 +82,6 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     }
     if (path === "/api/macro/credit") return fulfill(route, macroCreditFixture());
     if (path === "/api/macro/series") return fulfill(route, macroSeriesData(url));
-    if (path === "/api/ops/diagnostics") return fulfill(route, opsDiagnosticsFixture());
-    if (path.startsWith("/api/ops/queues/")) return fulfill(route, opsQueueFixture());
-
     recordUnhandledApiRequest(page, url);
     return route.fulfill({
       status: 404,

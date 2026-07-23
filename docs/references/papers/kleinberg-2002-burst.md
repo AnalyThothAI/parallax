@@ -1,7 +1,7 @@
 # Kleinberg 2002 — Bursty and Hierarchical Structure in Streams
 
 **Citation:** Kleinberg, J. (2002). *Bursty and Hierarchical Structure in Streams.* KDD.
-**Cited by:** `docs/DESIGN_DISCIPLINE.md` (Scoring and ranking design)
+**Cited by:** `docs/DEVELOPMENT.md` (design discipline)
 
 ## Claim
 

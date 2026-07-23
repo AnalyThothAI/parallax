@@ -34,7 +34,7 @@
     }
 
     .topbar {
-      grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
+      grid-template-columns: 32px minmax(0, 1fr) 32px;
       gap: 8px;
       height: var(--cockpit-mobile-topbar-height);
       min-height: var(--cockpit-mobile-topbar-height);
@@ -62,14 +62,9 @@
       grid-row: 1;
     }
 
-    .topbar-ops-button {
-      grid-column: 3;
-      grid-row: 1;
-    }
-
     .topbar-notification-slot {
       display: grid;
-      grid-column: 4;
+      grid-column: 3;
       grid-row: 1;
     }
 

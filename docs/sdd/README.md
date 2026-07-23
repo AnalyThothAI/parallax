@@ -45,14 +45,9 @@ The plan selects direct test, lint, build, generated-contract, database, or
 browser commands according to risk. Verification may contain multiple command
 blocks. Every cited command needs matching exit-code-zero evidence; omitted
 lanes are risks, not passes.
-
-Delegated tasks additionally use:
-
-```bash
-uv run python scripts/build_agent_context_packet.py --feature <slug> --task <number> --mode read-only
-uv run python scripts/dispatch_sdd_task.py --feature <slug> --task <number> --mode read-only
-uv run python scripts/validate_subagent_report.py --feature <slug> --task <number> --mode read-only --report <report.md>
-```
+Native agent collaboration stays outside the repository. Record ownership,
+touch sets, dependencies, and executable evidence in the four artifacts; do not
+create packet, handoff, dispatch, or agent-report files.
 
 ## Status
 

@@ -1,7 +1,7 @@
 # Goel et al. 2016 — The Structural Virality of Online Diffusion
 
 **Citation:** Goel, S., Anderson, A., Hofman, J., & Watts, D. (2016). *The Structural Virality of Online Diffusion.* Management Science.
-**Cited by:** `docs/DESIGN_DISCIPLINE.md` (Scoring and ranking design)
+**Cited by:** `docs/DEVELOPMENT.md` (design discipline)
 
 ## Claim
 

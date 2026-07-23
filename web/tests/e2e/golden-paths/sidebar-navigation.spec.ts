@@ -34,7 +34,7 @@ test.describe("desktop sidebar navigation", () => {
     const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
     await expect(primaryNavigation).toBeVisible();
 
-    for (const routeName of ["Token Radar", "Stocks", "News", "宏观", "Watchlist", "Ops"]) {
+    for (const routeName of ["Token Radar", "Stocks", "News", "宏观", "Watchlist"]) {
       await expect(primaryNavigation.getByRole("link", { name: routeName })).toBeVisible();
     }
 
@@ -60,7 +60,6 @@ test.describe("desktop sidebar navigation", () => {
     await expectSidebarRouteClickFast(page, "News", "/news");
     await expectSidebarRouteClickFast(page, "Stocks", "/stocks");
     await expectSidebarRouteClickFast(page, "Token Radar", "/");
-    await expectSidebarRouteClickFast(page, "Ops", "/ops");
     await expectSidebarRouteClickFast(page, "宏观", "/macro");
     await expectSidebarRouteClickFast(page, "Watchlist", "/watchlist");
 
@@ -83,7 +82,6 @@ test.describe("desktop sidebar navigation", () => {
     await page.goto("/");
 
     await expectSidebarRouteClickFast(page, "News", "/news", 500);
-    await expectSidebarRouteClickFast(page, "Ops", "/ops", 500);
     await expectSidebarRouteClickFast(page, "Token Radar", "/", 500);
   });
 });

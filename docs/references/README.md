@@ -8,8 +8,9 @@
 - Each entry includes: source URL, fetch date, one-paragraph summary, and the rule or formula it supports.
 - Prune entries whose only consumer was a since-deleted spec.
 
-## Current Market-Data References
+## Current references
 
-- `MACRO_TIMSUN_SOURCE_GAP_MAP.md` maps the TimSun parity backlog to official
-  or license-gated source candidates and hard restoration gates for deleted
-  macro pages.
+- `gmgn-public-protocol.md`: GMGN anonymous public stream contract.
+- `okx-api.md`: OKX provider API notes.
+- `POSTGRES_PERFORMANCE.md`: PostgreSQL queue/query diagnosis.
+- `papers/`: research cited by deterministic ranking design.

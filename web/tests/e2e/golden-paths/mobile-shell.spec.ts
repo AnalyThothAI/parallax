@@ -170,7 +170,6 @@ async function expectMobileTopbarContract(page: Page) {
   for (const [name, locator] of [
     ["sidebar trigger", page.getByRole("button", { name: "Toggle Sidebar" })],
     ["search input", page.getByLabel("global search")],
-    ["Ops button", page.getByRole("button", { name: "Open ops diagnostics" })],
     ["notification button", page.getByRole("button", { name: "notifications" })],
   ] satisfies Array<[string, Locator]>) {
     await expect(locator, `${name} should render in the mobile topbar`).toBeVisible();

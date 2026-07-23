@@ -1,6 +1,6 @@
 # Setup
 
-> **Scope.** Owns install, dev-loop, and deployment commands for both the Python service and the `web/` frontend. Runtime invariants live in `RELIABILITY.md`.
+> **Scope.** Owns install, dev-loop, and deployment commands for both the Python service and the `web/` frontend. Runtime invariants live in `OPERATIONS.md`.
 
 ## Python service
 
@@ -39,8 +39,8 @@ model consumer, and `workers.yaml` has no model-runtime block.
 
 Use `uv run parallax config` to inspect both config paths and the effective
 worker settings. Inspect the running process through authenticated
-`/api/status` and `/api/ops/diagnostics`; a new CLI process cannot report the
-state of an already-running scheduler.
+`/api/status`; a new CLI process cannot report the state of an already-running
+scheduler.
 
 Useful live-data smoke checks:
 

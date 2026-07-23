@@ -60,10 +60,6 @@ export function createAppRouteObjects(): RouteObject[] {
               lazy: () => import("./macro-credit.route"),
             },
             {
-              path: "ops",
-              lazy: () => import("./ops.route"),
-            },
-            {
               index: true,
               lazy: () => import("./live.route"),
             },

@@ -10,7 +10,6 @@ from parallax.app.surfaces.api import (
     routes_macro,
     routes_news,
     routes_notifications,
-    routes_ops,
     routes_radar,
     routes_search,
     routes_status,
@@ -30,5 +29,4 @@ def create_api_router(status_payload: Callable[[Any], dict[str, Any]]) -> APIRou
     router.include_router(routes_macro.router)
     router.include_router(routes_news.router)
     router.include_router(routes_notifications.router)
-    router.include_router(routes_ops.router)
     return router

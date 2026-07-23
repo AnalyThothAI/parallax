@@ -21,7 +21,7 @@ from parallax.app.surfaces.api.schemas import (
 )
 
 
-def test_openapi_publishes_exact_macro_stocks_notifications_ops_and_worker_contracts() -> None:
+def test_openapi_publishes_exact_macro_stocks_notifications_and_worker_contracts() -> None:
     app = FastAPI()
     app.include_router(create_api_router(lambda _: {"ok": True}))
 
@@ -48,34 +48,6 @@ def test_openapi_publishes_exact_macro_stocks_notifications_ops_and_worker_contr
     )
     _assert_exact_required(schemas["NotificationsData"], {"items", "summary"})
     _assert_exact_required(schemas["NotificationItemData"], set(NotificationItemData.model_fields))
-    _assert_exact_required(
-        schemas["OpsDiagnosticsData"],
-        {
-            "schema_version",
-            "generated_at_ms",
-            "overall",
-            "config",
-            "database",
-            "collector",
-            "providers",
-            "workers",
-            "queues",
-            "domains",
-            "suggested_checks",
-        },
-    )
-    assert not {
-        "OpsAgentExecutionData",
-        "OpsAgentExecutionLaneData",
-        "OpsAgentExecutionPolicyData",
-        "OpsAgentExecutionCountersData",
-        "AgentExecutionStatusData",
-        "AgentExecutionUnavailableData",
-    } & set(schemas)
-    _assert_exact_required(
-        schemas["OpsQueueData"],
-        {"schema_version", "queue_name", "status_filter", "counts_by_status", "summary", "items"},
-    )
     macro_common_fields = {
         "snapshot",
         "conclusion",

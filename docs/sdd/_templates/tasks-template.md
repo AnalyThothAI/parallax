@@ -8,24 +8,12 @@
 **Approved by**: <user / delegated goal / pending>
 **Approved at**: <YYYY-MM-DD / pending>
 
-Use this file for every SDD feature. For single-PR work, keep a one-task `tasks.md`; do not omit the artifact.
-When a plan spans multiple PRs or when a parallel sub-agent will execute pieces, expand the task list.
-Active records are bounded execution loops: keep this file at or below 40
-structured tasks while the feature is in `active/`. If implementation needs more
-than 40 structured tasks, split or supersede the record before continuing; the
-validator reports `active-feature-too-large` when an active task board grows too
-large.
+Use this file for every non-trivial SDD feature. Keep active boards at or below
+40 tasks and split work that exceeds that bound.
 
-Tasks are TDD-ordered: write the failing test first, then the implementation, then run verification. Mark a task `[P]` when it can run in parallel with the previous task without sharing state. When a task is delegated, fill the subagent fields before dispatch.
-
-## Conventions
-
-- Each task names exactly one file or repository concern. Multi-file work is multiple tasks.
-- Status uses `[ ] pending`, `[~] in progress`, `[x] complete`, `[!] blocked`.
-- A task is complete only when its verification command produced the expected output.
-- Use `docs/agent-playbook/subagent-handoff-template.md` for delegated work.
-- The **Touch set** is what the assignee may edit. The **Conflict set** is what they must avoid or coordinate with the parent agent.
-- Keep **File(s)** and **Touch set** limited to current paths or matching globs. When a task deletes files, record them in optional **Removed file(s)** instead of advertising deleted paths as current coordination surfaces.
+Tasks are ordered by dependency. Write the failing contract first when behavior
+can be tested, implement the change, then run the named verification command.
+Native agent collaboration does not create repository handoff or report files.
 
 ## Gate Compliance
 
@@ -34,7 +22,7 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 | Clarify | `spec.md` includes `## Clarifications`. |
 | Checklist | `spec.md` includes `## Requirement Checklist`. |
 | Analyze | `plan.md` includes `## Analyze Gate`. |
-| Implement | Tasks below are TDD ordered. |
+| Implement | Tasks below are ordered by dependency. |
 | Verify | `verification.md` captures command output. |
 
 ## Tasks
@@ -42,26 +30,17 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 ### Task 1 — `<one-line title>`
 
 - **File(s)**: `tests/<area>/test_<file>.py`, `src/<area>/<file>.py`
-- **Owner**: `<parent | subagent nickname | person>`
+- **Owner**: `<agent or person>`
 - **Depends on**: `<none | Task N | external approval>`
 - **Touch set**: `<paths this task may edit>`
 - **Removed file(s)**: `<optional deleted paths, omitted when none>`
 - **Conflict set**: `<paths/concerns this task must not edit without coordination>`
 - **Failing test first**: `tests/<area>/test_<file>.py::<test_name>` — asserts `<observable behaviour>`.
-- **Subagent handoff**: `<not delegated | prompt/link to filled handoff template>`
-- **Subagent report**: `<not delegated | docs/generated/subagent-reports/<feature>-task-<n>.md>`
-- **Review result**: `<not delegated | parent-reviewed | accepted | needs-repair | blocked>`
-- **Implementation**: <one-paragraph description of the code change>.
+- **Implementation**: <one-paragraph description of the change>.
 - **Verification**: `uv run pytest tests/<area>/test_<file>.py::<test_name> -x`
-- **Review owner**: `<parent agent | person>`
-- **Factory lane**: `<Spec/plan | Domain implementation | Harness/tests | Docs/contracts | Risk radar | Final integration>`
-- **Deterministic constraints**: `<scripts/tests/docs gates that must always apply>`
-- **On-demand context**: `<docs/code/context packet this task should load only when needed>`
-- **Kill/defer criteria**: `<conditions that stop or defer this task>`
-- **Eval/repair signal**: `<review defect, harness failure, token cost, or repair-loop metric this task records>`
 - **Status**: [ ]
 
-### Task 2 — `<title>` `[P]`
+### Task 2 — `<title>`
 
 - **File(s)**:
 - **Owner**:
@@ -69,36 +48,6 @@ Tasks are TDD-ordered: write the failing test first, then the implementation, th
 - **Touch set**:
 - **Conflict set**:
 - **Failing test first**:
-- **Subagent handoff**:
-- **Subagent report**:
-- **Review result**:
 - **Implementation**:
 - **Verification**:
-- **Review owner**:
-- **Factory lane**:
-- **Deterministic constraints**:
-- **On-demand context**:
-- **Kill/defer criteria**:
-- **Eval/repair signal**:
-- **Status**: [ ]
-
-### Task 3 — `<title>`
-
-- **File(s)**:
-- **Owner**:
-- **Depends on**:
-- **Touch set**:
-- **Conflict set**:
-- **Failing test first**:
-- **Subagent handoff**:
-- **Subagent report**:
-- **Review result**:
-- **Implementation**:
-- **Verification**:
-- **Review owner**:
-- **Factory lane**:
-- **Deterministic constraints**:
-- **On-demand context**:
-- **Kill/defer criteria**:
-- **Eval/repair signal**:
 - **Status**: [ ]

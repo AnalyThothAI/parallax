@@ -3,7 +3,7 @@
     position: relative;
     z-index: 20;
     display: grid;
-    grid-template-columns: minmax(32px, auto) minmax(300px, 1fr) 32px 32px 32px;
+    grid-template-columns: minmax(32px, auto) minmax(300px, 1fr) 32px 32px;
     align-items: center;
     gap: 10px;
     min-height: var(--cockpit-topbar-height);
@@ -220,54 +220,22 @@
     outline: 0;
   }
 
-  .topbar-ops-button {
-    display: inline-flex;
-    grid-column: 3;
-    grid-row: 1;
-    align-items: center;
-    justify-content: center;
-    min-width: 0;
-    width: 32px;
-    height: 32px;
-    border: 1px solid var(--info-line);
-    border-radius: 6px;
-    color: var(--info-ink);
-    background: var(--info-soft);
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 800;
-  }
-
-  .topbar-ops-button svg {
-    width: 14px;
-    height: 14px;
-  }
-
-  .topbar-ops-button:hover,
-  .topbar-ops-button:focus-visible,
-  .topbar-ops-button.active {
-    border-color: var(--opportunity-line);
-    color: var(--opportunity-ink);
-    background: var(--opportunity-soft);
-    outline: 0;
-  }
-
   .topbar-notification-slot {
     display: grid;
-    grid-column: 4;
+    grid-column: 3;
     grid-row: 1;
     place-items: center;
     min-width: 0;
   }
 
   .topbar-refresh-button {
-    grid-column: 5;
+    grid-column: 4;
     grid-row: 1;
   }
 
   @media (max-width: 1279px) {
     .topbar {
-      grid-template-columns: 32px minmax(0, 1fr) 32px 32px 32px;
+      grid-template-columns: 32px minmax(0, 1fr) 32px 32px;
       padding: 0 8px;
     }
 
@@ -292,17 +260,12 @@
       height: 32px;
     }
 
-    .topbar-ops-button {
-      grid-column: 3;
-      width: 32px;
-    }
-
     .topbar-notification-slot {
-      grid-column: 4;
+      grid-column: 3;
     }
 
     .topbar-refresh-button {
-      grid-column: 5;
+      grid-column: 4;
     }
   }
 
@@ -333,14 +296,8 @@
       display: none;
     }
 
-    .topbar-ops-button {
-      grid-column: 3;
-      grid-row: 1;
-      width: 32px;
-    }
-
     .topbar-notification-slot {
-      grid-column: 4;
+      grid-column: 3;
       grid-row: 1;
     }
 

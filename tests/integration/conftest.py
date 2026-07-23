@@ -75,7 +75,7 @@ def _ensure_postgres_dsn() -> Iterator[None]:
             "  2. Provide an alternate DSN: GMGN_TEST_POSTGRES_DSN=postgresql://...\n"
             "  3. Start Docker Desktop / colima / OrbStack and rerun (testcontainers will auto-spin).\n"
             "  4. If you intentionally cannot run integration, set SKIP_INTEGRATION=1 -- but then\n"
-            "     this run cannot count as a verification artefact (DoD: see docs/WORKFLOW.md).",
+            "     this run cannot count as a verification artefact (DoD: see docs/DEVELOPMENT.md).",
             pytrace=False,
         )
 

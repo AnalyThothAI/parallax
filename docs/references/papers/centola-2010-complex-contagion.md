@@ -1,7 +1,7 @@
 # Centola 2010 — The Spread of Behavior in an Online Social Network Experiment
 
 **Citation:** Centola, D. (2010). *The Spread of Behavior in an Online Social Network Experiment.* Science.
-**Cited by:** `docs/DESIGN_DISCIPLINE.md` (Scoring and ranking design)
+**Cited by:** `docs/DEVELOPMENT.md` (design discipline)
 
 ## Claim
 

@@ -1,7 +1,7 @@
 # Spec — News Story Agent Hard Cut
 
 **Status**: Superseded
-**Superseded by**: `docs/reviews/backend-kiss-architecture-audit-zh-2026-07-21.md`
+**Superseded by**: `docs/ARCHITECTURE.md`
 **Date**: 2026-06-18
 **Owner**: Codex
 **Approved by**: delegated goal

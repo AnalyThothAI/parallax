@@ -13,9 +13,6 @@ ROOT = Path(__file__).resolve().parents[1]
 if str(ROOT) not in sys.path:
     sys.path.insert(0, str(ROOT))
 
-from scripts.agent_mode_constraints import mode_constraint_lines  # noqa: E402
-from scripts.subagent_report_contract import validate_subagent_report  # noqa: E402
-
 SDD_FEATURES = ROOT / "docs" / "sdd" / "features"
 ARTIFACTS = ("spec.md", "plan.md", "tasks.md", "verification.md")
 ACTIVE_STATUSES = {"draft", "approved", "in progress", "review", "blocked"}
@@ -65,19 +62,6 @@ TASK_DEPENDENCY_RE = re.compile(
     r"\bTasks?\s+(?P<start>[1-9]\d*)\b(?:\s*-\s*(?P<end>[1-9]\d*)\b)?",
     re.IGNORECASE,
 )
-HANDOFF_TITLE_RE = re.compile(
-    r"^#\s+Subagent Handoff - (?P<feature>[^/\n]+?)\s*/\s*(?P<task>Task\s+\d+)\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-HANDOFF_MODE_RE = re.compile(
-    r"^\s*Mode:\s*(?P<mode>read-only|write-allowed|review-only)\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-HANDOFF_CONTEXT_PACKET_RE = re.compile(
-    r"^#\s+Context Packet - (?P<feature>[^/\n]+?)\s*/\s*(?P<task>Task\s+\d+)\s*$",
-    re.IGNORECASE | re.MULTILINE,
-)
-
 SECTION_REQUIREMENTS = {
     "spec.md": ("## Clarifications", "## Requirement Checklist", "## Acceptance criteria"),
     "plan.md": ("## Analyze Gate", "## Acceptance test commands"),
@@ -123,27 +107,10 @@ TASK_REQUIRED_FIELDS = (
     "touch set",
     "conflict set",
     "failing test first",
-    "subagent handoff",
     "implementation",
     "verification",
-    "review owner",
     "status",
 )
-TASK_AGENT_LOOP_FIELDS = (
-    "factory lane",
-    "deterministic constraints",
-    "on-demand context",
-    "kill/defer criteria",
-    "eval/repair signal",
-)
-VALID_FACTORY_LANES = {
-    "Spec/plan",
-    "Domain implementation",
-    "Harness/tests",
-    "Docs/contracts",
-    "Risk radar",
-    "Final integration",
-}
 VERIFICATION_TABLE_STATUSES = {
     "pass",
     "passed",
@@ -158,9 +125,7 @@ VERIFICATION_TABLE_STATUSES = {
     "not applicable",
     "superseded",
 }
-TASK_REVIEW_FIELDS = ("subagent report", "review result")
 TASK_STATUSES = {"[ ]", "[~]", "[x]", "[!]"}
-TASK_REVIEW_RESULTS = {"not delegated", "parent-reviewed", "accepted", "needs-repair", "blocked"}
 PLACEHOLDER_VALUES = {"", "...", "tbd", "todo", "pending", "<pending>", "<none>"}
 KNOWN_ISSUE_CODES = (
     "review-lifecycle",
@@ -187,15 +152,6 @@ KNOWN_ISSUE_CODES = (
     "task-invalid-coordination-fields",
     "task-invalid-numbering",
     "task-invalid-dependencies",
-    "task-missing-agent-loop-fields",
-    "task-invalid-agent-loop-fields",
-    "task-missing-review-fields",
-    "task-invalid-review-fields",
-    "task-complete-missing-review-evidence",
-    "task-missing-subagent-handoff-artifact",
-    "task-invalid-subagent-handoff-artifact",
-    "task-missing-subagent-report-artifact",
-    "task-invalid-subagent-report-artifact",
     "task-complete-missing-failing-test-evidence",
     "task-complete-missing-verification-evidence",
     "task-incomplete-in-verified-feature",
@@ -284,10 +240,6 @@ class SddFeature:
     @property
     def conflict_set(self) -> tuple[str, ...]:
         return _task_set(self.tasks, "conflict set")
-
-    @property
-    def factory_lanes(self) -> tuple[str, ...]:
-        return _task_set(self.tasks, "factory lane")
 
     @property
     def blocked(self) -> str:
@@ -421,11 +373,6 @@ def task_incomplete_dependencies(feature: SddFeature, task: TaskRecord) -> tuple
         if dependency_task.fields.get("status", "").strip().lower() != "[x]":
             incomplete.append(dependency)
     return tuple(dict.fromkeys(incomplete))
-
-
-def task_dependencies_satisfied(feature: SddFeature, task: TaskRecord) -> bool:
-    dependencies = task_dependency_numbers(task)
-    return dependencies is not None and not task_incomplete_dependencies(feature, task)
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -1017,7 +964,6 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
     if not feature.tasks:
         return [
             _issue("task-missing-coordination-fields", tasks_artifact, "tasks.md has no structured Task sections"),
-            _issue("task-missing-agent-loop-fields", tasks_artifact, "tasks.md has no structured Task sections"),
         ]
 
     issues: list[SddIssue] = []
@@ -1069,47 +1015,6 @@ def _task_issues(feature: SddFeature) -> list[SddIssue]:
                             f"{task.title} complete before dependencies: {dependencies}",
                         )
                     )
-        missing_agent_fields = [
-            field for field in TASK_AGENT_LOOP_FIELDS if _is_placeholder(task.fields.get(field, ""))
-        ]
-        if missing_agent_fields:
-            issues.append(
-                _issue(
-                    "task-missing-agent-loop-fields",
-                    tasks_artifact,
-                    f"{task.title} missing fields: {', '.join(missing_agent_fields)}",
-                )
-            )
-        invalid_agent_fields = _invalid_agent_loop_fields(task)
-        if invalid_agent_fields:
-            issues.append(
-                _issue(
-                    "task-invalid-agent-loop-fields",
-                    tasks_artifact,
-                    f"{task.title} invalid fields: {', '.join(invalid_agent_fields)}",
-                )
-            )
-        missing_review_fields = [field for field in TASK_REVIEW_FIELDS if _is_placeholder(task.fields.get(field, ""))]
-        if missing_review_fields:
-            issues.append(
-                _issue(
-                    "task-missing-review-fields",
-                    tasks_artifact,
-                    f"{task.title} missing fields: {', '.join(missing_review_fields)}",
-                )
-            )
-        invalid_review_fields = _invalid_review_fields(task)
-        if invalid_review_fields:
-            issues.append(
-                _issue(
-                    "task-invalid-review-fields",
-                    tasks_artifact,
-                    f"{task.title} invalid fields: {', '.join(invalid_review_fields)}",
-                )
-            )
-        issues.extend(_complete_task_review_issues(feature, task))
-        issues.extend(_subagent_handoff_artifact_issues(feature, task))
-        issues.extend(_subagent_report_artifact_issues(feature, task))
         issues.extend(_complete_task_failing_test_evidence_issues(feature, task))
         issues.extend(_complete_task_verification_issues(feature, task))
         if feature.status.lower() == "verified" and task.fields.get("status", "").strip().lower() != "[x]":
@@ -1214,262 +1119,6 @@ def _repo_path_exists(root: Path, repo_path: str) -> bool:
     if any(character in repo_path for character in "*?[]"):
         return any(root.glob(repo_path))
     return (root / repo_path).exists()
-
-
-def _invalid_agent_loop_fields(task: TaskRecord) -> list[str]:
-    invalid: list[str] = []
-    factory_lane = task.fields.get("factory lane", "").replace("`", "").strip()
-    if factory_lane and factory_lane not in VALID_FACTORY_LANES:
-        invalid.append("factory lane")
-    return invalid
-
-
-def _invalid_review_fields(task: TaskRecord) -> list[str]:
-    invalid: list[str] = []
-    subagent_handoff = task.fields.get("subagent handoff", "")
-    subagent_report = task.fields.get("subagent report", "")
-    review_result = task.fields.get("review result", "")
-    if _is_placeholder(subagent_report) or _is_placeholder(review_result):
-        return invalid
-
-    normalized_handoff = subagent_handoff.replace("`", "").strip().lower()
-    if normalized_handoff != "not delegated" and not _is_repo_path(subagent_handoff):
-        invalid.append("subagent handoff")
-
-    delegated = not _is_not_delegated(subagent_handoff)
-    normalized_report = subagent_report.replace("`", "").strip().lower()
-    normalized_result = review_result.replace("`", "").strip().lower()
-    if normalized_result not in TASK_REVIEW_RESULTS:
-        invalid.append("review result")
-
-    if delegated:
-        if not _is_repo_path(subagent_report):
-            invalid.append("subagent report")
-        if normalized_result == "not delegated":
-            invalid.append("review result")
-    else:
-        if normalized_report != "not delegated":
-            invalid.append("subagent report")
-        if normalized_result not in {"not delegated", "parent-reviewed"}:
-            invalid.append("review result")
-
-    status = task.fields.get("status", "").strip().lower()
-    if status == "[x]" and normalized_result in {"needs-repair", "blocked"}:
-        invalid.append("review result")
-    return list(dict.fromkeys(invalid))
-
-
-def _complete_task_review_issues(feature: SddFeature, task: TaskRecord) -> list[SddIssue]:
-    if task.fields.get("status", "").strip().lower() != "[x]":
-        return []
-
-    review_result = task.fields.get("review result", "").replace("`", "").strip().lower()
-    if review_result in {"parent-reviewed", "accepted"}:
-        return []
-
-    return [
-        _issue(
-            "task-complete-missing-review-evidence",
-            feature.artifacts["tasks.md"],
-            f"{task.title} complete task requires parent-reviewed or accepted review result",
-        )
-    ]
-
-
-def _subagent_report_artifact_issues(feature: SddFeature, task: TaskRecord) -> list[SddIssue]:
-    if _is_not_delegated(task.fields.get("subagent handoff", "")):
-        return []
-
-    report_value = task.fields.get("subagent report", "")
-    if _is_placeholder(report_value) or not _is_repo_path(report_value):
-        return []
-
-    tasks_artifact = feature.artifacts["tasks.md"]
-    report_path = _repo_root(feature) / report_value.replace("`", "").strip()
-    if not report_path.exists():
-        return [
-            _issue(
-                "task-missing-subagent-report-artifact",
-                tasks_artifact,
-                f"{task.title} missing subagent report artifact: {report_value}",
-            )
-        ]
-
-    report_text = report_path.read_text(encoding="utf-8")
-    report_mode = _extract_report_mode(report_text)
-    if report_mode is None:
-        return [
-            _issue(
-                "task-invalid-subagent-report-artifact",
-                tasks_artifact,
-                f"{task.title} subagent report has no Mode line: {report_value}",
-            )
-        ]
-
-    expected_mode = _subagent_handoff_mode(feature, task) or report_mode
-    report_issues = validate_subagent_report(report_text, mode=expected_mode, task_fields=task.fields)
-    if report_issues:
-        return [
-            _issue(
-                "task-invalid-subagent-report-artifact",
-                tasks_artifact,
-                f"{task.title} invalid subagent report: {'; '.join(report_issues)}",
-            )
-        ]
-    return []
-
-
-def _subagent_handoff_artifact_issues(feature: SddFeature, task: TaskRecord) -> list[SddIssue]:
-    handoff_value = task.fields.get("subagent handoff", "")
-    if _is_not_delegated(handoff_value) or _is_placeholder(handoff_value) or not _is_repo_path(handoff_value):
-        return []
-
-    tasks_artifact = feature.artifacts["tasks.md"]
-    handoff_path = _repo_root(feature) / handoff_value.replace("`", "").strip()
-    if handoff_path.exists():
-        handoff_text = handoff_path.read_text(encoding="utf-8")
-        handoff_issues = _subagent_handoff_contract_issues(feature, task, handoff_text)
-        if handoff_issues:
-            return [
-                _issue(
-                    "task-invalid-subagent-handoff-artifact",
-                    tasks_artifact,
-                    f"{task.title} invalid subagent handoff: {'; '.join(handoff_issues)}",
-                )
-            ]
-        return []
-    return [
-        _issue(
-            "task-missing-subagent-handoff-artifact",
-            tasks_artifact,
-            f"{task.title} missing subagent handoff artifact: {handoff_value}",
-        )
-    ]
-
-
-def _subagent_handoff_contract_issues(feature: SddFeature, task: TaskRecord, text: str) -> list[str]:
-    task_anchor = _task_anchor(task)
-    if task_anchor is None:
-        return ["task heading is not machine-readable"]
-
-    top_level_text = _text_without_fenced_blocks(text)
-    issues: list[str] = []
-    title_match = HANDOFF_TITLE_RE.search(top_level_text)
-    if title_match is None:
-        issues.append("missing matching Subagent Handoff title")
-    else:
-        _append_handoff_binding_issues(issues, title_match, feature.slug, task_anchor, "handoff title")
-
-    mode_match = HANDOFF_MODE_RE.search(top_level_text)
-    mode = mode_match.group("mode").lower() if mode_match else ""
-    if not mode:
-        issues.append("missing valid Mode line")
-    else:
-        if "Mode constraints:" not in top_level_text:
-            issues.append("missing Mode constraints")
-        missing_constraints = [line for line in mode_constraint_lines(mode) if line not in top_level_text]
-        if missing_constraints:
-            issues.append("missing Mode constraints for mode: " + ", ".join(missing_constraints))
-
-    context_match = HANDOFF_CONTEXT_PACKET_RE.search(text)
-    if context_match is None:
-        issues.append("missing matching embedded Context Packet title")
-    else:
-        _append_handoff_binding_issues(issues, context_match, feature.slug, task_anchor, "context packet title")
-        context_text = _embedded_context_packet_text(text, feature.slug, task_anchor)
-        if context_text is None:
-            issues.append("missing matching embedded Context Packet fenced block")
-        elif mode:
-            _append_context_packet_mode_issues(issues, context_text, mode)
-
-    if mode:
-        expected_command = _expected_report_validation_command(feature.slug, task_anchor, mode)
-        if expected_command not in _normalize_handoff_text(top_level_text):
-            issues.append(f"report validation command must be exact: {expected_command}")
-    return issues
-
-
-def _expected_report_validation_command(feature_slug: str, task_anchor: str, mode: str) -> str:
-    task_number_text = task_anchor.removeprefix("Task ")
-    return (
-        "uv run python scripts/validate_subagent_report.py "
-        f"--feature {feature_slug} --task {task_number_text} --mode {mode} --report <report.md>"
-    )
-
-
-def _embedded_context_packet_text(text: str, expected_feature: str, expected_task: str) -> str | None:
-    for block_match in FENCED_BLOCK_RE.finditer(text):
-        body = block_match.group("body")
-        context_match = HANDOFF_CONTEXT_PACKET_RE.search(body)
-        if context_match is None:
-            continue
-        actual_feature = " ".join(context_match.group("feature").strip().split())
-        actual_task = " ".join(context_match.group("task").strip().split())
-        if actual_feature == expected_feature and actual_task.lower() == expected_task.lower():
-            return body
-    return None
-
-
-def _append_context_packet_mode_issues(issues: list[str], context_text: str, mode: str) -> None:
-    context_mode_match = HANDOFF_MODE_RE.search(context_text)
-    if context_mode_match is None:
-        issues.append("embedded Context Packet missing Mode line")
-        return
-
-    context_mode = context_mode_match.group("mode").lower()
-    if context_mode != mode:
-        issues.append(f"embedded Context Packet mode must match handoff mode: {mode}")
-
-    if "Mode constraints:" not in context_text:
-        issues.append("embedded Context Packet missing Mode constraints")
-        return
-
-    missing_constraints = [line for line in mode_constraint_lines(mode) if line not in context_text]
-    if missing_constraints:
-        issues.append("embedded Context Packet missing Mode constraints for mode: " + ", ".join(missing_constraints))
-
-
-def _subagent_handoff_mode(feature: SddFeature, task: TaskRecord) -> str | None:
-    handoff_value = task.fields.get("subagent handoff", "")
-    if _is_not_delegated(handoff_value) or _is_placeholder(handoff_value) or not _is_repo_path(handoff_value):
-        return None
-
-    handoff_path = _repo_root(feature) / handoff_value.replace("`", "").strip()
-    if not handoff_path.exists():
-        return None
-
-    mode_match = HANDOFF_MODE_RE.search(handoff_path.read_text(encoding="utf-8"))
-    return mode_match.group("mode").lower() if mode_match else None
-
-
-def _append_handoff_binding_issues(
-    issues: list[str],
-    match: re.Match[str],
-    expected_feature: str,
-    expected_task: str,
-    label: str,
-) -> None:
-    actual_feature = " ".join(match.group("feature").strip().split())
-    actual_task = " ".join(match.group("task").strip().split())
-    if actual_feature != expected_feature or actual_task.lower() != expected_task.lower():
-        issues.append(f"{label} expected {expected_feature} / {expected_task}, saw {actual_feature} / {actual_task}")
-
-
-def _task_anchor(task: TaskRecord) -> str | None:
-    number = task_number(task)
-    return f"Task {number}" if number is not None else None
-
-
-def _normalize_handoff_text(text: str) -> str:
-    return " ".join(text.replace("`", " ").split())
-
-
-def _extract_report_mode(text: str) -> str | None:
-    for line in text.splitlines()[:20]:
-        match = re.match(r"^\s*Mode:\s*(read-only|write-allowed|review-only)\s*$", line, re.IGNORECASE)
-        if match:
-            return match.group(1).lower()
-    return None
 
 
 def _repo_root(feature: SddFeature) -> Path:
@@ -1916,10 +1565,6 @@ def _valid_conflict_set(value: str) -> bool:
 
 def _is_coordination_rule(value: str) -> bool:
     return bool(re.match(r"^coordinate with [a-z0-9][a-z0-9_.\-/]+ for .+", value, re.IGNORECASE))
-
-
-def _is_not_delegated(value: str) -> bool:
-    return value.replace("`", "").strip().lower() == "not delegated"
 
 
 def _is_repo_path(value: str) -> bool:

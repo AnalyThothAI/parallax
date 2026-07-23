@@ -160,9 +160,7 @@ Watchlist timeline/cluster queries are Evidence read models. The unsupported `si
 
 ## Authoritative references
 
-- Worker inventory and ownership: `docs/WORKERS.md`
-- Worker debugging/state machines: `docs/WORKER_FLOW.md`
+- Worker ownership, reliability, and diagnosis: `docs/OPERATIONS.md`
 - Public surfaces: `docs/CONTRACTS.md`
-- Reliability and retention: `docs/RELIABILITY.md`
 - PostgreSQL diagnostics: `docs/references/POSTGRES_PERFORMANCE.md`
 - Frontend boundaries: `docs/FRONTEND.md`

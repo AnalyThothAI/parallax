@@ -156,10 +156,10 @@ Production bundles ship inside the same Docker image as the Python service and a
 
 ## UI Verification Gate
 
-Per `WORKFLOW.md`, UI flows that tests cannot exercise must be checked manually before declaring completion. The minimum checklist for frontend architecture changes is:
+Per `DEVELOPMENT.md`, UI flows that tests cannot exercise must be checked manually before declaring completion. The minimum checklist for frontend architecture changes is:
 
 1. Hard-reload `/`, `/search`, `/stocks`, `/news`,
-   `/news/items/:newsItemId`, all six Macro routes, `/watchlist`, `/ops`, and
+   `/news/items/:newsItemId`, all six Macro routes, `/watchlist`, and
    `/token/:targetType/:targetId?window=1h&scope=all` with representative query
    params.
 2. Submit the topbar search and confirm the URL becomes `/search?q=<submitted-query>`.

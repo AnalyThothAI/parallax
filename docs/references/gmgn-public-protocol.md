@@ -1,7 +1,7 @@
 # GMGN Anonymous Public WebSocket — Protocol Notes
 
 **Source of truth:** `src/parallax/collector/`
-**Cited by:** `docs/RELIABILITY.md` (`coverage=public_stream` semantics), `docs/SECURITY.md` (privacy boundary).
+**Cited by:** `docs/OPERATIONS.md` (provider reliability boundary), `docs/SECURITY.md` (privacy boundary).
 
 ## Scope
 

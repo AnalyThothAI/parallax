@@ -91,7 +91,6 @@ describe("frontend documentation contract", () => {
       { term: "News", to: "/news" },
       { term: "Macro", to: "/macro" },
       { term: "Watchlist", to: "/watchlist" },
-      { term: "Ops", to: "/ops" },
     ];
     const navigationItems = flattenNavigation(
       APP_NAVIGATION_GROUPS.flatMap((group) => group.items),

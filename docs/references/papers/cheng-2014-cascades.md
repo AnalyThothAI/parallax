@@ -1,7 +1,7 @@
 # Cheng et al. 2014 — Can Cascades be Predicted?
 
 **Citation:** Cheng, J., Adamic, L., Dow, P. A., Kleinberg, J., & Leskovec, J. (2014). *Can Cascades be Predicted?* WWW.
-**Cited by:** `docs/DESIGN_DISCIPLINE.md` (Scoring and ranking design)
+**Cited by:** `docs/DEVELOPMENT.md` (design discipline)
 
 ## Claim
 

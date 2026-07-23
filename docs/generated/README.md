@@ -6,9 +6,10 @@
 
 ```bash
 make docs-generated
+make regen-contract
 ```
 
-This runs the source generators below in sequence:
+These commands run the source generators below:
 
 | File | Source | Script |
 |------|--------|--------|
@@ -16,6 +17,7 @@ This runs the source generators below in sequence:
 | `cli-help.md` | `parallax --help` recursively | `scripts/regen_cli_help.py` |
 | `score-versions.md` | grep `score_version=` literals in `src/` | `scripts/regen_score_versions.py` |
 | `ws-protocol.md` | extract WebSocket message type literals and source classes from `src/parallax/app/surfaces/api/ws.py` | `scripts/regen_ws_protocol.py` |
-| `sdd-work-index.md` | SDD feature coordination board and executable harness flags | `scripts/regen_sdd_work_index.py` |
+| `sdd-work-index.md` | active SDD features and tasks | `scripts/regen_sdd_work_index.py` |
+| `openapi.json` | mounted FastAPI routes and schemas | `scripts/regen_openapi.py` |
 
-CI verifies that `make docs-generated` produces no diff against the committed tree.
+CI verifies that regeneration produces no diff against the committed tree.

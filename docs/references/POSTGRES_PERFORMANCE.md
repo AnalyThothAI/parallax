@@ -53,7 +53,7 @@ observable as zero serving-row writes.
 ## Source Material
 
 - SDD workflow: `docs/sdd/`
-- Operational invariants: `docs/RELIABILITY.md`
+- Operational invariants: `docs/OPERATIONS.md`
 - Setup commands: `docs/SETUP.md`
 
 External primary references:

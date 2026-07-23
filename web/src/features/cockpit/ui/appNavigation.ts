@@ -4,7 +4,6 @@ import {
   BriefcaseBusiness,
   Newspaper,
   Radar,
-  ServerCog,
   Star,
   type LucideIcon,
 } from "lucide-react";
@@ -68,17 +67,6 @@ export const APP_NAVIGATION_GROUPS: AppNavigationGroup[] = [
         label: "Watchlist",
         matchPath: "/watchlist/*",
         to: "/watchlist",
-      },
-    ],
-  },
-  {
-    label: "System",
-    items: [
-      {
-        icon: ServerCog,
-        label: "Ops",
-        matchPath: "/ops/*",
-        to: "/ops",
       },
     ],
   },

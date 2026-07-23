@@ -171,21 +171,6 @@ const routeCases: RouteCase[] = [
     ],
     lastMeaningfulSelector: ".macro-evidence-page > section:last-of-type",
   },
-  {
-    name: "ops",
-    path: "/ops",
-    primary: async (page) => {
-      await expect(page.getByRole("heading", { name: "运维诊断" })).toBeVisible();
-    },
-    specific: async (page) => {
-      await expect(page.getByRole("heading", { name: "故障看板" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "运行链路" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "队列排查" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "运行配置" })).toBeVisible();
-    },
-    nestedOverflowSelectors: [".ops-page", ".ops-command-grid", ".ops-grid", ".ops-queue-layout"],
-    lastMeaningfulSelector: ".ops-config",
-  },
 ];
 
 for (const routeCase of routeCases) {

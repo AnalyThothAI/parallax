@@ -4,10 +4,8 @@ from pathlib import Path
 from types import SimpleNamespace
 from typing import Any
 
-import pytest
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
-from pydantic import ValidationError
 
 from parallax.app.runtime.runtime_snapshot import RuntimeSnapshot, capture_runtime_snapshot
 from parallax.app.runtime.worker_manifest import worker_names
@@ -20,16 +18,7 @@ from parallax.app.surfaces.api.exceptions import (
 from parallax.app.surfaces.api.http import create_api_router
 
 
-def test_ops_diagnostics_requires_authentication() -> None:
-    app = _app(FakeRuntime())
-
-    with TestClient(app) as client:
-        response = client.get("/api/ops/diagnostics")
-
-    assert response.status_code == 401
-
-
-def test_ops_diagnostics_returns_aggregate_payload() -> None:
+def test_retired_ops_diagnostics_route_is_not_mounted() -> None:
     app = _app(FakeRuntime())
 
     with TestClient(app) as client:
@@ -38,55 +27,28 @@ def test_ops_diagnostics_returns_aggregate_payload() -> None:
             headers={"Authorization": "Bearer secret"},
         )
 
-    assert response.status_code == 200
-    body = response.json()
-    assert body["ok"] is True
-    assert body["data"]["schema_version"] == "ops.diagnostics.v1"
-    assert "workers" in body["data"]
+    assert response.status_code == 404
 
 
-def test_ops_diagnostics_fails_closed_when_producer_omits_required_section(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "parallax.app.surfaces.api.routes_ops.ops_diagnostics_payload",
-        lambda runtime, now_ms: {"schema_version": "ops.diagnostics.v1"},
-    )
-    app = _app(FakeRuntime())
-
-    with TestClient(app) as client, pytest.raises(ValidationError, match="generated_at_ms"):
-        client.get("/api/ops/diagnostics", headers={"Authorization": "Bearer secret"})
-
-
-def test_ops_queue_rejects_invalid_queue() -> None:
+def test_retired_ops_queue_route_is_not_mounted() -> None:
     app = _app(FakeRuntime())
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/ops/queues/not-real",
-            headers={"Authorization": "Bearer secret"},
-        )
-
-    assert response.status_code == 400
-    assert response.json()["error"] == "invalid_queue"
-
-
-def test_ops_queue_fails_closed_when_producer_omits_summary(monkeypatch) -> None:
-    monkeypatch.setattr(
-        "parallax.app.surfaces.api.routes_ops.ops_queue_payload",
-        lambda runtime, **kwargs: {
-            "schema_version": "ops.queue.v1",
-            "queue_name": "notification_deliveries",
-            "status_filter": None,
-            "counts_by_status": {},
-            "items": [],
-        },
-    )
-    app = _app(FakeRuntime())
-
-    with TestClient(app) as client, pytest.raises(ValidationError, match="summary"):
-        client.get(
             "/api/ops/queues/notification_deliveries",
             headers={"Authorization": "Bearer secret"},
         )
+
+    assert response.status_code == 404
+
+
+def test_status_route_remains_authenticated() -> None:
+    app = _app(FakeRuntime())
+
+    with TestClient(app) as client:
+        response = client.get("/api/status")
+
+    assert response.status_code == 401
 
 
 class FakeRows:

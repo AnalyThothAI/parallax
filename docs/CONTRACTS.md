@@ -57,11 +57,10 @@ The service exposes `/healthz`, `/readyz`, `/metrics`, `/ws`, static frontend as
 - `/api/status` captures one typed in-memory runtime snapshot for worker status,
   collector details, provider connections, startup/schema state, and the News
   provider contract. It performs no SQL.
-- `/api/ops/diagnostics` consumes that same snapshot contract and adds authenticated, on-demand database/domain/queue reads; `/api/ops/queues/{queue_name}` is the bounded queue-detail surface.
 - Read endpoints do not call providers, execute models, mutate facts, or rebuild projections.
 
-Status and Ops diagnostics contain no model configuration, model policy,
-capacity counters, prompt state, or model-derived business status.
+Status contains no model configuration, model policy, capacity counters,
+prompt state, or model-derived business status.
 
 API responses use a typed envelope:
 
@@ -83,7 +82,6 @@ Errors use `ok: false` with a stable error code. Pydantic response models genera
 | Macro | `/api/macro/overview`, `/api/macro/cross-asset`, `/api/macro/rates-inflation`, `/api/macro/growth-labor`, `/api/macro/liquidity-funding`, `/api/macro/credit`, `/api/macro/series` | one current six-document Macro snapshot and compact series |
 | News | `/api/news`, `/api/news/items/{id}`, `/api/news/facts/{id}`, `/api/news/sources/status` | current fact-only News page projection, persisted News evidence, and fetch-source state |
 | Notifications | account alerts, notification list with embedded summary, delivery audit, and read commands under `/api` | notification facts and external-delivery ledger |
-| Operations | `/api/ops/diagnostics`, `/api/ops/queues/{queue_name}` | bounded on-demand operational queries |
 | Images | `/api/token-images/{image_id}` | ready mirrored assets under the operator cache root |
 
 There is no CEX OI/detail product API. Generic exchange facts and provider adapters remain internal inputs to supported products.

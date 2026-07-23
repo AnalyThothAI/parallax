@@ -32,15 +32,13 @@ test("topbar keeps search and action controls contained", async ({ page }) => {
     return {
       topbar: box(".topbar"),
       search: box(".searchbar"),
-      ops: box(".topbar-ops-button"),
       notifications: box(".topbar-notification-slot"),
       refresh: box(".topbar-refresh-button"),
     };
   });
 
   expect(layout.search.width).toBeGreaterThanOrEqual(240);
-  expect(layout.search.right).toBeLessThanOrEqual(layout.ops.left);
-  expect(layout.ops.right).toBeLessThanOrEqual(layout.notifications.left);
+  expect(layout.search.right).toBeLessThanOrEqual(layout.notifications.left);
   expect(layout.notifications.right).toBeLessThanOrEqual(layout.refresh.left);
   expect(layout.refresh.right).toBeLessThanOrEqual(layout.topbar.right);
   expect(layout.search.bottom).toBeLessThanOrEqual(layout.topbar.bottom);

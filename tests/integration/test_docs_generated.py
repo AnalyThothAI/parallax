@@ -18,14 +18,7 @@ AUTO_GENERATED = {
     "score-versions.md",
     "ws-protocol.md",
 }
-GENERATED_REPORTS = {
-    "backend-architecture-audit-2026-05-17.md",
-    "backend-kappa-cqrs-file-ledger-2026-07-13.md",
-    "duplicate-token-audit.md",
-    "duplicate-token-audit-applied.md",
-    "frontend-test-ownership.md",
-    "sdd-work-index.md",
-}
+GENERATED_REPORTS = {"sdd-work-index.md"}
 EXPECTED = {"README.md"} | AUTO_GENERATED | GENERATED_REPORTS
 HEADER_MARKER = "AUTO-GENERATED"
 
@@ -35,8 +28,9 @@ def test_generated_directory_present() -> None:
 
 
 def test_expected_generated_files() -> None:
-    actual = {p.name for p in GENERATED.glob("*.md")}
-    assert actual == EXPECTED, f"unexpected docs/generated/ contents: {actual ^ EXPECTED}"
+    actual = {p.name for p in GENERATED.iterdir() if p.is_file()}
+    expected = EXPECTED | {"openapi.json"}
+    assert actual == expected, f"unexpected docs/generated/ contents: {actual ^ expected}"
 
 
 def test_generated_files_have_header_marker() -> None:

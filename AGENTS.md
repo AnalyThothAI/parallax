@@ -40,21 +40,14 @@ Frontend CSS is harness-constrained, not convention-only. Before changing `web/s
 | Layer boundaries & data flow | `docs/ARCHITECTURE.md` |
 | Frontend architecture | `docs/FRONTEND.md` |
 | Public surfaces (config, WS, HTTP, CLI) | `docs/CONTRACTS.md` |
-| Spec→plan→tasks→verification flow | `docs/WORKFLOW.md` |
-| Design rules (audit, reuse, scoring) | `docs/DESIGN_DISCIPLINE.md` |
-| Testing strategy and worker development checks | `docs/TESTING.md` |
+| Development, SDD, design, testing | `docs/DEVELOPMENT.md` |
 | Secrets, config, authn changes | `docs/SECURITY.md` |
-| Operational invariants | `docs/RELIABILITY.md` |
+| Operations, workers, reliability, diagnosis | `docs/OPERATIONS.md` |
 | PostgreSQL performance & queue diagnostics | `docs/references/POSTGRES_PERFORMANCE.md` |
-| Worker flow, lifecycle, state-machine debugging, and review checklist | `docs/WORKER_FLOW.md` |
-| Cross-domain worker inventory, runtime ownership, and worker best practices | `docs/WORKERS.md` |
-| Agent task reading matrix and sub-agent handoffs | `docs/agent-playbook/task-reading-matrix.md` |
-| Dormant provider-neutral model execution library | `docs/AGENT_EXECUTION.md` |
 | Domain architecture maps | `src/parallax/domains/<domain>/ARCHITECTURE.md`; discover current maps with `find src/parallax/domains -name ARCHITECTURE.md` |
 | SDD feature workflow | `docs/sdd/` contains current spec→plan→tasks→verification templates and feature records; old planning archives are not canonical truth |
 | External references & papers | `docs/references/` |
 | Auto-generated artefacts | `docs/generated/` |
-| Tech debt log | `docs/TECH_DEBT.md` |
 
 CLI surface: `uv run parallax --help` is the source of truth (snapshot at `docs/generated/cli-help.md`).
 

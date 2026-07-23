@@ -1,7 +1,7 @@
 # Plan — Signal Pulse Hard Cut And Architecture Simplification
 
 **Status**: Superseded
-**Superseded by**: `docs/reviews/backend-kiss-architecture-audit-zh-2026-07-21.md`
+**Superseded by**: `docs/ARCHITECTURE.md`
 **Date**: 2026-07-21
 **Owning spec**: `docs/sdd/features/completed/2026-07-21-signal-pulse-hard-cut/spec.md`
 **Worktree**: `main`

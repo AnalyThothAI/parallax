@@ -1,7 +1,7 @@
 # Crane & Sornette 2008 — Robust Dynamic Classes Revealed by Measuring the Response Function of a Social System
 
 **Citation:** Crane, R., & Sornette, D. (2008). *Robust dynamic classes revealed by measuring the response function of a social system.* PNAS.
-**Cited by:** `docs/DESIGN_DISCIPLINE.md` (Scoring and ranking design)
+**Cited by:** `docs/DEVELOPMENT.md` (design discipline)
 
 ## Claim
 
