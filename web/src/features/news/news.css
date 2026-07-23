@@ -28,7 +28,7 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 7px;
     background: rgba(9, 12, 12, 0.82);
     padding: 7px;
@@ -53,12 +53,12 @@
   .news-status-controls button,
   .news-page-button {
     min-height: 28px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 5px;
-    color: var(--dim);
+    color: var(--text-subtle);
     background: rgba(7, 9, 8, 0.64);
     padding: 0 9px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 800;
     letter-spacing: 0;
@@ -67,8 +67,8 @@
   }
 
   .news-status-controls button[aria-pressed="true"] {
-    border-color: var(--info-line);
-    color: var(--bone);
+    border-color: var(--signal-info-border);
+    color: var(--text-primary);
     background: rgba(88, 112, 255, 0.16);
   }
 
@@ -77,9 +77,9 @@
   .news-page-button:hover:not(:disabled),
   .news-page-button:focus-visible:not(:disabled) {
     outline: 0;
-    border-color: var(--info-line);
-    color: var(--info-ink);
-    background: var(--info-soft);
+    border-color: var(--signal-info-border);
+    color: var(--signal-info);
+    background: var(--signal-info-soft);
   }
 
   .news-search-filter {
@@ -93,8 +93,8 @@
   .news-search-filter span,
   .news-page-label,
   .news-pagination span {
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 800;
     letter-spacing: 0;
@@ -104,9 +104,9 @@
   .news-search-filter input {
     min-height: 28px;
     min-width: 0;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 5px;
-    color: var(--bone);
+    color: var(--text-primary);
     background: rgba(7, 9, 8, 0.64);
     padding: 0 9px;
     font-size: 12px;
@@ -114,7 +114,7 @@
 
   .news-search-filter input:focus-visible {
     outline: 0;
-    border-color: var(--info-line);
+    border-color: var(--signal-info-border);
   }
 
   .news-pager {
@@ -155,12 +155,12 @@
     justify-content: center;
     gap: 6px;
     min-height: 30px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 5px;
-    color: var(--bone-2);
+    color: var(--text-secondary);
     background: rgba(7, 9, 8, 0.64);
     padding: 0 10px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 800;
     letter-spacing: 0;
@@ -170,9 +170,9 @@
 
   .news-back-link:hover,
   .news-outline-link:hover {
-    border-color: var(--info-line);
-    color: var(--info-ink);
-    background: var(--info-soft);
+    border-color: var(--signal-info-border);
+    color: var(--signal-info);
+    background: var(--signal-info-soft);
   }
 
   @media (max-width: 1120px) {

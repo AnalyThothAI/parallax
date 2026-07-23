@@ -370,7 +370,7 @@ def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatc
 
     source_row = {
         "projection_name": "macro_evidence",
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "target_kind": "concept",
         "target_id": "rates:dgs10",
         "concept_key": "rates:dgs10",
@@ -384,7 +384,7 @@ def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatc
             "terminal-macro-target-1",
             worker_name="macro_view_projection",
             source_table="macro_projection_dirty_targets",
-            target_key="macro_evidence:macro_evidence_v1:concept:rates:dgs10",
+            target_key="macro_evidence:macro_decision_v2:concept:rates:dgs10",
             source_row_json=source_row,
         )
     ]
@@ -425,7 +425,7 @@ def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatc
     assert payload["data"]["transition"] == {
         "requeued": 1,
         "projection_name": "macro_evidence",
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "target_kind": "concept",
         "due_at_ms": 1_700_000_100_000,
     }
@@ -433,7 +433,7 @@ def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatc
         {
             "changed_observations": [{"concept_key": "rates:dgs10", "observed_at": "2026-06-23"}],
             "projection_name": "macro_evidence",
-            "projection_version": "macro_evidence_v1",
+            "projection_version": "macro_decision_v2",
             "now_ms": 1_700_000_100_000,
             "due_at_ms": 1_700_000_100_000,
             "reason": "terminal_retry:operator checked macro target",

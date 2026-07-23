@@ -14,7 +14,7 @@ const SNAPSHOT = {
   computed_at_ms: Date.parse("2026-07-23T02:00:00Z"),
   fact_watermark: "2026-07-22T21:00:00Z",
   market_cutoff: "2026-07-22",
-  projection_version: "macro_evidence_v1",
+  projection_version: "macro_decision_v2",
 } as const;
 
 const SAMPLE = {
@@ -174,22 +174,70 @@ export function macroOverviewFixture(): MacroOverviewData {
       unavailableCapability: "official_catalyst:event:bea_gdp_next",
       upgradeCode: "additional_cross_domain_confirmation",
     }),
-    dominant_shock: {
-      affected_exposures: ["duration", "growth_equity", "long_duration_assets"],
-      candidate: "policy_real_rates",
-      critical_contradictions: [],
-      cross_domain_confirmations: [{ code: "risk_off_confirmation", evidence_refs: ["asset:spy"] }],
-      hit_evidence: ["rates:real_10y", "rates:dgs10", "asset:spy"],
-      primary_trigger: {
-        code: "real_rate_up_20_sessions",
-        evidence_refs: ["rates:real_10y"],
+    core_invalidation: {
+      code: "dominant_shock_trigger_reverses",
+      evidence_refs: ["rates:real_10y", "rates:dgs10", "asset:spy"],
+    },
+    key_changes: [
+      {
+        code: "us_equities_weakening",
+        evidence_refs: ["asset:spy", "asset:qqq"],
+        lane_id: "us_equities",
+        rank: 1,
+        summary: "美国股票：逆风，较五个已完成交易日前减弱。",
       },
-      rule_version: "macro_dominant_shock_v1",
-      status: "confirmed",
+      {
+        code: "long_duration_treasuries_strengthening",
+        evidence_refs: ["asset:tlt", "rates:dgs10"],
+        lane_id: "long_duration_treasuries",
+        rank: 2,
+        summary: "长期美债：逆风，较五个已完成交易日前增强。",
+      },
+    ],
+    nearest_catalyst: {
+      concept_key: "event:bls_employment_next",
+      event_at_ms: Date.parse("2026-07-23T12:30:00Z"),
+      event_date: "2026-07-23",
+      event_time: "08:30",
+      evidence_ref: "event:bls_employment_next",
+      release_status: "today",
+      series_key: "labor:initial_claims",
+      source_name: "U.S. Department of Labor",
+      source_url: "https://www.dol.gov/ui/data.pdf",
+      timezone: "America/New_York",
+    },
+    risk_lanes: [
+      riskLane("us_equities", "headwind", "weakening", "high", "asset:spy", "asset:qqq"),
+      riskLane(
+        "long_duration_treasuries",
+        "headwind",
+        "strengthening",
+        "high",
+        "asset:tlt",
+        "rates:dgs10",
+      ),
+      riskLane("credit", "neutral", "stable", "medium", "asset:hyg", "credit:hy_oas"),
+      riskLane("usd", "tailwind", "strengthening", "high", "fx:dxy", "rates:dgs10"),
+      riskLane("gold", "headwind", "stable", "low", "asset:gld", "rates:real_10y"),
+      riskLane("oil", "neutral", "stable", "medium", "asset:uso", "inflation:10y_breakeven"),
+      riskLane("crypto", "headwind", "weakening", "high", "crypto:btc", "crypto:eth"),
+      riskLane("market_volatility", "tailwind", "strengthening", "high", "vol:vix", "vol:vix3m"),
+    ],
+    shock_summary: {
+      candidate: "policy_real_rates",
+      confidence: "high",
+      confirmations: [{ code: "risk_off_confirmation", evidence_refs: ["asset:spy"] }],
+      contradictions: [],
+      drivers: [{ code: "real_rate_up_20_sessions", evidence_refs: ["rates:real_10y"] }],
+      evidence_refs: ["rates:real_10y", "rates:dgs10", "asset:spy"],
+      state: "dominant",
+      summary: "当前主导冲击：实际利率收紧。",
+      trend: "strengthening",
     },
     official_catalysts: [
       {
         concept_key: "event:bls_employment_next",
+        event_at_ms: Date.parse("2026-07-23T12:30:00Z"),
         event_date: "2026-07-23",
         event_time: "08:30",
         evidence_ref: "event:bls_employment_next",
@@ -201,6 +249,7 @@ export function macroOverviewFixture(): MacroOverviewData {
       },
       {
         concept_key: "event:fomc_decision_next",
+        event_at_ms: Date.parse("2026-07-29T18:00:00Z"),
         event_date: "2026-07-29",
         event_time: "14:00",
         evidence_ref: "event:fomc_decision_next",
@@ -212,6 +261,136 @@ export function macroOverviewFixture(): MacroOverviewData {
       },
     ],
     page_id: "overview",
+  };
+}
+
+function riskLane(
+  laneId: MacroOverviewData["risk_lanes"][number]["lane_id"],
+  direction: MacroOverviewData["risk_lanes"][number]["direction"],
+  trend: MacroOverviewData["risk_lanes"][number]["trend"],
+  confidence: MacroOverviewData["risk_lanes"][number]["confidence"],
+  anchor: string,
+  confirmation: string,
+): MacroOverviewData["risk_lanes"][number] {
+  const laneLabels = {
+    credit: "信用",
+    crypto: "加密资产",
+    gold: "黄金",
+    long_duration_treasuries: "长期美债",
+    market_volatility: "市场波动率",
+    oil: "原油",
+    usd: "美元",
+    us_equities: "美国股票",
+  } as const;
+  const directionLabels = {
+    headwind: "逆风",
+    insufficient_evidence: "证据不足",
+    neutral: "中性",
+    tailwind: "顺风",
+  } as const;
+  const trendLabels = {
+    insufficient_evidence: "缺少可比历史",
+    stable: "基本不变",
+    strengthening: "增强",
+    weakening: "减弱",
+  } as const;
+  return {
+    comparison_session: "2026-07-15",
+    confidence,
+    contradiction:
+      confidence === "low"
+        ? { code: `${laneId}_confirmation_conflicts`, evidence_refs: [confirmation] }
+        : null,
+    current_session: "2026-07-22",
+    degradation_reason: null,
+    direction,
+    drivers: [{ code: `${laneId}_${direction}`, evidence_refs: [anchor] }],
+    evidence_refs: [anchor, confirmation],
+    invalidation: {
+      code:
+        direction === "neutral" ? `${laneId}_breaks_neutral_range` : `${laneId}_direction_reverses`,
+      evidence_refs: [anchor, confirmation],
+    },
+    lane_id: laneId,
+    sparkline_concept_key: anchor,
+    summary: `${laneLabels[laneId]}：${directionLabels[direction]}，较五个已完成交易日前${trendLabels[trend]}。`,
+    trend,
+  };
+}
+
+export function macroOverviewNoShockFixture(): MacroOverviewData {
+  const fixture = macroOverviewFixture();
+  return {
+    ...fixture,
+    core_invalidation: {
+      code: "cross_asset_consensus_emerges",
+      evidence_refs: ["asset:spy", "asset:tlt", "asset:hyg"],
+    },
+    shock_summary: {
+      candidate: null,
+      confidence: "medium",
+      confirmations: [],
+      contradictions: [],
+      drivers: [],
+      evidence_refs: [],
+      state: "no_dominant_shock",
+      summary: "当前没有单一主导冲击，跨资产信号仍然分散。",
+      trend: "stable",
+    },
+  };
+}
+
+export function macroOverviewInsufficientFixture(): MacroOverviewData {
+  const fixture = macroOverviewFixture();
+  return {
+    ...fixture,
+    core_invalidation: null,
+    risk_lanes: fixture.risk_lanes.map((lane, index) =>
+      index < 3
+        ? lane
+        : {
+            ...lane,
+            confidence: "insufficient_evidence",
+            degradation_reason: "missing_at_cutoff",
+            direction: "insufficient_evidence",
+            drivers: [],
+            invalidation: null,
+            summary: `${lane.lane_id}：关键证据不足，暂不判断。`,
+            trend: "insufficient_evidence",
+          },
+    ),
+    shock_summary: {
+      candidate: null,
+      confidence: "insufficient_evidence",
+      confirmations: [],
+      contradictions: [],
+      drivers: [],
+      evidence_refs: [],
+      state: "insufficient_evidence",
+      summary: "关键证据不足，暂时无法判断主导冲击。",
+      trend: "insufficient_evidence",
+    },
+  };
+}
+
+export function macroOverviewLocalDegradationFixture(): MacroOverviewData {
+  const fixture = macroOverviewFixture();
+  return {
+    ...fixture,
+    risk_lanes: fixture.risk_lanes.map((lane) =>
+      lane.lane_id === "oil"
+        ? {
+            ...lane,
+            confidence: "insufficient_evidence",
+            degradation_reason: "comparison_insufficient_20_session_history",
+            direction: "insufficient_evidence",
+            drivers: [],
+            invalidation: null,
+            summary: "原油：关键证据不足，暂不判断。",
+            trend: "insufficient_evidence",
+          }
+        : lane,
+    ),
   };
 }
 

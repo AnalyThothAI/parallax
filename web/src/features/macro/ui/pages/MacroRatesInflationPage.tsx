@@ -12,7 +12,8 @@ import {
 } from "../../model/macroDisplay";
 import { MacroCodeSummary, MacroFactGrid, MacroInflationReleaseList } from "../MacroDomainBlocks";
 import { MacroEvidenceList, MacroSection } from "../MacroEvidenceBlocks";
-import { MacroPageShell } from "../MacroPageShell";
+import { MacroPageFrame } from "../MacroPageFrame";
+import { MacroSeriesPanel } from "../MacroSeriesPanel";
 
 export function MacroRatesInflationPage({ token }: { token: string }) {
   const query = useMacroRatesInflationQuery({ token });
@@ -30,12 +31,17 @@ export function MacroRatesInflationPage({ token }: { token: string }) {
 
   return (
     <PageState.Stale updating={query.isFetching && !query.isLoading}>
-      <MacroPageShell
+      <MacroPageFrame
         data={data}
         pageId="rates_inflation"
         question="名义利率、实际利率与通胀补偿分别在定价什么，曲线水平与曲线变化是否一致？"
         title="利率与通胀"
       >
+        <MacroSeriesPanel
+          conceptKeys={["rates:dgs2", "rates:dgs10", "rates:real_10y", "inflation:10y_breakeven"]}
+          title="名义利率、实际利率与通胀补偿"
+          token={token}
+        />
         <MacroSection eyebrow={macroLabel(curve.status)} title="收益率曲线：水平与变化分开">
           <div className="macro-domain-card-grid">
             <MacroCodeSummary
@@ -109,7 +115,7 @@ export function MacroRatesInflationPage({ token }: { token: string }) {
             ]}
           />
         </MacroSection>
-      </MacroPageShell>
+      </MacroPageFrame>
     </PageState.Stale>
   );
 }

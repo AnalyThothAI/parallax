@@ -37,7 +37,7 @@
   .watchlist-evidence-panel,
   .watchlist-cluster-panel {
     min-width: 0;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     background: rgba(13, 17, 17, 0.96);
   }
 
@@ -54,10 +54,10 @@
     width: 44px;
     height: 44px;
     place-items: center;
-    border: 1px solid var(--opportunity-line);
+    border: 1px solid var(--accent-border);
     border-radius: 6px;
-    color: var(--opportunity);
-    background: var(--opportunity-soft);
+    color: var(--accent-primary);
+    background: var(--accent-soft);
   }
 
   .watchlist-source-mark svg {
@@ -74,8 +74,8 @@
   .watchlist-kicker,
   .watchlist-section-head span,
   .watchlist-signal-card span {
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     font-size: 10px;
     text-transform: uppercase;
   }
@@ -89,14 +89,14 @@
   .watchlist-kicker svg {
     width: 11px;
     height: 11px;
-    color: var(--health);
+    color: var(--signal-positive);
   }
 
   .watchlist-monitor-title h2 {
     overflow: hidden;
     margin: 0;
-    color: var(--bone);
-    font-family: var(--mono);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 27px;
     line-height: 1.06;
     text-overflow: ellipsis;
@@ -107,7 +107,7 @@
   .watchlist-section-head p,
   .watchlist-signal-card p {
     margin: 0;
-    color: var(--ash);
+    color: var(--text-muted);
     line-height: 1.45;
   }
 
@@ -125,27 +125,27 @@
     justify-content: center;
     min-height: 30px;
     gap: 7px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 4px;
-    color: var(--bone-2);
-    background: var(--slab);
+    color: var(--text-secondary);
+    background: var(--surface-panel);
     padding: 0 10px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 11px;
     text-decoration: none;
     white-space: nowrap;
   }
 
   .watchlist-action.primary {
-    border-color: var(--opportunity-line);
-    color: var(--opportunity-ink);
-    background: var(--opportunity-soft);
+    border-color: var(--accent-border);
+    color: var(--accent-primary);
+    background: var(--accent-soft);
   }
 
   .watchlist-action:hover,
   .watchlist-action:focus-visible {
-    border-color: var(--opportunity-line);
-    color: var(--opportunity);
+    border-color: var(--accent-border);
+    color: var(--accent-primary);
   }
 
   .watchlist-signal-strip {
@@ -162,22 +162,22 @@
   }
 
   .watchlist-signal-card b {
-    color: var(--bone);
-    font-family: var(--mono);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 25px;
     line-height: 1;
   }
 
   .watchlist-signal-card.opportunity {
-    border-color: var(--opportunity-line);
+    border-color: var(--accent-border);
   }
 
   .watchlist-signal-card.health {
-    border-color: var(--health-line);
+    border-color: var(--signal-positive-border);
   }
 
   .watchlist-signal-card.info {
-    border-color: var(--info-line);
+    border-color: var(--signal-info-border);
   }
 
   .watchlist-monitor-grid {
@@ -211,8 +211,8 @@
 
   .watchlist-section-head h3 {
     margin: 0;
-    color: var(--bone);
-    font-family: var(--mono);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 14px;
     line-height: 1.2;
   }
@@ -246,10 +246,10 @@
     justify-content: center;
     gap: 7px;
     min-height: 36px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     background: rgba(211, 200, 176, 0.08);
-    color: var(--bone);
-    font-family: var(--mono);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 11px;
     text-transform: uppercase;
   }
@@ -261,7 +261,7 @@
 
   .watchlist-load-more:hover,
   .watchlist-load-more:focus-visible {
-    border-color: var(--info-line);
+    border-color: var(--signal-info-border);
     background: rgba(123, 181, 216, 0.12);
   }
 
@@ -276,39 +276,39 @@
     align-items: center;
     gap: 8px;
     min-width: 0;
-    border: 1px solid var(--line-soft);
+    border: 1px solid var(--border-faint);
     background: rgba(7, 10, 10, 0.74);
     padding: 9px;
-    color: var(--bone-2);
+    color: var(--text-secondary);
     text-decoration: none;
   }
 
   .watchlist-cluster-list a:hover,
   .watchlist-cluster-list a:focus-visible {
-    border-color: var(--info-line);
+    border-color: var(--signal-info-border);
     background: rgba(123, 181, 216, 0.08);
   }
 
   .watchlist-cluster-list b {
     overflow: hidden;
-    color: var(--bone);
-    font-family: var(--mono);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 13px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .watchlist-cluster-list span {
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     font-size: 10px;
     white-space: nowrap;
   }
 
   .watchlist-risk-list li {
-    border: 1px solid var(--risk-line);
-    color: var(--risk-ink);
-    background: var(--risk-soft);
+    border: 1px solid var(--signal-negative-border);
+    color: var(--signal-negative);
+    background: var(--signal-negative-soft);
     padding: 9px;
     line-height: 1.45;
   }

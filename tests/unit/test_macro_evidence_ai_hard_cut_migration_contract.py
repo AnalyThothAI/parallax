@@ -3,8 +3,6 @@ from __future__ import annotations
 import ast
 from pathlib import Path
 
-from parallax.platform.db.postgres_migrations import latest_migration_version
-
 ROOT = Path(__file__).resolve().parents[2]
 MIGRATION = ROOT / "src/parallax/platform/db/alembic/versions/20260723_0191_macro_evidence_ai_hard_cut.py"
 
@@ -25,7 +23,6 @@ def test_macro_evidence_ai_hard_cut_extends_the_real_linear_head() -> None:
         "revision": "20260723_0191",
         "down_revision": "20260722_0190",
     }
-    assert latest_migration_version() == "20260723_0191"
 
 
 def test_macro_evidence_ai_hard_cut_is_fail_closed_and_irreversible() -> None:

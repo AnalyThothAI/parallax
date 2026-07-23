@@ -125,7 +125,7 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
                 }
             ],
             "projection_name": "macro_evidence",
-            "projection_version": "macro_evidence_v1",
+            "projection_version": "macro_decision_v2",
             "now_ms": NOW_MS,
             "due_at_ms": NOW_MS,
             "reason": "macro_observations_changed",

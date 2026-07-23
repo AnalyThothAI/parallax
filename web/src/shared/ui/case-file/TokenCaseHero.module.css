@@ -1,8 +1,8 @@
 .hero {
   display: grid;
   gap: 10px;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--slab) 94%, var(--void));
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-panel) 94%, var(--surface-canvas));
   padding: 10px 12px 12px;
 }
 
@@ -42,11 +42,11 @@
   display: grid;
   place-items: center;
   overflow: hidden;
-  border: 1px solid var(--health-line);
+  border: 1px solid var(--signal-positive-border);
   border-radius: 6px;
-  background: var(--health-soft);
-  color: var(--health);
-  font-family: var(--mono);
+  background: var(--signal-positive-soft);
+  color: var(--signal-positive);
+  font-family: var(--font-mono);
   font-size: 18px;
   font-weight: 700;
 }
@@ -72,20 +72,20 @@
 .metricGrid dt,
 .metricDetail,
 .priceLine span {
-  font-family: var(--mono);
+  font-family: var(--font-mono);
   font-size: 11px;
   letter-spacing: 0;
 }
 
 .kicker {
-  color: var(--dim);
+  color: var(--text-subtle);
   text-transform: uppercase;
 }
 
 .titleBlock h1 {
   margin: 0;
-  color: var(--bone);
-  font-family: var(--mono);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 28px;
   line-height: 1.05;
   letter-spacing: 0;
@@ -94,7 +94,7 @@
 
 .titleBlock p {
   margin: 0;
-  color: var(--ash);
+  color: var(--text-muted);
   font-size: 13px;
   line-height: 1.35;
 }
@@ -104,18 +104,18 @@
   min-width: 0;
   flex-wrap: wrap;
   gap: 8px;
-  color: var(--dim);
+  color: var(--text-subtle);
 }
 
 .metaRow code {
   max-width: 100%;
   overflow-wrap: anywhere;
-  border: 1px solid var(--line-soft);
+  border: 1px solid var(--border-faint);
   border-radius: 3px;
-  background: var(--slab-2);
-  color: var(--bone-2);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
   padding: 2px 6px;
-  font-family: var(--mono);
+  font-family: var(--font-mono);
 }
 
 .controls {
@@ -131,9 +131,9 @@
   max-width: 100%;
   flex-wrap: wrap;
   gap: 3px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
-  background: var(--void);
+  background: var(--surface-canvas);
   padding: 3px;
 }
 
@@ -143,15 +143,15 @@
   border: 0;
   border-radius: 3px;
   background: transparent;
-  color: var(--dim);
+  color: var(--text-subtle);
   cursor: pointer;
   padding: 0 8px;
   white-space: nowrap;
 }
 
 .segmented button[aria-pressed="true"] {
-  background: var(--health-soft);
-  color: var(--health);
+  background: var(--signal-positive-soft);
+  color: var(--signal-positive);
 }
 
 .actions {
@@ -165,25 +165,25 @@
   display: inline-flex;
   align-items: center;
   gap: 5px;
-  border: 1px solid var(--line);
+  border: 1px solid var(--border-subtle);
   border-radius: 4px;
-  background: var(--slab-2);
-  color: var(--bone-2);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
   padding: 0 8px;
   text-decoration: none;
   white-space: nowrap;
 }
 
 .actions a[data-tone="info"] {
-  border-color: var(--info-line);
-  background: var(--info-soft);
-  color: var(--info);
+  border-color: var(--signal-info-border);
+  background: var(--signal-info-soft);
+  color: var(--signal-info);
 }
 
 .actions a[data-tone="opportunity"] {
-  border-color: var(--opportunity-line);
-  background: var(--opportunity-soft);
-  color: var(--opportunity);
+  border-color: var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--accent-primary);
 }
 
 .market {
@@ -191,7 +191,7 @@
   display: grid;
   gap: 8px;
   align-content: start;
-  border-left: 1px solid var(--line);
+  border-left: 1px solid var(--border-subtle);
   padding-left: 12px;
 }
 
@@ -204,8 +204,8 @@
 
 .market h2 {
   margin: 0;
-  color: var(--bone);
-  font-family: var(--mono);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 13px;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -221,24 +221,24 @@
 
 .priceLine b {
   min-width: 0;
-  color: var(--bone);
-  font-family: var(--mono);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 24px;
   line-height: 1;
   overflow-wrap: anywhere;
 }
 
 .priceLine[data-tone="health"] b {
-  color: var(--health);
+  color: var(--signal-positive);
 }
 
 .priceLine[data-tone="warn"] b {
-  color: var(--opportunity);
+  color: var(--accent-primary);
 }
 
 .priceLine span,
 .market p {
-  color: var(--dim);
+  color: var(--text-subtle);
   text-transform: uppercase;
 }
 
@@ -259,22 +259,22 @@
   min-width: 0;
   display: grid;
   gap: 3px;
-  border-top: 1px solid var(--line-soft);
+  border-top: 1px solid var(--border-faint);
   padding-top: 6px;
 }
 
 .marketFacts dt,
 .metricGrid dt,
 .metricDetail {
-  color: var(--dim);
+  color: var(--text-subtle);
   text-transform: uppercase;
 }
 
 .marketFacts dd,
 .metricGrid dd {
   margin: 0;
-  color: var(--bone-2);
-  font-family: var(--mono);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
   font-size: 13px;
   overflow-wrap: anywhere;
 }
@@ -288,33 +288,33 @@
 }
 
 .metricGrid div[data-tone="health"] dd {
-  color: var(--health);
+  color: var(--signal-positive);
 }
 
 .metricGrid div[data-tone="info"] {
-  border-color: var(--info-line);
+  border-color: var(--signal-info-border);
 }
 
 .metricGrid div[data-tone="info"] dd {
-  color: var(--info);
+  color: var(--signal-info);
 }
 
 .metricGrid div[data-tone="warn"],
 .metricGrid div[data-tone="opportunity"] {
-  border-color: var(--opportunity-line);
+  border-color: var(--accent-border);
 }
 
 .metricGrid div[data-tone="warn"] dd,
 .metricGrid div[data-tone="opportunity"] dd {
-  color: var(--opportunity);
+  color: var(--accent-primary);
 }
 
 .metricGrid div[data-tone="risk"] {
-  border-color: var(--risk-line);
+  border-color: var(--signal-negative-border);
 }
 
 .metricGrid div[data-tone="risk"] dd {
-  color: var(--risk);
+  color: var(--signal-negative);
 }
 
 @media (max-width: 980px) {
@@ -324,7 +324,7 @@
 
   .market {
     border-left: 0;
-    border-top: 1px solid var(--line);
+    border-top: 1px solid var(--border-subtle);
     padding-top: 10px;
     padding-left: 0;
   }

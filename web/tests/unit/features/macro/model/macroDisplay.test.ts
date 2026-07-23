@@ -6,6 +6,7 @@ import {
   macroCapabilityLabel,
   macroCodeLabel,
   macroConceptLabel,
+  macroDecisionGapLabel,
   macroEvidenceRefsLabel,
   macroGapLabel,
   macroLabel,
@@ -431,6 +432,15 @@ describe("macroDisplay current vocabulary", () => {
         "missing_valid_observation_metadata_and_event_time_and_timezone_and_source_url",
       ),
     ).toBe("官方事件元数据不完整");
+    expect(macroCodeLabel("us_equities_direction_reverses")).toBe("美国股票当前方向反转");
+    expect(macroCodeLabel("gold_confirmation_conflicts")).toBe("黄金确认指标方向冲突");
+    expect(macroCodeLabel("dominant_shock_trigger_reverses")).toBe("主导冲击的核心触发因素反转");
+    expect(macroDecisionGapLabel("comparison_insufficient_20_session_history")).toBe(
+      "五个交易日前的比较证据：缺少 20 个交易日历史",
+    );
+    expect(macroDecisionGapLabel("confirmation_missing_at_cutoff")).toBe(
+      "交叉确认：市场截止日缺少观测",
+    );
   });
 
   it("fails closed to Chinese placeholders while preserving raw refs separately", () => {

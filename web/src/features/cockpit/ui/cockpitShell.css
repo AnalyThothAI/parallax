@@ -8,7 +8,7 @@
     overflow: hidden;
     border: 0;
     border-radius: 0;
-    background: var(--obsidian);
+    background: var(--surface-root);
     box-shadow: none;
     outline: 0;
   }
@@ -18,7 +18,7 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
-    background: var(--obsidian);
+    background: var(--surface-root);
   }
 
   .center-column {
@@ -28,9 +28,9 @@
     overflow: auto;
     overscroll-behavior: contain;
     scrollbar-gutter: stable;
-    border-right: 1px solid var(--line);
+    border-right: 1px solid var(--border-subtle);
     background:
-      linear-gradient(180deg, rgba(241, 234, 214, 0.025), transparent 220px), var(--obsidian);
+      linear-gradient(180deg, rgba(241, 234, 214, 0.025), transparent 220px), var(--surface-root);
   }
 
   .search-focus-mode .center-column {

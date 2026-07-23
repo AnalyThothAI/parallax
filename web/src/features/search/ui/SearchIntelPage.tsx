@@ -32,7 +32,7 @@ export function SearchIntelPage({ token }: { token?: string }) {
   };
 
   return (
-    <section className="search-intel-page" aria-label="Search Intel">
+    <section aria-label="Search Intel" className="search-intel-page" data-page-archetype="case">
       <SearchTopBar data={data} routeState={routeState} />
 
       {!routeState.q ? (

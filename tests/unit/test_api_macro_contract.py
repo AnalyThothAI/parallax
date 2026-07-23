@@ -42,7 +42,7 @@ def test_six_macro_pages_read_only_the_persisted_page_projection() -> None:
         payload = responses[path].json()
         assert payload["ok"] is True
         assert payload["data"]["page_id"] == page_id
-        assert payload["data"]["snapshot"]["projection_version"] == "macro_evidence_v1"
+        assert payload["data"]["snapshot"]["projection_version"] == "macro_decision_v2"
 
 
 @pytest.mark.parametrize(

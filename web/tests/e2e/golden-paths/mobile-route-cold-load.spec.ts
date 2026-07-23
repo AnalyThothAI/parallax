@@ -34,7 +34,7 @@ const routeCases: RouteCase[] = [
     },
     specific: async (page) => {
       const tokenCase = page.getByRole("region", { name: "Token case" });
-      await expect(page.getByRole("button", { name: "检索" })).toBeVisible();
+      await expect(page.getByLabel("global search")).toBeVisible();
       await expect(tokenCase.getByRole("heading", { name: /\$HANSA/ })).toBeVisible();
       await expect(tokenCase.getByRole("heading", { name: "Mention Timeline" })).toBeVisible();
     },
@@ -153,23 +153,21 @@ const routeCases: RouteCase[] = [
     name: "macro",
     path: "/macro",
     primary: async (page) => {
-      await expect(page.getByRole("heading", { level: 1, name: "宏观证据总览" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: "跨资产风险地图" })).toBeVisible();
     },
     specific: async (page) => {
-      await expect(page.getByRole("navigation", { name: "宏观页面" })).toBeVisible();
-      await expect(page.getByText("macro_evidence_v1")).toBeVisible();
-      await expect(page.getByRole("heading", { name: "主导冲击" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "官方催化日历" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "完整证据与溯源" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "未评估能力" })).toBeVisible();
+      await expect(page.getByRole("navigation", { name: "宏观分析维度" })).toBeVisible();
+      await expect(page.locator(".macro-risk-lane")).toHaveCount(8);
+      await expect(page.getByRole("heading", { name: "最近官方催化" })).toBeVisible();
+      await expect(page.getByRole("heading", { name: "核心失效条件" })).toBeVisible();
+      await expect(page.locator(".macro-audit-drawer")).not.toHaveAttribute("open", "");
     },
     nestedOverflowSelectors: [
-      ".macro-evidence-page",
-      ".macro-evidence-header",
-      ".macro-snapshot-meta",
-      ".macro-evidence-card",
+      ".macro-workbench",
+      ".macro-risk-lanes",
+      ".macro-overview-action-band",
     ],
-    lastMeaningfulSelector: ".macro-evidence-page > section:last-of-type",
+    lastMeaningfulSelector: ".macro-audit-drawer",
   },
 ];
 

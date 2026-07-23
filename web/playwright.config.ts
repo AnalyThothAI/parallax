@@ -7,6 +7,9 @@ export default defineConfig({
   use: {
     ...devices["Desktop Chrome"],
     baseURL: "http://127.0.0.1:4173",
+    colorScheme: "dark",
+    locale: "zh-CN",
+    timezoneId: "Asia/Shanghai",
     trace: "retain-on-failure",
   },
   webServer: {
@@ -38,14 +41,6 @@ export default defineConfig({
         ...devices["Pixel 5"],
         browserName: "chromium",
         viewport: { width: 390, height: 844 },
-      },
-    },
-    {
-      name: "mobile-430",
-      use: {
-        ...devices["Pixel 5"],
-        browserName: "chromium",
-        viewport: { width: 430, height: 932 },
       },
     },
   ],

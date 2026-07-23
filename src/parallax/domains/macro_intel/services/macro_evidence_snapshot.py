@@ -3,6 +3,7 @@ from __future__ import annotations
 from collections.abc import Mapping, Sequence
 from datetime import UTC, date, datetime, timedelta
 from typing import Any
+from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from parallax.domains.macro_intel._constants import MACRO_EVIDENCE_PROJECTION_VERSION
 from parallax.domains.macro_intel.services.macro_concept_manifest import (
@@ -16,6 +17,7 @@ from parallax.domains.macro_intel.services.macro_cross_asset_rules import (
     cross_asset_freshness,
     resolve_market_cutoff,
 )
+from parallax.domains.macro_intel.services.macro_decision_map import build_macro_decision_map
 from parallax.domains.macro_intel.services.macro_dominant_shock import build_dominant_shock
 from parallax.domains.macro_intel.services.macro_evidence import (
     build_evidence_index,
@@ -219,6 +221,12 @@ def build_macro_evidence_snapshot(
     overview_rule_hits = _dominant_shock_hits(dominant_shock)
     overview_evidence = _overview_evidence(evidence, dominant_shock=dominant_shock)
     official_catalysts, catalyst_gaps = _official_catalysts(observations, computed_at_ms=computed_at_ms)
+    decision_map = build_macro_decision_map(
+        claim_observations,
+        market_cutoff=market_cutoff,
+        dominant_shock=dominant_shock,
+        official_catalysts=official_catalysts,
+    )
     overview_freshness = _overview_freshness(
         overview_evidence,
         dominant_shock=dominant_shock,
@@ -233,7 +241,7 @@ def build_macro_evidence_snapshot(
         rule_hits=overview_rule_hits,
         unavailable_evidence=catalyst_gaps,
         extra={
-            "dominant_shock": dominant_shock,
+            **decision_map,
             "official_catalysts": official_catalysts,
         },
         forced_status=(
@@ -456,6 +464,11 @@ def _official_catalysts(
                 "source_name": str(observation.get("source_name") or ""),
                 "series_key": str(observation.get("series_key") or ""),
                 "source_url": source_url,
+                "event_at_ms": _catalyst_event_at_ms(
+                    event_date,
+                    event_time=event_time,
+                    timezone=timezone,
+                ),
                 "release_status": "today" if event_date == computed_date else "upcoming",
                 "evidence_ref": concept_key,
             }
@@ -463,6 +476,29 @@ def _official_catalysts(
     catalysts.sort(key=lambda item: (item["event_date"], item["event_time"], item["concept_key"]))
     gaps.sort(key=lambda item: item["capability"])
     return catalysts, gaps
+
+
+def _catalyst_event_at_ms(
+    event_date: date,
+    *,
+    event_time: str,
+    timezone: str,
+) -> int | None:
+    parsed_time = None
+    for format_string in ("%I:%M %p", "%I %p", "%H:%M"):
+        try:
+            parsed_time = datetime.strptime(event_time.strip(), format_string).time()
+            break
+        except ValueError:
+            continue
+    if parsed_time is None:
+        return None
+    try:
+        event_zone = ZoneInfo(timezone)
+    except ZoneInfoNotFoundError:
+        return None
+    event_instant = datetime.combine(event_date, parsed_time, tzinfo=event_zone)
+    return int(event_instant.timestamp() * 1000)
 
 
 def _dominant_shock_hits(dominant_shock: Mapping[str, Any]) -> list[dict[str, Any]]:

@@ -2372,94 +2372,6 @@
         "title": "MacroDerivationData",
         "type": "object"
       },
-      "MacroDominantShockData": {
-        "additionalProperties": false,
-        "properties": {
-          "affected_exposures": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Affected Exposures",
-            "type": "array"
-          },
-          "candidate": {
-            "anyOf": [
-              {
-                "enum": [
-                  "growth",
-                  "inflation",
-                  "policy_real_rates",
-                  "term_premium_supply",
-                  "liquidity_funding",
-                  "credit"
-                ],
-                "type": "string"
-              },
-              {
-                "type": "null"
-              }
-            ],
-            "title": "Candidate"
-          },
-          "critical_contradictions": {
-            "items": {
-              "$ref": "#/components/schemas/MacroDecisionItemData"
-            },
-            "title": "Critical Contradictions",
-            "type": "array"
-          },
-          "cross_domain_confirmations": {
-            "items": {
-              "$ref": "#/components/schemas/MacroDecisionItemData"
-            },
-            "title": "Cross Domain Confirmations",
-            "type": "array"
-          },
-          "hit_evidence": {
-            "items": {
-              "type": "string"
-            },
-            "title": "Hit Evidence",
-            "type": "array"
-          },
-          "primary_trigger": {
-            "anyOf": [
-              {
-                "$ref": "#/components/schemas/MacroDecisionItemData"
-              },
-              {
-                "type": "null"
-              }
-            ]
-          },
-          "rule_version": {
-            "title": "Rule Version",
-            "type": "string"
-          },
-          "status": {
-            "enum": [
-              "confirmed",
-              "provisional",
-              "divergent",
-              "insufficient_evidence"
-            ],
-            "title": "Status",
-            "type": "string"
-          }
-        },
-        "required": [
-          "candidate",
-          "status",
-          "primary_trigger",
-          "cross_domain_confirmations",
-          "critical_contradictions",
-          "affected_exposures",
-          "rule_version",
-          "hit_evidence"
-        ],
-        "title": "MacroDominantShockData",
-        "type": "object"
-      },
       "MacroEvidenceData": {
         "additionalProperties": false,
         "properties": {
@@ -2905,6 +2817,55 @@
         "title": "MacroInflationReleaseData",
         "type": "object"
       },
+      "MacroKeyChangeData": {
+        "additionalProperties": false,
+        "properties": {
+          "code": {
+            "title": "Code",
+            "type": "string"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "lane_id": {
+            "enum": [
+              "us_equities",
+              "long_duration_treasuries",
+              "credit",
+              "usd",
+              "gold",
+              "oil",
+              "crypto",
+              "market_volatility"
+            ],
+            "title": "Lane Id",
+            "type": "string"
+          },
+          "rank": {
+            "maximum": 3.0,
+            "minimum": 1.0,
+            "title": "Rank",
+            "type": "integer"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          }
+        },
+        "required": [
+          "rank",
+          "lane_id",
+          "code",
+          "summary",
+          "evidence_refs"
+        ],
+        "title": "MacroKeyChangeData",
+        "type": "object"
+      },
       "MacroLiquidityFundingData": {
         "additionalProperties": false,
         "properties": {
@@ -3197,6 +3158,17 @@
             "title": "Concept Key",
             "type": "string"
           },
+          "event_at_ms": {
+            "anyOf": [
+              {
+                "type": "integer"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Event At Ms"
+          },
           "event_date": {
             "format": "date",
             "title": "Event Date",
@@ -3243,6 +3215,7 @@
           "source_name",
           "series_key",
           "source_url",
+          "event_at_ms",
           "release_status",
           "evidence_ref"
         ],
@@ -3269,8 +3242,15 @@
             "title": "Contradictions",
             "type": "array"
           },
-          "dominant_shock": {
-            "$ref": "#/components/schemas/MacroDominantShockData"
+          "core_invalidation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroDecisionItemData"
+              },
+              {
+                "type": "null"
+              }
+            ]
           },
           "drivers": {
             "items": {
@@ -3301,6 +3281,24 @@
             "title": "Horizon",
             "type": "string"
           },
+          "key_changes": {
+            "items": {
+              "$ref": "#/components/schemas/MacroKeyChangeData"
+            },
+            "maxItems": 3,
+            "title": "Key Changes",
+            "type": "array"
+          },
+          "nearest_catalyst": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroOfficialCatalystData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "official_catalysts": {
             "items": {
               "$ref": "#/components/schemas/MacroOfficialCatalystData"
@@ -3312,6 +3310,18 @@
             "const": "overview",
             "title": "Page Id",
             "type": "string"
+          },
+          "risk_lanes": {
+            "items": {
+              "$ref": "#/components/schemas/MacroRiskLaneData"
+            },
+            "maxItems": 8,
+            "minItems": 8,
+            "title": "Risk Lanes",
+            "type": "array"
+          },
+          "shock_summary": {
+            "$ref": "#/components/schemas/MacroShockSummaryData"
           },
           "snapshot": {
             "$ref": "#/components/schemas/MacroSnapshotData"
@@ -3340,7 +3350,11 @@
           "evidence",
           "unavailable_evidence",
           "page_id",
-          "dominant_shock",
+          "shock_summary",
+          "risk_lanes",
+          "key_changes",
+          "nearest_catalyst",
+          "core_invalidation",
           "official_catalysts"
         ],
         "title": "MacroOverviewData",
@@ -3599,6 +3613,135 @@
           "derivation"
         ],
         "title": "MacroReturnWindowData",
+        "type": "object"
+      },
+      "MacroRiskLaneData": {
+        "additionalProperties": false,
+        "properties": {
+          "comparison_session": {
+            "format": "date",
+            "title": "Comparison Session",
+            "type": "string"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "insufficient_evidence"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "contradiction": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroDecisionItemData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "current_session": {
+            "format": "date",
+            "title": "Current Session",
+            "type": "string"
+          },
+          "degradation_reason": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Degradation Reason"
+          },
+          "direction": {
+            "enum": [
+              "tailwind",
+              "neutral",
+              "headwind",
+              "insufficient_evidence"
+            ],
+            "title": "Direction",
+            "type": "string"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "invalidation": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/MacroDecisionItemData"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "lane_id": {
+            "enum": [
+              "us_equities",
+              "long_duration_treasuries",
+              "credit",
+              "usd",
+              "gold",
+              "oil",
+              "crypto",
+              "market_volatility"
+            ],
+            "title": "Lane Id",
+            "type": "string"
+          },
+          "sparkline_concept_key": {
+            "title": "Sparkline Concept Key",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "trend": {
+            "enum": [
+              "strengthening",
+              "stable",
+              "weakening",
+              "insufficient_evidence"
+            ],
+            "title": "Trend",
+            "type": "string"
+          }
+        },
+        "required": [
+          "lane_id",
+          "direction",
+          "trend",
+          "confidence",
+          "summary",
+          "drivers",
+          "contradiction",
+          "invalidation",
+          "evidence_refs",
+          "degradation_reason",
+          "current_session",
+          "comparison_session",
+          "sparkline_concept_key"
+        ],
+        "title": "MacroRiskLaneData",
         "type": "object"
       },
       "MacroRuleHitData": {
@@ -4050,6 +4193,104 @@
         "title": "MacroSeriesPointData",
         "type": "object"
       },
+      "MacroShockSummaryData": {
+        "additionalProperties": false,
+        "properties": {
+          "candidate": {
+            "anyOf": [
+              {
+                "enum": [
+                  "growth",
+                  "inflation",
+                  "policy_real_rates",
+                  "term_premium_supply",
+                  "liquidity_funding",
+                  "credit"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Candidate"
+          },
+          "confidence": {
+            "enum": [
+              "high",
+              "medium",
+              "low",
+              "insufficient_evidence"
+            ],
+            "title": "Confidence",
+            "type": "string"
+          },
+          "confirmations": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Confirmations",
+            "type": "array"
+          },
+          "contradictions": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Contradictions",
+            "type": "array"
+          },
+          "drivers": {
+            "items": {
+              "$ref": "#/components/schemas/MacroDecisionItemData"
+            },
+            "title": "Drivers",
+            "type": "array"
+          },
+          "evidence_refs": {
+            "items": {
+              "type": "string"
+            },
+            "title": "Evidence Refs",
+            "type": "array"
+          },
+          "state": {
+            "enum": [
+              "dominant",
+              "no_dominant_shock",
+              "insufficient_evidence"
+            ],
+            "title": "State",
+            "type": "string"
+          },
+          "summary": {
+            "title": "Summary",
+            "type": "string"
+          },
+          "trend": {
+            "enum": [
+              "strengthening",
+              "stable",
+              "weakening",
+              "insufficient_evidence"
+            ],
+            "title": "Trend",
+            "type": "string"
+          }
+        },
+        "required": [
+          "state",
+          "candidate",
+          "summary",
+          "confidence",
+          "trend",
+          "drivers",
+          "confirmations",
+          "contradictions",
+          "evidence_refs"
+        ],
+        "title": "MacroShockSummaryData",
+        "type": "object"
+      },
       "MacroSnapshotData": {
         "additionalProperties": false,
         "properties": {
@@ -4082,7 +4323,7 @@
             "title": "Market Cutoff"
           },
           "projection_version": {
-            "const": "macro_evidence_v1",
+            "const": "macro_decision_v2",
             "title": "Projection Version",
             "type": "string"
           }

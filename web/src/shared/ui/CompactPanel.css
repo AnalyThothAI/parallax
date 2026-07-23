@@ -28,7 +28,7 @@
   .compact-panel h2 {
     overflow: hidden;
     margin: 0;
-    color: var(--bone);
+    color: var(--text-primary);
     font-size: 11px;
     font-weight: 700;
     text-overflow: ellipsis;
@@ -36,8 +36,8 @@
   }
 
   .compact-panel > header span {
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     font-size: 10px;
   }
 }

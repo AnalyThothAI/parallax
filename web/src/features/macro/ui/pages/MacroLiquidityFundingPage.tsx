@@ -2,7 +2,8 @@ import * as PageState from "@shared/ui/PageState";
 
 import { useMacroLiquidityFundingQuery } from "../../api/useMacroPageQueries";
 import { MacroEvidenceList } from "../MacroEvidenceBlocks";
-import { MacroPageShell } from "../MacroPageShell";
+import { MacroPageFrame } from "../MacroPageFrame";
+import { MacroSeriesPanel } from "../MacroSeriesPanel";
 
 export function MacroLiquidityFundingPage({ token }: { token: string }) {
   const query = useMacroLiquidityFundingQuery({ token });
@@ -17,12 +18,22 @@ export function MacroLiquidityFundingPage({ token }: { token: string }) {
   const data = query.data;
   return (
     <PageState.Stale updating={query.isFetching && !query.isLoading}>
-      <MacroPageShell
+      <MacroPageFrame
         data={data}
         pageId="liquidity_funding"
         question="央行资产负债表、准备金、财政现金与资金市场是否共同收紧？"
         title="流动性与资金"
       >
+        <MacroSeriesPanel
+          conceptKeys={[
+            "liquidity:fed_assets",
+            "liquidity:reserve_balances",
+            "liquidity:sofr",
+            "liquidity:tga",
+          ]}
+          title="资产负债表、准备金与融资价格"
+          token={token}
+        />
         <div className="macro-decision-grid">
           <MacroEvidenceList items={data.central_bank_balance_sheet} title="央行资产负债表" />
           <MacroEvidenceList items={data.reserves} title="准备金" />
@@ -36,7 +47,7 @@ export function MacroLiquidityFundingPage({ token }: { token: string }) {
           <MacroEvidenceList items={data.unsecured_funding.evidence} title="无担保资金价格" />
           <MacroEvidenceList items={data.unsecured_funding.spreads} title="无担保资金利差" />
         </div>
-      </MacroPageShell>
+      </MacroPageFrame>
     </PageState.Stale>
   );
 }

@@ -5,15 +5,15 @@
     min-height: 74px;
     place-items: center;
     gap: 6px;
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     font-size: 10px;
     text-align: center;
   }
 
   .page-state-empty b,
   .page-state-error [data-slot="alert-title"] {
-    color: var(--bone);
+    color: var(--text-primary);
     font-size: 12px;
   }
 
@@ -24,7 +24,7 @@
   }
 
   .page-state-error {
-    color: var(--opportunity);
+    color: var(--accent-primary);
   }
 
   .page-state-empty-action,
@@ -46,7 +46,7 @@
     gap: 0;
     min-height: 0;
     overflow: hidden;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 4px;
     background: #080c0c;
   }
@@ -62,7 +62,7 @@
     align-items: center;
     gap: 10px;
     min-height: 58px;
-    border-bottom: 1px solid var(--line-soft);
+    border-bottom: 1px solid var(--border-faint);
     padding: 8px 10px;
   }
 

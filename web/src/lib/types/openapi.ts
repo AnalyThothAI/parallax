@@ -1190,27 +1190,6 @@ export interface components {
             /** References */
             references: string[];
         };
-        /** MacroDominantShockData */
-        MacroDominantShockData: {
-            /** Affected Exposures */
-            affected_exposures: string[];
-            /** Candidate */
-            candidate: ("growth" | "inflation" | "policy_real_rates" | "term_premium_supply" | "liquidity_funding" | "credit") | null;
-            /** Critical Contradictions */
-            critical_contradictions: components["schemas"]["MacroDecisionItemData"][];
-            /** Cross Domain Confirmations */
-            cross_domain_confirmations: components["schemas"]["MacroDecisionItemData"][];
-            /** Hit Evidence */
-            hit_evidence: string[];
-            primary_trigger: components["schemas"]["MacroDecisionItemData"] | null;
-            /** Rule Version */
-            rule_version: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "confirmed" | "provisional" | "divergent" | "insufficient_evidence";
-        };
         /** MacroEvidenceData */
         MacroEvidenceData: {
             /** Change */
@@ -1339,6 +1318,22 @@ export interface components {
             release_change: components["schemas"]["MacroMetricData"];
             year_over_year: components["schemas"]["MacroMetricData"];
         };
+        /** MacroKeyChangeData */
+        MacroKeyChangeData: {
+            /** Code */
+            code: string;
+            /** Evidence Refs */
+            evidence_refs: string[];
+            /**
+             * Lane Id
+             * @enum {string}
+             */
+            lane_id: "us_equities" | "long_duration_treasuries" | "credit" | "usd" | "gold" | "oil" | "crypto" | "market_volatility";
+            /** Rank */
+            rank: number;
+            /** Summary */
+            summary: string;
+        };
         /** MacroLiquidityFundingData */
         MacroLiquidityFundingData: {
             /** Central Bank Balance Sheet */
@@ -1422,6 +1417,8 @@ export interface components {
         MacroOfficialCatalystData: {
             /** Concept Key */
             concept_key: string;
+            /** Event At Ms */
+            event_at_ms: number | null;
             /**
              * Event Date
              * Format: date
@@ -1452,7 +1449,7 @@ export interface components {
             confirmations: components["schemas"]["MacroDecisionItemData"][];
             /** Contradictions */
             contradictions: components["schemas"]["MacroDecisionItemData"][];
-            dominant_shock: components["schemas"]["MacroDominantShockData"];
+            core_invalidation: components["schemas"]["MacroDecisionItemData"] | null;
             /** Drivers */
             drivers: components["schemas"]["MacroDecisionItemData"][];
             /** Evidence */
@@ -1465,6 +1462,9 @@ export interface components {
              * @constant
              */
             horizon: "1_4_weeks";
+            /** Key Changes */
+            key_changes: components["schemas"]["MacroKeyChangeData"][];
+            nearest_catalyst: components["schemas"]["MacroOfficialCatalystData"] | null;
             /** Official Catalysts */
             official_catalysts: components["schemas"]["MacroOfficialCatalystData"][];
             /**
@@ -1472,6 +1472,9 @@ export interface components {
              * @constant
              */
             page_id: "overview";
+            /** Risk Lanes */
+            risk_lanes: components["schemas"]["MacroRiskLaneData"][];
+            shock_summary: components["schemas"]["MacroShockSummaryData"];
             snapshot: components["schemas"]["MacroSnapshotData"];
             /** Unavailable Evidence */
             unavailable_evidence: components["schemas"]["MacroUnavailableEvidenceData"][];
@@ -1556,6 +1559,51 @@ export interface components {
              * @enum {string}
              */
             window: "20_sessions" | "60_sessions";
+        };
+        /** MacroRiskLaneData */
+        MacroRiskLaneData: {
+            /**
+             * Comparison Session
+             * Format: date
+             */
+            comparison_session: string;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "high" | "medium" | "low" | "insufficient_evidence";
+            contradiction: components["schemas"]["MacroDecisionItemData"] | null;
+            /**
+             * Current Session
+             * Format: date
+             */
+            current_session: string;
+            /** Degradation Reason */
+            degradation_reason: string | null;
+            /**
+             * Direction
+             * @enum {string}
+             */
+            direction: "tailwind" | "neutral" | "headwind" | "insufficient_evidence";
+            /** Drivers */
+            drivers: components["schemas"]["MacroDecisionItemData"][];
+            /** Evidence Refs */
+            evidence_refs: string[];
+            invalidation: components["schemas"]["MacroDecisionItemData"] | null;
+            /**
+             * Lane Id
+             * @enum {string}
+             */
+            lane_id: "us_equities" | "long_duration_treasuries" | "credit" | "usd" | "gold" | "oil" | "crypto" | "market_volatility";
+            /** Sparkline Concept Key */
+            sparkline_concept_key: string;
+            /** Summary */
+            summary: string;
+            /**
+             * Trend
+             * @enum {string}
+             */
+            trend: "strengthening" | "stable" | "weakening" | "insufficient_evidence";
         };
         /** MacroRuleHitData */
         MacroRuleHitData: {
@@ -1676,6 +1724,36 @@ export interface components {
             /** Value */
             value: number | null;
         };
+        /** MacroShockSummaryData */
+        MacroShockSummaryData: {
+            /** Candidate */
+            candidate: ("growth" | "inflation" | "policy_real_rates" | "term_premium_supply" | "liquidity_funding" | "credit") | null;
+            /**
+             * Confidence
+             * @enum {string}
+             */
+            confidence: "high" | "medium" | "low" | "insufficient_evidence";
+            /** Confirmations */
+            confirmations: components["schemas"]["MacroDecisionItemData"][];
+            /** Contradictions */
+            contradictions: components["schemas"]["MacroDecisionItemData"][];
+            /** Drivers */
+            drivers: components["schemas"]["MacroDecisionItemData"][];
+            /** Evidence Refs */
+            evidence_refs: string[];
+            /**
+             * State
+             * @enum {string}
+             */
+            state: "dominant" | "no_dominant_shock" | "insufficient_evidence";
+            /** Summary */
+            summary: string;
+            /**
+             * Trend
+             * @enum {string}
+             */
+            trend: "strengthening" | "stable" | "weakening" | "insufficient_evidence";
+        };
         /** MacroSnapshotData */
         MacroSnapshotData: {
             /** Computed At Ms */
@@ -1688,7 +1766,7 @@ export interface components {
              * Projection Version
              * @constant
              */
-            projection_version: "macro_evidence_v1";
+            projection_version: "macro_decision_v2";
         };
         /** MacroTreasurySpreadQuadrantData */
         MacroTreasurySpreadQuadrantData: {

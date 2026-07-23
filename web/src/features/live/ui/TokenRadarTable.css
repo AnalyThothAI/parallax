@@ -15,14 +15,14 @@
 
   .radar-toolbar .radar-scan-title h2 {
     margin: 0;
-    color: var(--bone);
+    color: var(--text-primary);
     font-size: 15px;
     line-height: 1.1;
   }
 
   .radar-scan-title span {
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     font-size: 11px;
     font-weight: 600;
     letter-spacing: 0;
@@ -94,10 +94,10 @@
     gap: 4px;
     max-width: 100%;
     border: 0;
-    color: var(--dim);
+    color: var(--text-subtle);
     background: transparent;
     padding: 0;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 700;
     letter-spacing: 0;
@@ -130,7 +130,7 @@
     border: 0;
     border-bottom: 1px solid rgba(154, 159, 146, 0.1);
     border-radius: 0;
-    color: var(--bone-2);
+    color: var(--text-secondary);
     background: rgba(14, 18, 15, 0.46);
     cursor: pointer;
     padding: 9px 12px;
@@ -143,10 +143,10 @@
   .radar-data-table .token-radar-row:hover,
   .radar-data-table .token-radar-row:focus-visible,
   .radar-data-table .token-radar-row.selected {
-    border-color: var(--line-soft);
+    border-color: var(--border-faint);
     outline: 0;
     background: rgba(26, 32, 28, 0.88);
-    box-shadow: inset 3px 0 0 var(--opportunity);
+    box-shadow: inset 3px 0 0 var(--accent-primary);
   }
 
   .token-radar-cell {
@@ -174,7 +174,7 @@
   .radar-case-cell .radar-token-logo {
     width: 36px;
     height: 36px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 50%;
     background: rgba(7, 9, 8, 0.62);
     object-fit: cover;
@@ -206,7 +206,7 @@
     display: block;
     overflow: hidden;
     color: inherit;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 14px;
     font-weight: 900;
     line-height: 1.1;
@@ -229,12 +229,12 @@
     align-items: center;
     justify-content: center;
     min-height: 18px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 4px;
-    color: var(--ash);
+    color: var(--text-muted);
     background: rgba(7, 9, 8, 0.72);
     padding: 0 5px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 800;
     line-height: 1;
@@ -243,15 +243,15 @@
   }
 
   .radar-case-link.official {
-    border-color: var(--info-line-strong);
-    color: var(--info-ink);
-    background: var(--info-soft);
+    border-color: var(--signal-info-border);
+    color: var(--signal-info);
+    background: var(--signal-info-soft);
   }
 
   .radar-case-link.venue {
-    border-color: var(--opportunity-line-strong);
-    color: var(--opportunity-ink);
-    background: var(--opportunity-soft);
+    border-color: var(--accent-border);
+    color: var(--accent-primary);
+    background: var(--accent-soft);
   }
 
   .radar-venue-badge {
@@ -259,12 +259,12 @@
     align-items: center;
     justify-content: center;
     min-height: 18px;
-    border: 1px solid var(--line-strong);
+    border: 1px solid var(--border-strong);
     border-radius: 4px;
     color: #ffd184;
     background: rgba(242, 165, 31, 0.1);
     padding: 0 5px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 900;
     line-height: 1;
@@ -286,8 +286,8 @@
 
   .radar-data-table .radar-fact b {
     overflow: hidden;
-    color: var(--bone);
-    font-family: var(--mono);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 12px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -296,7 +296,7 @@
   .radar-data-table .radar-fact em {
     display: -webkit-box;
     overflow: hidden;
-    color: var(--ash);
+    color: var(--text-muted);
     font-style: normal;
     -webkit-line-clamp: 1;
     font-size: 10px;
@@ -305,7 +305,7 @@
   }
 
   .listed-fact b {
-    color: var(--bone);
+    color: var(--text-primary);
   }
 
   .listed-fact {
@@ -326,8 +326,8 @@
 
   .market-primary-value {
     min-width: 0;
-    color: var(--info);
-    font-family: var(--mono);
+    color: var(--signal-info);
+    font-family: var(--font-mono);
     font-size: 12px;
   }
 
@@ -336,8 +336,8 @@
     align-items: center;
     flex: 0 0 auto;
     gap: 4px;
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     line-height: 1;
   }
 
@@ -351,15 +351,15 @@
   }
 
   .market-move.up {
-    color: var(--health-ink);
+    color: var(--signal-positive);
   }
 
   .market-move.down {
-    color: var(--risk-ink);
+    color: var(--signal-negative);
   }
 
   .market-move.flat {
-    color: var(--dim);
+    color: var(--text-subtle);
   }
 
   .market-stats {
@@ -374,14 +374,14 @@
     align-items: baseline;
     gap: 3px;
     min-width: 0;
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     font-size: 10px;
     line-height: 1.1;
   }
 
   .market-stat span {
-    color: var(--dim);
+    color: var(--text-subtle);
   }
 
   .market-stat b {
@@ -393,11 +393,11 @@
   }
 
   .market-stat.liquidity b {
-    color: var(--info);
+    color: var(--signal-info);
   }
 
   .market-stat.volume b {
-    color: var(--health);
+    color: var(--signal-positive);
   }
 
   .market-stat.holders b {
@@ -419,8 +419,8 @@
     border: 1px solid #765620;
     border-radius: 5px;
     color: #ffd184;
-    background: var(--opportunity-soft);
-    font-family: var(--mono);
+    background: var(--accent-soft);
+    font-family: var(--font-mono);
     font-size: 17px;
     font-weight: 900;
   }

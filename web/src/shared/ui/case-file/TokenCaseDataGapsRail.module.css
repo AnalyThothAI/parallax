@@ -1,8 +1,8 @@
 .rail {
   display: grid;
   gap: 10px;
-  border: 1px solid var(--line);
-  background: color-mix(in srgb, var(--slab) 94%, var(--void));
+  border: 1px solid var(--border-subtle);
+  background: color-mix(in srgb, var(--surface-panel) 94%, var(--surface-canvas));
   padding: 12px;
 }
 
@@ -12,8 +12,8 @@
 }
 
 .rail header span {
-  color: var(--dim);
-  font-family: var(--mono);
+  color: var(--text-subtle);
+  font-family: var(--font-mono);
   font-size: 10px;
   letter-spacing: 0;
   text-transform: uppercase;
@@ -21,8 +21,8 @@
 
 .rail h2 {
   margin: 0;
-  color: var(--bone);
-  font-family: var(--mono);
+  color: var(--text-primary);
+  font-family: var(--font-mono);
   font-size: 15px;
   letter-spacing: 0;
 }
@@ -38,15 +38,15 @@
 .rail li,
 .rail p {
   margin: 0;
-  border: 1px solid var(--opportunity-line);
-  background: var(--opportunity-soft);
-  color: var(--bone-2);
+  border: 1px solid var(--accent-border);
+  background: var(--accent-soft);
+  color: var(--text-secondary);
   font-size: 12px;
   line-height: 1.45;
   padding: 9px;
 }
 
 .rail p {
-  border-color: var(--health-line);
-  background: var(--health-soft);
+  border-color: var(--signal-positive-border);
+  background: var(--signal-positive-soft);
 }

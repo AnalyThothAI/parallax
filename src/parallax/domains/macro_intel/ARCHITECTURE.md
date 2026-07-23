@@ -32,7 +32,7 @@ macro_sync_windows
   -> MacroViewProjectionWorker bounded catch-up
   -> compact observation series
   -> clock recheck when the UTC date or completed-market-session cutoff advances
-  -> one atomic macro_evidence_v1 snapshot with six typed documents
+  -> one atomic macro_decision_v2 snapshot with six typed documents
   -> six page reads + one independent series read
 ```
 
@@ -129,19 +129,28 @@ needed. Critical missing, stale, or malformed evidence makes the affected
 conclusion `insufficient_evidence`. Optional absence makes it `degraded`.
 Unsupported capabilities are `not_assessed` with a reason and no numeric value.
 
-Overview's dominant-shock candidate is limited to `growth`, `inflation`,
-`policy_real_rates`, `term_premium_supply`, `liquidity_funding`, or `credit`.
-Its state is `confirmed`, `provisional`, `divergent`, or
-`insufficient_evidence`; candidate is null when no rule establishes one.
-Conclusions contain no global score, percentage confidence, probability,
-positioning instruction, or trade output.
+Overview adds a deterministic decision map. `shock_summary.state` is
+`dominant`, `no_dominant_shock`, or `insufficient_evidence`; the candidate,
+when present, is limited to `growth`, `inflation`, `policy_real_rates`,
+`term_premium_supply`, `liquidity_funding`, or `credit`. Exactly eight ordered
+lanes are published: US equities, long-duration Treasuries, credit, USD, gold,
+oil, crypto, and market volatility. The same versioned rules evaluate the
+current completed US session and the fifth prior completed session. Each lane
+contains direction, trend, categorical confidence, summary, drivers,
+contradiction, invalidation, evidence references, and local degradation.
+Overview also bounds key changes to three and selects at most the nearest
+trustworthy official catalyst plus one nullable core invalidation. Conclusions
+contain no global score, percentage confidence, probability, positioning
+instruction, holdings analysis, trade output, or LLM result.
 
 ## Page-specific contracts
 
-- **Overview**: dominant trigger, cross-domain confirmation/contradiction,
-  affected exposures, and official catalysts in the next seven days. Catalysts
-  expose official date/time/timezone/source/URL and `today`/`upcoming` status;
-  no consensus, forecast, surprise, or event score is inferred.
+- **Overview**: one shock state, the exact eight-lane decision map, up to three
+  five-session changes, nearest official catalyst, core invalidation, and the
+  shared audit payload. Catalysts expose official date/time/timezone/source/URL,
+  normalized `event_at_ms` only when trustworthy, and `today`/`upcoming`
+  status; no consensus, forecast, surprise, fabricated countdown, or event
+  score is inferred.
 - **Cross-asset**: cutoff-aligned 20/60-session returns, volatility evidence,
   20/60-session correlations using actual common samples, and explicit
   divergences/gaps. Raw levels are never compared as returns.
@@ -170,7 +179,7 @@ represented by placeholders or proxies.
 ## Atomic current snapshot
 
 `macro_view_snapshots` has exactly one supported identity:
-`snapshot_key = 'current'`. The row stores `macro_evidence_v1`, shared
+`snapshot_key = 'current'`. The row stores `macro_decision_v2`, shared
 watermarks/cutoff/time, six required JSON objects, and one stable payload hash.
 All page documents repeat the same four metadata fields; repository validation
 rejects a mismatch.

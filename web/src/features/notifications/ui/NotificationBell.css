@@ -4,8 +4,8 @@
   }
 
   .notification-bell.open {
-    color: var(--opportunity);
-    border-color: var(--opportunity-line);
+    color: var(--accent-primary);
+    border-color: var(--accent-border);
   }
 
   .notification-bell span {
@@ -19,8 +19,8 @@
     border: 1px solid rgba(7, 9, 9, 0.9);
     border-radius: 999px;
     color: #170f03;
-    background: var(--opportunity);
-    font-family: var(--mono);
+    background: var(--accent-primary);
+    font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 800;
     line-height: 1;
@@ -28,6 +28,6 @@
 
   .notification-bell.has-high span {
     color: #fff4f4;
-    background: var(--risk);
+    background: var(--signal-negative);
   }
 }

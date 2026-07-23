@@ -8,7 +8,7 @@ import {
 import { buildTokenRadarCompactCase } from "@shared/model/tokenRadarCompactCase";
 import * as PageState from "@shared/ui/PageState";
 import { RadarControls } from "@shared/ui/RadarControls";
-import { ObsidianTokenMark } from "@shared/ui/case-file";
+import { ResearchMark } from "@shared/ui/case-file";
 import {
   flexRender,
   getCoreRowModel,
@@ -291,7 +291,7 @@ function TokenCaseCell({
       {tokenCase.logoUrl ? (
         <img alt="" className="radar-token-logo" src={tokenCase.logoUrl} />
       ) : (
-        <ObsidianTokenMark
+        <ResearchMark
           className="radar-case-mark"
           label={tokenCase.label}
           tone={tokenCase.markTone}

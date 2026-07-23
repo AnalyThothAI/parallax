@@ -71,7 +71,7 @@ class WorkerStatusData(ExactApiSchema):
 
 
 class MacroSnapshotData(ExactApiSchema):
-    projection_version: Literal["macro_evidence_v1"]
+    projection_version: Literal["macro_decision_v2"]
     fact_watermark: date | None
     market_cutoff: date | None
     computed_at_ms: int
@@ -183,25 +183,70 @@ class MacroPageBaseData(ExactApiSchema):
     unavailable_evidence: list[MacroUnavailableEvidenceData]
 
 
-class MacroDominantShockData(ExactApiSchema):
-    candidate: (
-        Literal[
-            "growth",
-            "inflation",
-            "policy_real_rates",
-            "term_premium_supply",
-            "liquidity_funding",
-            "credit",
-        ]
-        | None
-    )
-    status: Literal["confirmed", "provisional", "divergent", "insufficient_evidence"]
-    primary_trigger: MacroDecisionItemData | None
-    cross_domain_confirmations: list[MacroDecisionItemData]
-    critical_contradictions: list[MacroDecisionItemData]
-    affected_exposures: list[str]
-    rule_version: str
-    hit_evidence: list[str]
+MacroShockCandidate = Literal[
+    "growth",
+    "inflation",
+    "policy_real_rates",
+    "term_premium_supply",
+    "liquidity_funding",
+    "credit",
+]
+MacroLaneConfidence = Literal["high", "medium", "low", "insufficient_evidence"]
+MacroLaneTrend = Literal["strengthening", "stable", "weakening", "insufficient_evidence"]
+
+
+class MacroShockSummaryData(ExactApiSchema):
+    state: Literal["dominant", "no_dominant_shock", "insufficient_evidence"]
+    candidate: MacroShockCandidate | None
+    summary: str
+    confidence: MacroLaneConfidence
+    trend: MacroLaneTrend
+    drivers: list[MacroDecisionItemData]
+    confirmations: list[MacroDecisionItemData]
+    contradictions: list[MacroDecisionItemData]
+    evidence_refs: list[str]
+
+
+class MacroRiskLaneData(ExactApiSchema):
+    lane_id: Literal[
+        "us_equities",
+        "long_duration_treasuries",
+        "credit",
+        "usd",
+        "gold",
+        "oil",
+        "crypto",
+        "market_volatility",
+    ]
+    direction: Literal["tailwind", "neutral", "headwind", "insufficient_evidence"]
+    trend: MacroLaneTrend
+    confidence: MacroLaneConfidence
+    summary: str
+    drivers: list[MacroDecisionItemData]
+    contradiction: MacroDecisionItemData | None
+    invalidation: MacroDecisionItemData | None
+    evidence_refs: list[str]
+    degradation_reason: str | None
+    current_session: date
+    comparison_session: date
+    sparkline_concept_key: str
+
+
+class MacroKeyChangeData(ExactApiSchema):
+    rank: int = Field(ge=1, le=3)
+    lane_id: Literal[
+        "us_equities",
+        "long_duration_treasuries",
+        "credit",
+        "usd",
+        "gold",
+        "oil",
+        "crypto",
+        "market_volatility",
+    ]
+    code: str
+    summary: str
+    evidence_refs: list[str]
 
 
 class MacroOfficialCatalystData(ExactApiSchema):
@@ -212,13 +257,18 @@ class MacroOfficialCatalystData(ExactApiSchema):
     source_name: str
     series_key: str
     source_url: str
+    event_at_ms: int | None
     release_status: Literal["today", "upcoming"]
     evidence_ref: str
 
 
 class MacroOverviewData(MacroPageBaseData):
     page_id: Literal["overview"]
-    dominant_shock: MacroDominantShockData
+    shock_summary: MacroShockSummaryData
+    risk_lanes: list[MacroRiskLaneData] = Field(min_length=8, max_length=8)
+    key_changes: list[MacroKeyChangeData] = Field(max_length=3)
+    nearest_catalyst: MacroOfficialCatalystData | None
+    core_invalidation: MacroDecisionItemData | None
     official_catalysts: list[MacroOfficialCatalystData]
 
 

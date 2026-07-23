@@ -26,7 +26,7 @@ export function TokenCasePanel({
   onLoadMorePosts,
 }: TokenCasePanelProps) {
   return (
-    <section className={styles.panel} aria-label="Token case">
+    <section aria-label="Token case" className={styles.panel} data-page-archetype="case">
       <TokenCaseHero
         hero={vm.hero}
         market={vm.market}

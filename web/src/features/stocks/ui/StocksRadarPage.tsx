@@ -33,7 +33,7 @@ export function StocksRadarPage({
   const data = query.data;
   const rows = data?.rows ?? [];
   return (
-    <section className="stocks-radar-panel" aria-label="US stocks radar">
+    <section aria-label="US stocks radar" className="stocks-radar-panel" data-page-archetype="scan">
       <header className="stocks-radar-toolbar">
         <div>
           <h2>US Stocks</h2>

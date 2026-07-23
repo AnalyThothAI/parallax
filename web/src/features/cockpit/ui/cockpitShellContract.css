@@ -36,8 +36,8 @@
     .topbar {
       grid-template-columns: 32px minmax(0, 1fr) 32px;
       gap: 8px;
-      height: var(--cockpit-mobile-topbar-height);
-      min-height: var(--cockpit-mobile-topbar-height);
+      height: var(--shell-mobile-topbar-height);
+      min-height: var(--shell-mobile-topbar-height);
       padding: 8px;
     }
 

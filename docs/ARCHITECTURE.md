@@ -120,7 +120,7 @@ macro_sync_windows
   -> macro_observations + macro_sync_runs
   -> macro_projection_dirty_targets
   -> compact bounded macro series
-  -> one evidence snapshot containing six typed page documents
+  -> one macro_decision_v2 snapshot containing six typed page documents
   -> six page reads + one series read
 ```
 
@@ -136,11 +136,15 @@ without a database wake plane; repeated work in the same bucket is suppressed,
 and an unchanged semantic payload still writes no row.
 
 The fixed pages are Overview, Cross-asset, Rates & Inflation, Growth & Labor,
-Liquidity & Funding, and Credit. Their conclusions use explicit evidence,
-freshness, rule-hit, confirmation, contradiction, and invalidation contracts.
-Critical gaps fail the affected conclusion closed; optional gaps are explicit
-degradation. Unsupported capabilities are named `not_assessed` and never
-become zeroes, proxies, scores, or process-readiness failures.
+Liquidity & Funding, and Credit. Overview is a deterministic decision document
+containing one shock state and exactly eight ordered cross-asset lanes. Each
+lane compares the current completed session with the fifth prior completed
+session and exposes typed direction, trend, categorical confidence, rationale,
+contradiction, invalidation, evidence references, and local degradation. The
+other five documents retain explicit evidence and domain state. Critical gaps
+fail only affected results closed; optional gaps are explicit degradation.
+Unsupported capabilities are named `not_assessed` and never become zeroes,
+proxies, scores, trade outputs, or process-readiness failures.
 
 ### Dormant model-execution library
 

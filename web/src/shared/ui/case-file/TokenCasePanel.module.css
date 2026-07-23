@@ -3,8 +3,8 @@
   margin: 0 auto;
   display: grid;
   gap: 10px;
-  color: var(--bone);
-  font-family: var(--sans);
+  color: var(--text-primary);
+  font-family: var(--font-sans);
 }
 
 .workspace {

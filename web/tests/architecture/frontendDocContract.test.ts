@@ -101,6 +101,13 @@ describe("frontend documentation contract", () => {
       expect(frontendDoc).toContain(term);
       expect(navigationTargets).toContain(to);
     }
+
+    const topbar = readFileSync(join(webRoot, "src/features/cockpit/ui/CockpitTopbar.tsx"), "utf8");
+    expect(frontendDoc).toContain("no browser Ops route");
+    expect(navigationTargets).not.toContain("/ops");
+    expect(topbar).not.toContain("opsPath");
+    expect(topbar).toContain("healthAnomaly");
+    expect(topbar).toContain("topbar-anomaly");
   });
 });
 

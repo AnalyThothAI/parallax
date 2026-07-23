@@ -6,8 +6,8 @@
     place-items: center;
     border-radius: 999px;
     color: #fff4f4;
-    background: var(--risk);
-    font-family: var(--mono);
+    background: var(--signal-negative);
+    font-family: var(--font-mono);
     font-size: 9px;
     font-weight: 800;
     line-height: 1;

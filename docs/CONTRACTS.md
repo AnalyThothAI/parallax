@@ -153,11 +153,20 @@ metadata when applicable. Critical gaps produce
 degradation. Unsupported capabilities are `not_assessed` and have no numeric
 value.
 
-Overview reports a dominant-shock candidate from
-`growth`, `inflation`, `policy_real_rates`, `term_premium_supply`,
-`liquidity_funding`, or `credit`, with status `confirmed`, `provisional`,
-`divergent`, or `insufficient_evidence`. Cross-asset uses cutoff-aligned returns
-and actual common samples for 20/60-session correlations. Rates & Inflation
+Overview reports `shock_summary.state` as `dominant`,
+`no_dominant_shock`, or `insufficient_evidence`; no dominant shock is a valid
+result rather than a data failure. It also contains exactly eight ordered
+`risk_lanes`: `us_equities`, `long_duration_treasuries`, `credit`, `usd`,
+`gold`, `oil`, `crypto`, and `market_volatility`. Every lane contains typed
+direction, trend versus the fifth prior completed session, categorical
+confidence, summary, drivers, contradiction, invalidation, evidence refs, and
+an optional local degradation reason. `key_changes` is bounded to three,
+`nearest_catalyst` is at most one normalized official event, and
+`core_invalidation` is nullable. There are no holdings, trade, sizing, target,
+allocation, probability, continuous-score, or LLM fields.
+
+Cross-asset uses cutoff-aligned returns and actual common samples for
+20/60-session correlations. Rates & Inflation
 separates nominal tenors, curve slopes, real yields, breakevens, term premium,
 funding corridor, releases, and curve shape. Growth & Labor keeps leading and
 lagging layers separate. Liquidity & Funding keeps balance-sheet, Treasury
@@ -167,8 +176,9 @@ credit supply, realized damage, financial conditions/liquidity, the
 Treasury-yield × spread quadrant, and separate stage/direction state.
 
 Official catalysts are limited to the next seven days and include event date,
-official time, timezone, source, URL, and `today`/`upcoming` status. No
-consensus, forecast, surprise, or event score is inferred. The series route
+official time, timezone, source, URL, normalized `event_at_ms` when parsing is
+trustworthy, and `today`/`upcoming` status. No consensus, forecast, surprise,
+countdown from an unparsed time, or event score is inferred. The series route
 reads compact persisted rows and accepts explicit concepts plus one supported
 window; it returns exact points, sources, quality, event metadata, and gaps.
 Macro reads do not call providers, run projection code, or join another domain.

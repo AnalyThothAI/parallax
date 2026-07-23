@@ -44,7 +44,7 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
 
     assert result.processed == 1
     assert result.notes["claimed"] == 1
-    assert result.notes["projection_version"] == "macro_evidence_v1"
+    assert result.notes["projection_version"] == "macro_decision_v2"
     assert result.notes["source_rows_scanned"] == 1
     assert result.notes["targets_loaded"] == len(PROJECTION_CONCEPTS)
     assert result.notes["projected_rows_written"] == 3
@@ -64,14 +64,14 @@ def test_macro_view_projection_worker_writes_latest_snapshot() -> None:
     ]
     assert repo.claim_call == {
         "projection_name": "macro_evidence",
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "limit": 250,
         "lease_ms": 300_000,
         "lease_owner": "macro_view_projection",
         "now_ms": NOW_MS,
     }
     assert repo.refresh_call == {
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "now_ms": NOW_MS,
         "lookback_days": 1095,
         "limit_per_series": 800,
@@ -115,7 +115,7 @@ def test_macro_view_projection_worker_without_dirty_target_rechecks_snapshot_onc
         "rows_written": 0,
         "projected_rows_written": 0,
         "snapshot_rows_written": 0,
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "fact_watermark": "",
         "market_cutoff": "2026-05-20",
         "recheck_reason": "freshness_clock",
@@ -273,7 +273,7 @@ def test_macro_view_projection_worker_event_target_rebuilds_route_ready_modules(
         "mark_macro_projection_dirty_targets_done",
     ]
     assert repo.refresh_call == {
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "now_ms": NOW_MS,
         "lookback_days": 1095,
         "limit_per_series": 800,
@@ -542,7 +542,7 @@ def _macro_view_projection_settings(**overrides: object) -> MacroViewProjectionW
 def _dirty_target() -> dict[str, object]:
     return {
         "projection_name": "macro_evidence",
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "target_kind": "current",
         "target_id": "current",
         "payload_hash": "dirty-hash",
@@ -554,7 +554,7 @@ def _dirty_target() -> dict[str, object]:
 def _concept_dirty_target(concept_key: str) -> dict[str, object]:
     return {
         "projection_name": "macro_evidence",
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "target_kind": "concept",
         "target_id": concept_key,
         "concept_key": concept_key,

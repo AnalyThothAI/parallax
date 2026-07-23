@@ -46,7 +46,7 @@ describe("live radar route", () => {
 
     const navigation = await screen.findByRole("navigation", { name: "Primary navigation" });
 
-    expect(within(navigation).getByRole("link", { name: /Token Radar/i })).toBeInTheDocument();
+    expect(within(navigation).getByRole("link", { name: /^Radar$/i })).toBeInTheDocument();
     expect(within(navigation).getByRole("link", { name: /Stocks/i })).toBeInTheDocument();
     expect(within(navigation).getByRole("link", { name: /News/i })).toBeInTheDocument();
     expect(within(navigation).queryByText("2")).not.toBeInTheDocument();

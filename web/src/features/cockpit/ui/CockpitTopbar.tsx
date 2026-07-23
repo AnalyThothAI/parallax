@@ -1,9 +1,7 @@
 import { NotificationBell } from "@features/notifications";
-import { formatRelativeTime } from "@lib/format";
 import type { NotificationSummary, OpenApiStatusData } from "@lib/types";
 import { IconButton } from "@shared/ui/IconButton";
-import clsx from "clsx";
-import { Clock3, Home, RefreshCw, Search, Wifi, Zap } from "lucide-react";
+import { Home, RefreshCw, Search, TriangleAlert } from "lucide-react";
 import { useState, type ReactNode, type RefObject } from "react";
 import { useNavigate } from "react-router-dom";
 
@@ -43,16 +41,14 @@ export function CockpitTopbar({
 }: CockpitTopbarProps) {
   const navigate = useNavigate();
   const [searchDraft, setSearchDraft] = useState("");
+  const anomaly = healthAnomaly(status);
   return (
     <header className="topbar">
       <div className="brand">
         {navigationTrigger ? (
           <span className="topbar-sidebar-trigger-slot">{navigationTrigger}</span>
         ) : null}
-        <WsStatusBeacon
-          lastMessageAt={status.lastSocketMessageAt}
-          socketStatus={status.socketStatus}
-        />
+        <span className="topbar-product-name">Parallax</span>
         {search.showMainRouteButton ? (
           <button className="main-route-button" type="button" onClick={() => navigate("/")}>
             <Home aria-hidden />
@@ -60,15 +56,6 @@ export function CockpitTopbar({
           </button>
         ) : null}
       </div>
-
-      <StatusPills
-        configReady={status.configReady}
-        lastMessageAt={status.lastSocketMessageAt}
-        socketStatus={status.socketStatus}
-        status={status.status ?? undefined}
-        statusError={status.statusError}
-        statusLoading={status.statusLoading}
-      />
 
       <form
         className="searchbar"
@@ -92,6 +79,12 @@ export function CockpitTopbar({
         <button type="submit">检索</button>
       </form>
 
+      {anomaly ? (
+        <span className="topbar-anomaly" role="status" title={anomaly}>
+          <TriangleAlert aria-hidden />
+          <span>{anomaly}</span>
+        </span>
+      ) : null}
       <div className="topbar-notification-slot">
         <NotificationBell
           open={notifications.drawerOpen}
@@ -112,100 +105,27 @@ export function CockpitTopbar({
   );
 }
 
-function WsStatusBeacon({
-  socketStatus,
-  lastMessageAt,
-}: {
-  socketStatus: string;
-  lastMessageAt: number | null;
-}) {
-  const state =
-    socketStatus === "connected"
-      ? "connected"
-      : socketStatus === "connecting" || socketStatus === "authenticating"
-        ? "connecting"
-        : "offline";
-  const label = [
-    `WebSocket ${socketStatus}`,
-    lastMessageAt ? `last message ${formatRelativeTime(lastMessageAt)} ago` : "no message yet",
-  ].join(" · ");
-
-  return (
-    <span
-      aria-label={label}
-      className={clsx("ws-status-beacon", `state-${state}`)}
-      role="status"
-      title={label}
-    >
-      <Wifi aria-hidden />
-    </span>
-  );
-}
-
-function StatusPills({
-  socketStatus,
+function healthAnomaly({
   configReady,
+  socketStatus,
   status,
   statusLoading,
   statusError,
-  lastMessageAt,
-}: {
-  socketStatus: string;
-  configReady: boolean;
-  status?: OpenApiStatusData;
-  statusLoading: boolean;
-  statusError: boolean;
-  lastMessageAt: number | null;
-}) {
-  const readiness = readinessLabel({ configReady, status, statusLoading, statusError });
-  return (
-    <div className="status-pills" aria-live="polite">
-      <span className={clsx("pill", configReady ? "good" : "warn")}>
-        <Zap aria-hidden />
-        {configReady ? "token ready" : "token"}
-      </span>
-      <span className={clsx("pill", socketStatus === "connected" ? "good" : "warn")}>
-        <Wifi aria-hidden />
-        {socketStatus}
-      </span>
-      <span className={clsx("pill", readiness.ok ? "good" : "warn")} title={readiness.title}>
-        <Zap aria-hidden />
-        {readiness.label}
-      </span>
-      <span className="pill muted">
-        <Clock3 aria-hidden />
-        {lastMessageAt ? `${formatRelativeTime(lastMessageAt)} ago` : "no msg"}
-      </span>
-    </div>
-  );
-}
-
-function readinessLabel({
-  configReady,
-  status,
-  statusLoading,
-  statusError,
-}: {
-  configReady: boolean;
-  status?: OpenApiStatusData;
-  statusLoading: boolean;
-  statusError: boolean;
-}): { label: string; ok: boolean; title?: string } {
+}: CockpitTopbarProps["status"]): string | null {
   if (!configReady) {
-    return { label: "status idle", ok: false };
+    return "配置未就绪";
   }
   if (statusLoading && !status) {
-    return { label: "checking", ok: false };
+    return null;
   }
   if (statusError) {
-    return { label: "status error", ok: false };
+    return "状态检查失败";
   }
-  if (status?.ok) {
-    return { label: "ready", ok: true };
+  if (status && !status.ok) {
+    return status.reasons[0] || "服务未就绪";
   }
-  return {
-    label: "not ready",
-    ok: false,
-    title: status ? status.reasons.join(", ") || undefined : undefined,
-  };
+  if (socketStatus !== "connected") {
+    return `实时连接 ${socketStatus}`;
+  }
+  return null;
 }

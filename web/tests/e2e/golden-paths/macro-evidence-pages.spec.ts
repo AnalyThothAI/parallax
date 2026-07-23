@@ -6,41 +6,89 @@ import {
 } from "@tests/e2e/support/layoutAssertions";
 import { installMockApi } from "@tests/e2e/support/mockApi";
 
-const pages = [
-  ["/macro", "宏观证据总览", "官方催化：下一次 BEA 国内生产总值发布"],
-  ["/macro/cross-asset", "跨资产确认", "债券 ETF 折溢价"],
-  ["/macro/rates-inflation", "利率与通胀", "美国国债期限溢价"],
-  ["/macro/growth-labor", "增长与就业", "市场一致预期"],
-  ["/macro/liquidity-funding", "流动性与资金", "交易商库存"],
-  ["/macro/credit", "信用周期雷达", "TRACE 公司债逐笔成交与流动性"],
+const riskLanes = [
+  "美国股票风险暴露",
+  "长期美债风险暴露",
+  "信用风险暴露",
+  "美元风险暴露",
+  "黄金风险暴露",
+  "原油风险暴露",
+  "加密资产风险暴露",
+  "市场波动率风险暴露",
 ] as const;
 
-test("renders all six evidence pages without document overflow", async ({ page }) => {
+const drilldowns = [
+  ["/macro/cross-asset", "跨资产确认", "风险资产、久期、信用与美元"],
+  ["/macro/rates-inflation", "利率与通胀", "名义利率、实际利率与通胀补偿"],
+  ["/macro/growth-labor", "增长与就业", "领先与滞后增长信号"],
+  ["/macro/liquidity-funding", "流动性与资金", "资产负债表、准备金与融资价格"],
+  ["/macro/credit", "信用周期雷达", "总量利差、评级尾部与金融条件"],
+] as const;
+
+test("renders the fixed eight-lane decision map with evidence collapsed by default", async ({
+  page,
+}) => {
+  await installMockApi(page);
+  await page.goto("/macro");
+
+  await expect(page.getByRole("heading", { level: 1, name: "跨资产风险地图" })).toBeVisible();
+  await expect(
+    page.getByRole("navigation", { name: "宏观分析维度" }).getByRole("link"),
+  ).toHaveCount(6);
+  await expect(page.locator(".macro-risk-lane")).toHaveCount(8);
+  for (const lane of riskLanes) {
+    await expect(page.getByRole("article", { name: lane })).toBeVisible();
+  }
+  await expect(page.getByText("当前主导冲击：实际利率收紧。", { exact: true })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "五个交易日内的关键变化" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "最近官方催化" })).toBeVisible();
+  await expect(page.getByRole("heading", { name: "核心失效条件" })).toBeVisible();
+
+  const audit = page.locator(".macro-audit-drawer");
+  await expect(audit).not.toHaveAttribute("open", "");
+  await expect(page.getByRole("heading", { name: "完整证据与溯源" })).toBeHidden();
+  await audit.locator("summary").click();
+  await expect(audit).toHaveAttribute("open", "");
+  await expect(page.getByText("macro_decision_v2")).toBeVisible();
+  await expect(page.getByRole("heading", { name: "完整证据与溯源" })).toBeVisible();
+
+  await expect(page.locator("main")).not.toContainText(/买入|卖出|仓位|持仓|目标价/);
+  await expectNoDocumentHorizontalOverflow(page);
+  await expectNoNestedHorizontalOverflow(page, [
+    ".macro-workbench",
+    ".macro-risk-lanes",
+    ".macro-overview-action-band",
+    ".macro-audit-body",
+  ]);
+  await expectNoUnhandledApiRequests(page);
+});
+
+test("renders all five domain drilldowns with separate-unit charts and concise judgment bands", async ({
+  page,
+}) => {
   await installMockApi(page);
 
-  for (const [path, title, unavailableCapability] of pages) {
+  for (const [path, title, seriesTitle] of drilldowns) {
     await page.goto(path);
 
     await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();
-    await expect(page.getByRole("navigation", { name: "宏观页面" }).getByRole("link")).toHaveCount(
-      6,
-    );
-    await expect(page.getByRole("heading", { exact: true, name: "驱动" })).toBeVisible();
-    await expect(page.getByRole("heading", { exact: true, name: "确认" })).toBeVisible();
-    await expect(page.getByRole("heading", { exact: true, name: "反证" })).toBeVisible();
-    await expect(page.getByRole("heading", { exact: true, name: "升级 / 失效" })).toBeVisible();
-    await expect(page.getByRole("heading", { exact: true, name: "完整证据与溯源" })).toBeVisible();
-    await expect(page.getByRole("heading", { exact: true, name: "未评估能力" })).toBeVisible();
-    await expect(page.getByText("macro_evidence_v1")).toBeVisible();
-    await expect(page.getByText(unavailableCapability).first()).toBeVisible();
+    await expect(
+      page.getByRole("navigation", { name: "宏观分析维度" }).getByRole("link"),
+    ).toHaveCount(6);
+    for (const heading of ["主要驱动", "确认", "反证", "失效条件"]) {
+      await expect(page.getByRole("heading", { exact: true, name: heading })).toBeVisible();
+    }
+    await expect(page.getByRole("heading", { exact: true, name: seriesTitle })).toBeVisible();
+    await expect(page.getByRole("group", { name: "图表窗口" })).toBeVisible();
+    await expect(page.locator(".macro-series-figure")).toHaveCount(4);
+    await expect(page.locator(".macro-audit-drawer")).not.toHaveAttribute("open", "");
 
     await expectNoDocumentHorizontalOverflow(page);
     await expectNoNestedHorizontalOverflow(page, [
-      ".macro-evidence-page",
-      ".macro-evidence-header",
-      ".macro-snapshot-meta",
+      ".macro-workbench",
+      ".macro-judgment-band",
+      ".macro-series-grid",
       ".macro-decision-grid",
-      ".macro-evidence-card",
     ]);
   }
 
@@ -75,6 +123,6 @@ test("does not route retired macro paths through a fallback", async ({ page }) =
   await page.goto("/macro/overview");
 
   await expect(page.getByRole("alert")).toContainText("404 Not Found");
-  await expect(page.getByRole("navigation", { name: "宏观页面" })).toHaveCount(0);
+  await expect(page.getByRole("navigation", { name: "宏观分析维度" })).toHaveCount(0);
   await expectNoUnhandledApiRequests(page);
 });

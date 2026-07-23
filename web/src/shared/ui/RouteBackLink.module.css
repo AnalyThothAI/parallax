@@ -4,11 +4,11 @@
   align-items: center;
   justify-content: center;
   gap: 6px;
-  border: 1px solid var(--line-soft);
+  border: 1px solid var(--border-faint);
   border-radius: 4px;
-  background: var(--slab-2);
-  color: var(--bone-2);
-  font-family: var(--mono);
+  background: var(--surface-raised);
+  color: var(--text-secondary);
+  font-family: var(--font-mono);
   font-size: 11px;
   text-decoration: none;
   padding: 0 8px;
@@ -17,8 +17,8 @@
 
 .link:hover,
 .link:focus-visible {
-  border-color: var(--info-line);
-  color: var(--info);
+  border-color: var(--signal-info-border);
+  color: var(--signal-info);
 }
 
 .link svg {

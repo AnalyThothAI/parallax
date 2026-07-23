@@ -13,7 +13,7 @@
   --color-primary-foreground: var(--primary-foreground);
   --color-secondary: var(--secondary);
   --color-secondary-foreground: var(--secondary-foreground);
-  --color-muted: var(--slab-2);
+  --color-muted: var(--surface-raised);
   --color-muted-foreground: var(--muted-foreground);
   --color-accent: #1b211c;
   --color-accent-foreground: var(--accent-foreground);

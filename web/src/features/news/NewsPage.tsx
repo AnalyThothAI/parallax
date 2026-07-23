@@ -68,7 +68,11 @@ function NewsQueueRoute({ token }: { token: string }) {
   }, [searchQuery]);
 
   return (
-    <section className="radar-panel news-panel news-queue-shell" aria-label="News intel">
+    <section
+      aria-label="News intel"
+      className="radar-panel news-panel news-queue-shell"
+      data-page-archetype="scan"
+    >
       <div aria-label="News intel page container" className="news-table-wrap">
         <div className="news-compact-controls" aria-label="News filters">
           <div className="news-status-controls" aria-label="Lifecycle filters">

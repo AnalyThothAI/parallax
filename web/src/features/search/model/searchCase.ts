@@ -7,16 +7,16 @@ import {
 } from "@lib/format";
 import type { SearchInspectData, SearchTargetCandidate, TokenCaseDossier } from "@lib/types";
 import type {
-  ObsidianSource,
-  ObsidianStringField,
-  ObsidianTone,
-} from "@shared/ui/obsidianLanguage";
+  ResearchSource,
+  ResearchStringField,
+  ResearchTone,
+} from "@shared/ui/researchLanguage";
 
-export type SearchCaseTone = ObsidianTone;
+export type SearchCaseTone = ResearchTone;
 
-export type SearchCaseSource = ObsidianSource;
+export type SearchCaseSource = ResearchSource;
 
-export type SearchCaseFact = ObsidianStringField;
+export type SearchCaseFact = ResearchStringField;
 
 export type SearchCaseView = {
   community: SearchCaseFact;

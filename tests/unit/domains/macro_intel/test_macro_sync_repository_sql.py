@@ -193,7 +193,7 @@ def test_macro_projection_dirty_target_writes_have_caller_owned_transactions() -
 
     claimed = repo.claim_macro_projection_dirty_targets(
         projection_name="macro_evidence",
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         limit=10,
         lease_ms=30_000,
         lease_owner="worker-1",
@@ -233,7 +233,7 @@ def test_macro_projection_dirty_target_error_terminalizes_exhausted_claim() -> N
     assert any("INSERT INTO worker_queue_terminal_events" in sql for sql in conn.sql_log)
     assert conn.terminal_params["worker_name"] == "macro_view_projection"
     assert conn.terminal_params["source_table"] == "macro_projection_dirty_targets"
-    assert conn.terminal_params["target_key"] == "macro_evidence:macro_evidence_v1:current:current"
+    assert conn.terminal_params["target_key"] == "macro_evidence:macro_decision_v2:current:current"
     assert conn.terminal_params["final_status"] == "terminal"
     assert conn.terminal_params["final_reason"] == ("macro_view_projection_retry_budget_exhausted: projection failed")
     assert conn.terminal_params["final_reason_bucket"] == "retry_budget_exhausted"
@@ -247,7 +247,7 @@ def test_enqueue_macro_projection_dirty_target_coalesces_current_target() -> Non
 
     inserted = repo.enqueue_macro_projection_dirty_target(
         projection_name="macro_evidence",
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         now_ms=1_779_000_000_000,
         due_at_ms=1_779_000_000_000,
         reason="macro_observations_imported",
@@ -258,7 +258,7 @@ def test_enqueue_macro_projection_dirty_target_coalesces_current_target() -> Non
     assert "INSERT INTO macro_projection_dirty_targets" in query
     assert "ON CONFLICT (projection_name, projection_version, target_kind, target_id) DO UPDATE" in query
     assert params["projection_name"] == "macro_evidence"
-    assert params["projection_version"] == "macro_evidence_v1"
+    assert params["projection_version"] == "macro_decision_v2"
     assert params["target_kind"] == "current"
     assert params["target_id"] == "current"
     assert str(params["payload_hash"]).startswith("sha256:")
@@ -268,7 +268,7 @@ def test_macro_projection_dirty_payload_hash_rejects_legacy_payload_shapes() -> 
     with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
         _macro_projection_dirty_payload_hash(
             projection_name="macro_evidence",
-            projection_version="macro_evidence_v1",
+            projection_version="macro_decision_v2",
             target_kind="current",
             target_id="current",
             reason={123: "legacy"},  # type: ignore[arg-type]
@@ -354,7 +354,7 @@ def test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_wa
             {"concept_key": "liquidity:sofr", "observed_at": "2026-05-28"},
         ],
         projection_name="macro_evidence",
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         now_ms=1_779_000_000_000,
         due_at_ms=1_779_000_000_000,
         reason="macro_observations_changed",
@@ -381,7 +381,7 @@ def test_macro_projection_dirty_change_payload_hash_rejects_legacy_payload_shape
     with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
         _macro_projection_dirty_change_payload_hash(
             projection_name="macro_evidence",
-            projection_version="macro_evidence_v1",
+            projection_version="macro_decision_v2",
             concept_key="liquidity:sofr",
             min_observed_at=date(2026, 5, 27),
             max_observed_at=date(2026, 5, 28),
@@ -539,7 +539,7 @@ class DirtyTargetTerminalizingCursor:
 def _dirty_target_claim() -> dict[str, object]:
     return {
         "projection_name": "macro_evidence",
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "target_kind": "current",
         "target_id": "current",
         "payload_hash": "sha256:dirty",

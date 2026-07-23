@@ -11,7 +11,7 @@ afterEach(() => {
 });
 
 describe("CockpitTopbar", () => {
-  it("renders accessible search, status, and notification controls", async () => {
+  it("keeps healthy status out of the task-focused topbar", async () => {
     const { container } = render(
       <MemoryRouter>
         <CockpitTopbar
@@ -31,13 +31,39 @@ describe("CockpitTopbar", () => {
     );
 
     expect(screen.getByRole("textbox", { name: "global search" })).toBeInTheDocument();
-    expect(screen.getByRole("status", { name: /WebSocket connected/ })).toBeInTheDocument();
+    expect(screen.getByText("Parallax")).toBeInTheDocument();
+    expect(screen.queryByRole("status", { name: /WebSocket/ })).not.toBeInTheDocument();
+    expect(screen.queryByRole("status")).not.toBeInTheDocument();
     expect(screen.getByRole("button", { name: "notifications" })).toBeInTheDocument();
     expect(screen.getByRole("button", { name: "刷新" })).toBeInTheDocument();
     expect(await axe(container)).toHaveNoViolations();
   });
 
-  it("shows required status reasons when the runtime is not ready", () => {
+  it("shows realtime anomalies without linking to a retired browser Ops route", () => {
+    render(
+      <MemoryRouter>
+        <CockpitTopbar
+          search={{ inputRef: createRef<HTMLInputElement>(), onSubmitQuery: vi.fn() }}
+          status={{
+            socketStatus: "idle",
+            lastSocketMessageAt: 1_700_000_000_000,
+            status: null,
+            statusLoading: false,
+            statusError: false,
+            configReady: true,
+          }}
+          notifications={{ summary: null, drawerOpen: false, onToggleDrawer: vi.fn() }}
+          onRefresh={vi.fn()}
+        />
+      </MemoryRouter>,
+    );
+
+    expect(screen.getByRole("status")).toHaveAttribute("title", "实时连接 idle");
+    expect(screen.getByText("实时连接 idle")).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Open ops diagnostics" })).not.toBeInTheDocument();
+  });
+
+  it("shows the first runtime reason without a permanent health beacon", () => {
     render(
       <MemoryRouter>
         <CockpitTopbar
@@ -59,6 +85,7 @@ describe("CockpitTopbar", () => {
       </MemoryRouter>,
     );
 
-    expect(screen.getByText("not ready")).toHaveAttribute("title", "news_provider_contract_error");
+    expect(screen.getByRole("status")).toHaveAttribute("title", "news_provider_contract_error");
+    expect(screen.getByText("news_provider_contract_error")).toBeInTheDocument();
   });
 });

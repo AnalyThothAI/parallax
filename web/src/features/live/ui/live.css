@@ -43,7 +43,7 @@
   .tape-row:hover,
   .tape-row.selected {
     background: #161c1c;
-    box-shadow: inset 3px 0 0 var(--opportunity);
+    box-shadow: inset 3px 0 0 var(--accent-primary);
   }
 
   .tape-kind,
@@ -51,14 +51,14 @@
   .tape-row time,
   .tape-reason {
     overflow: hidden;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
   }
 
   .tape-kind {
-    color: var(--opportunity);
+    color: var(--accent-primary);
     text-transform: uppercase;
   }
 
@@ -70,7 +70,7 @@
 
   .tape-row strong {
     overflow: hidden;
-    color: var(--bone);
+    color: var(--text-primary);
     font-size: 11px;
     line-height: 1.15;
     text-overflow: ellipsis;
@@ -81,7 +81,7 @@
     display: -webkit-box;
     overflow: hidden;
     margin: 0;
-    color: var(--bone-2);
+    color: var(--text-secondary);
     font-size: 11px;
     line-height: 1.32;
     -webkit-box-orient: vertical;
@@ -90,11 +90,11 @@
 
   .tape-reason,
   .tape-row time {
-    color: var(--dim);
+    color: var(--text-subtle);
   }
 
   .tape-score {
-    color: var(--opportunity);
+    color: var(--accent-primary);
     text-align: right;
   }
 
@@ -117,7 +117,7 @@
     }
   }
 
-  /* Obsidian Desk live radar language ownership */
+  /* Parallax scan-surface ownership */
   .live-page {
     display: grid;
     grid-template-rows: minmax(240px, 1fr) clamp(260px, 42vh, 470px);
@@ -140,7 +140,7 @@
     overflow: hidden;
     border-right: 0;
     background:
-      linear-gradient(180deg, rgba(241, 234, 214, 0.025), transparent 220px), var(--obsidian);
+      linear-gradient(180deg, rgba(241, 234, 214, 0.025), transparent 220px), var(--surface-root);
   }
 
   .radar-toolbar {
@@ -160,15 +160,15 @@
     overflow: visible;
     clip: auto;
     margin: 0;
-    color: var(--bone);
-    font-family: var(--sans);
+    color: var(--text-primary);
+    font-family: var(--font-sans);
     font-size: 21px;
     line-height: 1.15;
   }
 
   .radar-toolbar p {
     margin: 6px 0 0;
-    color: var(--ash);
+    color: var(--text-muted);
     font-size: 13px;
     line-height: 1.45;
   }
@@ -177,7 +177,7 @@
     display: flex;
     gap: 4px;
     border: 1px solid rgba(154, 159, 146, 0.14);
-    border-radius: var(--radius);
+    border-radius: var(--radius-md);
     background: rgba(3, 4, 3, 0.58);
     padding: 3px;
   }
@@ -187,10 +187,10 @@
     height: 27px;
     border: 0;
     border-radius: 5px;
-    color: var(--ash);
+    color: var(--text-muted);
     background: transparent;
     padding: 0 9px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 11px;
   }
 
@@ -254,17 +254,17 @@
       gap: 3px;
       border: 1px solid transparent;
       border-radius: 5px;
-      color: var(--ash);
+      color: var(--text-muted);
       background: transparent;
-      font-family: var(--mono);
+      font-family: var(--font-mono);
       font-size: 10px;
     }
 
     .live-task-nav button.active,
     .live-task-nav button[aria-current="page"] {
-      color: var(--opportunity);
-      border-color: var(--opportunity-line);
-      background: var(--opportunity-soft);
+      color: var(--accent-primary);
+      border-color: var(--accent-border);
+      background: var(--accent-soft);
     }
   }
 

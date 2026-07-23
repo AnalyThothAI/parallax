@@ -22,7 +22,7 @@ export function NewsItemEvidencePage({ item }: NewsItemEvidencePageProps) {
   const providerRating = item.provider_rating;
 
   return (
-    <article className="news-evidence-page">
+    <article className="news-evidence-page" data-page-archetype="case">
       <header className="news-evidence-hero">
         <div className="news-evidence-hero-copy">
           <div className="news-evidence-kicker">

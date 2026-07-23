@@ -152,7 +152,7 @@ def test_current_postgres_schema_has_one_kappa_truth_and_compact_read_models(tmp
     }
     assert {"raw_payload_json", "payload_hash"}.isdisjoint(market_current_columns)
     assert news_fetch_run_fk_index == {"indisvalid": True, "indisready": True}
-    assert version == latest_migration_version() == "20260723_0191"
+    assert version == latest_migration_version() == "20260723_0192"
 
 
 def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
@@ -290,7 +290,7 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
             SELECT payload_hash, dirty_reason, leased_until_ms, attempt_count
             FROM macro_projection_dirty_targets
             WHERE projection_name = 'macro_evidence'
-              AND projection_version = 'macro_evidence_v1'
+              AND projection_version = 'macro_decision_v2'
               AND target_kind = 'current'
               AND target_id = 'current'
             """
@@ -529,7 +529,7 @@ def test_runtime_hard_cut_reconciles_nonempty_0185_backlog(tmp_path) -> None:
             SELECT payload_hash, dirty_reason, leased_until_ms, attempt_count
             FROM macro_projection_dirty_targets
             WHERE projection_name = 'macro_evidence'
-              AND projection_version = 'macro_evidence_v1'
+              AND projection_version = 'macro_decision_v2'
               AND target_kind = 'current'
               AND target_id = 'current'
             """

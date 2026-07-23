@@ -377,17 +377,17 @@ describe("responsive CSS contract", () => {
     ).toEqual([]);
   });
 
-  it("keeps Obsidian shared UI selectors out of feature CSS buckets", () => {
+  it("keeps Research shared UI selectors out of feature CSS buckets", () => {
     const offenders = collectFiles(join(srcRoot, "features"))
       .filter(isCssFile)
       .flatMap((path) => {
         const css = readFileSync(path, "utf8");
 
         return findRules(css)
-          .filter((rule) => rule.selector.includes(".ods-"))
+          .filter((rule) => rule.selector.includes(".research-"))
           .map(
             (rule) =>
-              `${relativeToSrc(path)}:${lineNumber(css, rule.start)} reaches into Obsidian UI via ${compactSelector(
+              `${relativeToSrc(path)}:${lineNumber(css, rule.start)} reaches into Research UI via ${compactSelector(
                 rule.selector,
               )}`,
           );
@@ -395,7 +395,7 @@ describe("responsive CSS contract", () => {
 
     expect(
       offenders,
-      "Feature CSS may attach feature-local classes to shared Obsidian components, but must not restyle .ods-* internals.",
+      "Feature CSS may place shared Research components, but must not restyle .research-* internals.",
     ).toEqual([]);
   });
 

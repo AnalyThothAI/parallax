@@ -34,7 +34,11 @@ export function LivePage({
   onMobileTaskChange,
 }: LivePageProps) {
   return (
-    <div data-testid="live-page" className={`live-page mobile-task-${mobileTask}`}>
+    <div
+      className={`live-page mobile-task-${mobileTask}`}
+      data-page-archetype="scan"
+      data-testid="live-page"
+    >
       {children ?? <Outlet />}
 
       <LiveSignalTape

@@ -1776,8 +1776,10 @@ class MacroIntelRepository:
             SELECT *
             FROM macro_view_snapshots
             WHERE snapshot_key = 'current'
+              AND projection_version = %s
             LIMIT 1
-            """
+            """,
+            (MACRO_EVIDENCE_PROJECTION_VERSION,),
         ).fetchone()
         return dict(row) if row is not None else None
 
@@ -1790,8 +1792,10 @@ class MacroIntelRepository:
             SELECT {column} AS page
             FROM macro_view_snapshots
             WHERE snapshot_key = 'current'
+              AND projection_version = %s
             LIMIT 1
-            """
+            """,
+            (MACRO_EVIDENCE_PROJECTION_VERSION,),
         ).fetchone()
         if row is None:
             return None

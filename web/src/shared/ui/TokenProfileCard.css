@@ -4,7 +4,7 @@
     min-width: 0;
     gap: 9px;
     overflow: hidden;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 5px;
     background: rgba(13, 17, 17, 0.96);
     padding: 10px;
@@ -33,7 +33,7 @@
   .token-profile-logo-placeholder {
     width: 42px;
     height: 42px;
-    border: 1px solid var(--line-strong);
+    border: 1px solid var(--border-strong);
     border-radius: 6px;
     background: #090d0d;
   }
@@ -51,7 +51,7 @@
   .token-profile-logo-placeholder {
     display: grid;
     place-items: center;
-    color: var(--dim);
+    color: var(--text-subtle);
   }
 
   .token-profile-copy {
@@ -70,8 +70,8 @@
   .token-profile-title h3 {
     overflow: hidden;
     margin: 0;
-    color: var(--bone);
-    font-family: var(--mono);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 13px;
     line-height: 1.15;
     text-overflow: ellipsis;
@@ -86,12 +86,12 @@
     flex: 0 1 auto;
     max-width: 92px;
     overflow: hidden;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 4px;
-    color: var(--opportunity);
-    background: var(--opportunity-soft);
+    color: var(--accent-primary);
+    background: var(--accent-soft);
     padding: 1px 5px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -101,7 +101,7 @@
     display: -webkit-box;
     overflow: hidden;
     margin: 0;
-    color: var(--bone-2);
+    color: var(--text-secondary);
     font-size: 12px;
     line-height: 1.4;
     overflow-wrap: anywhere;
@@ -118,8 +118,8 @@
   .token-profile-copy small,
   .token-profile-state small {
     overflow: hidden;
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     font-size: 10px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -144,12 +144,12 @@
     justify-content: center;
     gap: 5px;
     min-height: 24px;
-    border: 1px solid var(--line);
+    border: 1px solid var(--border-subtle);
     border-radius: 4px;
-    color: var(--opportunity);
+    color: var(--accent-primary);
     background: rgba(242, 165, 31, 0.07);
     padding: 0 7px;
-    font-family: var(--mono);
+    font-family: var(--font-mono);
     font-size: 10px;
     font-weight: 700;
     text-decoration: none;
@@ -158,8 +158,8 @@
 
   .token-profile-links a:hover,
   .token-profile-links a:focus-visible {
-    border-color: var(--opportunity-line);
-    background: var(--opportunity-soft);
+    border-color: var(--accent-border);
+    background: var(--accent-soft);
     outline: 0;
   }
 
@@ -194,11 +194,11 @@
     gap: 8px;
     min-width: 0;
     min-height: 38px;
-    color: var(--dim);
+    color: var(--text-subtle);
   }
 
   .token-profile-state > svg {
-    color: var(--dim);
+    color: var(--text-subtle);
   }
 
   .token-profile-state > div {
@@ -209,8 +209,8 @@
 
   .token-profile-state strong {
     overflow: hidden;
-    color: var(--ash);
-    font-family: var(--mono);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
     font-size: 11px;
     text-overflow: ellipsis;
     white-space: nowrap;
@@ -223,6 +223,6 @@
 
   .token-profile-card.is-error .token-profile-state strong,
   .token-profile-card.is-error .token-profile-state > svg {
-    color: var(--risk);
+    color: var(--signal-negative);
   }
 }

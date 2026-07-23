@@ -65,6 +65,18 @@ def resolve_market_cutoff(*, computed_at_ms: int) -> date:
         return candidate
 
 
+def market_session_offset(day: date, *, sessions: int) -> date:
+    if isinstance(sessions, bool) or sessions < 0:
+        raise ValueError("macro_market_session_offset_invalid")
+    candidate = day
+    remaining = int(sessions)
+    while remaining:
+        candidate -= timedelta(days=1)
+        if _is_us_market_session(candidate):
+            remaining -= 1
+    return candidate
+
+
 def _is_us_market_session(day: date) -> bool:
     return day.weekday() < 5 and day not in _us_market_holidays(day.year)
 
@@ -484,4 +496,9 @@ def _greater(value: object, threshold: float) -> bool:
     return numeric is not None and numeric > threshold
 
 
-__all__ = ["build_cross_asset_rules", "cross_asset_freshness", "resolve_market_cutoff"]
+__all__ = [
+    "build_cross_asset_rules",
+    "cross_asset_freshness",
+    "market_session_offset",
+    "resolve_market_cutoff",
+]

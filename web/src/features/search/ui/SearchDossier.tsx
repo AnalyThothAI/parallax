@@ -1,27 +1,31 @@
 import {
-  ObsidianCase,
-  ObsidianCaseHeader,
-  ObsidianFieldGrid,
-  ObsidianPill,
-  ObsidianSection,
-} from "@shared/ui/case-file";
+  ResearchFieldGrid,
+  ResearchHeader,
+  ResearchPanel,
+  ResearchSection,
+  ResearchTag,
+} from "@shared/ui/ResearchPrimitives";
 
 import type { SearchCaseView } from "../model/searchCase";
 
 export function SearchDossier({ view }: { view: SearchCaseView }) {
   return (
-    <ObsidianCase aria-label={`Search case ${view.title}`} className="search-dossier" id="overview">
-      <ObsidianCaseHeader
-        badge={<ObsidianPill tone={view.resolver.tone}>{view.resultKind}</ObsidianPill>}
-        eyebrow="search case"
+    <ResearchPanel
+      aria-label={`Search case ${view.title}`}
+      className="search-dossier"
+      id="overview"
+    >
+      <ResearchHeader
+        badge={<ResearchTag tone={view.resolver.tone}>{view.resultKind}</ResearchTag>}
+        eyebrow="search dossier"
         subtitle={view.subtitle}
         title={view.title}
       />
-      <ObsidianSection title="Case file">
-        <ObsidianFieldGrid
+      <ResearchSection title="对象事实">
+        <ResearchFieldGrid
           fields={[view.official, view.community, view.market, view.resolver, view.evidence]}
         />
-      </ObsidianSection>
-    </ObsidianCase>
+      </ResearchSection>
+    </ResearchPanel>
   );
 }

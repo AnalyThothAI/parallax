@@ -10,7 +10,7 @@ def test_partition_refresh_upserts_only_claimed_concepts() -> None:
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
@@ -33,7 +33,7 @@ def test_partition_refresh_upserts_only_claimed_concepts() -> None:
     assert "concept_key = requested.concept_key" in source_query
     assert source_params == (
         ["rates:dgs10"],
-        "macro_evidence_v1",
+        "macro_decision_v2",
         730,
         list(MACRO_EVENT_CONCEPTS),
         252,
@@ -45,7 +45,7 @@ def test_partition_refresh_upserts_only_claimed_concepts() -> None:
     assert delete_params == (
         ["rates:dgs10"],
         ["2026-05-20"],
-        "macro_evidence_v1",
+        "macro_decision_v2",
         ["rates:dgs10"],
     )
     assert "event_metadata_json" in insert_query
@@ -71,7 +71,7 @@ def test_partition_refresh_allows_text_event_rows_without_numeric_values() -> No
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
@@ -96,7 +96,7 @@ def test_partition_refresh_skips_unchanged_concepts_without_delete_insert() -> N
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
@@ -122,7 +122,7 @@ def test_partition_refresh_compares_compact_current_payload_without_persisted_ha
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
@@ -141,7 +141,7 @@ def test_partition_refresh_compares_compact_current_payload_without_persisted_ha
 def _dirty_target(concept_key: str) -> dict[str, object]:
     return {
         "projection_name": "macro_evidence",
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "target_kind": "concept",
         "target_id": concept_key,
         "concept_key": concept_key,
@@ -156,7 +156,7 @@ def _dirty_target(concept_key: str) -> dict[str, object]:
 
 def _series_row(*, concept_key: str) -> dict[str, object]:
     return {
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "concept_key": concept_key,
         "observed_at": "2026-05-20",
         "value_numeric": 4.7,

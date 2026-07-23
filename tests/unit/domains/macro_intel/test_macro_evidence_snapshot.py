@@ -41,7 +41,14 @@ COMMON_PAGE_KEYS = {
     "unavailable_evidence",
 }
 PAGE_SPECIFIC_KEYS = {
-    "overview": {"dominant_shock", "official_catalysts"},
+    "overview": {
+        "shock_summary",
+        "risk_lanes",
+        "key_changes",
+        "nearest_catalyst",
+        "core_invalidation",
+        "official_catalysts",
+    },
     "cross_asset": {"asset_returns", "volatility", "correlations_20", "correlations_60", "divergences"},
     "rates_inflation": {
         "nominal_curve",
@@ -80,6 +87,16 @@ PAGE_SPECIFIC_KEYS = {
         "credit_state",
     },
 }
+RISK_LANE_IDS = (
+    "us_equities",
+    "long_duration_treasuries",
+    "credit",
+    "usd",
+    "gold",
+    "oil",
+    "crypto",
+    "market_volatility",
+)
 
 
 def test_builds_exact_six_page_documents() -> None:
@@ -115,6 +132,73 @@ def test_builds_exact_six_page_documents() -> None:
             "critical_stale",
             "optional_unavailable",
         }
+
+
+def test_overview_exposes_fixed_decision_map_without_prohibited_outputs() -> None:
+    overview = build_macro_evidence_snapshot([], computed_at_ms=COMPUTED_AT_MS)["overview"]
+
+    assert overview["shock_summary"]["state"] == "insufficient_evidence"
+    assert overview["shock_summary"]["candidate"] is None
+    assert overview["shock_summary"]["confidence"] == "insufficient_evidence"
+    assert [lane["lane_id"] for lane in overview["risk_lanes"]] == list(RISK_LANE_IDS)
+    assert {lane["direction"] for lane in overview["risk_lanes"]} == {"insufficient_evidence"}
+    assert {lane["trend"] for lane in overview["risk_lanes"]} == {"insufficient_evidence"}
+    assert overview["key_changes"] == []
+    assert overview["nearest_catalyst"] is None
+    assert overview["core_invalidation"] is None
+    assert not (
+        _all_keys(overview)
+        & {
+            "position",
+            "position_size",
+            "holdings",
+            "buy",
+            "sell",
+            "target_price",
+            "allocation",
+            "probability",
+            "confidence_score",
+            "llm",
+        }
+    )
+
+
+def test_overview_distinguishes_no_dominant_shock_and_uses_five_completed_sessions() -> None:
+    sessions = _completed_sessions(COMPUTED_DATE, count=30)
+    observations: list[dict[str, Any]] = []
+    stable_concepts = {
+        "asset:tlt": 100.0,
+        "asset:hyg": 100.0,
+        "fx:dxy": 100.0,
+        "asset:gld": 100.0,
+        "asset:uso": 100.0,
+        "crypto:btc": 50_000.0,
+        "vol:vix": 16.0,
+        "asset:qqq": 100.0,
+        "rates:dgs10": 4.0,
+        "credit:hy_oas": 300.0,
+        "rates:real_10y": 1.8,
+        "inflation:10y_breakeven": 2.2,
+        "crypto:eth": 3_000.0,
+        "vol:vix3m": 18.0,
+    }
+    for concept_key, value in stable_concepts.items():
+        observations.extend(observation(concept_key, value, observed_at=day) for day in sessions)
+    spy_values = [100.0] * 20 + [100.2, 100.4, 100.8, 101.2, 101.6, 102.2, 102.8, 103.4, 104.0, 105.0]
+    observations.extend(
+        observation("asset:spy", value, observed_at=day) for day, value in zip(sessions, spy_values, strict=True)
+    )
+
+    overview = build_macro_evidence_snapshot(observations, computed_at_ms=COMPUTED_AT_MS)["overview"]
+    equity_lane = next(lane for lane in overview["risk_lanes"] if lane["lane_id"] == "us_equities")
+
+    assert overview["shock_summary"]["state"] == "no_dominant_shock"
+    assert overview["shock_summary"]["candidate"] is None
+    assert equity_lane["direction"] == "tailwind"
+    assert equity_lane["trend"] == "strengthening"
+    assert equity_lane["confidence"] in {"medium", "high"}
+    assert equity_lane["comparison_session"] == sessions[-6]
+    assert overview["key_changes"][0]["lane_id"] == "us_equities"
 
 
 def test_judgment_uses_rule_hits_without_global_score_or_confidence() -> None:
@@ -246,8 +330,9 @@ def test_overview_critical_gaps_override_provisional_dominant_shock() -> None:
 
     page = build_macro_evidence_snapshot(observations, computed_at_ms=COMPUTED_AT_MS)["overview"]
 
-    assert page["dominant_shock"]["candidate"] == "policy_real_rates"
-    assert page["dominant_shock"]["status"] == "provisional"
+    assert page["shock_summary"]["candidate"] == "policy_real_rates"
+    assert page["shock_summary"]["state"] == "dominant"
+    assert page["shock_summary"]["confidence"] == "medium"
     assert page["freshness"]["critical_missing"]
     assert page["conclusion"]["status"] == "insufficient_evidence"
     assert page["conclusion"]["judgment"] == "insufficient_evidence"
@@ -489,6 +574,7 @@ def test_catalysts_are_limited_to_seven_days_and_require_official_metadata() -> 
             "source_name": "fixture",
             "series_key": "fixture:event:fomc_decision_next",
             "source_url": "https://www.federalreserve.gov/monetarypolicy/fomccalendars.htm",
+            "event_at_ms": 1_785_088_800_000,
             "release_status": "upcoming",
             "evidence_ref": "event:fomc_decision_next",
         },
@@ -500,6 +586,7 @@ def test_catalysts_are_limited_to_seven_days_and_require_official_metadata() -> 
             "source_name": "fixture",
             "series_key": "fixture:event:bea_pce_next",
             "source_url": "https://apps.bea.gov/API/signup/release_dates.json",
+            "event_at_ms": 1_785_155_400_000,
             "release_status": "upcoming",
             "evidence_ref": "event:bea_pce_next",
         },
@@ -654,6 +741,16 @@ def _outside_catalyst_observations() -> list[dict[str, Any]]:
         for concept_key, spec in MACRO_CONCEPT_MANIFEST.items()
         if spec.claim_effect == "catalyst_only"
     ]
+
+
+def _completed_sessions(end: Any, *, count: int) -> list[Any]:
+    sessions: list[Any] = []
+    cursor = end
+    while len(sessions) < count:
+        if cursor.weekday() < 5:
+            sessions.append(cursor)
+        cursor -= timedelta(days=1)
+    return list(reversed(sessions))
 
 
 def _all_keys(value: Any) -> set[str]:

@@ -41,6 +41,14 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
 
 ## Conventions
 
+- **Design contract and page archetypes.** Parallax has one dark, restrained
+  research-workbench language. `styles/tokens.css` is the only semantic color,
+  type, radius, focus, and shell token contract; production code must not add a
+  parallel theme or compatibility alias. Stable routes declare one of four
+  information archetypes with `data-page-archetype`: `scan` for Radar, Stocks,
+  and News lists; `case` for Search, Token Case, and News Item; `decision` for
+  Macro; and `monitoring` for Watchlist. The archetype
+  governs hierarchy and density, never data ownership or business inference.
 - **Data ownership.** Feature-owned API hooks, page hooks, and controller hooks own server reads/writes. Route modules and presentational UI components consume those feature hooks and must not call `useQuery`, `useMutation`, `useInfiniteQuery`, `getApi`, `postApi`, or `queryClient.set*` directly. `frontendDataOwnership.test.ts` enforces this boundary for `web/src/routes` and `web/src/features/*/ui`.
 - **URL state.** Shareable filters such as `window`, `scope`, handles, search query, selected target, and radar sort live in route-state helpers. Local stores are only for interaction state that should not survive hard reloads.
 - **Socket lifecycle.** `shared/socket` owns authentication, notification/event streams, and ref-counted market-target subscriptions. Routes register only the market targets they currently need; leaving Token Radar releases radar market targets while preserving global notification subscription. Stream/poll workers emit live market messages only after durable current-row persistence; those messages patch visible market response keys but are not a second source of truth.
@@ -92,14 +100,31 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   `/api/macro/liquidity-funding`, or `/api/macro/credit`. Charts request
   persisted points from `/api/macro/series`.
 
-  All pages show the shared snapshot version, fact watermark, completed-session
-  market cutoff, computation time, 1–4 week horizon, conclusion status,
-  drivers, confirmations, contradictions, upgrade/invalidation conditions,
-  rule hits, evidence metadata, freshness, and named unavailable capabilities.
-  Page-specific sections render directly from their strict payloads. The UI
-  does not compute correlations, change windows, curve shape, dominant shock,
-  Credit state, or conclusions. Official catalysts show only the next seven
-  days with official time, timezone, source, URL, and release status.
+  `/macro` is the fixed cross-asset risk map for the latest completed US
+  session and a 1–4 week horizon. It renders the persisted Overview document
+  directly: one shock state, exactly eight ordered lanes (US equities,
+  long-duration Treasuries, credit, USD, gold, oil, crypto, and market
+  volatility), up to three five-completed-session changes, the nearest
+  trustworthy official catalyst, and one core invalidation. Direction, trend,
+  categorical confidence, lane rationale, contradictions, invalidations, and
+  local degradation are backend-owned deterministic results. The Overview must
+  make exactly one page read and must not sort, score, infer, or fan out across
+  the five domain documents.
+
+  Normal snapshot metadata, evidence rows, rules, formulas, freshness, and
+  named unavailable capabilities live in the keyboard-accessible `审计与证据`
+  disclosure and are collapsed by default. Critical missing or stale evidence
+  remains adjacent to the affected lane or conclusion. A normalized catalyst
+  instant is displayed in browser-local time first and official date, time,
+  and timezone second; unparsed official time is never converted into a
+  fabricated instant.
+
+  The five drilldowns keep explicit page components. They render current
+  judgment first, then separate-unit 20/60-session small charts with source,
+  unit, and as-of labels, followed by domain-specific evidence. The UI does not
+  compute correlations, change windows, curve shape, shock state, Credit
+  state, or conclusions. Macro never renders holdings, buy/sell instructions,
+  position size, target price, allocation, probabilities, or LLM output.
 
   Macro uses one flat feature-owned navigation and small shared evidence
   primitives; there is no registry-driven page catalog or universal page
@@ -108,12 +133,12 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   hiding units, dates, samples, provenance, or gap status. No page may require
   horizontal document scrolling or hover to reveal material evidence.
 - **Page state.** Loading, empty, stale, and error surfaces should use `PageState.*` so skeletons, error alerts, and retry actions stay consistent.
-- **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Shared primitives such as `IconButton`, `RadarControls`, `PageState`, `TokenProfileCard`, `HandleFilter`, `DecisionTag`, `CompactPanel`, and the Obsidian case-file components own their CSS under `shared/ui/`; feature CSS may lay out the containing toolbar or deck but must not redefine primitive internals. Cross-feature widgets such as notifications own their visual selectors in their feature folder; shell code may place a slot, not restyle the widget internals. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
+- **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Shared primitives such as `IconButton`, `RadarControls`, `PageState`, `TokenProfileCard`, `HandleFilter`, `DecisionTag`, `CompactPanel`, and the research case-file components own their CSS under `shared/ui/`; feature CSS may lay out the containing toolbar or deck but must not redefine primitive internals. Cross-feature widgets such as notifications own their visual selectors in their feature folder; shell code may place a slot, not restyle the widget internals. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
 - **CSS architecture harness.** `web/tests/architecture/cssArchitectureHarness.test.ts` is the future-proof gate for CSS ownership. It rejects retired global buckets (`cockpit.css`, `macro.css`, `macroResponsive.css`, `shared.css`, `signalLab.css`), side-effect CSS imported from non-local owners, feature CSS that redefines shared UI classes, feature selectors outside their namespace, naked modifier classes such as `.active` or `.gap`, and side-effect class names reused across feature roots. When a new feature needs side-effect CSS, add an explicit namespace policy there rather than borrowing another feature's selectors.
 - **Cascade layers.** Side-effect CSS participates in the app cascade contract declared in `styles/tokens.css`: `app.base`, `app.primitives`, `app.shell`, `app.features`, then `app.overrides`. `styles/base.css` uses `app.base`; shared primitives use `app.primitives`; cockpit shell files use `app.shell`; feature route CSS uses `app.features`. Unlayered side-effect CSS is allowed only for Tailwind's import file.
 - **Responsive CSS contract.** Mobile behavior is a tested architecture surface, not a best-effort visual tweak. Shell CSS owns `.cockpit-shell`, `.cockpit-main`, `.center-column`, `.topbar`, and the shadcn sidebar composition (`SidebarProvider`, `AppSidebar`, `SidebarInset`, and `SidebarTrigger`) split by owner files (`cockpitShell.css`, `CockpitTopbar.css`, `AppSidebar.css`, and `cockpitShellContract.css`). Final shell breakpoint decisions, including the mobile topbar row height token, live in `features/cockpit/ui/cockpitShellContract.css`. Mobile and tablet route navigation uses the shadcn `Sheet` drawer opened from the topbar trigger. Live-only task visibility is feature-owned by `features/live/ui/live.css`, using `.live-task-nav` and `[data-mobile-task-panel]` only inside `.live-page`.
 - **Route controls.** Shells do not render route-specific filter controls. Window/scope/venue/handle controls belong to the feature route that consumes them; `CockpitShell` and `SearchShell` own only navigation, frame layout, the main route scroll container, hotkeys, and notifications. Top-level radar routes must use owner-prefixed table selectors (`token-radar-*`, `stock-radar-*`) rather than generic historical selectors such as `.radar-row`, `.metric`, or `.phase`.
-- **Shell navigation.** Desktop users navigate through the collapsible shadcn `AppSidebar`; tablet and mobile users open the same route tree through the topbar `SidebarTrigger` and shadcn drawer. Radar, Stocks, News, Macro, Watchlist, and Ops must remain reachable from that drawer, while Search remains reachable through the topbar submit flow. The live Radar/Tape/Lab task switcher is `LivePage`-owned, mobile-only, and must not render on Stocks, News, Macro, Watchlist, Ops, Search, or Token Case routes.
+- **Shell navigation.** Desktop users navigate through the collapsible shadcn `AppSidebar`; tablet and mobile users open the same route tree through the topbar `SidebarTrigger` and shadcn drawer. The primary route tree contains exactly Radar, Stocks, News, Macro, and Watchlist in that order; Search remains reachable through the topbar submit flow. Healthy runtime state is silent. Configuration, service, or realtime anomalies appear as an accessible topbar status; operational diagnosis remains on the API/CLI surfaces and there is no browser Ops route. The live Radar/Tape/Lab task switcher is `LivePage`-owned, mobile-only, and must not render on Stocks, News, Macro, Watchlist, Search, or Token Case routes.
 - **Scrolling.** `body` remains locked for the app shell. `.center-column` is the shell-managed route scroll container. On mobile, `LivePage` owns a two-row feature layout: active task content in `minmax(0, 1fr)` and `.live-task-nav` as a real bottom row, not a fixed overlay. Radar rows scroll inside `.token-radar-table` above that nav; the page must not keep the desktop `405px` bottom-deck row. Route-level nested scrollers are allowed only when they are intentionally bounded and covered by Playwright overflow/reachability assertions.
 - **Breakpoint policy.** Desktop density starts at `1280px`. Tablet uses a single route column from `768px` through `1279px`. Mobile rules are `max-width: 767px` and must appear late enough in the cascade to win over base and desktop/tablet rules. Use container queries for local card/panel behavior when component width matters more than viewport width.
 - **Side-effect CSS budget.** Architecture tests fail any side-effect CSS file above 500 lines. Component-specific styling should move toward CSS Modules or smaller owner files instead of growing route-wide side-effect CSS buckets.
@@ -144,13 +169,16 @@ Playwright projects are part of the frontend contract:
 - `desktop-1920` (`1920x1080`)
 - `tablet-834` (`834x1194`)
 - `mobile-390` (`390x844`)
-- `mobile-430` (`430x932`)
 
 Desktop-only specs must explicitly skip non-desktop projects. Mobile-only specs must explicitly skip non-mobile projects. New `page.setViewportSize` calls are allowed only in dedicated responsive specs or explicitly marked desktop-only specs.
 
-Full repository completion gate:
+Repository fast gate:
 
-- `make check-all`
+- `make check`
+
+Integration, backend E2E, golden, and browser lanes are selected explicitly
+from the changed seam per `TESTING.md`; there is no monolithic repository-wide
+completion target.
 
 Production bundles ship inside the same Docker image as the Python service and are served by the FastAPI static-file mount.
 
@@ -171,6 +199,8 @@ Per `DEVELOPMENT.md`, UI flows that tests cannot exercise must be checked manual
    GMGN `external-res`.
 7. At `390px`, confirm the topbar `SidebarTrigger` opens the shadcn drawer, drawer route links are reachable, `.topbar` and `.center-column` do not overlap, topbar controls stay contained, Live-only Radar/Tape/Lab task switching works without route reload on `/`, Radar rows can scroll to the final row above the task nav without overlap, and non-Live routes do not render `.live-task-nav`.
 8. At tablet width around `834px`, confirm the desktop sidebar is hidden, the topbar trigger opens the shadcn drawer, drawer route navigation and topbar search still work, and the mobile Radar/Tape/Lab task nav is hidden.
-9. At `1920px`, `1366px`, `834px`, and `390px`, verify all six Macro pages,
-   required evidence metadata, explicit unavailable capabilities, and the
-   seven-day catalyst list remain readable with no whole-page overflow.
+9. At `1920px`, `1366px`, `834px`, and `390px`, verify the Overview keeps
+   exactly eight ordered lanes plus bounded changes/catalyst/invalidation,
+   every drilldown keeps its charts and judgment band, normal audit metadata
+   stays collapsed, the audit drawer is keyboard reachable, local gaps remain
+   adjacent, and no Macro page has whole-page overflow.

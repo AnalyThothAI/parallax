@@ -17,7 +17,7 @@ from tests.support.query_contract import assert_query_contract
 def test_build_macro_evidence_snapshot_uses_stable_contract_version() -> None:
     snapshot = _snapshot(computed_at_ms=1_779_000_000_000)
 
-    assert snapshot["projection_version"] == "macro_evidence_v1"
+    assert snapshot["projection_version"] == "macro_decision_v2"
     assert snapshot["computed_at_ms"] == 1_779_000_000_000
     assert set(snapshot) == {
         "projection_version",
@@ -72,8 +72,9 @@ def test_snapshot_page_reads_one_persisted_page_without_observation_rebuild() ->
     query, params = conn.executions[0]
     assert "SELECT overview_json AS page" in query
     assert "FROM macro_view_snapshots" in query
+    assert "projection_version = %s" in query
     assert "macro_observations" not in query
-    assert params == ()
+    assert params == ("macro_decision_v2",)
 
 
 def test_snapshot_page_rejects_retired_or_unknown_modules() -> None:
@@ -135,13 +136,13 @@ def test_macro_series_source_signature_uses_only_compact_payload() -> None:
     changed_timing_row = _series_row() | {"ignored_runtime_clock": 1_779_000_060_000}
 
     signature_at_t1 = _series_source_signature(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         lookback_days=730,
         limit_per_series=252,
         rows=[base_row],
     )
     signature_at_t2 = _series_source_signature(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         lookback_days=730,
         limit_per_series=252,
         rows=[changed_timing_row],
@@ -155,13 +156,13 @@ def test_macro_series_source_signature_changes_when_value_changes() -> None:
     after = _series_row(value_numeric=4.8)
 
     signature_before = _series_source_signature(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         lookback_days=730,
         limit_per_series=252,
         rows=[before],
     )
     signature_after = _series_source_signature(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         lookback_days=730,
         limit_per_series=252,
         rows=[after],
@@ -173,20 +174,20 @@ def test_macro_series_source_signature_changes_when_value_changes() -> None:
 def test_refresh_observation_series_rows_skips_writes_when_source_signature_unchanged() -> None:
     selected_row = _series_row()
     signature = _series_source_signature(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         lookback_days=730,
         limit_per_series=252,
         rows=[selected_row],
     )
     conn = CurrentRefreshConnection(
         selected_rows=[selected_row],
-        publication_state={"projection_version": "macro_evidence_v1", "source_signature": signature},
+        publication_state={"projection_version": "macro_decision_v2", "source_signature": signature},
         existing_rows=[_current_series_row(selected_row)],
     )
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
@@ -211,7 +212,7 @@ def test_refresh_observation_series_rows_upserts_current_rows_when_signature_cha
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
@@ -258,7 +259,7 @@ def test_refresh_empty_current_partition_without_existing_rows_is_unchanged() ->
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         now_ms=1_779_000_000_000,
         lookback_days=730,
         limit_per_series=252,
@@ -275,20 +276,20 @@ def test_refresh_empty_current_partition_without_existing_rows_is_unchanged() ->
 
 def test_refresh_empty_current_partition_marks_failed_and_preserves_existing_rows() -> None:
     empty_signature = _series_source_signature(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         lookback_days=730,
         limit_per_series=252,
         rows=[],
     )
     conn = CurrentRefreshConnection(
         selected_rows=[],
-        publication_state={"projection_version": "macro_evidence_v1", "source_signature": empty_signature},
+        publication_state={"projection_version": "macro_decision_v2", "source_signature": empty_signature},
         existing_rows=[_current_series_row(_series_row()) | {"value_numeric": 4.6}],
     )
     repo = MacroIntelRepository(conn)
 
     result = repo.refresh_observation_series_rows_for_concepts(
-        projection_version="macro_evidence_v1",
+        projection_version="macro_decision_v2",
         now_ms=1_779_000_060_000,
         lookback_days=730,
         limit_per_series=252,
@@ -325,7 +326,7 @@ def test_observation_series_readers_read_current_rows_directly() -> None:
         forbidden_tables=("macro_observations", "macro_observation_series_active_generation"),
         required_predicates=("projection_version = %s", "value_numeric IS NOT NULL"),
         forbidden_fragments=("generation_id", "row_number() over", "series_rank = 1"),
-        expected_params=(["asset:spy"], "macro_evidence_v1", 60),
+        expected_params=(["asset:spy"], "macro_decision_v2", 60),
     )
 
 
@@ -355,7 +356,7 @@ def _series_row(
     value_numeric: float = 4.7,
 ) -> dict[str, object]:
     return {
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "concept_key": "rates:dgs10",
         "observed_at": "2026-05-20",
         "value_numeric": value_numeric,

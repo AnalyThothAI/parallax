@@ -63,7 +63,14 @@ def test_openapi_publishes_exact_macro_stocks_notifications_and_worker_contracts
         "page_id",
     }
     macro_page_fields = {
-        "MacroOverviewData": {"dominant_shock", "official_catalysts"},
+        "MacroOverviewData": {
+            "shock_summary",
+            "risk_lanes",
+            "key_changes",
+            "nearest_catalyst",
+            "core_invalidation",
+            "official_catalysts",
+        },
         "MacroCrossAssetData": {
             "asset_returns",
             "volatility",
@@ -110,7 +117,48 @@ def test_openapi_publishes_exact_macro_stocks_notifications_and_worker_contracts
     }
     for schema_name, page_fields in macro_page_fields.items():
         _assert_exact_required(schemas[schema_name], macro_common_fields | page_fields)
-    assert not {"MacroData", "MacroCurrentnessData", "MacroModuleChartData"} & set(schemas)
+    _assert_exact_required(
+        schemas["MacroShockSummaryData"],
+        {
+            "state",
+            "candidate",
+            "summary",
+            "confidence",
+            "trend",
+            "drivers",
+            "confirmations",
+            "contradictions",
+            "evidence_refs",
+        },
+    )
+    _assert_exact_required(
+        schemas["MacroRiskLaneData"],
+        {
+            "lane_id",
+            "direction",
+            "trend",
+            "confidence",
+            "summary",
+            "drivers",
+            "contradiction",
+            "invalidation",
+            "evidence_refs",
+            "degradation_reason",
+            "current_session",
+            "comparison_session",
+            "sparkline_concept_key",
+        },
+    )
+    _assert_exact_required(
+        schemas["MacroKeyChangeData"],
+        {"rank", "lane_id", "code", "summary", "evidence_refs"},
+    )
+    assert not {
+        "MacroData",
+        "MacroCurrentnessData",
+        "MacroModuleChartData",
+        "MacroDominantShockData",
+    } & set(schemas)
     _assert_exact_required(
         schemas["WorkerStatusData"],
         {

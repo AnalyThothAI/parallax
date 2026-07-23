@@ -11,7 +11,7 @@
     display: grid;
     min-width: 0;
     gap: 3px;
-    border: 1px solid var(--line-soft);
+    border: 1px solid var(--border-faint);
     background: rgba(7, 9, 8, 0.48);
     padding: 9px;
   }
@@ -21,8 +21,8 @@
   .macro-code-summary span,
   .macro-code-summary code,
   .macro-code-summary small {
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     font-size: 9px;
     text-transform: uppercase;
   }
@@ -30,8 +30,8 @@
   .macro-domain-fact-grid dd {
     min-width: 0;
     margin: 0;
-    color: var(--bone-2);
-    font-family: var(--mono);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
     font-size: 11px;
     line-height: 1.45;
     overflow-wrap: anywhere;
@@ -39,7 +39,7 @@
 
   .macro-domain-fact-grid code,
   .macro-code-summary code {
-    color: var(--info-ink);
+    color: var(--signal-info);
     text-transform: none;
   }
 
@@ -57,7 +57,7 @@
     min-width: 0;
     align-content: start;
     gap: 10px;
-    border: 1px solid var(--line-soft);
+    border: 1px solid var(--border-faint);
     border-radius: 6px;
     background: rgba(7, 9, 8, 0.48);
     padding: 11px;
@@ -82,8 +82,8 @@
 
   .macro-domain-card > header strong,
   .macro-correlation-card > header strong {
-    color: var(--bone);
-    font-family: var(--mono);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 12px;
   }
 
@@ -93,14 +93,14 @@
   .macro-correlation-card > header code,
   .macro-domain-card > small,
   .macro-correlation-card > small {
-    color: var(--ash);
-    font-family: var(--mono);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
     font-size: 9px;
   }
 
   .macro-domain-card > header code,
   .macro-correlation-card > header code {
-    color: var(--info-ink);
+    color: var(--signal-info);
     overflow-wrap: anywhere;
   }
 
@@ -114,35 +114,35 @@
     display: grid;
     min-width: 0;
     gap: 4px;
-    border-left: 2px solid var(--info-line);
-    background: var(--info-soft);
+    border-left: 2px solid var(--signal-info-border);
+    background: var(--signal-info-soft);
     padding: 9px;
   }
 
   .macro-return-window-grid span,
   .macro-return-window-grid small,
   .macro-return-window-grid code {
-    color: var(--ash);
-    font-family: var(--mono);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
     font-size: 9px;
     line-height: 1.4;
   }
 
   .macro-return-window-grid strong {
-    color: var(--bone);
-    font-family: var(--mono);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 13px;
   }
 
   .macro-return-window-grid code {
-    color: var(--info-ink);
+    color: var(--signal-info);
     overflow-wrap: anywhere;
   }
 
   .macro-correlation-card > p {
     margin: 0;
-    color: var(--opportunity-ink);
-    font-family: var(--mono);
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
     font-size: 21px;
     font-weight: 800;
   }
@@ -159,16 +159,16 @@
   }
 
   .macro-correlation-card dt {
-    color: var(--dim);
-    font-family: var(--mono);
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
     font-size: 9px;
     text-transform: uppercase;
   }
 
   .macro-correlation-card dd {
     margin: 0;
-    color: var(--bone-2);
-    font-family: var(--mono);
+    color: var(--text-secondary);
+    font-family: var(--font-mono);
     font-size: 10px;
   }
 
@@ -187,8 +187,8 @@
     min-width: 0;
     grid-template-columns: minmax(0, 1fr) auto;
     gap: 4px 10px;
-    border: 1px solid var(--line-soft);
-    border-left: 2px solid var(--opportunity-line);
+    border: 1px solid var(--border-faint);
+    border-left: 2px solid var(--accent-border);
     background: rgba(7, 9, 8, 0.48);
     padding: 10px;
   }
@@ -196,25 +196,25 @@
   .macro-catalyst-list time,
   .macro-catalyst-list small {
     grid-column: 1 / -1;
-    color: var(--ash);
-    font-family: var(--mono);
+    color: var(--text-muted);
+    font-family: var(--font-mono);
     font-size: 9px;
   }
 
   .macro-catalyst-list strong,
   .macro-catalyst-list a {
-    color: var(--bone);
-    font-family: var(--mono);
+    color: var(--text-primary);
+    font-family: var(--font-mono);
     font-size: 11px;
   }
 
   .macro-catalyst-list a {
-    color: var(--info-ink);
+    color: var(--signal-info);
   }
 
   .macro-catalyst-list span {
-    color: var(--opportunity-ink);
-    font-family: var(--mono);
+    color: var(--accent-primary);
+    font-family: var(--font-mono);
     font-size: 10px;
   }
 
@@ -223,13 +223,13 @@
     min-width: 0;
     align-content: center;
     gap: 5px;
-    border-left: 2px solid var(--opportunity-line);
-    background: var(--opportunity-soft);
+    border-left: 2px solid var(--accent-border);
+    background: var(--accent-soft);
     padding: 12px;
   }
 
   .macro-code-summary strong {
-    color: var(--bone);
+    color: var(--text-primary);
     font-size: 15px;
     line-height: 1.35;
   }

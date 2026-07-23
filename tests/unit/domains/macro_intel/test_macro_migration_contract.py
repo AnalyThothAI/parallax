@@ -69,7 +69,7 @@ def test_macro_concept_key_migration_backfills_historical_stooq_rows_only() -> N
 
 
 def test_macro_hard_cut_constants_remove_legacy_projection_and_rule_catalogs() -> None:
-    assert _constants.MACRO_EVIDENCE_PROJECTION_VERSION == "macro_evidence_v1"
+    assert _constants.MACRO_EVIDENCE_PROJECTION_VERSION == "macro_decision_v2"
     assert _constants.MACRO_MIN_CHART_POINTS == 2
     assert not hasattr(_constants, "MACRO_VIEW_PROJECTION_VERSION")
     assert not hasattr(_constants, "MACRO_MODULE_VIEW_VERSION")

@@ -26,9 +26,9 @@ test("mobile shell exposes sidebar route nav and task nav without route reloads"
   await sidebarTrigger.click();
   const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
   await expect(primaryNavigation).toBeVisible();
-  await expect(primaryNavigation.getByRole("link", { name: "Token Radar" })).toBeVisible();
+  await expect(primaryNavigation.getByRole("link", { name: "Radar" })).toBeVisible();
   await expect(primaryNavigation.getByRole("link", { name: "Stocks" })).toBeVisible();
-  await expect(primaryNavigation.getByRole("link", { name: "宏观" })).toBeVisible();
+  await expect(primaryNavigation.getByRole("link", { name: "Macro" })).toBeVisible();
   await page.keyboard.press("Escape");
   await expect(primaryNavigation).toBeHidden();
 
@@ -56,7 +56,7 @@ test("mobile shell exposes sidebar route nav and task nav without route reloads"
   expect(await page.evaluate(() => window.__routeBackSentinel)).toBe("mobile-task-switch");
 
   await page.getByLabel("global search").fill("test-token");
-  await page.getByRole("button", { name: "检索" }).click();
+  await page.getByLabel("global search").press("Enter");
   await expect(page).toHaveURL(/\/search\?q=test-token/);
   await expectNoUnhandledApiRequests(page);
 });
@@ -158,13 +158,13 @@ async function expectMobileTopbarContract(page: Page) {
     locatorRect(centerColumn, ".center-column"),
     topbar.evaluate((element) =>
       getComputedStyle(element.ownerDocument.documentElement)
-        .getPropertyValue("--cockpit-mobile-topbar-height")
+        .getPropertyValue("--shell-mobile-topbar-height")
         .trim(),
     ),
   ]);
 
-  expect(mobileTopbarHeightToken).toBe("48px");
-  expect(topbarRect.height).toBeCloseTo(48, 0);
+  expect(mobileTopbarHeightToken).toBe("50px");
+  expect(topbarRect.height).toBeCloseTo(50, 0);
   expect(topbarRect.bottom).toBeLessThanOrEqual(centerColumnRect.top + 0.5);
 
   for (const [name, locator] of [

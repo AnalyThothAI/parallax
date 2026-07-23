@@ -6,7 +6,7 @@ test("topbar search submits to Search Intel route", async ({ page }) => {
   await page.goto("/");
 
   await page.getByLabel("global search").fill("PEPE ignition");
-  await page.getByRole("button", { name: "检索" }).click();
+  await page.getByLabel("global search").press("Enter");
 
   await expect(page).toHaveURL(/\/search\?q=PEPE\+ignition/);
   const searchRegion = page.getByRole("region", { name: "Search Intel" });

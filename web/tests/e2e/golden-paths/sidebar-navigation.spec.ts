@@ -34,9 +34,11 @@ test.describe("desktop sidebar navigation", () => {
     const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
     await expect(primaryNavigation).toBeVisible();
 
-    for (const routeName of ["Token Radar", "Stocks", "News", "宏观", "Watchlist"]) {
+    for (const routeName of ["Radar", "Stocks", "News", "Macro", "Watchlist"]) {
       await expect(primaryNavigation.getByRole("link", { name: routeName })).toBeVisible();
     }
+    await expect(primaryNavigation.getByRole("link")).toHaveCount(5);
+    await expect(primaryNavigation.getByRole("link", { name: "Ops" })).toHaveCount(0);
 
     const sidebarRoot = page.locator('[data-slot="sidebar"]');
     const railToggle = page.locator('[data-sidebar="rail"]');
@@ -59,8 +61,8 @@ test.describe("desktop sidebar navigation", () => {
 
     await expectSidebarRouteClickFast(page, "News", "/news");
     await expectSidebarRouteClickFast(page, "Stocks", "/stocks");
-    await expectSidebarRouteClickFast(page, "Token Radar", "/");
-    await expectSidebarRouteClickFast(page, "宏观", "/macro");
+    await expectSidebarRouteClickFast(page, "Radar", "/");
+    await expectSidebarRouteClickFast(page, "Macro", "/macro");
     await expectSidebarRouteClickFast(page, "Watchlist", "/watchlist");
 
     await expectNoDocumentHorizontalOverflow(page);
@@ -81,8 +83,9 @@ test.describe("desktop sidebar navigation", () => {
     await installMockApi(page, { failNonBootstrap: true });
     await page.goto("/");
 
-    await expectSidebarRouteClickFast(page, "News", "/news", 500);
-    await expectSidebarRouteClickFast(page, "Token Radar", "/", 500);
+    await expectSidebarRouteClickFast(page, "News", "/news");
+    await expectSidebarRouteClickFast(page, "Watchlist", "/watchlist");
+    await expectSidebarRouteClickFast(page, "Radar", "/");
   });
 });
 
@@ -102,7 +105,7 @@ test.describe("mobile sidebar navigation", () => {
     await sidebarTrigger.click();
     const primaryNavigation = page.getByRole("navigation", { name: "Primary navigation" });
     await expect(primaryNavigation).toBeVisible();
-    await expect(primaryNavigation.getByRole("link", { name: "Token Radar" })).toBeVisible();
+    await expect(primaryNavigation.getByRole("link", { name: "Radar" })).toBeVisible();
     await expect(primaryNavigation.getByRole("link", { name: "News" })).toBeVisible();
 
     await primaryNavigation.getByRole("link", { name: "News" }).click();

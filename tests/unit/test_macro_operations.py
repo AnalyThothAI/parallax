@@ -49,7 +49,7 @@ def test_snapshot_status_uses_only_exact_current_sections() -> None:
     summary = operation._snapshot_status_summary(snapshot)
 
     assert summary == {
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "fact_watermark": "2026-07-20",
         "market_cutoff": "2026-07-21",
         "computed_at_ms": 1_779_000_000_000,
@@ -142,7 +142,7 @@ def test_sync_macro_window_composes_provider_and_service(monkeypatch) -> None:
 def _macro_snapshot() -> dict[str, object]:
     snapshot: dict[str, object] = {
         "snapshot_key": "current",
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "fact_watermark": "2026-07-20",
         "market_cutoff": "2026-07-21",
         "computed_at_ms": 1_779_000_000_000,

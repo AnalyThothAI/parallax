@@ -15,19 +15,13 @@
   body {
     margin: 0;
     overflow: hidden;
-    color: var(--bone-2);
+    color: var(--text-secondary);
     background:
-      linear-gradient(90deg, rgba(241, 234, 214, 0.025) 1px, transparent 1px),
-      linear-gradient(180deg, rgba(241, 234, 214, 0.02) 1px, transparent 1px),
-      radial-gradient(circle at 14% 9%, rgba(217, 154, 40, 0.08), transparent 24rem),
-      radial-gradient(circle at 78% 12%, rgba(123, 181, 216, 0.065), transparent 22rem), var(--void);
-    background-size:
-      40px 40px,
-      40px 40px,
-      auto,
-      auto,
-      auto;
-    font-family: var(--sans);
+      radial-gradient(circle at 14% 0%, rgba(95, 211, 255, 0.055), transparent 28rem),
+      radial-gradient(circle at 82% 4%, rgba(121, 169, 255, 0.04), transparent 24rem),
+      var(--surface-canvas);
+    background-size: auto, auto, auto;
+    font-family: var(--font-sans);
     font-size: 12px;
     letter-spacing: 0;
   }

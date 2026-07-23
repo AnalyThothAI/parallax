@@ -1,65 +1,47 @@
 @layer app.shell {
-  .cockpit-app-sidebar,
-  [data-sidebar="sidebar"][data-mobile="true"] {
-    --cockpit-sidebar-active-bg: rgba(217, 154, 40, 0.13);
-    --cockpit-sidebar-active-border: rgba(217, 154, 40, 0.42);
-    --cockpit-sidebar-active-rail: #d99a28;
-    --cockpit-sidebar-hover-bg: rgba(241, 234, 214, 0.055);
-  }
-
   .cockpit-app-sidebar {
-    border-color: rgba(154, 159, 146, 0.1);
+    border-color: var(--border-subtle);
   }
 
   .cockpit-app-sidebar [data-sidebar="sidebar"],
   [data-sidebar="sidebar"][data-mobile="true"] {
-    border-color: rgba(154, 159, 146, 0.1);
+    border-color: var(--border-subtle);
     background:
-      linear-gradient(180deg, rgba(241, 234, 214, 0.04), transparent 170px),
-      linear-gradient(90deg, rgba(123, 181, 216, 0.045), transparent 42%), var(--sidebar);
+      linear-gradient(180deg, rgba(95, 211, 255, 0.035), transparent 180px), var(--surface-sidebar);
   }
 
   .cockpit-app-sidebar-header {
-    border-bottom: 1px solid rgba(154, 159, 146, 0.09);
+    border-bottom: 1px solid var(--border-faint);
   }
 
   .cockpit-app-sidebar-brand {
     display: grid;
     grid-template-columns: 30px minmax(0, 1fr);
     align-items: center;
-    gap: 10px;
+    gap: 9px;
     min-width: 0;
     padding: 8px 7px;
-    color: var(--bone);
+    color: var(--text-primary);
   }
 
   .cockpit-app-sidebar-mark {
-    position: relative;
-    display: block;
-    width: 26px;
-    height: 26px;
-    border: 1px solid var(--opportunity-line);
-    border-radius: 7px;
-    background:
-      linear-gradient(135deg, rgba(217, 154, 40, 0.34), transparent 58%),
-      linear-gradient(315deg, rgba(123, 181, 216, 0.18), transparent 55%), rgba(217, 154, 40, 0.08);
-    box-shadow:
-      inset 0 0 0 1px rgba(241, 234, 214, 0.045),
-      0 0 22px rgba(217, 154, 40, 0.08);
+    display: grid;
+    width: 27px;
+    height: 27px;
+    place-items: center;
+    border: 1px solid var(--accent-border);
+    border-radius: var(--radius-sm);
+    color: var(--accent-primary);
+    background: var(--accent-soft);
+    font-family: var(--font-mono);
+    font-size: 12px;
+    font-weight: 850;
   }
 
-  .cockpit-app-sidebar-mark::after {
-    position: absolute;
-    inset: 7px;
-    border: 1px solid rgba(241, 234, 214, 0.34);
-    border-radius: 50%;
-    content: "";
-  }
-
-  .cockpit-app-sidebar-brand span:last-child {
+  .cockpit-app-sidebar-brand > span:last-child {
     display: grid;
     min-width: 0;
-    gap: 1px;
+    gap: 2px;
   }
 
   .cockpit-app-sidebar-brand b,
@@ -70,18 +52,15 @@
   }
 
   .cockpit-app-sidebar-brand b {
-    font-size: 12px;
-    font-weight: 750;
-    letter-spacing: 0;
-    line-height: 1.1;
+    font-size: 13px;
+    letter-spacing: -0.01em;
   }
 
   .cockpit-app-sidebar-brand small {
-    color: var(--ash);
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: 0;
-    line-height: 1.25;
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
+    font-size: 8px;
+    letter-spacing: 0.06em;
     text-transform: uppercase;
   }
 
@@ -91,37 +70,19 @@
 
   .cockpit-app-sidebar [data-sidebar="group"],
   [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="group"] {
-    padding: 9px 8px 6px;
-  }
-
-  .cockpit-app-sidebar [data-sidebar="group"] + [data-sidebar="group"],
-  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="group"] + [data-sidebar="group"] {
-    padding-top: 12px;
-  }
-
-  .cockpit-app-sidebar [data-sidebar="group"] + [data-sidebar="group"]::before,
-  [data-sidebar="sidebar"][data-mobile="true"]
-    [data-sidebar="group"]
-    + [data-sidebar="group"]::before {
-    position: absolute;
-    top: 3px;
-    right: 10px;
-    left: 10px;
-    height: 1px;
-    background: rgba(154, 159, 146, 0.08);
-    content: "";
+    padding: 10px 8px 6px;
   }
 
   .cockpit-app-sidebar-group-heading {
-    height: 22px;
+    height: 24px;
     margin: 0;
     padding: 0 8px;
-    color: var(--ash);
-    font-family: var(--mono);
-    font-size: 10px;
+    color: var(--text-subtle);
+    font-family: var(--font-mono);
+    font-size: 9px;
     font-weight: 700;
-    letter-spacing: 0;
-    line-height: 22px;
+    letter-spacing: 0.06em;
+    line-height: 24px;
     text-transform: uppercase;
   }
 
@@ -130,51 +91,40 @@
     gap: 3px;
   }
 
-  .cockpit-app-sidebar [data-sidebar="menu-item"],
-  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-item"] {
-    min-width: 0;
-  }
-
   .cockpit-app-sidebar [data-sidebar="menu-button"],
   [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-button"] {
     position: relative;
-    height: 34px;
+    height: 35px;
     border: 1px solid transparent;
-    border-radius: 7px;
-    padding-right: 44px;
-    color: var(--bone-2);
-    font-weight: 600;
+    border-radius: var(--radius-sm);
+    color: var(--text-muted);
+    font-weight: 620;
   }
 
   .cockpit-app-sidebar [data-sidebar="menu-button"]::before,
   [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-button"]::before {
     position: absolute;
-    top: 7px;
-    bottom: 7px;
-    left: 3px;
-    width: 3px;
+    top: 8px;
+    bottom: 8px;
+    left: 2px;
+    width: 2px;
     border-radius: 999px;
-    background: var(--cockpit-sidebar-active-rail);
-    box-shadow: 0 0 13px rgba(217, 154, 40, 0.42);
+    background: var(--accent-primary);
     content: "";
     opacity: 0;
-    transition: opacity 140ms ease;
   }
 
   .cockpit-app-sidebar [data-sidebar="menu-button"]:hover,
   [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-button"]:hover {
-    background: var(--cockpit-sidebar-hover-bg);
-    color: var(--bone);
+    color: var(--text-primary);
+    background: var(--surface-hover);
   }
 
   .cockpit-app-sidebar [data-sidebar="menu-button"][data-active="true"],
   [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-button"][data-active="true"] {
-    border-color: var(--cockpit-sidebar-active-border);
-    background:
-      linear-gradient(90deg, rgba(217, 154, 40, 0.2), rgba(217, 154, 40, 0.045)),
-      var(--cockpit-sidebar-active-bg);
-    box-shadow: inset 0 0 0 1px rgba(241, 234, 214, 0.035);
-    color: var(--bone);
+    border-color: var(--accent-border);
+    color: var(--text-primary);
+    background: var(--accent-soft);
   }
 
   .cockpit-app-sidebar [data-sidebar="menu-button"][data-active="true"]::before,
@@ -187,294 +137,20 @@
   [data-sidebar="sidebar"][data-mobile="true"]
     [data-sidebar="menu-button"][data-active="true"]
     svg {
-    color: var(--opportunity-ink);
-  }
-
-  .cockpit-app-sidebar-branch-toggle {
-    color: var(--ash);
-  }
-
-  .cockpit-app-sidebar-branch-toggle svg {
-    transition: transform 150ms ease;
-  }
-
-  [data-state="open"] > .cockpit-app-sidebar-branch-toggle svg {
-    transform: rotate(90deg);
-  }
-
-  .cockpit-app-sidebar [data-sidebar="menu-badge"],
-  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-badge"] {
-    top: 50%;
-    right: 8px;
-    min-width: 24px;
-    height: 18px;
-    transform: translateY(-50%);
-    border: 1px solid rgba(241, 234, 214, 0.09);
-    border-radius: 999px;
-    background: rgba(241, 234, 214, 0.065);
-    color: var(--bone-2);
-    font-family: var(--mono);
-    font-size: 10px;
-    font-weight: 700;
-    letter-spacing: 0;
-  }
-
-  .cockpit-app-sidebar
-    [data-sidebar="menu-button"][data-active="true"]
-    + [data-sidebar="menu-badge"],
-  [data-sidebar="sidebar"][data-mobile="true"]
-    [data-sidebar="menu-button"][data-active="true"]
-    + [data-sidebar="menu-badge"] {
-    border-color: rgba(217, 154, 40, 0.34);
-    background: rgba(217, 154, 40, 0.15);
-    color: var(--opportunity-ink);
-  }
-
-  .cockpit-app-sidebar [data-sidebar="menu-sub"],
-  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub"] {
-    margin: 4px 0 3px 18px;
-    max-width: calc(100% - 18px);
-    min-width: 0;
-    border-left-color: rgba(154, 159, 146, 0.12);
-    padding: 2px 0 2px 9px;
-  }
-
-  .cockpit-app-sidebar [data-sidebar="menu-sub"][data-depth="2"],
-  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub"][data-depth="2"] {
-    margin: 2px 0 3px 12px;
-    max-width: calc(100% - 12px);
-    border-left-color: rgba(123, 181, 216, 0.12);
-    padding-left: 8px;
-  }
-
-  .cockpit-app-sidebar [data-sidebar="menu-sub-item"],
-  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub-item"] {
-    min-width: 0;
-  }
-
-  .cockpit-app-sidebar [data-sidebar="menu-sub-button"],
-  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub-button"] {
-    position: relative;
-    width: 100%;
-    height: 28px;
-    border-radius: 6px;
-    color: var(--ash);
-    font-size: 12px;
-  }
-
-  .cockpit-app-sidebar [data-sidebar="menu-sub-button"][data-depth="2"],
-  [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub-button"][data-depth="2"] {
-    height: 26px;
-    padding-inline: 7px;
-    font-size: 11px;
-  }
-
-  .cockpit-app-sidebar [data-sidebar="menu-sub-button"][data-active="true"],
-  [data-sidebar="sidebar"][data-mobile="true"]
-    [data-sidebar="menu-sub-button"][data-active="true"] {
-    background: rgba(123, 181, 216, 0.095);
-    color: var(--info-ink);
-  }
-
-  .cockpit-app-sidebar [data-sidebar="menu-sub-button"][data-active="true"]::before,
-  [data-sidebar="sidebar"][data-mobile="true"]
-    [data-sidebar="menu-sub-button"][data-active="true"]::before {
-    position: absolute;
-    top: 8px;
-    bottom: 8px;
-    left: -11px;
-    width: 3px;
-    border-radius: 999px;
-    background: var(--info);
-    content: "";
-  }
-
-  .cockpit-app-sidebar-footer {
-    border-top: 1px solid rgba(154, 159, 146, 0.09);
-    color: var(--dim);
-  }
-
-  .cockpit-app-sidebar-status {
-    display: grid;
-    grid-template-columns: 9px minmax(0, 1fr);
-    align-items: center;
-    gap: 9px;
-    min-width: 0;
-    min-height: 38px;
-    border: 1px solid rgba(88, 201, 138, 0.18);
-    border-radius: 8px;
-    padding: 8px 9px;
-    background: rgba(88, 201, 138, 0.065);
-  }
-
-  .cockpit-app-sidebar-status-dot {
-    width: 8px;
-    height: 8px;
-    border-radius: 50%;
-    background: var(--health);
-    box-shadow: 0 0 14px rgba(88, 201, 138, 0.48);
-  }
-
-  .cockpit-app-sidebar-status-copy {
-    display: grid;
-    min-width: 0;
-    gap: 1px;
-  }
-
-  .cockpit-app-sidebar-status-copy strong,
-  .cockpit-app-sidebar-status-copy small {
-    overflow: hidden;
-    text-overflow: ellipsis;
-    white-space: nowrap;
-  }
-
-  .cockpit-app-sidebar-status-copy strong {
-    color: var(--bone);
-    font-size: 11px;
-    font-weight: 750;
-    line-height: 1.15;
-  }
-
-  .cockpit-app-sidebar-status-copy small {
-    color: var(--health-ink);
-    font-family: var(--mono);
-    font-size: 9px;
-    letter-spacing: 0;
-    line-height: 1.2;
-    text-transform: uppercase;
-  }
-
-  .cockpit-app-sidebar-rail::after {
-    width: 3px;
-    border-radius: 999px;
-    background: transparent;
+    color: var(--accent-primary);
   }
 
   .cockpit-app-sidebar-rail:hover::after {
-    background: var(--opportunity-line);
+    background: var(--accent-border);
   }
 
   [data-collapsible="icon"] .cockpit-app-sidebar-brand {
-    grid-template-columns: 1fr;
-    justify-items: center;
-    padding: 8px 0;
+    grid-template-columns: 27px;
+    padding-inline: 3px;
   }
 
-  [data-collapsible="icon"] .cockpit-app-sidebar-mark {
-    width: 28px;
-    height: 28px;
-  }
-
-  [data-collapsible="icon"] .cockpit-app-sidebar-brand span:last-child,
-  [data-collapsible="icon"] .cockpit-app-sidebar-status-copy {
+  [data-collapsible="icon"] .cockpit-app-sidebar-brand > span:last-child,
+  [data-collapsible="icon"] .cockpit-app-sidebar-group-heading {
     display: none;
-  }
-
-  [data-collapsible="icon"] .cockpit-app-sidebar [data-sidebar="group"] {
-    padding: 8px 7px;
-  }
-
-  [data-collapsible="icon"] .cockpit-app-sidebar [data-sidebar="group"] + [data-sidebar="group"] {
-    padding-top: 8px;
-  }
-
-  [data-collapsible="icon"]
-    .cockpit-app-sidebar
-    [data-sidebar="group"]
-    + [data-sidebar="group"]::before {
-    right: 12px;
-    left: 12px;
-  }
-
-  [data-collapsible="icon"] .cockpit-app-sidebar [data-sidebar="menu-button"] {
-    justify-content: center;
-    border-radius: 8px;
-    padding-inline: 0 !important;
-  }
-
-  [data-collapsible="icon"] .cockpit-app-sidebar [data-sidebar="menu-button"]::before {
-    top: auto;
-    bottom: 3px;
-    left: 50%;
-    width: 4px;
-    height: 4px;
-    transform: translateX(-50%);
-  }
-
-  [data-collapsible="icon"] .cockpit-app-sidebar [data-sidebar="menu-badge"] {
-    display: none;
-  }
-
-  [data-collapsible="icon"] .cockpit-app-sidebar-footer {
-    align-items: center;
-    padding: 8px 6px;
-  }
-
-  [data-collapsible="icon"] .cockpit-app-sidebar-status {
-    width: 32px;
-    min-height: 32px;
-    grid-template-columns: 1fr;
-    place-items: center;
-    padding: 0;
-  }
-
-  @media (max-width: 1279px) {
-    [data-sidebar="sidebar"][data-mobile="true"] {
-      width: min(18rem, calc(100vw - 24px));
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] .cockpit-app-sidebar-header {
-      padding: 12px;
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] .cockpit-app-sidebar-brand {
-      grid-template-columns: 32px minmax(0, 1fr);
-      padding: 4px 2px;
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="content"] {
-      gap: 4px;
-      padding-top: 4px;
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="group"] {
-      padding: 9px 12px 6px;
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu"] {
-      gap: 5px;
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-button"] {
-      min-height: 42px;
-      border-radius: 8px;
-      font-size: 14px;
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub"] {
-      margin-left: 22px;
-      max-width: calc(100% - 22px);
-      padding-left: 11px;
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub"][data-depth="2"] {
-      margin-left: 14px;
-      max-width: calc(100% - 14px);
-      padding-left: 9px;
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub-button"] {
-      min-height: 34px;
-      font-size: 13px;
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] [data-sidebar="menu-sub-button"][data-depth="2"] {
-      min-height: 31px;
-      font-size: 12px;
-    }
-
-    [data-sidebar="sidebar"][data-mobile="true"] .cockpit-app-sidebar-footer {
-      padding: 12px;
-    }
   }
 }

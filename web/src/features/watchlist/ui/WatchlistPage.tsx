@@ -71,14 +71,18 @@ export function WatchlistPage({
 
   if (!selectedHandle) {
     return (
-      <section className="watchlist-page" aria-label="Watchlist">
+      <section aria-label="Watchlist" className="watchlist-page" data-page-archetype="monitoring">
         <PageState.Empty title="No watchlist handles configured." />
       </section>
     );
   }
 
   return (
-    <section className="watchlist-page" aria-label="Twitter source monitor">
+    <section
+      aria-label="Twitter source monitor"
+      className="watchlist-page"
+      data-page-archetype="monitoring"
+    >
       <div className="watchlist-monitor-shell">
         <WatchlistHero
           handle={selectedHandle}

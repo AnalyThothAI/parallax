@@ -392,6 +392,26 @@ const WINDOW_LABELS: Readonly<Record<string, string>> = {
   "60_sessions": "60 个交易日",
 };
 
+const DECISION_LANE_LABELS: Readonly<Record<string, string>> = {
+  credit: "信用",
+  crypto: "加密资产",
+  gold: "黄金",
+  long_duration_treasuries: "长期美债",
+  market_volatility: "市场波动率",
+  oil: "原油",
+  usd: "美元",
+  us_equities: "美国股票",
+};
+
+const DECISION_CODE_SUFFIX_LABELS: Readonly<Record<string, string>> = {
+  breaks_neutral_range: "脱离中性区间",
+  confirmation_conflicts: "确认指标方向冲突",
+  direction_reverses: "当前方向反转",
+  headwind: "处于逆风",
+  neutral: "处于中性",
+  tailwind: "处于顺风",
+};
+
 export function macroLabel(value: string | null | undefined): string {
   if (!value) return "未提供";
   return MACRO_CODE_LABELS[value as keyof typeof MACRO_CODE_LABELS] ?? "未识别标签";
@@ -402,7 +422,18 @@ export function macroConceptLabel(value: string): string {
 }
 
 export function macroCodeLabel(code: string): string {
-  return MACRO_CODE_LABELS[code as keyof typeof MACRO_CODE_LABELS] ?? "未命名规则或状态";
+  const exact = MACRO_CODE_LABELS[code as keyof typeof MACRO_CODE_LABELS];
+  if (exact) return exact;
+  if (code === "dominant_shock_trigger_reverses") return "主导冲击的核心触发因素反转";
+  if (code === "cross_asset_consensus_emerges") return "跨资产信号形成一致方向";
+  for (const [laneId, laneLabel] of Object.entries(DECISION_LANE_LABELS)) {
+    const prefix = `${laneId}_`;
+    if (!code.startsWith(prefix)) continue;
+    const suffix = code.slice(prefix.length);
+    const suffixLabel = DECISION_CODE_SUFFIX_LABELS[suffix];
+    if (suffixLabel) return `${laneLabel}${suffixLabel}`;
+  }
+  return "未命名规则或状态";
 }
 
 export function macroCapabilityLabel(capability: string): string {
@@ -434,6 +465,30 @@ export function macroReasonLabel(reason: string): string {
     return "官方事件元数据不完整";
   }
   return "未识别原因";
+}
+
+export function macroDecisionGapLabel(reason: string): string {
+  const scopes = {
+    comparison_: "五个交易日前的比较证据",
+    confirmation_: "交叉确认",
+  } as const;
+  for (const [prefix, scope] of Object.entries(scopes)) {
+    if (reason.startsWith(prefix)) {
+      return `${scope}：${macroDecisionGapDetail(reason.slice(prefix.length))}`;
+    }
+  }
+  return macroDecisionGapDetail(reason);
+}
+
+function macroDecisionGapDetail(reason: string): string {
+  const labels: Readonly<Record<string, string>> = {
+    anchor_unavailable: "主证据不可用",
+    insufficient_20_session_history: "缺少 20 个交易日历史",
+    missing_at_cutoff: "市场截止日缺少观测",
+    unavailable: "证据不可用",
+    zero_window_base: "窗口基期值为零",
+  };
+  return labels[reason] ?? macroReasonLabel(reason);
 }
 
 export function macroGapLabel(value: string): string {

@@ -10,7 +10,8 @@ import {
 } from "../../model/macroDisplay";
 import { MacroCodeSummary, MacroFactGrid } from "../MacroDomainBlocks";
 import { MacroEvidenceList, MacroSection } from "../MacroEvidenceBlocks";
-import { MacroPageShell } from "../MacroPageShell";
+import { MacroPageFrame } from "../MacroPageFrame";
+import { MacroSeriesPanel } from "../MacroSeriesPanel";
 
 export function MacroCreditPage({ token }: { token: string }) {
   const query = useMacroCreditQuery({ token });
@@ -28,12 +29,22 @@ export function MacroCreditPage({ token }: { token: string }) {
 
   return (
     <PageState.Stale updating={query.isFetching && !query.isLoading}>
-      <MacroPageShell
+      <MacroPageFrame
         data={data}
         pageId="credit"
         question="总量信用是否仍受控，低评级尾部是否正在向更高评级与融资供给扩散？"
         title="信用周期雷达"
       >
+        <MacroSeriesPanel
+          conceptKeys={[
+            "credit:ig_oas",
+            "credit:hy_oas",
+            "derived:credit_ccc_minus_bb_oas",
+            "credit:nfci",
+          ]}
+          title="总量利差、评级尾部与金融条件"
+          token={token}
+        />
         <MacroSection eyebrow={macroLabel(state.status)} title="信用状态：阶段与方向分开">
           <div className="macro-domain-card-grid">
             <MacroCodeSummary code={state.stage} label="阶段" status={state.status} />
@@ -84,7 +95,7 @@ export function MacroCreditPage({ token }: { token: string }) {
             title="6. 金融条件与信用流动性"
           />
         </div>
-      </MacroPageShell>
+      </MacroPageFrame>
     </PageState.Stale>
   );
 }

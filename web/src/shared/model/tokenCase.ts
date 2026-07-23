@@ -14,18 +14,18 @@ import {
 import type { Decision, TokenFlowItem, TokenProfileBlock } from "@lib/types";
 import { chainDisplayLabel, tokenVenueAction, tokenVenueDisplayLabel } from "@lib/venue";
 import type {
-  ObsidianSource,
-  ObsidianStringField,
-  ObsidianTone,
-} from "@shared/ui/obsidianLanguage";
+  ResearchSource,
+  ResearchStringField,
+  ResearchTone,
+} from "@shared/ui/researchLanguage";
 
 import { isDexMarket } from "../../domain/tokenTarget";
 
-export type TokenCaseTone = ObsidianTone;
+export type TokenCaseTone = ResearchTone;
 
-export type TokenCaseSource = ObsidianSource;
+export type TokenCaseSource = ResearchSource;
 
-export type TokenCaseField = ObsidianStringField;
+export type TokenCaseField = ResearchStringField;
 
 export type TokenCaseAction = {
   searchHref: string;

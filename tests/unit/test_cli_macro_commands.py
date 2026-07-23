@@ -915,7 +915,7 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
     repo = FakeMacroIntelRepository()
     repo.sync_queue = {"open_count": 2, "due_count": 1, "running_count": 0}
     repo.publication_state = {
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "row_count": 318,
         "latest_attempt_status": "published",
         "latest_attempt_finished_at_ms": NOW_MS,
@@ -923,7 +923,7 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
     }
     repo.latest = {
         "snapshot_key": "current",
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "fact_watermark": "2026-05-20",
         "market_cutoff": "2026-05-20",
         "computed_at_ms": NOW_MS,
@@ -955,12 +955,12 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
         "lookback_days": 1095,
     }
     assert data["sync_queue"] == {"open_count": 2, "due_count": 1, "running_count": 0}
-    assert data["publication_state"]["projection_version"] == "macro_evidence_v1"
+    assert data["publication_state"]["projection_version"] == "macro_decision_v2"
     assert data["facts_max_observed_at"] == "2026-05-21"
     assert data["projection_lag_days"] == 1
     assert data["projection_behind_facts"] is True
     assert data["latest_snapshot"] == {
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "fact_watermark": "2026-05-20",
         "market_cutoff": "2026-05-20",
         "computed_at_ms": NOW_MS,
@@ -1017,7 +1017,7 @@ def test_macro_status_compares_snapshot_to_raw_material_facts_not_compact_series
     )
     repo.latest = {
         "snapshot_key": "current",
-        "projection_version": "macro_evidence_v1",
+        "projection_version": "macro_decision_v2",
         "fact_watermark": "2026-05-15",
         "market_cutoff": "2026-05-15",
         "computed_at_ms": NOW_MS,
@@ -1433,7 +1433,7 @@ class FakeMacroIntelRepository:
         return self.sync_queue
 
     def macro_series_publication_state(self, projection_version: str) -> dict[str, object] | None:
-        assert projection_version == "macro_evidence_v1"
+        assert projection_version == "macro_decision_v2"
         return self.publication_state
 
     def latest_snapshot(self) -> dict[str, object] | None:

@@ -52,11 +52,7 @@ def test_docs_tree_has_one_small_canonical_surface() -> None:
 
 def test_generated_tree_contains_only_reproducible_outputs() -> None:
     generated = DOCS / "generated"
-    actual = {
-        path.relative_to(generated).as_posix()
-        for path in generated.rglob("*")
-        if path.is_file()
-    }
+    actual = {path.relative_to(generated).as_posix() for path in generated.rglob("*") if path.is_file()}
     assert actual == GENERATED_FILES
 
 
@@ -77,8 +73,6 @@ def test_current_documentation_links_resolve() -> None:
         *(DOCS / name for name in CANONICAL_DOCS),
         DOCS / "generated" / "README.md",
         DOCS / "references" / "README.md",
-        DOCS / "sdd" / "README.md",
-        DOCS / "sdd" / "_templates" / "README.md",
     ]
     missing: list[str] = []
     for source in sources:
