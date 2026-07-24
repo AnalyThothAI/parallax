@@ -41,7 +41,7 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
 
 ## Conventions
 
-- **Design contract and page archetypes.** Parallax has one dark, restrained
+- **Design contract and page archetypes.** Tracefold has one dark, restrained
   research-workbench language. `styles/tokens.css` is the only semantic color,
   type, radius, focus, and shell token contract; production code must not add a
   parallel theme or compatibility alias. Stable routes declare one of four

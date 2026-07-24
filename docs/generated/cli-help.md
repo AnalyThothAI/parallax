@@ -5,13 +5,13 @@
 ## Top level
 
 ```
-usage: parallax [-h]
-                {serve,init,config,db,macro,recent,search,asset-flow,account-alerts,notification-deliveries,ops} ...
+usage: tracefold [-h]
+                 {serve,init,config,db,macro,recent,search,asset-flow,account-alerts,notification-deliveries,ops} ...
 
 positional arguments:
   {serve,init,config,db,macro,recent,search,asset-flow,account-alerts,notification-deliveries,ops}
     serve               run the collector service
-    init                create ~/.parallax/config.yaml
+    init                create ~/.tracefold/config.yaml
     config              print effective runtime configuration
     db                  database lifecycle commands
     macro               Macro Intelligence commands
@@ -32,7 +32,7 @@ options:
 ## `db`
 
 ```
-usage: parallax db [-h] {migrate,health,audit,query-audit} ...
+usage: tracefold db [-h] {migrate,health,audit,query-audit} ...
 
 positional arguments:
   {migrate,health,audit,query-audit}
@@ -49,8 +49,8 @@ options:
 ## `ops`
 
 ```
-usage: parallax ops [-h]
-                    {enqueue-token-radar-dirty-targets,rebuild-market-current,projection-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,factor-diagnostics} ...
+usage: tracefold ops [-h]
+                     {enqueue-token-radar-dirty-targets,rebuild-market-current,projection-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,factor-diagnostics} ...
 
 positional arguments:
   {enqueue-token-radar-dirty-targets,rebuild-market-current,projection-status,queue-inspect,queue-resolve,queue-resolve-bucket,reconcile-event-anchor-jobs,validate-projections,enqueue-projection-dirty-targets,news-dedup-diagnostics,sync-binance-usdt-perp-universe,sync-binance-cex-profiles,sync-us-equity-symbols,run-resolution-refresh,refresh-asset-profiles,rebuild-token-profiles,mirror-token-images,repair-token-profile-images,reprocess-token-intents,rebuild-token-intents,audit-token-intent,rebuild-token-radar,factor-diagnostics}

@@ -4,6 +4,6 @@
 
 | Version | File | Line | Context |
 |---------|------|------|---------|
-| `post_quality_v1` | `src/parallax/domains/token_intel/scoring/post_text_quality.py` | 86 | `score_version="post_quality_v1",` |
-| `token-radar-v14-transparent-factors` | `src/parallax/domains/token_intel/_constants.py` | 7 | `TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v14-transparent-factors"` |
-| `token_factor_snapshot_v4_transparent_factors` | `src/parallax/domains/token_intel/_constants.py` | 12 | `TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v4_transparent_factors"` |
+| `post_quality_v1` | `src/tracefold/market/radar/post_text_quality.py` | 86 | `score_version="post_quality_v1",` |
+| `token-radar-v14-transparent-factors` | `src/tracefold/market/radar/constants.py` | 7 | `TOKEN_RADAR_PROJECTION_VERSION = "token-radar-v14-transparent-factors"` |
+| `token_factor_snapshot_v4_transparent_factors` | `src/tracefold/market/radar/constants.py` | 12 | `TOKEN_FACTOR_SNAPSHOT_VERSION = "token_factor_snapshot_v4_transparent_factors"` |

@@ -6,16 +6,16 @@
 
 - Never print or log secrets, tokens, cookies, or `.env` values.
 - Never commit `.env`, credentials, private keys, or generated config files.
-- When validating live data, use `uv run parallax config` for
+- When validating live data, use `uv run tracefold config` for
   redacted config-path and configured-status diagnostics. Do not paste or copy
-  provider keys from `~/.parallax/config.yaml` into chat, docs, tests,
+  provider keys from `~/.tracefold/config.yaml` into chat, docs, tests,
   shell history, or source files.
 
 ## Single config source boundaries
 
 The supported operator-owned config files are
-`~/.parallax/config.yaml` and
-`~/.parallax/workers.yaml`. `config.yaml` owns application,
+`~/.tracefold/config.yaml` and
+`~/.tracefold/workers.yaml`. `config.yaml` owns application,
 provider, credential, storage, API, and public-surface settings.
 `workers.yaml` owns worker runtime knobs such as enabled state,
 intervals, batches, concurrency, leases, attempts, explicit boundary
@@ -32,12 +32,12 @@ DeepAgents keeps its native todo planning, checkpoint-backed virtual
 filesystem, real `execute`, context management, structured final output, and
 dynamic `task` delegation.
 The parent may delegate to the declared evidence analyst, cross-asset
-challenger, and skeptical editor as its research requires; Parallax does not
+challenger, and skeptical editor as its research requires; Tracefold does not
 force a fixed tool or review sequence.
 
 Every evidence tool is bound to one frozen completed-session scope. It may read
 only eligible persisted `macro_observations`, persisted News available by the
-cutoff/seal boundary, and prior immutable Macro publications. Parallax does
+cutoff/seal boundary, and prior immutable Macro publications. Tracefold does
 not add tool exclusions, permissions, approval middleware, or a semantic
 safety layer. A native composite backend provides `execute` and a shared
 `/workspace/` for calculation while keeping ordinary files and large results

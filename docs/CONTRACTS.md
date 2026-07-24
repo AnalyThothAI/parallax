@@ -1,6 +1,6 @@
 # Public Contracts
 
-Parallax exposes one configuration contract, one HTTP/WebSocket service, and one CLI. This document records stable behavior; generated OpenAPI is authoritative for exact HTTP fields.
+Tracefold exposes one configuration contract, one HTTP/WebSocket service, and one CLI. This document records stable behavior; generated OpenAPI is authoritative for exact HTTP fields.
 
 There are no compatibility aliases for retired products, tables, worker names, routes, or response fields. A behavior change updates source, tests, generated contracts, and this document in the same change.
 
@@ -8,10 +8,10 @@ There are no compatibility aliases for retired products, tables, worker names, r
 
 The active operator-owned files are:
 
-- `~/.parallax/config.yaml` for application, PostgreSQL, providers, credentials, notifications, API, and public WebSocket settings.
-- `~/.parallax/workers.yaml` for worker enablement, cadence, and batch/lease/timeout settings.
+- `~/.tracefold/config.yaml` for application, PostgreSQL, providers, credentials, notifications, API, and public WebSocket settings.
+- `~/.tracefold/workers.yaml` for worker enablement, cadence, and batch/lease/timeout settings.
 
-Repository examples, fixtures, `.env` files, and generated docs are not runtime configuration. `uv run parallax config` reports the effective paths and redacted settings. Unknown settings or worker keys fail validation.
+Repository examples, fixtures, `.env` files, and generated docs are not runtime configuration. `uv run tracefold config` reports the effective paths and redacted settings. Unknown settings or worker keys fail validation.
 
 The configuration schema uses typed nested models directly
 (`storage.postgres`, `api`, `llm`, `gmgn`, `providers.*`, and `upstream`).
@@ -26,7 +26,8 @@ lease, and retry settings remain typed under `workers.macro_research` in
 there is no whole-research wall-clock timeout, generic model policy, workflow
 program, semantic gate configuration, or model-capacity status surface.
 
-`app/runtime/worker_manifest.py` owns the worker inventory and writer/queue declarations. The current keys are:
+`src/tracefold/app/worker_manifest.py` owns the worker inventory and
+writer/queue declarations. The current keys are:
 
 ```text
 collector
@@ -182,7 +183,7 @@ delivery from a provider call alone.
 
 ### Token images
 
-`/api/token-images/{image_id}` accepts only the persisted lowercase SHA-256 URL identity. Only `ready` assets whose relative path resolves under `~/.parallax/cache/token-images` are served. Missing rows/files, malformed IDs, absolute paths, and traversal attempts return `404`. Provider URLs are never accepted as a proxy input.
+`/api/token-images/{image_id}` accepts only the persisted lowercase SHA-256 URL identity. Only `ready` assets whose relative path resolves under `~/.tracefold/cache/token-images` are served. Missing rows/files, malformed IDs, absolute paths, and traversal attempts return `404`. Provider URLs are never accepted as a proxy input.
 
 ## WebSocket
 
@@ -199,7 +200,7 @@ Worker progress is recovered by bounded database catch-up. Provider frames are n
 
 ## CLI
 
-`uv run parallax --help` is the exact CLI source of truth. Stable top-level families are:
+`uv run tracefold --help` is the exact CLI source of truth. Stable top-level families are:
 
 - service/config: `serve`, `init`, `config`;
 - database: `db migrate|health|audit|query-audit`;

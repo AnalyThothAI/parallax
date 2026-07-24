@@ -1,23 +1,22 @@
-# Domain Docs
+# Domain exploration
 
-How engineering skills should consume this repository's domain documentation before exploring the codebase.
+Tracefold is one bounded context. `docs/ARCHITECTURE.md` is the sole current
+backend architecture map.
 
-## Before exploring, read these
+Before changing business behavior:
 
-- `CONTEXT.md` at the repository root, or
-- `CONTEXT-MAP.md` at the repository root if it exists, then each relevant context document, and
-- ADRs under `docs/adr/` that touch the area being changed.
+1. identify the owning root interface: `tracefold.market`, `tracefold.news`,
+   `tracefold.macro`, or `tracefold.notifications`;
+2. trace provider input to PostgreSQL fact, durable target, current row, and
+   public consumer;
+3. preserve the glossary embodied by persisted fact names and public
+   contracts;
+4. import another business capability only from its package root;
+5. update the GitHub Issue when the accepted domain decision changes.
 
-If any of these files do not exist, proceed silently. Do not create them pre-emptively; domain-modeling work creates them when terminology or decisions are actually resolved.
+Optional root `CONTEXT.md`, `CONTEXT-MAP.md`, or ADR files may be consulted when
+present. Their absence is not an error and does not justify creating a second
+documentation hierarchy.
 
-The repository is currently treated as a single context unless `CONTEXT-MAP.md` is introduced.
-
-## Use the glossary's vocabulary
-
-When an output names a domain concept in an issue title, proposal, hypothesis, or test, use the term defined by the project glossary. Do not drift to synonyms the glossary explicitly avoids.
-
-If a needed concept is absent, reconsider whether it is established project language. Record a genuine gap for domain-modeling work rather than silently inventing a competing term.
-
-## Flag ADR conflicts
-
-If an output contradicts an existing ADR, surface the conflict explicitly instead of silently overriding it.
+If an established term is insufficient, make the naming decision explicit in
+the current issue before introducing a competing synonym.

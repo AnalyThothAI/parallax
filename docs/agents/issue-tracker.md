@@ -1,10 +1,10 @@
 # Issue tracker: GitHub
 
-Issues and PRDs for this repo live as GitHub issues in `AnalyThothAI/parallax`. Use the `gh` CLI for operations not exposed by the connected GitHub app.
+Issues and PRDs for this repo live as GitHub issues in `AnalyThothAI/tracefold`. Use the `gh` CLI for operations not exposed by the connected GitHub app.
 
 ## Conventions
 
-- **Create an issue**: create it in `AnalyThothAI/parallax` with a descriptive title, complete Markdown body, and the appropriate triage label.
+- **Create an issue**: create it in `AnalyThothAI/tracefold` with a descriptive title, complete Markdown body, and the appropriate triage label.
 - **Read an issue**: include comments and labels.
 - **List issues**: filter by state and label, retaining issue number, title, body, labels, and comments.
 - **Comment on an issue**: add durable decisions or verification evidence to the issue.
@@ -21,7 +21,7 @@ GitHub shares one number space across issues and pull requests, so resolve an am
 
 ## When a skill says "publish to the issue tracker"
 
-Create a GitHub issue in `AnalyThothAI/parallax`.
+Create a GitHub issue in `AnalyThothAI/tracefold`.
 
 ## When a skill says "fetch the relevant ticket"
 

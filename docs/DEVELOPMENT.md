@@ -1,115 +1,90 @@
 # Development
 
-This document owns design, SDD, worktree, test-selection, and completion rules.
+This document owns design, issue, test-selection, and completion rules.
 
-## Design before implementation
+## Specify the behavior first
 
-Audit the existing seam before adding a service, table, worker, score, or
-contract:
+GitHub Issues in `AnalyThothAI/tracefold` are the durable request, PRD, and
+acceptance surface. A non-trivial change starts with one current issue that
+states:
 
-1. trace provider input to PostgreSQL fact, durable target, current row, and
-   concrete consumer;
-2. read the existing owning service and domain architecture map;
-3. identify persisted fields that are not yet consumed;
-4. extend the existing owner unless lifecycle or responsibility genuinely
-   differs.
+- the problem and observable outcome;
+- invariants and public contracts that must remain stable;
+- allowed hard cuts and explicitly deleted compatibility paths;
+- implementation boundaries;
+- verification and cutover evidence.
 
-New tables, workers, model-backed product consumers, probabilistic outputs, and
-evaluation control planes require an explicit current need and an approved
-design. Prefer deterministic, explainable factors with component breakdowns.
-Every ranking formula change bumps `score_version`.
+Update the issue when a decision changes. Do not create parallel planning
+archives or historical design diaries in `docs/`.
 
-Specs describe intent and semantic contracts. Plans own file edits, SQL,
-migrations, tests, rollout, and rollback. Neither is a change diary.
+Before adding a service, table, worker, score, or contract, trace the existing
+provider input through PostgreSQL fact, durable target, current row, and
+consumer. Extend the current owner unless lifecycle or responsibility is
+genuinely different. New tables, workers, model-backed products, probabilistic
+outputs, or evaluation control planes require an explicit current need.
 
-## SDD workflow
+## Package design
 
-Trivial low-risk edits may go direct. Non-trivial changes use one directory:
+Business capabilities are exported from `tracefold.market`,
+`tracefold.news`, `tracefold.macro`, and `tracefold.notifications`. Code outside
+the owning package imports only those roots. Keep internal modules cohesive and
+move behavior behind the root interface instead of adding forwarding modules,
+aliases, or compatibility packages.
 
-```text
-docs/sdd/features/active/YYYY-MM-DD-<slug>/
-  spec.md
-  plan.md
-  tasks.md
-  verification.md
-```
-
-The sequence is:
-
-```text
-spec -> clarify -> checklist -> plan -> tasks -> analyze -> implement -> verify
-```
-
-Keep active boards at or below 40 tasks. Tasks record owner, dependency, touch
-set, conflict set, failing contract where applicable, implementation, and one
-verification command. Native agent collaboration stays outside the repository;
-do not create handoff, dispatch, context-packet, or agent-report artifacts.
-
-Validation:
-
-```bash
-uv run python scripts/validate_sdd_artifacts.py
-uv run python scripts/regen_sdd_work_index.py --check
-uv run python scripts/check_sdd_gate.py --feature <slug> --gate verify
-```
-
-After every acceptance criterion has successful evidence and every task is
-complete, move the whole feature directory to `features/completed/`.
-
-## Worktrees
-
-Coding changes use an isolated `.worktrees/<branch-slug>/` worktree from
-`main`, unless the user names another base. Inspect worktree, branch, and dirty
-state before editing. Existing worktrees belong to their current task.
+PostgreSQL material facts and public HTTP/WS/CLI contracts are migration
+boundaries. Internal Python imports are not compatibility contracts. Hard cuts
+delete the old path and update all consumers in the same change.
 
 ## Tests
 
 | Lane | Location | Proves |
 |---|---|---|
-| Unit | `tests/unit/` | deterministic in-process behavior |
-| Architecture | `tests/architecture/` | durable ownership/import invariants |
-| Contract | `tests/contract/` | public and generated schemas |
+| Architecture | `tests/architecture/` | package shape, dependency direction, durable ownership |
+| Contract | `tests/contract/` | public HTTP/WS/CLI and generated schemas |
 | Integration | `tests/integration/` | real PostgreSQL and composed service behavior |
-| Golden | `tests/golden/` | curated end-to-end data expectations |
+| Golden | `tests/golden/` | curated fact-to-product expectations |
 | E2E | `tests/e2e/` | running process boundaries |
-| Frontend | `web/tests/` | UI, route, model, and architecture behavior |
+| Frontend | `web/tests/` | UI, route, model, and frontend architecture behavior |
+
+Prefer behavior at a maintained public or persistence seam. Do not preserve
+tests that assert private file layout, source text, mock call choreography, or
+implementation detail. There is no coverage-percentage gate.
 
 Select commands by risk:
 
-- schema/repository changes: focused PostgreSQL integration tests;
-- HTTP changes: API behavior, OpenAPI drift, regenerated frontend types;
-- UI changes: scoped tests, lint, typecheck, and browser checks for layout or
-  interaction;
-- generated files: their generator and clean-diff contract;
-- documentation: surface/link validators and `git diff --check`;
-- workers: bounded claim, lease, retry/terminal, restart catch-up, idempotency,
-  single writer, and external-I/O transaction boundaries.
+- schema or repository behavior: focused real-PostgreSQL integration tests;
+- HTTP/WS/CLI behavior: contract tests plus regenerated artifacts;
+- workers: claim, lease, retry/terminal, restart catch-up, idempotency,
+  single-writer, and external-I/O transaction boundaries;
+- UI: scoped tests, lint, typecheck, build, and a browser check when visual or
+  interactive behavior changes;
+- documentation: bounded surface and link checks;
+- generated files: run the owning generator and verify a clean second run.
 
-`make check` is a convenient fast bundle, not a universal completion mandate.
-There is no mandatory repository-wide command or coverage threshold. The plan
-chooses commands proportional to the changed seam.
+`make check` is a fast static/frontend/architecture/contract bundle, not a
+universal completion mandate. Run only the additional lanes that cross the
+changed seam and report omitted evidence honestly.
 
 ## Generated contracts
 
-`docs/generated/` contains only reproducible outputs. Run:
+`docs/generated/` contains only reproducible outputs:
 
 ```bash
 make docs-generated
 make regen-contract
 ```
 
-when their sources change. Generated OpenAPI and frontend types change in the
-same commit as their API owner.
+Generated OpenAPI and frontend types change in the same commit as their source.
 
-## Completion evidence
+## Completion
 
 A change is complete only when:
 
 - observable behavior and durable invariants have direct successful evidence;
 - generated outputs are current;
-- omitted lanes and remaining risks are stated honestly;
-- the SDD validator and selected verify gate pass for SDD work;
-- old names, routes, files, and compatibility paths are removed.
-
-Do not manufacture green results with skip flags, compatibility mocks, or
-private source-text assertions.
+- public contracts and PostgreSQL fact semantics remain intact or change
+  through an explicitly approved migration;
+- old names, files, imports, and compatibility paths are gone;
+- deployment/cutover evidence is recorded for runtime changes;
+- omitted lanes and remaining risks are named without manufacturing green
+  results through skips or compatibility mocks.

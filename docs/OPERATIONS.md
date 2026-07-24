@@ -7,12 +7,12 @@ diagnosis, and safe repair boundaries.
 
 Real configuration is operator-owned:
 
-- `~/.parallax/config.yaml`: application, PostgreSQL, providers, credentials,
+- `~/.tracefold/config.yaml`: application, PostgreSQL, providers, credentials,
   storage, and notifications;
-- `~/.parallax/workers.yaml`: enabled state, cadence, batch, lease, retry, and
+- `~/.tracefold/workers.yaml`: enabled state, cadence, batch, lease, retry, and
   timeout settings.
 
-Confirm the active paths with `uv run parallax config`. Never infer live state
+Confirm the active paths with `uv run tracefold config`. Never infer live state
 from fixtures, examples, `.env`, generated docs, or a new CLI process. Report
 paths, redacted configured booleans, provider names, error classes, and command
 results; never secret values.
@@ -24,7 +24,7 @@ results; never secret values.
 | `/healthz` | process liveness | none |
 | `/readyz` | DB liveness plus cached startup schema/composition | no queue inspection |
 | `/api/status` | authenticated typed in-memory runtime snapshot | none |
-| `parallax ops ...` | explicit on-demand diagnosis and repair | command-specific |
+| `tracefold ops ...` | explicit on-demand diagnosis and repair | command-specific |
 
 Queue backlog, optional provider degradation, and an Agent-authored Macro
 evidence gap do not make the HTTP process unready. Research run and publication
@@ -32,7 +32,7 @@ state remain visible through their own API and operator diagnostics.
 
 ## Worker ownership
 
-`src/parallax/app/runtime/worker_manifest.py` is the executable inventory for
+`src/tracefold/app/worker_manifest.py` is the executable inventory for
 worker names, start order, queue tables, and worker-owned stable read-model
 identities. `worker_factories()` is the only callable composition registry.
 Configuration may disable workers but cannot invent names or owners.
@@ -70,10 +70,10 @@ retry. It requires a durable delivery ledger and stable dedup identity.
 
 For missing or stale live data:
 
-1. run `uv run parallax config`;
+1. run `uv run tracefold config`;
 2. check `/healthz` and `/readyz`;
 3. inspect authenticated `/api/status`;
-4. run `uv run parallax ops queue-inspect --status active`;
+4. run `uv run tracefold ops queue-inspect --status active`;
 5. inspect unresolved terminal events;
 6. trace one stable target from fact -> dirty target -> current row -> API.
 
@@ -99,7 +99,7 @@ event -> intent -> resolution -> token_radar_dirty_targets
 
 Market current is maintained transactionally with `market_ticks`; it has no
 projection worker or dirty queue. Repair uses bounded
-`parallax ops rebuild-market-current --execute` fact replay.
+`tracefold ops rebuild-market-current --execute` fact replay.
 
 News:
 
@@ -146,7 +146,7 @@ LangGraph `thread_id`. `checkpoints`, `checkpoint_blobs`, and
 restarts; `checkpoint_migrations` records the installed checkpointer schema.
 These tables are runtime execution state, not Macro facts or a serving surface.
 Alembic owns their DDL; application startup never runs checkpointer setup.
-`~/.parallax/macro-agent-workspaces/<scope>/` is the matching persistent
+`~/.tracefold/macro-agent-workspaces/<scope>/` is the matching persistent
 calculation workspace for native `execute`; it can be inspected or rebuilt
 from frozen evidence and is not a publication source.
 
@@ -162,7 +162,7 @@ Publication insertion and the transition to `published` are atomic. The
 session-keyed publication rejects update and delete; replaying a published
 session performs zero model calls and zero publication writes.
 
-`uv run parallax macro retry-research --session-date YYYY-MM-DD` is the only
+`uv run tracefold macro retry-research --session-date YYYY-MM-DD` is the only
 manual recovery from `failed`. It atomically grants one immediately due
 attempt, clears the old lease/error, and returns an auditable JSON receipt.
 Missing, non-failed, or already-published sessions are explicit no-ops.
@@ -191,5 +191,72 @@ Do not remove `events.raw_json` or `events.event_json` until every event has a
 verified raw-frame edge and locator, historical coverage reaches 100%, and
 ambiguous payloads are archived immutably.
 
-For PostgreSQL query and queue performance diagnosis, use
-[references/POSTGRES_PERFORMANCE.md](references/POSTGRES_PERFORMANCE.md).
+## PostgreSQL performance diagnosis
+
+The database is both the fact store and the durable execution plane. Diagnose
+pressure from database evidence before changing worker cadence, indexes, or
+retention.
+
+Start with redacted runtime context:
+
+```bash
+uv run tracefold config
+curl -fsS http://127.0.0.1:8765/readyz
+docker compose ps --all
+```
+
+Then inspect live activity, blockers, and normalized top SQL:
+
+```sql
+SELECT pid, application_name, state, wait_event_type, wait_event,
+       now() - xact_start AS xact_age,
+       left(query, 160) AS query
+FROM pg_stat_activity
+WHERE state <> 'idle'
+ORDER BY xact_age DESC NULLS LAST;
+
+SELECT blocked.pid AS blocked_pid,
+       blocking.pid AS blocking_pid,
+       left(blocked.query, 120) AS blocked_query
+FROM pg_stat_activity blocked
+JOIN LATERAL unnest(pg_blocking_pids(blocked.pid)) AS blocker_pid ON true
+JOIN pg_stat_activity blocking ON blocking.pid = blocker_pid;
+
+SELECT calls,
+       round(total_exec_time::numeric, 1) AS total_ms,
+       round(mean_exec_time::numeric, 3) AS mean_ms,
+       rows, shared_blks_read, temp_blks_written,
+       left(regexp_replace(query, '\s+', ' ', 'g'), 220) AS query
+FROM pg_stat_statements
+WHERE dbid = (SELECT oid FROM pg_database WHERE datname = current_database())
+ORDER BY total_exec_time DESC
+LIMIT 20;
+```
+
+Use `EXPLAIN (ANALYZE, BUFFERS)` only on a representative bounded query. Since
+`ANALYZE` executes mutating SQL, wrap `INSERT`, `UPDATE`, `DELETE`, or `MERGE`
+in `BEGIN` and `ROLLBACK`.
+
+Hot paths claim narrow stable keys and hydrate wide JSONB only after selection.
+Partial indexes must match the real due/status predicate. An idle worker must
+not scan broad facts merely to prove that no work is due. Current models remain
+bounded by stable product keys; a latest-generation pointer is not a retention
+policy.
+
+Compose loads `pg_stat_statements`, PoWA, `pg_stat_kcache`, `pg_qualstats`, and
+`pg_wait_sampling`. Use `./scripts/pgbadger_report.sh` for log history and
+`./scripts/powa_configure.sh` for bounded PoWA snapshots. The read-only
+`./scripts/runtime_performance_root_fix_check.sh` reports readiness, migration
+head, top SQL, worker state, and relation-size lifecycle evidence without
+resetting statistics or mutating queues.
+
+For a migration or production cutover:
+
+1. stop writers or establish a maintenance boundary;
+2. take and verify a PostgreSQL backup;
+3. record Alembic head and non-empty fact/read-model counts;
+4. apply migrations with bounded lock and statement timeouts;
+5. verify the same fact identities and expected counts;
+6. start one writer per current model, then verify readiness, queue movement,
+   and unchanged-projection zero-write behavior;
+7. retain the backup until the new runtime passes smoke checks.

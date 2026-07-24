@@ -2,7 +2,7 @@
 
 # WebSocket Protocol
 
-Source: `src/parallax/app/surfaces/api/ws.py`
+Source: `src/tracefold/app/http/ws.py`
 
 ## Message Type Literals
 

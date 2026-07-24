@@ -14,10 +14,9 @@ These commands run the source generators below:
 | File | Source | Script |
 |------|--------|--------|
 | `db-schema.md` | Alembic head + `pg_catalog` introspection | `scripts/regen_db_schema.py` |
-| `cli-help.md` | `parallax --help` recursively | `scripts/regen_cli_help.py` |
+| `cli-help.md` | `tracefold --help` recursively | `scripts/regen_cli_help.py` |
 | `score-versions.md` | grep `score_version=` literals in `src/` | `scripts/regen_score_versions.py` |
-| `ws-protocol.md` | extract WebSocket message type literals and source classes from `src/parallax/app/surfaces/api/ws.py` | `scripts/regen_ws_protocol.py` |
-| `sdd-work-index.md` | active SDD features and tasks | `scripts/regen_sdd_work_index.py` |
+| `ws-protocol.md` | extract WebSocket message type literals and source classes from `src/tracefold/app/http/ws.py` | `scripts/regen_ws_protocol.py` |
 | `openapi.json` | mounted FastAPI routes and schemas | `scripts/regen_openapi.py` |
 
 CI verifies that regeneration produces no diff against the committed tree.
