@@ -1,6 +1,6 @@
 # Spec — Macro Live Evidence Lenses and DeepAgents Research Separation
 
-**Status**: In Progress
+**Status**: Verified
 **Date**: 2026-07-24
 **Owner**: Codex `/root`
 **Approved by**: user and GitHub Issue #8
@@ -85,4 +85,3 @@ https://github.com/AnalyThothAI/parallax/issues/8
 - A six-section Agent schema or six independent Agent runs.
 - Trade instructions, position sizing, entries, exits, targets, or allocation.
 - Reintroduction of any retired deterministic judgment system.
-

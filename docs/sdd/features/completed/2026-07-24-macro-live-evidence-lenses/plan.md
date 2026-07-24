@@ -1,8 +1,8 @@
 # Plan — Macro Live Evidence Lenses and DeepAgents Research Separation
 
-**Status**: In Progress
+**Status**: Verified
 **Date**: 2026-07-24
-**Owning spec**: `docs/sdd/features/active/2026-07-24-macro-live-evidence-lenses/spec.md`
+**Owning spec**: `docs/sdd/features/completed/2026-07-24-macro-live-evidence-lenses/spec.md`
 **Worktree**: `.worktrees/deepagents-macro-hard-cut/`
 **Branch**: `codex/deepagents-macro-hard-cut`
 **Approved by**: user and GitHub Issue #8
@@ -82,4 +82,3 @@ make regen-contract
 make docs-generated
 git diff --check
 ```
-

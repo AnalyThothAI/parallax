@@ -1,7 +1,7 @@
 # Tasks — Macro Live Evidence Lenses and DeepAgents Research Separation
 
-**Status**: In Progress
-**Owning plan**: `docs/sdd/features/active/2026-07-24-macro-live-evidence-lenses/plan.md`
+**Status**: Verified
+**Owning plan**: `docs/sdd/features/completed/2026-07-24-macro-live-evidence-lenses/plan.md`
 **Worktree**: `.worktrees/deepagents-macro-hard-cut/`
 **Branch**: `codex/deepagents-macro-hard-cut`
 **Approved by**: user and GitHub Issue #8
@@ -15,7 +15,7 @@
 | Checklist | `spec.md` maps every product requirement to an external quality gate. |
 | Analyze | `plan.md` traces facts, research, API, frontend, storage, rollout, and recovery owners. |
 | Implement | Tasks start with failing contracts and preserve the DeepAgents hard-cut implementation. |
-| Verify | `verification.md` will record exact successful command and runtime receipts. |
+| Verify | `verification.md` records exact successful command and production runtime receipts. |
 
 ## Tasks
 
@@ -81,12 +81,12 @@
 
 ### Task 6 — Verify, merge, rebuild, migrate, and smoke-test
 
-- **File(s)**: `docs/sdd/features/active/2026-07-24-macro-live-evidence-lenses`, `docs/generated/sdd-work-index.md`, `compose.yaml`
+- **File(s)**: `docs/sdd/features/completed/2026-07-24-macro-live-evidence-lenses`, `docs/generated/sdd-work-index.md`, `compose.yaml`
 - **Owner**: parent
 - **Depends on**: Task 5
-- **Touch set**: `docs/sdd/features/active/2026-07-24-macro-live-evidence-lenses`, `docs/generated/sdd-work-index.md`, `compose.yaml`
+- **Touch set**: `docs/sdd/features/completed/2026-07-24-macro-live-evidence-lenses`, `docs/generated/sdd-work-index.md`, `compose.yaml`
 - **Conflict set**: coordinate with main for final merge; coordinate with production-runtime for Docker deployment
-- **Failing test first**: `web/tests/e2e/golden-paths/macro-live-evidence.spec.ts::macro_live_evidence_routes`
+- **Failing test first**: `tests/e2e/golden-paths/macro-live-evidence.spec.ts::macro_live_evidence_routes`
 - **Implementation**: Run requirement-level gates, record receipts, move SDD to completed, commit the branch, merge to `main`, rebuild the exact image, migrate idempotently, and inspect authenticated APIs, routes, workers, readiness, and logs.
 - **Verification**: `uv run python scripts/check_sdd_gate.py --feature 2026-07-24-macro-live-evidence-lenses --gate verify`
-- **Status**: [ ]
+- **Status**: [x]
