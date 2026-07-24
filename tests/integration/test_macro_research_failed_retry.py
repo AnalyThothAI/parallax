@@ -6,12 +6,10 @@ import pytest
 from alembic import command
 from psycopg.errors import RaiseException
 
-from parallax.domains.macro_intel.repositories.macro_research_repository import (
-    MacroResearchRepository,
-)
-from parallax.platform.db.postgres_migrations import alembic_config
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
+from tracefold.macro import MacroResearchRepository
+from tracefold.platform.postgres.postgres_migrations import alembic_config
 
 SESSION_DATE = date(2026, 7, 23)
 PUBLISHED_DATE = date(2026, 7, 22)

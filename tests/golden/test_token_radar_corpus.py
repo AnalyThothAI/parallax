@@ -1,17 +1,17 @@
 from __future__ import annotations
 
-from parallax.domains.token_intel.interfaces import (
-    TOKEN_RADAR_DEFAULT_VENUE,
-    TOKEN_RADAR_PROJECTION_VERSION,
-)
-from parallax.domains.token_intel.services.token_radar_projector import TokenRadarProjector
-from parallax.domains.token_intel.services.token_radar_publisher import TokenRadarPublisher
 from tests.factories_token_radar import (
     VERSA_BASE_CA,
     insert_base_versa_asset,
     make_gmgn_payload_event,
     make_token_event,
     open_token_radar_runtime,
+)
+from tracefold.market import (
+    TOKEN_RADAR_DEFAULT_VENUE,
+    TOKEN_RADAR_PROJECTION_VERSION,
+    TokenRadarProjector,
+    TokenRadarPublisher,
 )
 
 

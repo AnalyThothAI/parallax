@@ -10,7 +10,7 @@ const srcRoot = join(dirname(fileURLToPath(import.meta.url)), "../../src");
 const webRoot = join(srcRoot, "..");
 const sourceExtensions = new Set([".css", ".ts", ".tsx"]);
 
-describe("Parallax design-system hard cut", () => {
+describe("Tracefold design-system hard cut", () => {
   it("defines the sole semantic token contract", () => {
     const tokens = readSource("styles/tokens.css");
     const required = [
@@ -85,7 +85,7 @@ describe("Parallax design-system hard cut", () => {
     expect(items.flatMap((item) => item.children ?? [])).toEqual([]);
 
     const sidebar = readSource("features/cockpit/ui/AppSidebar.tsx");
-    expect(sidebar).toContain("Parallax");
+    expect(sidebar).toContain("Tracefold");
     expect(sidebar).toContain("Research Workbench");
     expect(sidebar).not.toMatch(/Desk status|Live desk|facts online/);
   });

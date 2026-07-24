@@ -18,8 +18,7 @@ AUTO_GENERATED = {
     "score-versions.md",
     "ws-protocol.md",
 }
-GENERATED_REPORTS = {"sdd-work-index.md"}
-EXPECTED = {"README.md"} | AUTO_GENERATED | GENERATED_REPORTS
+EXPECTED = {"README.md"} | AUTO_GENERATED
 HEADER_MARKER = "AUTO-GENERATED"
 
 

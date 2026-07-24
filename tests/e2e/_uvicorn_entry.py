@@ -3,7 +3,7 @@
 Run as:
   python -m tests.e2e._uvicorn_entry --port 0
 
-Reads PARALLAX_POSTGRES_DSN and PARALLAX_E2E_WS_TOKEN from env. Starts the FastAPI app
+Reads TRACEFOLD_POSTGRES_DSN and TRACEFOLD_E2E_WS_TOKEN from env. Starts the FastAPI app
 with start_collector=False so no upstream WebSocket is attempted, using a
 hand-built Settings object that points at the test Postgres (no YAML config
 file is required). Prints the bound port to stdout once ready in the form
@@ -25,16 +25,16 @@ def main() -> int:
     parser.add_argument("--port", type=int, default=0)
     args = parser.parse_args()
 
-    dsn = os.environ.get("PARALLAX_POSTGRES_DSN")
+    dsn = os.environ.get("TRACEFOLD_POSTGRES_DSN")
     if not dsn:
-        print("FATAL: PARALLAX_POSTGRES_DSN not set", file=sys.stderr)
+        print("FATAL: TRACEFOLD_POSTGRES_DSN not set", file=sys.stderr)
         return 1
-    ws_token = os.environ.get("PARALLAX_E2E_WS_TOKEN", "e2e-token")
+    ws_token = os.environ.get("TRACEFOLD_E2E_WS_TOKEN", "e2e-token")
 
     # Import after env validation to keep error pretty.
-    from parallax.app.runtime.worker_manifest import all_worker_manifests
-    from parallax.app.surfaces.api.app import create_app
-    from parallax.platform.config.settings import Settings
+    from tracefold.app.http.app import create_app
+    from tracefold.app.worker_manifest import all_worker_manifests
+    from tracefold.platform.config.settings import Settings
 
     settings = Settings(
         ws_token=ws_token,

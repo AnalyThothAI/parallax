@@ -4,15 +4,18 @@ from collections.abc import Iterator
 from contextlib import contextmanager
 from decimal import Decimal
 
-from parallax.app.runtime.bootstrap import _PooledIngestStore
-from parallax.app.runtime.provider_wiring.types import AssetMarketProviders
-from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.asset_market.providers import DexTokenQuote
-from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
-from parallax.domains.asset_market.types import MarketTick, market_tick_id
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tracefold.app.bootstrap import _PooledIngestStore
+from tracefold.app.provider_types import AssetMarketProviders
+from tracefold.app.repositories import repositories_for_connection
+from tracefold.market import (
+    DexTokenQuote,
+    MarketTick,
+    MarketTickPersistenceService,
+    market_tick_id,
+)
 
 
 def test_ingest_chain_event_writes_pending_backfill_without_inline_provider_call(tmp_path) -> None:

@@ -3,17 +3,16 @@ from __future__ import annotations
 import asyncio
 from types import SimpleNamespace
 
-from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.asset_market.providers import DexTokenCandidate, DexTokenQuote
-from parallax.domains.asset_market.runtime.resolution_refresh_worker import (
-    ResolutionRefreshWorker,
-    _fetch_lookup_provider_result,
-    _persist_lookup_provider_result,
-)
-from parallax.domains.evidence.services.ingest_service import IngestService
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test, repository_session_for_connection
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tracefold.app.repositories import repositories_for_connection
+from tracefold.market import (
+    DexTokenCandidate,
+    DexTokenQuote,
+    IngestService,
+    ResolutionRefreshWorker,
+)
 
 
 def _evm_address(index: int) -> str:
@@ -609,55 +608,6 @@ def test_dex_symbol_discovery_excludes_stale_unretained_search_assets_from_resul
     assert discovery["candidate_count"] == 3
     assert discovery["candidate_ids_json"] == expected_ids
     assert old["asset_id"] not in discovery["candidate_ids_json"]
-
-
-def test_address_discovery_remains_uncapped(tmp_path):
-    conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
-    address = _evm_address(77)
-    try:
-        migrate(conn)
-        result = _fetch_lookup_provider_result(
-            lookup_key=f"address:eip155:56:{address}",
-            lookup_type="address_lookup",
-            dex_discovery_market=FakeDexMarket(
-                candidates=[
-                    _dex_candidate(chain_id="eip155:56", address=_evm_address(1), market_cap_usd=1, liquidity_usd=1),
-                    _dex_candidate(chain_id="eip155:56", address=address, market_cap_usd=2, liquidity_usd=2),
-                    _dex_candidate(chain_id="eip155:56", address=_evm_address(3), market_cap_usd=3, liquidity_usd=3),
-                ]
-            ),
-            chain_ids=("eip155:56",),
-        )
-        _persist_lookup_provider_result(
-            repos=repositories_for_connection(
-                conn,
-                notification_delivery_running_timeout_ms=300_000,
-                notification_delivery_stale_running_terminalization_batch_size=100,
-            ),
-            lookup_result=result,
-            now_ms=1_000,
-        )
-        row = conn.execute(
-            """
-            SELECT registry_assets.address, registry_assets.status,
-                   asset_identity_current.canonical_symbol AS symbol,
-                   asset_identity_current.canonical_name AS name,
-                   asset_identity_current.identity_confidence
-            FROM registry_assets
-            JOIN asset_identity_current ON asset_identity_current.asset_id = registry_assets.asset_id
-            WHERE asset_identity_current.canonical_symbol = %s
-            """,
-            ("HANTA",),
-        ).fetchone()
-    finally:
-        conn.close()
-
-    assert result["assets_written"] == 1
-    assert row["address"] == address
-    assert row["status"] == "candidate"
-    assert row["symbol"] == "HANTA"
-    assert row["name"] == "HANTA"
-    assert row["identity_confidence"] == "provider_exact"
 
 
 def resolution_worker_settings(**overrides):

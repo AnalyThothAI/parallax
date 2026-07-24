@@ -1,11 +1,18 @@
 from __future__ import annotations
 
-from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.evidence.interfaces import Author, Content, Reference, Source, TwitterEvent
-from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository, event_to_row
-from parallax.domains.token_intel.runtime.token_intent_rebuild import rebuild_recent_token_intents
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tracefold.app.repositories import repositories_for_connection
+from tracefold.market import (
+    Author,
+    Content,
+    EvidenceRepository,
+    Reference,
+    Source,
+    TwitterEvent,
+    event_to_row,
+    rebuild_recent_token_intents,
+)
 
 
 def test_rebuild_recent_token_intents_uses_current_builder_policy():

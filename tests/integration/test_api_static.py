@@ -1,9 +1,10 @@
 from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
-from parallax.app.surfaces.api.app import _mount_frontend, create_app
-from parallax.platform.config.settings import PerWorkerSettings, Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
+from tests.runtime_settings import disabled_workers_settings
+from tracefold.app.http.app import _mount_frontend, create_app
+from tracefold.platform.config.settings import PerWorkerSettings, Settings
 
 
 def _disable_workers(settings: Settings) -> None:
@@ -15,7 +16,12 @@ def _disable_workers(settings: Settings) -> None:
 
 def test_frontend_dist_is_served_without_interfering_with_api(tmp_path):
     prepare_postgres_database()
-    settings = Settings(handles=("toly",), ws_token="secret", storage=postgres_settings_storage())
+    settings = Settings(
+        handles=("toly",),
+        ws_token="secret",
+        storage=postgres_settings_storage(),
+        workers=disabled_workers_settings(),
+    )
     _disable_workers(settings)
     settings.set_config_dir(tmp_path / "app-home")
     dist = tmp_path / "dist"

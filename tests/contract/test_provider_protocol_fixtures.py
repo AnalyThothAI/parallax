@@ -8,17 +8,20 @@ from typing import Any
 
 import httpx
 
-from parallax.app.runtime.provider_wiring.okx import (
+from tracefold.integrations.okx.dex_client import OkxDexClient, _candidate_from_row
+from tracefold.integrations.okx.dex_ws_client import _price_info_update_from_row, _rows_from_message
+from tracefold.integrations.okx.providers import (
     OkxDexDiscoveryProvider,
     _domain_dex_market_fact_update,
 )
-from parallax.domains.evidence.interfaces import materialize_event
-from parallax.domains.ingestion.interfaces import IngestedEvent
-from parallax.domains.ingestion.runtime.collector_service import CollectorService
-from parallax.domains.ingestion.services.normalizer import normalize_gmgn_payload, parse_gmgn_frame
-from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
-from parallax.integrations.okx.dex_client import OkxDexClient, _candidate_from_row
-from parallax.integrations.okx.dex_ws_client import _price_info_update_from_row, _rows_from_message
+from tracefold.market import (
+    CollectorService,
+    IngestedEvent,
+    materialize_event,
+    normalize_gmgn_payload,
+    parse_gmgn_frame,
+    parse_gmgn_token_payload,
+)
 
 FIXTURES = Path(__file__).resolve().parent / "provider_frames"
 

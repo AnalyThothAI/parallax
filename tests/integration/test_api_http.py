@@ -7,16 +7,23 @@ from hashlib import sha256
 
 from fastapi.testclient import TestClient
 
-from parallax.app.runtime.worker_manifest import all_worker_manifests
-from parallax.app.surfaces.api.app import create_app
-from parallax.app.surfaces.api.responses import _json
-from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
-from parallax.domains.asset_market.types import MarketTick, market_tick_id
-from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
-from parallax.platform.config.settings import Settings
 from tests.notification_helpers import insert_notification_row
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
+from tests.runtime_settings import runtime_workers_settings, workers_settings_with_enabled
+from tracefold.app.http.app import create_app
+from tracefold.app.http.responses import _json
+from tracefold.app.worker_manifest import all_worker_manifests
+from tracefold.market import (
+    Author,
+    Content,
+    MarketTick,
+    MarketTickPersistenceService,
+    Source,
+    TwitterEvent,
+    market_tick_id,
+    parse_gmgn_token_payload,
+)
+from tracefold.platform.config.settings import Settings
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 TOKEN_RADAR_TEST_REBUILD_OFFSET_MS = 60_000
@@ -218,13 +225,13 @@ def _sha256(value: str) -> str:
     return sha256(value.encode("utf-8")).hexdigest()
 
 
-def make_settings(tmp_path) -> Settings:
+def make_settings(tmp_path, *, enabled_workers: tuple[str, ...] = ("token_radar_projection",)) -> Settings:
     prepare_postgres_database()
     settings = Settings(
         handles=("toly", "elonmusk"),
         ws_token="secret",
         storage=postgres_settings_storage(),
-        workers={"macro_sync": {"enabled": False}},
+        workers=workers_settings_with_enabled(*enabled_workers),
     )
     settings.set_config_dir(tmp_path / "app-home")
     return settings
@@ -437,7 +444,13 @@ def test_api_search_rejects_malformed_cursor(tmp_path):
 
 
 def test_api_status_exposes_flat_worker_status(tmp_path):
-    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    app = create_app(
+        settings=make_settings(
+            tmp_path,
+            enabled_workers=("event_anchor_backfill", "token_radar_projection"),
+        ),
+        start_collector=False,
+    )
 
     with TestClient(app) as client:
         response = client.get("/api/status", headers={"Authorization": "Bearer secret"})
@@ -1076,7 +1089,7 @@ def test_api_token_case_rejects_invalid_window_and_scope(tmp_path):
 
 def test_api_token_case_matches_search_inspect_token_result_shape(tmp_path, monkeypatch):
     now_ms = 1_778_562_000_000
-    monkeypatch.setattr("parallax.app.surfaces.api.routes_search._now_ms", lambda: now_ms)
+    monkeypatch.setattr("tracefold.app.http.routes_search._now_ms", lambda: now_ms)
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 
     with TestClient(app) as client:
@@ -1299,7 +1312,9 @@ def test_api_target_posts_requires_target_identity(tmp_path):
 
 
 def test_api_status_exposes_operational_state(tmp_path):
-    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    settings = make_settings(tmp_path)
+    settings.workers = runtime_workers_settings()
+    app = create_app(settings=settings, start_collector=False)
 
     with TestClient(app) as client:
         response = client.get("/api/status", headers={"Authorization": "Bearer secret"})
@@ -1331,7 +1346,9 @@ def test_api_status_exposes_operational_state(tmp_path):
 
 
 def test_api_status_remains_queryable_when_readiness_is_degraded(tmp_path):
-    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+    settings = make_settings(tmp_path)
+    settings.workers = runtime_workers_settings()
+    app = create_app(settings=settings, start_collector=False)
 
     with TestClient(app) as client:
         client.app.state.service.db.api_pool.close()

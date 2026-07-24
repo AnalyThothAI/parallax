@@ -13,9 +13,9 @@ pytestmark = pytest.mark.skipif(
 
 
 def test_live_provider_configuration_shape_matches_redacted_contract() -> None:
-    from parallax.app.surfaces.cli.commands.config import handle_config
-    from parallax.platform.config.settings import load_settings
-    from parallax.platform.paths.runtime_paths import workers_config_path
+    from tracefold.app.cli.commands.config import handle_config
+    from tracefold.platform.config.settings import load_settings
+    from tracefold.platform.paths import workers_config_path
 
     try:
         settings = load_settings(require_ws_token=False)
@@ -38,8 +38,8 @@ def test_live_provider_configuration_shape_matches_redacted_contract() -> None:
         mismatches.append(f"config command returned code {code}")
     if not payload.get("ok"):
         mismatches.append("config command did not return ok=true")
-    if Path(summary["config_path"]).parent != Path.home() / ".parallax":
-        mismatches.append("config_path is not under ~/.parallax")
+    if Path(summary["config_path"]).parent != Path.home() / ".tracefold":
+        mismatches.append("config_path is not under ~/.tracefold")
     if Path(summary["workers_config_path"]).name != "workers.yaml":
         mismatches.append("workers_config_path does not end in workers.yaml")
     mismatches.extend(_secret_leaks(payload.get("data", {})))

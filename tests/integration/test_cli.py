@@ -10,20 +10,25 @@ from unittest.mock import patch
 
 import yaml
 
-from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.app.surfaces.cli.parser import build_parser
-from parallax.cli import main
-from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from parallax.domains.evidence.services.ingest_service import IngestService
-from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
-from parallax.domains.notifications.repositories.notification_repository import NotificationRepository
-from parallax.domains.token_intel.services.token_radar_projector import TokenRadarProjector
-from parallax.domains.token_intel.services.token_radar_publisher import TokenRadarPublisher
-from parallax.platform.config.settings import default_workers_yaml
 from tests.notification_helpers import insert_notification_row
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
+from tracefold.app.cli.parser import build_parser
+from tracefold.app.repositories import repositories_for_connection
+from tracefold.cli import main
+from tracefold.market import (
+    Author,
+    Content,
+    IngestService,
+    Source,
+    TokenRadarProjector,
+    TokenRadarPublisher,
+    TwitterEvent,
+    parse_gmgn_token_payload,
+)
+from tracefold.notifications import NotificationRepository
+from tracefold.platform.config.settings import default_workers_yaml
 
 PEPE = "0x6982508145454ce325ddbe47a25d4ec3d2311933"
 
@@ -134,7 +139,7 @@ def seed_postgres(db_path: Path) -> None:
 
 
 def write_runtime_config(home: Path, *, db_path: Path, ws_token: str | None = None, llm: bool = False) -> Path:
-    app_home = home / ".parallax"
+    app_home = home / ".tracefold"
     app_home.mkdir(parents=True, exist_ok=True)
     payload = {
         "handles": ["toly", "traderpow"],
@@ -249,7 +254,7 @@ class CliTests(unittest.TestCase):
     def test_config_prints_effective_runtime_settings(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".parallax" / "postgres_test_db"
+            db_path = home / ".tracefold" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path, ws_token="secret", llm=True)
             stdout = io.StringIO()
             with patch.dict("os.environ", {"HOME": str(home)}, clear=False):
@@ -263,7 +268,7 @@ class CliTests(unittest.TestCase):
         self.assertTrue(payload["data"]["api"]["ws_token_configured"])
         self.assertEqual(
             payload["data"]["config_path"],
-            str(home / ".parallax" / "config.yaml"),
+            str(home / ".tracefold" / "config.yaml"),
         )
         self.assertNotIn("agent_execution", payload["data"])
         self.assertNotIn("llm", payload["data"])
@@ -282,7 +287,7 @@ class CliTests(unittest.TestCase):
         self.assertNotIn("embed" + "ding_dim", payload["data"]["store"])
         self.assertEqual(
             payload["data"]["workers_config_path"],
-            str(home / ".parallax" / "workers.yaml"),
+            str(home / ".tracefold" / "workers.yaml"),
         )
         self.assertEqual(payload["data"]["workers"]["collector"]["mode"], "continuous")
         self.assertTrue(payload["data"]["workers"]["collector"]["enabled"])
@@ -290,7 +295,7 @@ class CliTests(unittest.TestCase):
     def test_config_redacts_notification_channel_urls(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            app_home = home / ".parallax"
+            app_home = home / ".tracefold"
             app_home.mkdir(parents=True, exist_ok=True)
             (app_home / "config.yaml").write_text(
                 yaml.safe_dump(
@@ -328,7 +333,7 @@ class CliTests(unittest.TestCase):
     def test_recent_search_asset_flow_and_alerts_use_postgres_runtime_store(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".parallax" / "postgres_test_db"
+            db_path = home / ".tracefold" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             seed_postgres(db_path)
             stdout = io.StringIO()
@@ -365,7 +370,7 @@ class CliTests(unittest.TestCase):
     def test_notification_deliveries_command_reads_delivery_audit(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".parallax" / "postgres_test_db"
+            db_path = home / ".tracefold" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             conn = connect_postgres_test(db_path, read_only=False)
             try:
@@ -411,7 +416,7 @@ class CliTests(unittest.TestCase):
     def test_db_audit_query_audit_and_token_radar_projection_ops_use_postgres_only(self):
         with tempfile.TemporaryDirectory() as tmpdir:
             home = Path(tmpdir)
-            db_path = home / ".parallax" / "postgres_test_db"
+            db_path = home / ".tracefold" / "postgres_test_db"
             write_runtime_config(home, db_path=db_path)
             conn = connect_postgres_test(db_path, read_only=False)
             try:
@@ -441,7 +446,7 @@ class CliTests(unittest.TestCase):
 
 
 def test_recent_defaults_to_runtime_postgres_store_without_ws_token(tmp_path, monkeypatch):
-    app_home = tmp_path / ".parallax"
+    app_home = tmp_path / ".tracefold"
     db_path = app_home / "postgres_test_db"
     write_runtime_config(tmp_path, db_path=db_path)
     seed_postgres(db_path)
@@ -464,12 +469,12 @@ def test_init_creates_runtime_config(tmp_path, monkeypatch):
     payload = json.loads(stdout.getvalue())
     assert exit_code == 0
     assert payload["data"]["created"] is True
-    assert (tmp_path / ".parallax" / "config.yaml").is_file()
+    assert (tmp_path / ".tracefold" / "config.yaml").is_file()
 
 
 def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkeypatch, tmp_path):
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-    from parallax.domains.token_intel.interfaces import (
+    from tracefold.app.cli.commands import ops as ops_module
+    from tracefold.market import (
         TOKEN_FACTOR_SNAPSHOT_VERSION,
         TOKEN_RADAR_FACTOR_FAMILIES,
         TOKEN_RADAR_PROJECTION_VERSION,
@@ -503,7 +508,7 @@ def test_cli_ops_factor_diagnostics_reads_latest_token_radar_current_rows(monkey
     def fake_repositories(_settings):
         yield FakeRepos()
 
-    write_runtime_config(tmp_path, db_path=tmp_path / ".parallax" / "postgres_test_db")
+    write_runtime_config(tmp_path, db_path=tmp_path / ".tracefold" / "postgres_test_db")
     monkeypatch.setenv("HOME", str(tmp_path))
     monkeypatch.setattr(ops_module, "repositories", fake_repositories)
     stdout = io.StringIO()

@@ -3,13 +3,15 @@ from __future__ import annotations
 from dataclasses import replace
 from decimal import Decimal
 
-from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.asset_market.services.market_tick_persistence import (
-    MarketTickPersistenceService,
-)
-from parallax.domains.asset_market.types import MarketTick, MarketTickSourceProvider, market_tick_id
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tracefold.app.repositories import repositories_for_connection
+from tracefold.market import (
+    MarketTick,
+    MarketTickPersistenceService,
+    MarketTickSourceProvider,
+    market_tick_id,
+)
 
 NOW_MS = 1_800_000_000_000
 TARGET_ID = "eip155:1:0x1111111111111111111111111111111111111111"

@@ -1,9 +1,9 @@
 from __future__ import annotations
 
-from parallax.platform.db.postgres_audit import HOT_QUERIES, PostgresOperationalAudit, PostgresQueryAudit
-from parallax.platform.db.postgres_migrations import latest_migration_version
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tracefold.platform.postgres.postgres_audit import HOT_QUERIES, PostgresOperationalAudit, PostgresQueryAudit
+from tracefold.platform.postgres.postgres_migrations import latest_migration_version
 
 
 def test_operational_audit_reports_counts_fk_checks_and_projection_schema(tmp_path):

@@ -4,9 +4,9 @@ import pytest
 from alembic import command
 from psycopg.errors import RaiseException
 
-from parallax.platform.db.postgres_migrations import alembic_config
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
+from tracefold.platform.postgres.postgres_migrations import alembic_config
 
 
 def test_0194_preserves_macro_truth_and_hard_cuts_old_derived_state(

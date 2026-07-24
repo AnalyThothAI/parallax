@@ -5,15 +5,18 @@ from typing import Any
 
 from psycopg.types.json import Jsonb
 
-from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
-from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from parallax.domains.token_intel.interfaces import TOKEN_RADAR_RESOLVER_POLICY_VERSION
-from parallax.domains.token_intel.services.token_radar_projector import PROJECTION_VERSION, TokenRadarProjector
-from parallax.domains.token_intel.services.token_radar_publisher import TokenRadarPublisher
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tracefold.app.repositories import repositories_for_connection
+from tracefold.market import (
+    TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+    EvidenceRepository,
+    RegistryRepository,
+    TokenRadarProjector,
+    TokenRadarPublisher,
+)
 
 FIXED_NOW_MS = 1_800_000_000_000
 EVENT_MS = FIXED_NOW_MS - 10 * 60 * 1000
@@ -110,7 +113,7 @@ def _radar_rows(conn: Any) -> list[dict[str, Any]]:
           AND scope = 'all'
         ORDER BY lane, rank, target_type, target_id, intent_id
         """,
-        (PROJECTION_VERSION,),
+        (TOKEN_RADAR_PROJECTION_VERSION,),
     ).fetchall()
     return [dict(row) for row in rows]
 

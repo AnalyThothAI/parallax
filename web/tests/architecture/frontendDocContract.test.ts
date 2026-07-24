@@ -14,7 +14,7 @@ const repoRoot = join(webRoot, "..");
 const frontendDoc = readFileSync(join(repoRoot, "docs/FRONTEND.md"), "utf8");
 const frontendVerificationSkillPath = join(
   repoRoot,
-  ".agents/skills/parallax-frontend-verification/SKILL.md",
+  ".agents/skills/tracefold-frontend-verification/SKILL.md",
 );
 const frontendVerificationSkill = existsSync(frontendVerificationSkillPath)
   ? readFileSync(frontendVerificationSkillPath, "utf8")

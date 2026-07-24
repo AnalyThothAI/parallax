@@ -8,10 +8,6 @@ from typing import Any
 import pytest
 from fastapi.testclient import TestClient
 
-from parallax.app.runtime.provider_wiring.types import AssetMarketProviders
-from parallax.app.surfaces.api.app import create_app
-from parallax.domains.asset_market.runtime.event_anchor_backfill_worker import EventAnchorBackfillWorker
-from parallax.domains.token_intel.runtime.token_radar_projection_worker import TokenRadarProjectionWorker
 from tests.postgres_test_utils import connect_postgres_test, prepare_postgres_database
 from tests.support.db_seeds import (
     assert_count_at_least,
@@ -33,6 +29,9 @@ from tests.support.hot_path_runtime import (
     backend_hot_path_settings,
 )
 from tests.support.provider_fixtures import load_provider_fixture
+from tracefold.app.http.app import create_app
+from tracefold.app.provider_types import AssetMarketProviders
+from tracefold.market import EventAnchorBackfillWorker, TokenRadarProjectionWorker
 
 
 @pytest.mark.e2e
@@ -120,6 +119,10 @@ def _assert_http_surfaces(client: TestClient) -> None:
     ready = client.get("/readyz")
     assert ready.status_code == 200, ready.text
     assert ready.json()["ok"] is True
+
+    metrics = client.get("/metrics")
+    assert metrics.status_code == 200, metrics.text
+    assert "tracefold_db_pool_wait_ms" in metrics.text
 
     recent = client.get("/api/recent", params={"limit": 10}, headers=auth_headers())
     assert recent.status_code == 200, recent.text

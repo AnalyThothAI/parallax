@@ -4,11 +4,12 @@ from contextlib import contextmanager
 
 from fastapi.testclient import TestClient
 
-from parallax.app.surfaces.api.app import create_app
-from parallax.app.surfaces.api.ws import ClientSubscription, PublicWebSocketHub
-from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from parallax.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage, prepare_postgres_database
+from tests.runtime_settings import disabled_workers_settings
+from tracefold.app.http.app import create_app
+from tracefold.app.http.ws import ClientSubscription, PublicWebSocketHub
+from tracefold.market import Author, Content, Source, TwitterEvent
+from tracefold.platform.config.settings import Settings
 
 
 def make_settings(tmp_path) -> Settings:
@@ -17,6 +18,7 @@ def make_settings(tmp_path) -> Settings:
         handles=("toly", "elonmusk"),
         ws_token="secret",
         storage=postgres_settings_storage(),
+        workers=disabled_workers_settings(),
     )
     settings.set_config_dir(tmp_path / "app-home")
     return settings

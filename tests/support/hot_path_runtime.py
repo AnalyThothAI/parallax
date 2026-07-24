@@ -3,9 +3,9 @@ from __future__ import annotations
 from pathlib import Path
 from typing import Any
 
-from parallax.app.runtime.worker_manifest import all_worker_manifests
-from parallax.platform.config.settings import Settings
 from tests.postgres_test_utils import postgres_settings_storage
+from tracefold.app.worker_manifest import all_worker_manifests
+from tracefold.platform.config.settings import Settings
 
 WS_TOKEN = "hot-path-token"
 FIXED_NOW_MS = 1_777_729_877_581

@@ -4,20 +4,21 @@ import time
 from dataclasses import replace
 from typing import Any
 
-from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.asset_market.interfaces import (
-    CONFIDENCE_PROVIDER_EXACT,
-    EVIDENCE_GMGN_PAYLOAD_EXACT,
-)
-from parallax.domains.asset_market.repositories.identity_evidence_repository import (
-    IdentityEvidenceRepository,
-)
-from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
-from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from parallax.domains.evidence.services.ingest_service import IngestService
-from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tracefold.app.repositories import repositories_for_connection
+from tracefold.market import (
+    CONFIDENCE_PROVIDER_EXACT,
+    EVIDENCE_GMGN_PAYLOAD_EXACT,
+    Author,
+    Content,
+    IdentityEvidenceRepository,
+    IngestService,
+    RegistryRepository,
+    Source,
+    TwitterEvent,
+    parse_gmgn_token_payload,
+)
 
 VERSA_BASE_CA = "0x2cc0db4f8977accadb5b7da59c5923e14328eba3"
 

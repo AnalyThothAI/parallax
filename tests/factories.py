@@ -3,12 +3,17 @@ from __future__ import annotations
 import time
 from dataclasses import replace
 
-from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.evidence.interfaces import Author, Content, Source, TwitterEvent
-from parallax.domains.evidence.services.ingest_service import IngestService
-from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tracefold.app.repositories import repositories_for_connection
+from tracefold.market import (
+    Author,
+    Content,
+    IngestService,
+    Source,
+    TwitterEvent,
+    parse_gmgn_token_payload,
+)
 
 TOKEN_ADDRESS = "0xd0667d0618dc9b6d2a0a55f428b47c64bcf00416"
 

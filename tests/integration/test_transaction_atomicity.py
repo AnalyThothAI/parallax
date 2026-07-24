@@ -6,15 +6,18 @@ from typing import Any
 
 import pytest
 
-from parallax.app.runtime.db_pool_bundle import DBPoolBundle
-from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
-from parallax.domains.asset_market.services.market_tick_persistence import MarketTickPersistenceService
-from parallax.domains.asset_market.types import MarketTick, market_tick_id
-from parallax.platform.db import postgres_client
-from parallax.platform.db.postgres_client import create_pool
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import test_postgres_dsn as postgres_test_dsn
+from tracefold.app.database import DBPoolBundle
+from tracefold.app.repositories import repositories_for_connection
+from tracefold.market import (
+    MarketTick,
+    MarketTickPersistenceService,
+    RegistryRepository,
+    market_tick_id,
+)
+from tracefold.platform.postgres import postgres_client
+from tracefold.platform.postgres.postgres_client import create_pool
 
 
 def _worker_pool_bundle(pool: Any) -> DBPoolBundle:

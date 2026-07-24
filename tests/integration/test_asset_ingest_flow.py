@@ -5,14 +5,18 @@ from decimal import Decimal
 
 import pytest
 
-from parallax.app.runtime.repository_session import repositories_for_connection
-from parallax.domains.asset_market.services.event_market_capture import CaptureResult
-from parallax.domains.asset_market.types import EnrichedEventCapture, MarketTick, market_tick_id
-from parallax.domains.evidence.services.ingest_service import IngestService
-from parallax.domains.ingestion.types.gmgn_token_payload import parse_gmgn_token_payload
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tracefold.app.repositories import repositories_for_connection
+from tracefold.market import (
+    CaptureResult,
+    EnrichedEventCapture,
+    IngestService,
+    MarketTick,
+    market_tick_id,
+    parse_gmgn_token_payload,
+)
 
 
 def open_ingest(tmp_path):

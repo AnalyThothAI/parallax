@@ -7,10 +7,10 @@ import { afterEach, describe, expect, it } from "vitest";
 afterEach(() => cleanup());
 
 describe("AppSidebar", () => {
-  it("renders the Parallax research workbench and one focused navigation group", () => {
+  it("renders the Tracefold research workbench and one focused navigation group", () => {
     renderSidebar();
 
-    expect(screen.getByText("Parallax")).toBeInTheDocument();
+    expect(screen.getByText("Tracefold")).toBeInTheDocument();
     expect(screen.getByText("Research Workbench")).toBeInTheDocument();
     const navigation = screen.getByRole("navigation", { name: "Primary navigation" });
     const headings = within(navigation).getAllByRole("heading", { level: 2 });

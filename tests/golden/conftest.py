@@ -15,7 +15,7 @@ from collections.abc import Iterator
 import psycopg
 import pytest
 
-DEFAULT_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/parallax_test"
+DEFAULT_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/tracefold_test"
 
 
 def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
@@ -62,8 +62,8 @@ def _ensure_golden_postgres_dsn() -> Iterator[None]:
 
     from testcontainers.postgres import PostgresContainer
 
-    from parallax.platform.db.postgres_migrations import upgrade_head
     from tests.postgres_observability_container import observability_postgres_container
+    from tracefold.platform.postgres.postgres_migrations import upgrade_head
 
     with observability_postgres_container(PostgresContainer) as pg:
         dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")

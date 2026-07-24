@@ -3,7 +3,7 @@
 Run as:
   python -m tests.e2e._writer_entry --event-id <id> --text <text>
 
-Reads PARALLAX_POSTGRES_DSN (and optional PARALLAX_E2E_WS_TOKEN, defaults to
+Reads TRACEFOLD_POSTGRES_DSN (and optional TRACEFOLD_E2E_WS_TOKEN, defaults to
 "e2e-token") from env. Builds a Runtime via the same bootstrap path
 the production app uses (start_collector=False, no upstream WS), then calls
 runtime.ingest.ingest_event(event, is_watched=True) with a synthetic mention.
@@ -31,22 +31,22 @@ def main() -> int:
     parser.add_argument("--author", default="e2e_test")
     args = parser.parse_args()
 
-    dsn = os.environ.get("PARALLAX_POSTGRES_DSN")
+    dsn = os.environ.get("TRACEFOLD_POSTGRES_DSN")
     if not dsn:
-        print("FATAL: PARALLAX_POSTGRES_DSN not set", file=sys.stderr)
+        print("FATAL: TRACEFOLD_POSTGRES_DSN not set", file=sys.stderr)
         return 1
-    ws_token = os.environ.get("PARALLAX_E2E_WS_TOKEN", "e2e-token")
+    ws_token = os.environ.get("TRACEFOLD_E2E_WS_TOKEN", "e2e-token")
 
     import asyncio
 
-    from parallax.app.runtime.bootstrap import bootstrap
-    from parallax.domains.evidence.interfaces import (
+    from tracefold.app.bootstrap import bootstrap
+    from tracefold.market import (
         Author,
         Content,
         Source,
         TwitterEvent,
     )
-    from parallax.platform.config.settings import Settings
+    from tracefold.platform.config.settings import Settings
 
     settings = Settings(
         ws_token=ws_token,

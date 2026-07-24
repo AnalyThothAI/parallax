@@ -9,7 +9,7 @@ import {
 import { render, screen } from "@testing-library/react";
 import { describe, expect, it } from "vitest";
 
-describe("Parallax research primitives", () => {
+describe("Tracefold research primitives", () => {
   it("renders a labelled research hierarchy with source and state semantics", () => {
     render(
       <ResearchPanel aria-label="selected research object">

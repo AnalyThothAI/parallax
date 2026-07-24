@@ -9,11 +9,11 @@ import pytest
 from psycopg import OperationalError, pq
 from psycopg.rows import RowMaker
 
-from parallax.app.runtime.repository_session import RepositorySession, repositories_for_connection
-from parallax.platform.db.postgres_client import connect_postgres
-from parallax.platform.db.postgres_migrations import upgrade_head
+from tracefold.app.repositories import RepositorySession, repositories_for_connection
+from tracefold.platform.postgres.postgres_client import connect_postgres
+from tracefold.platform.postgres.postgres_migrations import upgrade_head
 
-DEFAULT_TEST_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/parallax_test"
+DEFAULT_TEST_DSN = "postgresql://postgres:postgres@127.0.0.1:55432/tracefold_test"
 
 
 def test_postgres_dsn() -> str:

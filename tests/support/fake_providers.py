@@ -5,7 +5,7 @@ from collections.abc import Callable, Sequence
 from dataclasses import dataclass, field
 from typing import Any
 
-from parallax.domains.asset_market.providers import CexTicker, DexTokenQuote, DexTokenQuoteRequest
+from tracefold.market import CexTicker, DexTokenQuote, DexTokenQuoteRequest
 
 
 class FakeGmgnUpstreamClient:

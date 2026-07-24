@@ -2,10 +2,10 @@ from __future__ import annotations
 
 from alembic import command
 
-from parallax.platform.db.postgres_migrations import alembic_config, latest_migration_version
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
 from tests.postgres_test_utils import test_postgres_dsn as _test_postgres_dsn
+from tracefold.platform.postgres.postgres_migrations import alembic_config, latest_migration_version
 
 RETIRED_BACKEND_TABLES = {
     "projection_runs",

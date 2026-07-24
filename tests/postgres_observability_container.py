@@ -6,8 +6,8 @@ from pathlib import Path
 from typing import Any
 
 ROOT = Path(__file__).resolve().parents[1]
-DEFAULT_TEST_POSTGRES_IMAGE = "parallax-postgres-observability:18"
-TEST_POSTGRES_IMAGE = os.environ.get("PARALLAX_TEST_POSTGRES_IMAGE", DEFAULT_TEST_POSTGRES_IMAGE)
+DEFAULT_TEST_POSTGRES_IMAGE = "tracefold-postgres-observability:18"
+TEST_POSTGRES_IMAGE = os.environ.get("TRACEFOLD_TEST_POSTGRES_IMAGE", DEFAULT_TEST_POSTGRES_IMAGE)
 OBSERVABILITY_POSTGRES_COMMAND = [
     "postgres",
     "-c",

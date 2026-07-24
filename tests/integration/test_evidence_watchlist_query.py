@@ -1,13 +1,13 @@
-from parallax.domains.evidence.queries.watchlist_query import WatchlistQuery
-from parallax.domains.evidence.repositories.evidence_repository import EvidenceRepository
-from parallax.domains.evidence.types.watchlist import encode_watchlist_timeline_cursor
-from parallax.domains.token_intel.repositories.intent_resolution_repository import (
-    IntentResolutionRepository,
-)
-from parallax.domains.token_intel.repositories.token_intent_repository import TokenIntentRepository
 from tests.factories import make_event
 from tests.postgres_test_utils import connect_postgres_test
 from tests.postgres_test_utils import reset_postgres_schema as migrate
+from tracefold.market import (
+    EvidenceRepository,
+    IntentResolutionRepository,
+    TokenIntentRepository,
+    WatchlistQuery,
+    encode_watchlist_timeline_cursor,
+)
 
 
 def test_watchlist_timeline_pages_raw_source_events(tmp_path):

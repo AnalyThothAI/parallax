@@ -5,7 +5,7 @@ Three session-scope fixtures:
 - e2e_uvicorn: subprocess running tests/e2e/_uvicorn_entry.py against e2e_postgres
 - e2e_writer: callable that runs tests/e2e/_writer_entry.py to inject a synthetic event
 
-A single ws_token (`PARALLAX_E2E_WS_TOKEN`, default "e2e-token") is shared by both
+A single ws_token (`TRACEFOLD_E2E_WS_TOKEN`, default "e2e-token") is shared by both
 the uvicorn process and the writer process so HTTP/WS auth lines up.
 
 E2E tests fail with actionable setup guidance when the runtime dependencies are
@@ -64,7 +64,7 @@ def _docker_available() -> bool:
 
 @pytest.fixture(scope="session")
 def e2e_ws_token() -> str:
-    return os.environ.get("PARALLAX_E2E_WS_TOKEN", E2E_WS_TOKEN)
+    return os.environ.get("TRACEFOLD_E2E_WS_TOKEN", E2E_WS_TOKEN)
 
 
 @pytest.fixture(scope="session")
@@ -81,8 +81,8 @@ def e2e_postgres() -> Iterator[str]:
 
     from testcontainers.postgres import PostgresContainer
 
-    from parallax.platform.db.postgres_migrations import upgrade_head
     from tests.postgres_observability_container import observability_postgres_container
+    from tracefold.platform.postgres.postgres_migrations import upgrade_head
 
     with observability_postgres_container(PostgresContainer) as pg:
         dsn = pg.get_connection_url().replace("postgresql+psycopg2://", "postgresql://")
@@ -152,8 +152,8 @@ def e2e_uvicorn(e2e_postgres: str, e2e_ws_token: str, tmp_path_factory: pytest.T
     """
     env = {
         **os.environ,
-        "PARALLAX_POSTGRES_DSN": e2e_postgres,
-        "PARALLAX_E2E_WS_TOKEN": e2e_ws_token,
+        "TRACEFOLD_POSTGRES_DSN": e2e_postgres,
+        "TRACEFOLD_E2E_WS_TOKEN": e2e_ws_token,
         "PYTHONPATH": str(ROOT / "src"),
     }
     log_dir = tmp_path_factory.mktemp("e2e-uvicorn")
@@ -192,8 +192,8 @@ def e2e_writer(e2e_postgres: str, e2e_ws_token: str) -> Callable[[str, str], Non
     def _write(event_id: str, text: str) -> None:
         env = {
             **os.environ,
-            "PARALLAX_POSTGRES_DSN": e2e_postgres,
-            "PARALLAX_E2E_WS_TOKEN": e2e_ws_token,
+            "TRACEFOLD_POSTGRES_DSN": e2e_postgres,
+            "TRACEFOLD_E2E_WS_TOKEN": e2e_ws_token,
             "PYTHONPATH": str(ROOT / "src"),
         }
         result = subprocess.run(
