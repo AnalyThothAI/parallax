@@ -134,6 +134,7 @@
 - **Depends on**: Task 6, Task 9
 - **Touch set**: `web/src/features/macro/`; `web/tests/`; `docs/`
 - **Conflict set**: `web/src/features/macro/ui/pages/MacroOverviewPage.tsx`
+- **Failing test first**: `tests/routes/macro.route.test.tsx::renders the fixed risk map and persisted daily AI judgment`
 - **Implementation**: Add one compact persisted Daily AI section to `/macro`, preserve the deterministic eight-lane map, expose explicit generation/error states, and make no request-time model call or new route.
-- **Verification**: Frontend route, architecture, type, lint, build, responsive Playwright, rebuilt-image, and production-browser checks.
-- **Status**: [ ]
+- **Verification**: `cd web && npm test -- --run tests/routes/macro.route.test.tsx tests/architecture/macroDecisionHardCut.test.ts`
+- **Status**: [x]

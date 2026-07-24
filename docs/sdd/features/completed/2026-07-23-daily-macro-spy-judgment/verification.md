@@ -25,6 +25,7 @@
 | AC10 - Persisted-only latest and explicit-session read. | Pass | `make regen-contract && uv run pytest tests/unit/test_docs_contract.py tests/unit/test_api_macro_contract.py tests/contract/test_openapi_drift.py -q` exited 0; API tests prove current/historical/stale/job/missing states and zero request-time model calls. |
 | AC11 - Existing Macro and Product-AI boundaries preserved. | Pass | `make check`, `make test-integration`, and `make test-e2e && make test-golden` exited 0; the running operator service remained healthy on migration 0192 and the six-page lane stayed deterministic. |
 | AC12 - Full installed runtime and real-provider shadow proof. | Pass | `make docker-check && docker compose build app` and `uv run python - <<'PY'` exited 0; the isolated runtime reached migration 0193 with pinned versions, and the distinct-model Analyst=`gpt-5.5` / Reviewer=`gpt-5.6-terra` shadow closed one revision with `pass` in 85.22 seconds. |
+| AC13 - Persisted Daily AI judgment is visible on Macro Overview. | Pass | `cd web && npm test -- --run tests/routes/macro.route.test.tsx tests/architecture/macroDecisionHardCut.test.ts` and `cd web && npm run test:e2e` exited 0. Main commit `f939e654` added the feature-owned query and compact `/macro` section; the rebuilt production image rendered the current 2026-07-23 publication on desktop and mobile with four pressures, SPY 5D/20D `no_call`, Reviewer `pass`, all eight deterministic risk lanes, zero horizontal overflow, zero console/page errors, and zero failed API responses. |
 
 Deviations from spec:
 
@@ -32,7 +33,7 @@ Deviations from spec:
 
 Deviations from plan:
 
-- The real-provider smoke intentionally invoked the frozen Analyst/Reviewer boundary without inserting a job or publication into the operator database. Persisted publication/API behavior was proved separately against real PostgreSQL, and the installed image was proved against an isolated migrated database.
+- The initial real-provider smoke intentionally invoked the frozen Analyst/Reviewer boundary without inserting a job or publication into the operator database. Final production verification then ran one explicit worker iteration and immutably published session 2026-07-23.
 - The configured operator worker remains disabled. Its operator-owned settings now explicitly select Analyst `openai/gpt-5.5` and Reviewer `openai/gpt-5.6-terra` through one shared provider endpoint.
 
 ## Verification commands
@@ -126,6 +127,46 @@ $ curl -fsS http://127.0.0.1:8765/healthz && curl -fsS http://127.0.0.1:8765/rea
 Existing operator service remained healthy and unchanged at migration 20260723_0192.
 exit code: 0
 
+$ cd web && npm test -- --run
+72 files and 294 tests passed.
+exit code: 0
+
+$ cd web && npm test -- --run tests/routes/macro.route.test.tsx tests/architecture/macroDecisionHardCut.test.ts
+31 tests passed.
+exit code: 0
+
+$ cd web && npm run typecheck && npm run lint && npm run format:check && npm run build
+TypeScript, ESLint plus frontend architecture harness, Prettier, and production build passed.
+exit code: 0
+
+$ cd web && npm run test:e2e
+74 passed; 46 intentional viewport skips.
+exit code: 0
+
+$ docker compose -p parallax build app migrate
+Fresh `parallax-app` and `parallax-migrate` images built from main commit f939e654; the image contains migration 20260723_0193, deepagents 0.6.12, langchain-litellm 0.7.0, and the new frontend bundle.
+exit code: 0
+
+$ docker compose -p parallax run --rm --no-deps migrate
+Production PostgreSQL was already at head 20260723_0193; the idempotent migration exited successfully.
+exit code: 0
+
+$ docker compose -p parallax up -d --no-build --no-deps --force-recreate app
+Application was recreated from image sha256:f2e9951769e24a5092b01afe58f2f5e93480f636c7260357d20f07749bb2f85f and became healthy with restart_count=0.
+exit code: 0
+
+$ docker compose -p parallax exec -T app /app/.venv/bin/python - <<'PY'
+One explicit production-equivalent DailyMacroJudgmentWorker iteration published immutable session 2026-07-23; model_calls=1; publication_rows_written=1; Reviewer=pass.
+exit code: 0
+
+$ curl -fsS -H "Authorization: Bearer [redacted]" http://127.0.0.1:8765/api/macro/daily-judgment
+state=current; session=2026-07-23; data_health=degraded; pressures=4; SPY 5D=no_call; SPY 20D=no_call; Reviewer=pass; Analyst=openai/gpt-5.5; Reviewer model=openai/gpt-5.6-terra.
+exit code: 0
+
+$ cd web && node <<'NODE'
+Desktop 1366px and mobile 390px rendered `每日 AI 宏观研判`, session 2026-07-23, `不判断`, and all eight risk lanes; zero horizontal overflow, console errors, page errors, or failed API responses.
+exit code: 0
+
 $ uv run python scripts/validate_sdd_artifacts.py
 SDD artifact validation passed.
 exit code: 0
@@ -143,15 +184,15 @@ exit code: 0
 
 - Domain and storage: frozen point-in-time EvidencePack, minimal strict DailyMacroJudgment, immutable session jobs/publications, append-only outcomes, and migration 0193.
 - Model execution: real least-capability DeepAgents Analyst plus one native-task Reviewer, distinct explicit role models, bounded revision, and short citation IDs expanded deterministically to full frozen references.
-- Runtime and read surface: one disabled-by-default daily worker, persisted-only typed API, deterministic Chinese memo, generated OpenAPI/TypeScript/database schema, and no frontend redesign.
+- Runtime and read surface: one disabled-by-default daily worker, persisted-only typed API, deterministic Chinese memo, generated OpenAPI/TypeScript/database schema, and one compact Daily AI section on the existing Macro Overview.
 - Safety: global fail-closed gates, degraded-horizon `no_call`, no score/probability/position/trading fields, no Agent browser/provider/SQL/shell/filesystem/memory access, and unchanged deterministic six-page Macro.
 
 ## Risks observed
 
-- The live 2026-07-22 evidence pack is degraded because some required point-in-time capabilities are unavailable under the conservative availability policy. This correctly forces both horizons to `no_call`.
+- The live 2026-07-23 evidence pack is degraded because some required point-in-time capabilities are unavailable under the conservative availability policy. This correctly forces both horizons to `no_call`.
 - The distinct operator model pair passed the forced-tool Analyst→Reviewer workflow. Enabling the worker remains a separate explicit operator decision because it begins recurring provider spend.
 - The isolated PostgreSQL volume `parallax_macro_shadow_parallax-postgres` is intentionally retained for bounded audit replay; its containers and network were removed.
 
 ## Follow-ups
 
-- Do not enable the experimental worker until the operator intentionally updates the worker model override and accepts daily provider cost. No further product scope is required for this spec.
+- Do not enable the experimental recurring worker until the operator accepts daily provider cost. The manual 2026-07-23 publication is complete and visible.
