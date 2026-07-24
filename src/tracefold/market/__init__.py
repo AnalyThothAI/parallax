@@ -1,0 +1,336 @@
+"""Public market capability interface.
+
+Everything outside ``tracefold.market`` imports contracts from this module.
+Implementation modules remain private to the capability.
+"""
+
+from .capture.collector import CollectorService
+from .capture.entity_repository import EntityRepository
+from .capture.event_contracts import (
+    EVM_QUERY_CHAINS,
+    Author,
+    AvatarChange,
+    BioChange,
+    Content,
+    EventRead,
+    ExtractedEntity,
+    Media,
+    Reference,
+    Source,
+    TextSurface,
+    TokenSnapshot,
+    TwitterEvent,
+    UnfollowTarget,
+    decode_event_row,
+    event_to_row,
+    extract_entities_from_surfaces,
+    materialize_event,
+    normalize_ca,
+)
+from .capture.evidence_repository import EvidenceRepository
+from .capture.gmgn_token_payload import parse_gmgn_token_payload
+from .capture.ingest_contracts import IngestedEvent
+from .capture.ingest_service import IngestService, require_event_anchor_active_window_ms
+from .capture.normalizer import normalize_gmgn_payload, parse_gmgn_frame
+from .capture.provider_contracts import EventPublisherProtocol, IngestStoreProtocol, UpstreamClientProtocol
+from .capture.signal_repository import SignalAlert, SignalRepository
+from .capture.subscriptions import normalize_handles
+from .identity.asset_market_sync import BinanceUsdtPerpRoute, sync_binance_usdt_perp_routes
+from .identity.chain_identity import canonical_chain_address, canonical_chain_id, chain_address_key
+from .identity.contracts import TokenIdentityLookup, TokenIdentityLookupResult
+from .identity.deterministic_token_resolver import DeterministicResolution, DeterministicTokenResolver, MentionKeys
+from .identity.discovery_repository import DISCOVERY_PROVIDER, DiscoveryRepository
+from .identity.identity_evidence_policy import (
+    CONFIDENCE_MANUAL,
+    CONFIDENCE_MENTION_ONLY,
+    CONFIDENCE_PROVIDER_CANDIDATE,
+    CONFIDENCE_PROVIDER_EXACT,
+    CONFIDENCE_UNKNOWN,
+    EVIDENCE_BINANCE_CEX_INSTRUMENT,
+    EVIDENCE_GMGN_OPENAPI_EXACT,
+    EVIDENCE_GMGN_PAYLOAD_EXACT,
+    EVIDENCE_MANUAL_IDENTITY_REPAIR,
+    EVIDENCE_OKX_DEX_EXACT_ADDRESS,
+    EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE,
+    EVIDENCE_TWEET_CONTRACT_MENTION,
+    select_current_identity,
+)
+from .identity.identity_evidence_repository import IdentityEvidenceRepository
+from .identity.intent_resolution_repository import IntentResolutionRepository, token_intent_resolution_id
+from .identity.registry_repository import RegistryRepository
+from .identity.resolution_refresh_worker import ResolutionRefreshWorker
+from .identity.token_evidence_builder import build_token_evidence
+from .identity.token_evidence_repository import TokenEvidenceRepository
+from .identity.token_intent_builder import TokenIntentInput, build_token_intents
+from .identity.token_intent_lookup_repository import TokenIntentLookupRepository
+from .identity.token_intent_rebuild import rebuild_recent_token_intents
+from .identity.token_intent_repository import TokenIntentRepository
+from .identity.token_intent_resolver import TokenIntentResolutionDecision, TokenIntentResolver
+from .identity.token_resolution_refresh import TOKEN_REPROCESS_WINDOW, reprocess_recent_token_intents
+from .identity.us_equity_symbol_sync import NasdaqTraderSymbolClient, sync_us_equity_symbols
+from .pricing.enriched_event_repository import EnrichedEventRepository
+from .pricing.event_anchor_backfill_job_repository import EventAnchorBackfillJobRepository
+from .pricing.event_anchor_backfill_worker import EventAnchorBackfillWorker
+from .pricing.event_market_capture import CaptureResult, EventMarketCaptureService, TickLookup
+from .pricing.live_market import live_market_snapshot
+from .pricing.market_candles_service import MarketCandlesService
+from .pricing.market_tick import EnrichedEventCapture, MarketTick, MarketTickSourceProvider
+from .pricing.market_tick_current_repository import MarketTickCurrentRepository
+from .pricing.market_tick_id import market_tick_id
+from .pricing.market_tick_persistence import MarketTickPersistenceService
+from .pricing.market_tick_repository import MarketTickRepository
+from .pricing.message_price_payload import message_price_payload
+from .profiles.asset_profile_refresh_target_repository import AssetProfileRefreshTargetRepository
+from .profiles.asset_profile_repository import AssetProfileRepository
+from .profiles.cex_token_profile_repository import CexTokenProfileRepository
+from .profiles.cex_token_profile_sync import sync_cex_token_profiles
+from .profiles.token_image_asset_repository import TokenImageAssetRepository
+from .profiles.token_image_source_dirty_target_repository import TokenImageSourceDirtyTargetRepository
+from .profiles.token_profile_current_dirty_target_repository import TokenProfileCurrentDirtyTargetRepository
+from .profiles.token_profile_current_repository import TokenProfileCurrentRepository
+from .profiles.token_profile_read_model import TokenProfileReadModel
+from .profiles.token_profile_source_query import TokenProfileSourceQuery
+from .provider_contracts import (
+    AssetMarketProviderBundle,
+    CexMarketProvider,
+    CexTicker,
+    DexMarketFactUpdate,
+    DexMarketStreamProvider,
+    DexMarketStreamTarget,
+    DexProfileSource,
+    DexProviderTemporarilyUnavailable,
+    DexTokenCandidate,
+    DexTokenDiscoveryProvider,
+    DexTokenProfile,
+    DexTokenProfileProvider,
+    DexTokenQuote,
+    DexTokenQuoteProvider,
+    DexTokenQuoteRequest,
+    MarketCapability,
+    ProviderHealth,
+)
+from .radar.constants import (
+    TOKEN_FACTOR_SNAPSHOT_VERSION,
+    TOKEN_RADAR_DEFAULT_VENUE,
+    TOKEN_RADAR_FACTOR_FAMILIES,
+    TOKEN_RADAR_PROJECTION_NAME,
+    TOKEN_RADAR_PROJECTION_VERSION,
+    TOKEN_RADAR_RESOLVER_POLICY_VERSION,
+    TOKEN_RADAR_SOURCE_TABLE,
+    TOKEN_RADAR_VENUES,
+    WINDOW_MS,
+)
+from .radar.factor_diagnostics import factor_distribution_report
+from .radar.factor_snapshot_contract import is_token_factor_snapshot, require_token_factor_snapshot
+from .radar.operations import token_profile_image_repair_targets, token_radar_publication_status
+from .radar.projection_worker import TokenRadarProjectionWorker
+from .radar.scoring_common import clamp_score, safe_float, safe_int
+from .radar.token_radar_dirty_target_repository import TokenRadarDirtyTargetRepository
+from .radar.token_radar_projector import TokenRadarProjector
+from .radar.token_radar_publisher import TokenRadarPublisher
+from .radar.token_radar_rank_source_repository import TokenRadarRankSourceRepository
+from .radar.token_radar_repository import TokenRadarRepository
+from .views.asset_flow_service import AssetFlowService
+from .views.event_token_projection_query import EventTokenProjectionQuery
+from .views.search_events_query import SearchEventsQuery
+from .views.search_inspect_service import SearchInspectService
+from .views.search_service import SearchCursorError, SearchService
+from .views.stocks_radar_service import StocksRadarService
+from .views.token_case_service import (
+    TokenCaseInvalidScope,
+    TokenCaseService,
+    TokenCaseTargetNotFound,
+    normalize_token_case_scope,
+)
+from .views.token_target_cursor import TokenTargetCursorError
+from .views.token_target_posts_service import (
+    TokenTargetPostsCursorError,
+    TokenTargetPostsRangeError,
+    TokenTargetPostsService,
+)
+from .views.token_target_repository import TokenTargetRepository
+from .views.token_target_social_timeline_service import TokenTargetSocialTimelineService
+from .views.token_target_stage_builder import build_token_target_stages
+from .views.watchlist import WatchlistReadConfig, WatchlistReadService
+from .views.watchlist_query import WatchlistQuery
+from .views.watchlist_types import (
+    WatchlistTimelineCursorError,
+    encode_watchlist_timeline_cursor,
+    normalize_watchlist_handle,
+)
+from .workers_capture import construct_ingestion_workers
+from .workers_market import construct_market_workers
+from .workers_radar import construct_radar_workers
+
+__all__ = [
+    "CONFIDENCE_MANUAL",
+    "CONFIDENCE_MENTION_ONLY",
+    "CONFIDENCE_PROVIDER_CANDIDATE",
+    "CONFIDENCE_PROVIDER_EXACT",
+    "CONFIDENCE_UNKNOWN",
+    "DISCOVERY_PROVIDER",
+    "EVIDENCE_BINANCE_CEX_INSTRUMENT",
+    "EVIDENCE_GMGN_OPENAPI_EXACT",
+    "EVIDENCE_GMGN_PAYLOAD_EXACT",
+    "EVIDENCE_MANUAL_IDENTITY_REPAIR",
+    "EVIDENCE_OKX_DEX_EXACT_ADDRESS",
+    "EVIDENCE_OKX_DEX_SYMBOL_CANDIDATE",
+    "EVIDENCE_TWEET_CONTRACT_MENTION",
+    "EVM_QUERY_CHAINS",
+    "TOKEN_FACTOR_SNAPSHOT_VERSION",
+    "TOKEN_RADAR_DEFAULT_VENUE",
+    "TOKEN_RADAR_FACTOR_FAMILIES",
+    "TOKEN_RADAR_PROJECTION_NAME",
+    "TOKEN_RADAR_PROJECTION_VERSION",
+    "TOKEN_RADAR_RESOLVER_POLICY_VERSION",
+    "TOKEN_RADAR_SOURCE_TABLE",
+    "TOKEN_RADAR_VENUES",
+    "TOKEN_REPROCESS_WINDOW",
+    "WINDOW_MS",
+    "AssetFlowService",
+    "AssetMarketProviderBundle",
+    "AssetProfileRefreshTargetRepository",
+    "AssetProfileRepository",
+    "Author",
+    "AvatarChange",
+    "BinanceUsdtPerpRoute",
+    "BioChange",
+    "CaptureResult",
+    "CexMarketProvider",
+    "CexTicker",
+    "CexTokenProfileRepository",
+    "CollectorService",
+    "Content",
+    "DeterministicResolution",
+    "DeterministicTokenResolver",
+    "DexMarketFactUpdate",
+    "DexMarketStreamProvider",
+    "DexMarketStreamTarget",
+    "DexProfileSource",
+    "DexProviderTemporarilyUnavailable",
+    "DexTokenCandidate",
+    "DexTokenDiscoveryProvider",
+    "DexTokenProfile",
+    "DexTokenProfileProvider",
+    "DexTokenQuote",
+    "DexTokenQuoteProvider",
+    "DexTokenQuoteRequest",
+    "DiscoveryRepository",
+    "EnrichedEventCapture",
+    "EnrichedEventRepository",
+    "EntityRepository",
+    "EventAnchorBackfillJobRepository",
+    "EventAnchorBackfillWorker",
+    "EventMarketCaptureService",
+    "EventPublisherProtocol",
+    "EventRead",
+    "EventTokenProjectionQuery",
+    "EvidenceRepository",
+    "ExtractedEntity",
+    "IdentityEvidenceRepository",
+    "IngestService",
+    "IngestStoreProtocol",
+    "IngestedEvent",
+    "IntentResolutionRepository",
+    "MarketCandlesService",
+    "MarketCapability",
+    "MarketTick",
+    "MarketTickCurrentRepository",
+    "MarketTickPersistenceService",
+    "MarketTickRepository",
+    "MarketTickSourceProvider",
+    "Media",
+    "MentionKeys",
+    "NasdaqTraderSymbolClient",
+    "ProviderHealth",
+    "Reference",
+    "RegistryRepository",
+    "ResolutionRefreshWorker",
+    "SearchCursorError",
+    "SearchEventsQuery",
+    "SearchInspectService",
+    "SearchService",
+    "SignalAlert",
+    "SignalRepository",
+    "Source",
+    "StocksRadarService",
+    "TextSurface",
+    "TickLookup",
+    "TokenCaseInvalidScope",
+    "TokenCaseService",
+    "TokenCaseTargetNotFound",
+    "TokenEvidenceRepository",
+    "TokenIdentityLookup",
+    "TokenIdentityLookupResult",
+    "TokenImageAssetRepository",
+    "TokenImageSourceDirtyTargetRepository",
+    "TokenIntentInput",
+    "TokenIntentLookupRepository",
+    "TokenIntentRepository",
+    "TokenIntentResolutionDecision",
+    "TokenIntentResolver",
+    "TokenProfileCurrentDirtyTargetRepository",
+    "TokenProfileCurrentRepository",
+    "TokenProfileReadModel",
+    "TokenProfileSourceQuery",
+    "TokenRadarDirtyTargetRepository",
+    "TokenRadarProjectionWorker",
+    "TokenRadarProjector",
+    "TokenRadarPublisher",
+    "TokenRadarRankSourceRepository",
+    "TokenRadarRepository",
+    "TokenSnapshot",
+    "TokenTargetCursorError",
+    "TokenTargetPostsCursorError",
+    "TokenTargetPostsRangeError",
+    "TokenTargetPostsService",
+    "TokenTargetRepository",
+    "TokenTargetSocialTimelineService",
+    "TwitterEvent",
+    "UnfollowTarget",
+    "UpstreamClientProtocol",
+    "WatchlistQuery",
+    "WatchlistReadConfig",
+    "WatchlistReadService",
+    "WatchlistTimelineCursorError",
+    "build_token_evidence",
+    "build_token_intents",
+    "build_token_target_stages",
+    "canonical_chain_address",
+    "canonical_chain_id",
+    "chain_address_key",
+    "clamp_score",
+    "construct_ingestion_workers",
+    "construct_market_workers",
+    "construct_radar_workers",
+    "decode_event_row",
+    "encode_watchlist_timeline_cursor",
+    "event_to_row",
+    "extract_entities_from_surfaces",
+    "factor_distribution_report",
+    "is_token_factor_snapshot",
+    "live_market_snapshot",
+    "market_tick_id",
+    "materialize_event",
+    "message_price_payload",
+    "normalize_ca",
+    "normalize_gmgn_payload",
+    "normalize_handles",
+    "normalize_token_case_scope",
+    "normalize_watchlist_handle",
+    "parse_gmgn_frame",
+    "parse_gmgn_token_payload",
+    "rebuild_recent_token_intents",
+    "reprocess_recent_token_intents",
+    "require_event_anchor_active_window_ms",
+    "require_token_factor_snapshot",
+    "safe_float",
+    "safe_int",
+    "select_current_identity",
+    "sync_binance_usdt_perp_routes",
+    "sync_cex_token_profiles",
+    "sync_us_equity_symbols",
+    "token_intent_resolution_id",
+    "token_profile_image_repair_targets",
+    "token_radar_publication_status",
+]

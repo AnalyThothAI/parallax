@@ -7,13 +7,13 @@ import time
 from collections.abc import Mapping, Sequence
 from typing import Any
 
-from parallax.app.runtime.provider_wiring.okx import okx_chain_index
-from parallax.domains.asset_market.repositories.registry_repository import RegistryRepository
-from parallax.domains.token_intel._constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
-from parallax.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
-from parallax.platform.config.settings import Settings, load_settings
-from parallax.platform.db.postgres_client import connect_postgres, with_password_from_file
-from parallax.platform.paths.runtime_paths import config_path, workers_config_path
+from tracefold.integrations.okx.dex_ws_client import OkxDexWebSocketMarketProvider
+from tracefold.integrations.okx.providers import okx_chain_index
+from tracefold.market.identity.registry_repository import RegistryRepository
+from tracefold.market.radar.constants import TOKEN_RADAR_PROJECTION_VERSION, WINDOW_MS
+from tracefold.platform.config.settings import Settings, load_settings
+from tracefold.platform.paths import config_path, workers_config_path
+from tracefold.platform.postgres.postgres_client import connect_postgres, with_password_from_file
 
 
 def main(argv: Sequence[str] | None = None) -> int:

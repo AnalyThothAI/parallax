@@ -1,11 +1,11 @@
-name: parallax
+name: tracefold
 
 services:
   postgres:
     build:
       context: .
       dockerfile: ops/postgres/Dockerfile
-    image: parallax-postgres-observability:18
+    image: tracefold-postgres-observability:18
     restart: unless-stopped
     shm_size: 256mb
     command:
@@ -61,19 +61,19 @@ services:
         "log_statement=none",
       ]
     environment:
-      POSTGRES_DB: parallax
-      POSTGRES_USER: parallax_app
+      POSTGRES_DB: tracefold
+      POSTGRES_USER: tracefold_app
       POSTGRES_PASSWORD_FILE: /run/secrets/postgres_password
       POSTGRES_INITDB_ARGS: "--auth-host=scram-sha-256 --data-checksums"
     secrets:
       - postgres_password
     ports:
-      - "${PARALLAX_POSTGRES_HOST:-127.0.0.1}:${PARALLAX_POSTGRES_PORT:-56532}:5432"
+      - "${TRACEFOLD_POSTGRES_HOST:-127.0.0.1}:${TRACEFOLD_POSTGRES_PORT:-56532}:5432"
     volumes:
-      - parallax-postgres:/var/lib/postgresql
-      - ${HOME}/.parallax/postgres-logs:/var/log/postgresql
+      - tracefold-postgres:/var/lib/postgresql
+      - ${HOME}/.tracefold/postgres-logs:/var/log/postgresql
     healthcheck:
-      test: ["CMD-SHELL", "pg_isready -U parallax_app -d parallax"]
+      test: ["CMD-SHELL", "pg_isready -U tracefold_app -d tracefold"]
       interval: 10s
       timeout: 5s
       retries: 5
@@ -89,8 +89,8 @@ services:
       postgres:
         condition: service_healthy
     volumes:
-      - ${HOME}/.parallax:/root/.parallax
-    command: ["parallax", "db", "migrate"]
+      - ${HOME}/.tracefold:/root/.tracefold
+    command: ["tracefold", "db", "migrate"]
 
   app:
     build:
@@ -109,7 +109,7 @@ services:
     environment:
       FINANCE_FRED_API_KEY: ${FINANCE_FRED_API_KEY:-}
     volumes:
-      - ${HOME}/.parallax:/root/.parallax
+      - ${HOME}/.tracefold:/root/.tracefold
     healthcheck:
       test:
         [
@@ -124,7 +124,7 @@ services:
       start_period: 20s
 
   powa-web:
-    image: parallax-postgres-observability:18
+    image: tracefold-postgres-observability:18
     init: true
     restart: unless-stopped
     depends_on:
@@ -140,12 +140,12 @@ services:
       ]
 
   pgbadger:
-    image: parallax-postgres-observability:18
+    image: tracefold-postgres-observability:18
     profiles:
       - observability-report
     volumes:
-      - ${HOME}/.parallax/postgres-logs:/var/log/postgresql:ro
-      - ${HOME}/.parallax/reports/pgbadger:/reports
+      - ${HOME}/.tracefold/postgres-logs:/var/log/postgresql:ro
+      - ${HOME}/.tracefold/reports/pgbadger:/reports
     command:
       [
         "bash",
@@ -154,10 +154,10 @@ services:
       ]
 
 volumes:
-  parallax-postgres:
+  tracefold-postgres:
 
 secrets:
   postgres_password:
-    file: ${HOME}/.parallax/postgres_password
+    file: ${HOME}/.tracefold/postgres_password
   github_token:
     environment: GITHUB_TOKEN

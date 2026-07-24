@@ -19,8 +19,8 @@ sys.path.insert(0, str(ROOT / "src"))
 
 
 def main() -> int:
-    from parallax.app.surfaces.api.app import create_app  # type: ignore[import-not-found]
-    from parallax.platform.config.settings import Settings  # type: ignore[import-not-found]
+    from tracefold.app.http.app import create_app  # type: ignore[import-not-found]
+    from tracefold.platform.config.settings import Settings  # type: ignore[import-not-found]
 
     # Pass a minimal Settings object so we don't call load_settings() which reads
     # the local config.yaml (and requires ws_token + valid local config at dev time).

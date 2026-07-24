@@ -11,10 +11,10 @@ from typing import Any
 
 from pydantic import ValidationError
 
-from parallax.domains.macro_intel.repositories.macro_research_repository import (
+from tracefold.macro.research.repository import (
     MacroResearchRepository,
 )
-from parallax.domains.macro_intel.services.macro_research import (
+from tracefold.macro.research.service import (
     MACRO_RESEARCH_MAX_READ_REFS,
     FrozenMacroEvidenceScope,
     MacroEvidenceRecord,
@@ -29,8 +29,8 @@ from parallax.domains.macro_intel.services.macro_research import (
     require_artifact_integrity,
     require_evidence_in_scope,
 )
-from parallax.platform.config.settings import load_settings
-from parallax.platform.db.postgres_client import create_pool, with_password_from_file
+from tracefold.platform.config.settings import load_settings
+from tracefold.platform.postgres.postgres_client import create_pool, with_password_from_file
 
 _STATEMENT_TIMEOUT_SECONDS = 30.0
 

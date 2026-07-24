@@ -8,7 +8,7 @@ if ! [[ "${SNAPSHOT_COUNT}" =~ ^[0-9]+$ ]] || [ "${SNAPSHOT_COUNT}" -lt 1 ]; the
   exit 2
 fi
 
-docker compose exec -T postgres psql -U parallax_app -d postgres -v ON_ERROR_STOP=1 <<'SQL'
+docker compose exec -T postgres psql -U tracefold_app -d postgres -v ON_ERROR_STOP=1 <<'SQL'
 SELECT 'CREATE DATABASE powa'
 WHERE NOT EXISTS (
   SELECT 1
@@ -18,7 +18,7 @@ WHERE NOT EXISTS (
 \gexec
 SQL
 
-docker compose exec -T postgres psql -U parallax_app -d powa -v ON_ERROR_STOP=1 \
+docker compose exec -T postgres psql -U tracefold_app -d powa -v ON_ERROR_STOP=1 \
   -v snapshot_count="${SNAPSHOT_COUNT}" <<'SQL'
 CREATE EXTENSION IF NOT EXISTS powa CASCADE;
 

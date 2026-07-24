@@ -2,8 +2,8 @@
 set -euo pipefail
 
 DB_SERVICE="${DB_SERVICE:-postgres}"
-DB_USER="${DB_USER:-parallax_app}"
-DB_NAME="${DB_NAME:-parallax}"
+DB_USER="${DB_USER:-tracefold_app}"
+DB_NAME="${DB_NAME:-tracefold}"
 APP_URL="${APP_URL:-http://127.0.0.1:8765}"
 TOKEN_RADAR_RANK_SOURCE_MAX_MS="${TOKEN_RADAR_RANK_SOURCE_MAX_MS:-100}"
 TOKEN_RADAR_TEMP_BLOCKS_MAX="${TOKEN_RADAR_TEMP_BLOCKS_MAX:-0}"

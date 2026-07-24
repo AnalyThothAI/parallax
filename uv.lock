@@ -1894,7 +1894,7 @@ wheels = [
 ]
 
 [[package]]
-name = "parallax"
+name = "tracefold"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [

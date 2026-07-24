@@ -48,7 +48,7 @@ export function CockpitTopbar({
         {navigationTrigger ? (
           <span className="topbar-sidebar-trigger-slot">{navigationTrigger}</span>
         ) : null}
-        <span className="topbar-product-name">Parallax</span>
+        <span className="topbar-product-name">Tracefold</span>
         {search.showMainRouteButton ? (
           <button className="main-route-button" type="button" onClick={() => navigate("/")}>
             <Home aria-hidden />

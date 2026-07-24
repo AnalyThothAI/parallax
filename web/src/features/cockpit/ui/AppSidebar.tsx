@@ -30,7 +30,7 @@ export function AppSidebar() {
             P
           </span>
           <span>
-            <b>Parallax</b>
+            <b>Tracefold</b>
             <small>Research Workbench</small>
           </span>
         </div>

@@ -1,4 +1,4 @@
-# Parallax
+# Tracefold
 ws_token: "replace-with-a-strong-token"
 handles:
   - toly
@@ -23,7 +23,7 @@ api:
 
 storage:
   postgres:
-    dsn: "postgresql://parallax_app@postgres:5432/parallax"
+    dsn: "postgresql://tracefold_app@postgres:5432/tracefold"
     password_file: "postgres_password"
     pool_min_size: 1
     pool_max_size: 16
@@ -164,7 +164,7 @@ news_intel:
       refresh_interval_seconds: 600
     - source_id: cryptopanic-en
       provider_type: cryptopanic
-      feed_url: "cryptopanic://posts?regions=en&kind=all&max_items=50&profile_dir=~/.parallax/cryptopanic-profile&timeout=60"
+      feed_url: "cryptopanic://posts?regions=en&kind=all&max_items=50&profile_dir=~/.tracefold/cryptopanic-profile&timeout=60"
       source_domain: cryptopanic.com
       source_name: CryptoPanic
       source_role: aggregator

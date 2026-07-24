@@ -50,7 +50,7 @@ RUN python -m pip install --no-cache-dir uv
 
 COPY pyproject.toml uv.lock README.md alembic.ini ./
 COPY src ./src
-COPY --from=web-builder /app/web/dist ./src/parallax/web/dist
+COPY --from=web-builder /app/web/dist ./src/tracefold/web/dist
 
 RUN --mount=type=secret,id=github_token \
     --mount=type=cache,target=/root/.cache/uv \
@@ -99,4 +99,4 @@ RUN set -eu; \
 
 EXPOSE 8765
 
-CMD ["parallax", "serve"]
+CMD ["tracefold", "serve"]

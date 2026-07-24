@@ -1,1 +1,0 @@
-"""News Intel bounded context."""

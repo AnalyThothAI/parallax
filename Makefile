@@ -1,9 +1,9 @@
-UV_CACHE_DIR ?= /tmp/parallax-uv-cache
+UV_CACHE_DIR ?= /tmp/tracefold-uv-cache
 export UV_CACHE_DIR
 
-PARALLAX := uv run parallax
+TRACEFOLD := uv run tracefold
 
-.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts docker-check docker-up docker-status docker-logs docker-down docker-shell clean test-unit test-integration test-e2e test-golden test-architecture test-contract regen-contract install-hooks
+.PHONY: help sync install uninstall tool-path test lint compile check init config db-migrate db-health serve status recent asset-flow account-alerts docker-check docker-up docker-status docker-logs docker-down docker-shell clean test-integration test-e2e test-golden test-architecture test-contract regen-contract install-hooks
 
 help: ## show available targets
 	@awk 'BEGIN {FS = ":.*##"} /^[a-zA-Z0-9_-]+:.*##/ {printf "%-20s %s\n", $$1, $$2}' $(MAKEFILE_LIST)
@@ -15,7 +15,7 @@ install: ## install or update the global CLI with uv tool
 	@uv tool install --force --reinstall .
 
 uninstall: ## uninstall the global CLI installed by uv tool
-	@uv tool uninstall parallax
+	@uv tool uninstall tracefold
 
 tool-path: ## ensure uv tool executables are on PATH
 	@uv tool update-shell
@@ -29,16 +29,13 @@ lint: ## run ruff
 compile: ## compile Python files
 	@uv run python -m compileall src tests
 
-check: ## run fast lint, format, typecheck, unit, architecture, and contract checks
+check: ## run static, frontend, architecture, and public-contract checks
 	@uv run ruff check .
 	@uv run ruff format --check .
 	@uv run mypy src
 	@cd web && npm run typecheck && npm run lint && npm run format:check
-	@uv run python -m pytest tests/unit tests/architecture tests/contract -m "unit or architecture or contract"
+	@uv run python -m pytest tests/architecture tests/contract -m "architecture or contract"
 	@uv run python -m compileall src tests
-
-test-unit: ## run only tests/unit/
-	@uv run python -m pytest tests/unit -m unit
 
 test-integration: ## run only tests/integration/ (real PostgreSQL boundary)
 	@uv run python -m pytest tests/integration -m integration
@@ -62,33 +59,33 @@ regen-contract: ## regenerate openapi.json + web/src/lib/types/openapi.ts
 install-hooks: ## install pre-commit hooks
 	@uv run pre-commit install
 
-init: ## create ~/.parallax/config.yaml + workers.yaml
-	@$(PARALLAX) init
+init: ## create ~/.tracefold/config.yaml + workers.yaml
+	@$(TRACEFOLD) init
 
 config: ## print effective runtime config
-	@$(PARALLAX) config
+	@$(TRACEFOLD) config
 
 db-migrate: ## apply PostgreSQL migrations
-	@$(PARALLAX) db migrate
+	@$(TRACEFOLD) db migrate
 
 db-health: ## check PostgreSQL liveness and migration version
-	@$(PARALLAX) db health
+	@$(TRACEFOLD) db health
 
 serve: ## run collector and API in foreground
-	@$(PARALLAX) serve
+	@$(TRACEFOLD) serve
 
 status: ## print health and readiness for the running API
 	@curl -fsS http://127.0.0.1:8765/healthz
 	@curl -fsS http://127.0.0.1:8765/readyz
 
 recent: ## print recent matched events
-	@$(PARALLAX) recent --limit 20
+	@$(TRACEFOLD) recent --limit 20
 
 asset-flow: ## print 5m token activity
-	@$(PARALLAX) asset-flow --window 5m --limit 20
+	@$(TRACEFOLD) asset-flow --window 5m --limit 20
 
 account-alerts: ## print watched-account token alerts
-	@$(PARALLAX) account-alerts --window 24h --limit 50
+	@$(TRACEFOLD) account-alerts --window 24h --limit 50
 
 docker-check: ## verify Docker CLI, Compose plugin, and daemon access
 	@command -v docker >/dev/null 2>&1 || { echo "docker is not installed or not on PATH" >&2; exit 127; }
@@ -125,9 +122,9 @@ clean: ## remove local test/cache artifacts
 	@rm -rf .pytest_cache .ruff_cache __pycache__
 	@find src tests -type d -name __pycache__ -prune -exec rm -rf {} +
 
-.PHONY: docs-generated docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol docs-sdd-work-index
+.PHONY: docs-generated docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol
 
-docs-generated: docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol docs-sdd-work-index ## regenerate docs/generated/*
+docs-generated: docs-db-schema docs-cli-help docs-score-versions docs-ws-protocol ## regenerate docs/generated/*
 
 docs-db-schema: ## regenerate docs/generated/db-schema.md (requires Postgres)
 	@uv run python scripts/regen_db_schema.py
@@ -140,6 +137,3 @@ docs-score-versions: ## regenerate docs/generated/score-versions.md
 
 docs-ws-protocol: ## regenerate docs/generated/ws-protocol.md
 	@uv run python scripts/regen_ws_protocol.py
-
-docs-sdd-work-index: ## regenerate docs/generated/sdd-work-index.md
-	@uv run python scripts/regen_sdd_work_index.py

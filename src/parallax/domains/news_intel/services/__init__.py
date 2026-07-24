@@ -1,1 +1,0 @@
-"""News Intel domain services."""

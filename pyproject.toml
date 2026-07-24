@@ -1,7 +1,7 @@
 [project]
-name = "parallax"
+name = "tracefold"
 version = "0.1.0"
-description = "Parallax Market Research System: evidence-first market research with PostgreSQL-backed facts, signals, agent audit, and outcome attribution."
+description = "Tracefold Market Research System: evidence-first market research with PostgreSQL-backed facts, signals, agent audit, and outcome attribution."
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
@@ -41,25 +41,25 @@ dev = [
 ]
 
 [project.scripts]
-parallax = "parallax.cli:main"
+tracefold = "tracefold.cli:main"
 
 [build-system]
 requires = ["hatchling"]
 build-backend = "hatchling.build"
 
 [tool.hatch.build.targets.wheel]
-packages = ["src/parallax"]
+packages = ["src/tracefold"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
 addopts = "-ra --strict-markers --strict-config"
 empty_parameter_set_mark = "fail_at_collect"
 markers = [
-  "unit: pure logic, no external dependencies (lives in tests/unit/)",
   "integration: requires real Postgres (lives in tests/integration/)",
   "e2e: cross-process; needs testcontainers + uvicorn subprocess (lives in tests/e2e/)",
   "architecture: AST/grep enforcement of repo invariants (lives in tests/architecture/)",
   "contract: front-back schema/contract drift checks (lives in tests/contract/)",
+  "golden: deterministic corpus checks against real Postgres (lives in tests/golden/)",
   "live: opt-in tests that call external provider APIs",
 ]
 
@@ -127,7 +127,7 @@ mypy_path = "src"
 plugins = ["pydantic.mypy"]
 
 [[tool.mypy.overrides]]
-module = "parallax.app.*"
+module = "tracefold.app.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_decorators = false
@@ -137,7 +137,7 @@ warn_return_any = false
 disable_error_code = ["arg-type", "attr-defined", "union-attr", "index", "operator", "assignment", "no-untyped-call"]
 
 [[tool.mypy.overrides]]
-module = "parallax.integrations.*"
+module = "tracefold.integrations.*"
 disallow_untyped_defs = false
 disallow_incomplete_defs = false
 disallow_untyped_decorators = false
