@@ -1,7 +1,8 @@
 """Macro intel persistence repositories."""
 
-from parallax.domains.macro_intel.repositories.daily_macro_judgment_repository import (
-    DailyMacroJudgmentRepository,
+from parallax.domains.macro_intel.repositories.macro_research_repository import (
+    MacroResearchRepository,
+    PostgresMacroResearchReadPort,
 )
 
-__all__ = ["DailyMacroJudgmentRepository"]
+__all__ = ["MacroResearchRepository", "PostgresMacroResearchReadPort"]

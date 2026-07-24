@@ -31,17 +31,17 @@ cold paths are retained by partition lifecycle, not by worker-loop deletes.
 
 | Retention class | Tables | Lifecycle rule |
 | --- | --- | --- |
-| Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observation_series_rows`, `macro_view_snapshots` | No wide JSON/text scans. Online Token Radar reads only current rows plus publication state; `fresh` requires `ready` publication state and product/window current rows, with `current_generation_id` kept as attempt audit metadata rather than a serving join key. Current rows carry `rank_score`, `quality_status`, `degraded_reasons_json`, and `factor_snapshot_json`, not legacy top-level current-row JSON blocks. Macro module views are worker-built JSONB sections inside the current snapshot. Unchanged source signatures write zero serving rows. Retired CEX OI/detail tables are not performance templates. |
+| Hot online serving path | `token_radar_current_rows`, `token_radar_publication_state`, `macro_observations`, `macro_research_publications` | Online Token Radar reads only current rows plus publication state. Macro research reads one immutable session-keyed publication; live Macro evidence performs a bounded concept/date fact query with capped rows per source series and never assembles research. Retired CEX OI/detail tables are not performance templates. |
 | Projection-private/detail path | `token_radar_target_features`, `token_radar_rank_source_events` | Used by the Token Radar projection and bounded evidence/detail lookups only. `token_radar_target_features` is not an API, CLI, notification, or repair read path. `token_radar_rank_source_events` is lazy evidence/detail, not online leaderboard service. |
 | Selected-row hydrate | `events`, `enriched_events` | Access only after ranking or explicit evidence selection has chosen stable row ids or payload hashes. Do not join these wide payload tables into rank/discovery scans. |
-| Cold audit/history | `raw_frames` and future explicit cold projections | Partition lifecycle only. Runtime workers must not issue loop deletes against audit, history, or provider raw-frame tables. |
-| Control plane | Dirty targets, jobs, fetch runs | Leased, bounded, and terminal-evidence based. Queue state transitions must preserve attempts, lease ownership, payload hash/idempotency keys, and explicit terminal reasons. |
+| Cold audit/history | `raw_frames` and immutable Macro publication history | Partition or product-defined immutable lifecycle only. Runtime workers must not issue loop deletes against audit, history, publication, or provider raw-frame tables. |
+| Control/execution plane | Dirty targets, fetch runs, `macro_research_runs`, `checkpoints`, `checkpoint_blobs`, `checkpoint_writes` | Leased and bounded. Queue state transitions preserve attempts and lease ownership. LangGraph checkpoint rows use a stable scope-derived `thread_id`; they are not business facts or an API read path. |
 
-2026-05-27 Macro lesson: the old macro series projection had one runtime
-writer and correct active-generation readers, but every projection run produced
-a new physical generation. The active pointer made the API look current while
-`macro_observation_series_rows` kept growing with worker runs, increasing index
-size, planner/autovacuum work, and request latency. For current read models,
+2026-05-27 Macro lesson: a retired generated-series design had one runtime
+writer and correct active-generation readers, but every run produced a new
+physical generation. The active pointer made the API look current while the
+underlying row set kept growing with worker runs, increasing index size,
+planner/autovacuum work, and request latency. For current read models,
 "latest generation" is not a lifecycle policy. Current read model primary keys
 must be stable product/window keys, not `generation_id`, `run_id`,
 `attempt_id`, timestamp-derived ids, or UUIDs. Use compact current rows,
@@ -238,14 +238,12 @@ A worker loop with no due work must not scan broad facts or read models to prove
 nothing happened. Normal runtime work must be proportional to claimed dirty
 targets or leased jobs.
 
-LLM-backed workers must reserve gateway capacity, circuit, and RPM before durable
-queue claim. Batch workers request explicit `rate_units` and then cap DB claims
-to the actual `reservation.rate_units` returned by the gateway; one reservation
-cannot cover multiple unreserved model calls. Capacity, circuit, or RPM
-no-start is backpressure: it leaves the business row unclaimed, writes no
-business run ledger, and burns no provider attempt. Provider-started
-validation, publication, schema, timeout, or cancellation failures write the
-domain run ledger with `execution_started=true`.
+`macro_research` performs one narrow scheduling-state read, claims at most one
+completed-session row, and then closes the transaction before model or evidence
+tool I/O. There is no generic model-capacity/gateway queue. Timeout, tool, model,
+or publication failures transition that exact run through its bounded retry
+state; they do not trigger a broad fact scan or create a second execution
+ledger.
 
 Broad discovery belongs in dry-run-first ops commands that enqueue bounded work:
 
@@ -309,9 +307,11 @@ Window functions such as `row_number() OVER (...)` are fine in offline rebuilds
 or bounded projections. They are suspect in HTTP request paths when they scan
 wide fact windows or write temp blocks.
 
-The Macro request path must remain on the projected
-`macro_observation_series_rows`/`macro_view_snapshots` surfaces; do not restore
-request-time dedupe over `macro_observations`.
+The Macro request path must remain a session-key lookup on
+`macro_research_publications`, optionally joined to its single
+`macro_research_runs` row for persisted status. Do not restore request-time
+dedupe or research assembly over `macro_observations`, and do not expose
+LangGraph checkpoint payloads through the API.
 
 ### Batch Writes Without Losing Idempotency
 

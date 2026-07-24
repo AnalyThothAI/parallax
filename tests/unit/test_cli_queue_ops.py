@@ -365,83 +365,6 @@ def test_queue_resolve_retry_requeues_token_radar_dirty_target_with_bounded_tran
     ]
 
 
-def test_queue_resolve_retry_requeues_macro_projection_concept_target(monkeypatch) -> None:
-    from parallax.app.surfaces.cli.commands import ops as ops_module
-
-    source_row = {
-        "projection_name": "macro_evidence",
-        "projection_version": "macro_decision_v2",
-        "target_kind": "concept",
-        "target_id": "rates:dgs10",
-        "concept_key": "rates:dgs10",
-        "max_observed_at": "2026-06-23",
-        "payload_hash": "payload-macro-target",
-        "attempt_count": 3,
-    }
-    conn = _FakeTerminalConnection()
-    conn.rows = [
-        _terminal_row(
-            "terminal-macro-target-1",
-            worker_name="macro_view_projection",
-            source_table="macro_projection_dirty_targets",
-            target_key="macro_evidence:macro_decision_v2:concept:rates:dgs10",
-            source_row_json=source_row,
-        )
-    ]
-    repos = SimpleNamespace(
-        conn=conn,
-        transaction=conn.transaction,
-        macro_intel=_FakeMacroProjectionRetryRepository(),
-    )
-
-    @contextmanager
-    def fake_repositories(_settings: object):
-        yield repos
-
-    monkeypatch.setattr(ops_module, "load_settings", lambda require_ws_token=False: SimpleNamespace())
-    monkeypatch.setattr(ops_module, "repositories", fake_repositories)
-    monkeypatch.setattr(ops_module, "_now_ms", lambda: 1_700_000_100_000)
-    stdout = io.StringIO()
-
-    code = main(
-        [
-            "ops",
-            "queue-resolve",
-            "--terminal-id",
-            "terminal-macro-target-1",
-            "--action",
-            "retry",
-            "--reason",
-            "operator checked macro target",
-            "--execute",
-        ],
-        stdout=stdout,
-    )
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert payload["ok"] is True
-    assert payload["data"]["operator_action"] == "retry"
-    assert payload["data"]["transition"] == {
-        "requeued": 1,
-        "projection_name": "macro_evidence",
-        "projection_version": "macro_decision_v2",
-        "target_kind": "concept",
-        "due_at_ms": 1_700_000_100_000,
-    }
-    assert repos.macro_intel.change_calls == [
-        {
-            "changed_observations": [{"concept_key": "rates:dgs10", "observed_at": "2026-06-23"}],
-            "projection_name": "macro_evidence",
-            "projection_version": "macro_decision_v2",
-            "now_ms": 1_700_000_100_000,
-            "due_at_ms": 1_700_000_100_000,
-            "reason": "terminal_retry:operator checked macro target",
-        }
-    ]
-    assert repos.macro_intel.current_calls == []
-
-
 def test_queue_resolve_retry_rolls_back_when_transition_requeues_nothing(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import ops as ops_module
 
@@ -641,7 +564,6 @@ def test_queue_retry_transitions_cover_phase_five_terminal_queues() -> None:
         ("token_image_mirror", "token_image_source_dirty_targets"),
         ("token_profile_current", "token_profile_current_dirty_targets"),
         ("token_radar_projection", "token_radar_dirty_targets"),
-        ("macro_view_projection", "macro_projection_dirty_targets"),
     }
     assert ("mention_semantics", "token_mention_semantics") not in queue_ops.QUEUE_RETRY_TRANSITIONS
 
@@ -817,19 +739,3 @@ class _FakeTokenRadarTargetRetryRepository:
     def enqueue_targets(self, targets, **kwargs):
         self.calls.append({"targets": [dict(target) for target in targets], **kwargs})
         return len(targets)
-
-
-class _FakeMacroProjectionRetryRepository:
-    def __init__(self) -> None:
-        self.current_calls: list[dict[str, Any]] = []
-        self.change_calls: list[dict[str, Any]] = []
-
-    def enqueue_macro_projection_dirty_target(self, **kwargs: Any) -> int:
-        self.current_calls.append(dict(kwargs))
-        return 1
-
-    def enqueue_macro_projection_dirty_targets_for_changes(self, changed_observations, **kwargs: Any) -> int:
-        self.change_calls.append(
-            {"changed_observations": [dict(observation) for observation in changed_observations], **kwargs}
-        )
-        return len(changed_observations)

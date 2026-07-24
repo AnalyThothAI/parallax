@@ -151,23 +151,21 @@ const routeCases: RouteCase[] = [
   },
   {
     name: "macro",
-    path: "/macro",
+    path: "/macro?window=90d",
     primary: async (page) => {
-      await expect(page.getByRole("heading", { level: 1, name: "跨资产风险地图" })).toBeVisible();
+      await expect(page.getByRole("heading", { level: 1, name: "宏观实时数据" })).toBeVisible();
     },
     specific: async (page) => {
-      await expect(page.getByRole("navigation", { name: "宏观分析维度" })).toBeVisible();
-      await expect(page.locator(".macro-risk-lane")).toHaveCount(8);
-      await expect(page.getByRole("heading", { name: "最近官方催化" })).toBeVisible();
-      await expect(page.getByRole("heading", { name: "核心失效条件" })).toBeVisible();
-      await expect(page.locator(".macro-audit-drawer")).not.toHaveAttribute("open", "");
+      await expect(page.getByRole("navigation", { name: "宏观数据分类" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "六类宏观数据" })).toBeVisible();
+      await expect(page.getByRole("region", { name: "最近 DeepAgents 研究" })).toBeVisible();
     },
     nestedOverflowSelectors: [
-      ".macro-workbench",
-      ".macro-risk-lanes",
-      ".macro-overview-action-band",
+      ".macro-live-workbench",
+      ".macro-live-header",
+      ".macro-live-category-grid",
     ],
-    lastMeaningfulSelector: ".macro-audit-drawer",
+    lastMeaningfulSelector: ".macro-live-unclassified",
   },
 ];
 

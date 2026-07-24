@@ -6,7 +6,7 @@ import subprocess
 import sys
 from contextlib import contextmanager
 from datetime import date
-from types import SimpleNamespace, TracebackType
+from types import SimpleNamespace
 
 import pytest
 
@@ -17,14 +17,6 @@ from parallax.domains.macro_intel._constants import (
     MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_PROVIDER_SERIES_TO_CONCEPT,
-)
-from parallax.domains.macro_intel.observation_identity import (
-    macro_observation_fact_payload_hash,
-    macro_observation_id,
-)
-from parallax.domains.macro_intel.services.macro_concept_manifest import (
-    MACRO_EVIDENCE_CONCEPTS,
-    MACRO_PAGE_IDS,
 )
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
 
@@ -909,28 +901,43 @@ def test_macro_project_once_command_is_removed(monkeypatch) -> None:
     assert stdout.getvalue() == ""
 
 
-def test_macro_status_reports_repository_counts(monkeypatch) -> None:
+def test_macro_status_reports_material_facts_sync_queue_and_latest_research(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
-    repo = FakeMacroIntelRepository()
-    repo.sync_queue = {"open_count": 2, "due_count": 1, "running_count": 0}
-    repo.publication_state = {
-        "projection_version": "macro_decision_v2",
-        "row_count": 318,
-        "latest_attempt_status": "published",
-        "latest_attempt_finished_at_ms": NOW_MS,
-        "latest_attempt_error": None,
-    }
-    repo.latest = {
-        "snapshot_key": "current",
-        "projection_version": "macro_decision_v2",
-        "fact_watermark": "2026-05-20",
-        "market_cutoff": "2026-05-20",
-        "computed_at_ms": NOW_MS,
-        "payload_hash": "sha256:test",
-        **{f"{page_id}_json": _macro_page(page_id) for page_id in MACRO_PAGE_IDS},
-    }
-    _patch_macro_dependencies(monkeypatch, macro_module, repo, settings=FakeSettings(fred_env="APP_FRED_KEY"))
+    repo = FakeMacroIntelRepository(
+        material_facts={
+            "max_observed_at": date(2026, 5, 21),
+            "observations_count": 87_002,
+            "concept_count": 188,
+        },
+        sync_queue={"open_count": 2, "due_count": 1, "running_count": 0},
+    )
+    research = FakeMacroResearchRepository(
+        state={
+            "session_date": date(2026, 5, 21),
+            "market_cutoff_ms": 1_779_000_000_000,
+            "sealed_at_ms": 1_779_000_030_000,
+            "run_status": "published",
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "due_at_ms": 1_779_000_030_000,
+            "published_at_ms": 1_779_000_120_000,
+            "model_name": "openai/gpt-5.6-terra",
+            "prompt_version": "macro-research-v1",
+            "workflow_version": "deepagents-v1",
+            "last_error_code": None,
+            "last_error_message": None,
+            "artifact_json": {"schema_version": "macro_research_artifact_v2"},
+            "report_markdown": "# 宏观研究",
+        }
+    )
+    _patch_macro_dependencies(
+        monkeypatch,
+        macro_module,
+        repo,
+        research=research,
+        settings=FakeSettings(fred_env="APP_FRED_KEY"),
+    )
     monkeypatch.setenv("APP_FRED_KEY", "dummy-fred-secret")
     stdout = io.StringIO()
 
@@ -945,106 +952,104 @@ def test_macro_status_reports_repository_counts(monkeypatch) -> None:
     assert data["migration_ready"] is True
     assert data["fred_api_key_env"] == "APP_FRED_KEY"
     assert data["fred_api_key_configured"] is True
-    assert data["observations_count"] == 0
-    assert data["concept_count"] == 0
-    assert data["manifest"] == {
-        "declared_concept_count": len(MACRO_EVIDENCE_CONCEPTS),
-        "observed_concept_count": len(MACRO_EVIDENCE_CONCEPTS),
-        "missing_concept_count": 0,
-        "missing_concept_sample": [],
-        "lookback_days": 1095,
+    assert data["material_facts"] == {
+        "max_observed_at": "2026-05-21",
+        "observations_count": 87_002,
+        "concept_count": 188,
     }
     assert data["sync_queue"] == {"open_count": 2, "due_count": 1, "running_count": 0}
-    assert data["publication_state"]["projection_version"] == "macro_decision_v2"
-    assert data["facts_max_observed_at"] == "2026-05-21"
-    assert data["projection_lag_days"] == 1
-    assert data["projection_behind_facts"] is True
-    assert data["latest_snapshot"] == {
-        "projection_version": "macro_decision_v2",
-        "fact_watermark": "2026-05-20",
-        "market_cutoff": "2026-05-20",
-        "computed_at_ms": NOW_MS,
-        "pages": {
-            page_id: {
-                "status": "insufficient_evidence",
-                "judgment": "insufficient_evidence",
-                "freshness_status": "insufficient_evidence",
-                "evidence_count": 0,
-                "unavailable_evidence_count": 0,
-            }
-            for page_id in MACRO_PAGE_IDS
-        },
+    assert data["latest_research"] == {
+        "session_date": "2026-05-21",
+        "market_cutoff_ms": 1_779_000_000_000,
+        "sealed_at_ms": 1_779_000_030_000,
+        "run_status": "published",
+        "attempt_count": 1,
+        "max_attempts": 3,
+        "due_at_ms": 1_779_000_030_000,
+        "published_at_ms": 1_779_000_120_000,
+        "model_name": "openai/gpt-5.6-terra",
+        "prompt_version": "macro-research-v1",
+        "workflow_version": "deepagents-v1",
+        "last_error_code": None,
+        "last_error_message": None,
     }
-    assert "regime" not in output
-    assert "overall_score" not in output
-    assert "coverage_ratio" not in output
-    assert repo.latest_snapshot_calls == 1
+    assert "artifact_json" not in output
+    assert "report_markdown" not in output
+    assert repo.material_fact_state_calls == [date(2026, 5, 17)]
+    assert research.calls == [None]
 
 
-def test_macro_status_reports_projection_behind_when_material_facts_exist_without_snapshot(monkeypatch) -> None:
+def test_macro_status_reports_missing_latest_research_without_synthesizing_a_judgment(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
-    repo = FakeMacroIntelRepository()
-    repo.latest = None
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+    repo = FakeMacroIntelRepository(
+        material_facts={
+            "max_observed_at": date(2026, 5, 21),
+            "observations_count": 42,
+            "concept_count": 7,
+        }
+    )
+    research = FakeMacroResearchRepository(state=None)
+    _patch_macro_dependencies(monkeypatch, macro_module, repo, research=research)
     stdout = io.StringIO()
 
     code = main(["macro", "status"], stdout=stdout)
 
     payload = json.loads(stdout.getvalue())
     assert code == 0
-    assert payload["data"]["facts_max_observed_at"] == "2026-05-21"
-    assert payload["data"]["projection_lag_days"] is None
-    assert payload["data"]["projection_behind_facts"] is True
-    assert payload["data"]["latest_snapshot"] is None
+    assert payload["data"]["material_facts"] == {
+        "max_observed_at": "2026-05-21",
+        "observations_count": 42,
+        "concept_count": 7,
+    }
+    assert payload["data"]["latest_research"] is None
+    assert "judgment" not in payload["data"]
+    assert research.calls == [None]
 
 
-def test_macro_status_compares_snapshot_to_raw_material_facts_not_compact_series(monkeypatch) -> None:
+def test_macro_status_reports_failed_research_run_state(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
-    repo = FakeMacroIntelRepository(
-        concept_history=[
-            {
-                "concept_key": concept_key,
-                "points": 21,
-                "latest_observed_at": "2026-05-15",
-                "oldest_observed_at": "2026-04-15",
-                "sources": ["fixture"],
-            }
-            for concept_key in MACRO_EVIDENCE_CONCEPTS
-        ],
-        material_fact_max_observed_at="2026-05-16",
+    research = FakeMacroResearchRepository(
+        state={
+            "session_date": date(2026, 5, 16),
+            "market_cutoff_ms": 1_778_800_000_000,
+            "sealed_at_ms": 1_778_800_030_000,
+            "run_status": "failed",
+            "attempt_count": 3,
+            "max_attempts": 3,
+            "due_at_ms": 1_778_800_030_000,
+            "published_at_ms": None,
+            "model_name": None,
+            "prompt_version": None,
+            "workflow_version": None,
+            "last_error_code": "provider_timeout",
+            "last_error_message": "macro research provider timed out",
+        }
     )
-    repo.latest = {
-        "snapshot_key": "current",
-        "projection_version": "macro_decision_v2",
-        "fact_watermark": "2026-05-15",
-        "market_cutoff": "2026-05-15",
-        "computed_at_ms": NOW_MS,
-        "payload_hash": "sha256:test",
-        **{f"{page_id}_json": _macro_page(page_id) for page_id in MACRO_PAGE_IDS},
-    }
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
+    _patch_macro_dependencies(
+        monkeypatch,
+        macro_module,
+        FakeMacroIntelRepository(),
+        research=research,
+    )
     stdout = io.StringIO()
 
     code = main(["macro", "status"], stdout=stdout)
 
     data = json.loads(stdout.getvalue())["data"]
     assert code == 0
-    assert data["facts_max_observed_at"] == "2026-05-16"
-    assert data["projection_lag_days"] == 1
-    assert data["projection_behind_facts"] is True
-    assert repo.material_fact_max_calls
-    queried_concepts, through_date = repo.material_fact_max_calls[0]
-    assert "asset:spy" in queried_concepts
-    assert "event:fomc_decision_next" not in queried_concepts
-    assert through_date == date(2026, 5, 17)
+    assert data["latest_research"]["session_date"] == "2026-05-16"
+    assert data["latest_research"]["run_status"] == "failed"
+    assert data["latest_research"]["attempt_count"] == 3
+    assert data["latest_research"]["last_error_code"] == "provider_timeout"
+    assert data["latest_research"]["published_at_ms"] is None
 
 
 def test_macro_status_repository_exception_returns_structured_error_without_secret(monkeypatch) -> None:
     from parallax.app.surfaces.cli.commands import macro as macro_module
 
-    repo = FakeMacroIntelRepository(fail_concept_history_counts=True)
+    repo = FakeMacroIntelRepository(fail_material_fact_state=True)
     _patch_macro_dependencies(monkeypatch, macro_module, repo, settings=FakeSettings(fred_env="APP_FRED_KEY"))
     monkeypatch.setenv("APP_FRED_KEY", "dummy-fred-secret")
     stdout = io.StringIO()
@@ -1171,52 +1176,22 @@ def test_macro_status_requires_importable_event_bundle_series(monkeypatch) -> No
     }
 
 
-def test_macro_status_reports_manifest_availability_without_universal_readiness_score(monkeypatch) -> None:
-    from parallax.app.surfaces.cli.commands import macro as macro_module
-
-    repo = FakeMacroIntelRepository(
-        concept_history=[
-            {
-                "concept_key": "asset:spx",
-                "points": 1,
-                "latest_observed_at": "2026-05-21",
-                "oldest_observed_at": "2026-05-21",
-                "sources": ["fred"],
-            }
-        ]
-    )
-    _patch_macro_dependencies(monkeypatch, macro_module, repo)
-    stdout = io.StringIO()
-
-    code = main(["macro", "status"], stdout=stdout)
-
-    payload = json.loads(stdout.getvalue())
-    assert code == 0
-    assert payload["data"]["manifest"]["observed_concept_count"] == 1
-    assert payload["data"]["manifest"]["missing_concept_count"] == len(MACRO_EVIDENCE_CONCEPTS) - 1
-    assert "history_ready" not in payload["data"]
-    assert "history_coverage" not in payload["data"]
-    assert "coverage_ratio" not in payload["data"]["manifest"]
-    assert repo.concept_history_count_calls == [
-        {
-            "concept_keys": MACRO_EVIDENCE_CONCEPTS,
-            "lookback_days": 1095,
-        }
-    ]
-
-
 def _patch_macro_dependencies(
     monkeypatch,
     macro_module,
     repo: FakeMacroIntelRepository,
     *,
+    research: FakeMacroResearchRepository | None = None,
     settings: object | None = None,
 ) -> None:
     from parallax.app.operations import macro as operation_module
 
     @contextmanager
     def fake_repositories(_settings: object):
-        yield FakeRepositorySession(repo)
+        yield FakeRepositorySession(
+            repo,
+            research or FakeMacroResearchRepository(state=None),
+        )
 
     monkeypatch.setattr(macro_module, "load_settings", lambda require_ws_token=False: settings or FakeSettings())
     monkeypatch.setattr(operation_module, "repositories", fake_repositories)
@@ -1249,19 +1224,6 @@ def _patch_macro_dependencies(
     monkeypatch.setattr(macro_module, "_now_ms", lambda: NOW_MS)
 
 
-def _macro_page(page_id: str) -> dict[str, object]:
-    return {
-        "page_id": page_id,
-        "conclusion": {
-            "status": "insufficient_evidence",
-            "judgment": "insufficient_evidence",
-        },
-        "freshness": {"status": "insufficient_evidence"},
-        "evidence": [],
-        "unavailable_evidence": [],
-    }
-
-
 class FakeSettings:
     def __init__(self, *, fred_env: str | None = None) -> None:
         self.providers = SimpleNamespace(macrodata=SimpleNamespace(fred_api_key_env=fred_env))
@@ -1269,223 +1231,49 @@ class FakeSettings:
         self.workers = _macrodata_workers()
 
 
-class FakeConnection:
-    def __init__(self) -> None:
-        self.commits = 0
-
-    def commit(self) -> None:
-        self.commits += 1
-
-
 class FakeMacroIntelRepository:
     def __init__(
         self,
         *,
-        observations: list[dict[str, object]] | None = None,
-        concept_history: list[dict[str, object]] | None = None,
-        fail_record_run: bool = False,
-        fail_latest_observations: bool = False,
-        fail_observations_for_series: bool = False,
-        fail_concept_history_counts: bool = False,
-        material_fact_max_observed_at: str | None = "2026-05-21",
+        material_facts: dict[str, object] | None = None,
+        sync_queue: dict[str, object] | None = None,
+        fail_material_fact_state: bool = False,
     ) -> None:
-        self.conn = FakeConnection()
-        self.source_observations = observations or []
-        self.source_concept_history = concept_history
-        self.observations: list[dict[str, object]] = []
-        self.sync_runs: list[dict[str, object]] = []
-        self.snapshots: list[dict[str, object]] = []
-        self.latest_observation_limits: list[int] = []
-        self.observations_for_concepts_calls: list[dict[str, object]] = []
-        self.concept_history_count_calls: list[dict[str, object]] = []
-        self.sync_queue: dict[str, object] = {}
-        self.enqueued_dirty_targets: list[dict[str, object]] = []
-        self.publication_state: dict[str, object] | None = None
-        self.latest: dict[str, object] | None = None
-        self.latest_snapshot_calls = 0
-        self.fail_record_run = fail_record_run
-        self.fail_latest_observations = fail_latest_observations
-        self.fail_observations_for_series = fail_observations_for_series
-        self.fail_concept_history_counts = fail_concept_history_counts
-        self.material_fact_max_observed_at_value = material_fact_max_observed_at
-        self.material_fact_max_calls: list[tuple[tuple[str, ...], date]] = []
-        self.transaction_events: list[str] = []
-        self._observation_index: dict[str, int] = {}
-
-    def upsert_observation(self, observation: dict[str, object]) -> dict[str, object]:
-        observation_id = macro_observation_id(observation)
-        fact_payload_hash = macro_observation_fact_payload_hash(observation)
-        existing_index = self._observation_index.get(observation_id)
-        if existing_index is None:
-            self._observation_index[observation_id] = len(self.observations)
-            self.observations.append(dict(observation))
-            status = "inserted"
-        else:
-            existing_hash = macro_observation_fact_payload_hash(self.observations[existing_index])
-            if existing_hash == fact_payload_hash:
-                status = "noop"
-            else:
-                self.observations[existing_index] = dict(observation)
-                status = "changed"
-        return {
-            "observation_id": observation_id,
-            "status": status,
-            "concept_key": str(observation["concept_key"]),
-            "observed_at": observation["observed_at"],
-            "fact_payload_hash": fact_payload_hash,
+        self.material_facts = material_facts or {
+            "max_observed_at": None,
+            "observations_count": 0,
+            "concept_count": 0,
         }
+        self.sync_queue = sync_queue or {}
+        self.fail_material_fact_state = fail_material_fact_state
+        self.material_fact_state_calls: list[date] = []
 
-    def record_macro_sync_run(self, sync_run: dict[str, object]) -> None:
-        if self.fail_record_run:
-            raise RuntimeError("postgres://user:secret@db record failed")
-        self.sync_runs.append(sync_run)
-
-    def enqueue_macro_projection_dirty_targets_for_changes(self, **kwargs: object) -> int:
-        self.enqueued_dirty_targets.append(dict(kwargs))
-        return 1
-
-    def latest_observations(self, *, limit: int) -> list[dict[str, object]]:
-        if self.fail_latest_observations:
-            raise RuntimeError("postgres://user:secret@db latest failed")
-        self.latest_observation_limits.append(limit)
-        return self.source_observations
-
-    def observations_for_concepts(
-        self,
-        *,
-        concept_keys: tuple[str, ...],
-        lookback_days: int,
-        limit_per_series: int,
-    ) -> list[dict[str, object]]:
-        if self.fail_observations_for_series:
-            raise RuntimeError("postgres://user:secret@db history failed")
-        self.observations_for_concepts_calls.append(
-            {
-                "concept_keys": concept_keys,
-                "lookback_days": lookback_days,
-                "limit_per_series": limit_per_series,
-            }
-        )
-        return self.source_observations
-
-    def concept_history_counts(
-        self,
-        *,
-        concept_keys: tuple[str, ...],
-        lookback_days: int,
-    ) -> list[dict[str, object]]:
-        if self.fail_concept_history_counts:
-            raise RuntimeError("postgres://user:secret@db history failed")
-        self.concept_history_count_calls.append(
-            {
-                "concept_keys": concept_keys,
-                "lookback_days": lookback_days,
-            }
-        )
-        if self.source_concept_history is not None:
-            explicit = {str(row["concept_key"]): row for row in self.source_concept_history}
-            return [
-                dict(
-                    explicit.get(
-                        concept_key,
-                        {
-                            "concept_key": concept_key,
-                            "points": 0,
-                            "latest_observed_at": None,
-                            "oldest_observed_at": None,
-                            "sources": [],
-                        },
-                    )
-                )
-                for concept_key in concept_keys
-            ]
-        return [
-            {
-                "concept_key": concept_key,
-                "points": 126,
-                "latest_observed_at": "2026-05-21",
-                "oldest_observed_at": "2026-01-01",
-                "sources": ["fixture"],
-            }
-            for concept_key in concept_keys
-        ]
-
-    def material_fact_max_observed_at(
-        self,
-        *,
-        concept_keys: tuple[str, ...],
-        through_date: date,
-    ) -> str | None:
-        self.material_fact_max_calls.append((concept_keys, through_date))
-        return self.material_fact_max_observed_at_value
-
-    def insert_snapshot(self, snapshot: dict[str, object]) -> None:
-        self.snapshots.append(snapshot)
-
-    def observations_count(self) -> int:
-        return len(self.observations)
-
-    def concept_count(self) -> int:
-        return len({observation["concept_key"] for observation in self.observations})
+    def material_fact_state(self, *, through_date: date) -> dict[str, object]:
+        if self.fail_material_fact_state:
+            raise RuntimeError("postgres://user:secret@db material facts failed")
+        self.material_fact_state_calls.append(through_date)
+        return dict(self.material_facts)
 
     def macro_sync_queue_summary(self, *, now_ms: int) -> dict[str, object]:
         assert now_ms == NOW_MS
         return self.sync_queue
 
-    def macro_series_publication_state(self, projection_version: str) -> dict[str, object] | None:
-        assert projection_version == "macro_decision_v2"
-        return self.publication_state
 
-    def latest_snapshot(self) -> dict[str, object] | None:
-        self.latest_snapshot_calls += 1
-        return self.latest
+class FakeMacroResearchRepository:
+    def __init__(self, *, state: dict[str, object] | None) -> None:
+        self.state = state
+        self.calls: list[date | None] = []
+
+    def research_state(self, session_date: date | None) -> dict[str, object] | None:
+        self.calls.append(session_date)
+        return dict(self.state) if self.state is not None else None
 
 
 class FakeRepositorySession:
-    def __init__(self, macro_intel: FakeMacroIntelRepository) -> None:
-        self.macro_intel = macro_intel
-        self.conn = macro_intel.conn
-        self.in_transaction = False
-
-    def transaction(self):
-        return FakeTransaction(self)
-
-    def require_transaction(self, *, operation: str) -> None:
-        assert operation == "macrodata_bundle_import"
-        if not self.in_transaction:
-            raise RuntimeError(f"{operation}:transaction_required")
-
-
-class FakeTransaction:
-    def __init__(self, repos: FakeRepositorySession) -> None:
-        self.repos = repos
-        self.macro_intel = repos.macro_intel
-        self.observations: list[dict[str, object]] = []
-        self.observation_index: dict[str, int] = {}
-        self.sync_runs: list[dict[str, object]] = []
-        self.enqueued_dirty_targets: list[dict[str, object]] = []
-
-    def __enter__(self):
-        self.repos.in_transaction = True
-        self.observations = list(self.macro_intel.observations)
-        self.observation_index = dict(self.macro_intel._observation_index)
-        self.sync_runs = list(self.macro_intel.sync_runs)
-        self.enqueued_dirty_targets = list(self.macro_intel.enqueued_dirty_targets)
-        return self
-
-    def __exit__(
+    def __init__(
         self,
-        exc_type: type[BaseException] | None,
-        exc: BaseException | None,
-        tb: TracebackType | None,
-    ) -> bool:
-        if exc_type is not None:
-            self.macro_intel.observations = self.observations
-            self.macro_intel._observation_index = self.observation_index
-            self.macro_intel.sync_runs = self.sync_runs
-            self.macro_intel.enqueued_dirty_targets = self.enqueued_dirty_targets
-            self.macro_intel.transaction_events.append("rollback")
-        else:
-            self.macro_intel.transaction_events.append("commit")
-        self.repos.in_transaction = False
-        return False
+        macro_intel: FakeMacroIntelRepository,
+        macro_research: FakeMacroResearchRepository,
+    ) -> None:
+        self.macro_intel = macro_intel
+        self.macro_research = macro_research

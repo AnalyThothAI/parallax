@@ -190,6 +190,49 @@ def test_worker_uses_formal_batch_size_without_hidden_cycle_cap() -> None:
     assert [call[0] for call in service.calls].count("run_claimed_window_once") == 7
 
 
+def test_worker_isolates_failed_window_and_continues_bounded_batch() -> None:
+    from parallax.domains.macro_intel.runtime.macro_sync_worker import MacroSyncWorker
+
+    results = [
+        MacroSyncRunSummary(
+            sync_run_id="sync-run-failed",
+            status="retryable_error",
+            observations_count=0,
+            imported_observation_count=0,
+            asof_date=None,
+            max_observed_at=None,
+            diagnostics={},
+        ),
+        MacroSyncRunSummary(
+            sync_run_id="sync-run-ok",
+            status="ok",
+            observations_count=1,
+            imported_observation_count=1,
+            asof_date=date(2026, 7, 23),
+            max_observed_at=date(2026, 7, 23),
+            diagnostics={},
+        ),
+    ]
+    service = FakeService(results=results)
+    worker = MacroSyncWorker(
+        name="macro_sync",
+        settings=_macro_sync_settings(batch_size=2),
+        db=object(),
+        telemetry=object(),
+        settings_root=_settings_root(),
+        service_factory=lambda: service,
+    )
+
+    result = worker.run_once_sync(now_ms=1_779_000_000_000)
+
+    assert result.processed == 1
+    assert result.failed == 1
+    assert result.notes["claimed"] == 2
+    assert result.notes["statuses"] == ["retryable_error", "ok"]
+    assert result.notes["sync_run_ids"] == ["sync-run-failed", "sync-run-ok"]
+    assert [call[0] for call in service.calls].count("run_claimed_window_once") == 2
+
+
 def _macro_sync_settings(**overrides: object) -> MacroSyncWorkerSettings:
     payload = {
         "enabled": True,

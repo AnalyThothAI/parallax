@@ -26,9 +26,9 @@ results; never secret values.
 | `/api/status` | authenticated typed in-memory runtime snapshot | none |
 | `parallax ops ...` | explicit on-demand diagnosis and repair | command-specific |
 
-Queue backlog, optional provider degradation, and claim-level evidence gaps do
-not make the HTTP process unready. Macro critical gaps produce
-`insufficient_evidence`; optional gaps remain explicit degradation.
+Queue backlog, optional provider degradation, and an Agent-authored Macro
+evidence gap do not make the HTTP process unready. Research run and publication
+state remain visible through their own API and operator diagnostics.
 
 ## Worker ownership
 
@@ -114,30 +114,58 @@ to `config_payload_hash` and resume only after operator configuration changes.
 Macro:
 
 ```text
-sync window -> macro_observations -> projection dirty target
-  -> compact series -> one current snapshot with six page documents
+sync window -> macro_observations
+  -> bounded persisted-only live evidence read -> /macro + six detail pages
+  -> completed-session macro_research_runs claim
+  -> frozen-scope DeepAgents graph with durable PostgreSQL checkpoint
+  -> immutable macro_research_publications row
 ```
 
-All six documents share one projection version, fact watermark, completed US
-session cutoff, and computation time. Freshness re-evaluation uses persisted
-rows and a deterministic date/session bucket, not a second queue or writer.
+`macro_sync` owns provider catch-up and fact persistence. One failed sync
+window is isolated; the worker continues its bounded batch so an unhealthy
+bundle cannot head-of-line block unrelated due windows.
 
-Daily Macro SPY Judgment is a separate experimental lane:
+The live evidence API reads `macro_observations` directly with bounded
+per-series history and the existing concept/date index. It has no queue,
+projection worker, snapshot table, or semantic readiness state. Diagnose a
+missing metric from its exact concept/source/series facts and sync health;
+never repair it by adding a page-level evidence gate.
 
-```text
-material Macro/eligible News facts -> frozen session EvidencePack
-  -> macro_judgment_jobs -> Agent/Reviewer outside transaction
-  -> atomic publication + job completion -> immutable history
-  -> append-only 5/20-session outcomes
-```
+`macro_research` waits for its configured settle delay, creates or re-reads one
+stable completed-session run, and claims at most one due run per iteration.
+The run freezes `session_date`, market cutoff, and seal time before model work.
+All model and evidence-tool I/O occurs outside a database write transaction.
+The Agent decides its research plan, evidence selection, subagent delegation,
+counterevidence, gaps, review, and final Chinese narrative; there is no
+application-owned semantic readiness or conclusion gate.
 
-`daily_macro_judgment` waits for the configured settle delay, claims at most
-one due session per iteration, and replays durable jobs after restart.
-Replaying a published session performs zero model calls and zero publication
-writes. `blocked` is a deterministic evidence/reviewer/gate failure;
-`retryable` is an external/runtime failure with attempts remaining; `failed`
-exhausts the job-local attempt budget while retaining its frozen pack and safe
-error. It does not use the generic terminal-event table.
+The production `AsyncPostgresSaver` is opened through an async context factory
+for each graph invocation and uses the run's frozen scope ID as the stable
+LangGraph `thread_id`. `checkpoints`, `checkpoint_blobs`, and
+`checkpoint_writes` preserve resumable graph state across worker/process
+restarts; `checkpoint_migrations` records the installed checkpointer schema.
+These tables are runtime execution state, not Macro facts or a serving surface.
+Alembic owns their DDL; application startup never runs checkpointer setup.
+`~/.parallax/macro-agent-workspaces/<scope>/` is the matching persistent
+calculation workspace for native `execute`; it can be inspected or rebuilt
+from frozen evidence and is not a publication source.
+
+Run states are `pending`, `running`, `retryable`, `failed`, and `published`.
+While a checkpointed Agent invocation is alive, the worker renews its
+owner-bound lease every one-third of the configured lease duration. The lease
+is therefore a crash-recovery TTL, not a whole-research runtime limit. If the
+owner compare-and-set fails, that process cancels its local analysis and never
+publishes or records failure as the stale owner. Expired leases are reclaimed
+while attempts remain. External/runtime failures become `retryable`; exhaustion
+becomes `failed` with a sanitized error.
+Publication insertion and the transition to `published` are atomic. The
+session-keyed publication rejects update and delete; replaying a published
+session performs zero model calls and zero publication writes.
+
+`uv run parallax macro retry-research --session-date YYYY-MM-DD` is the only
+manual recovery from `failed`. It atomically grants one immediately due
+attempt, clears the old lease/error, and returns an auditable JSON receipt.
+Missing, non-failed, or already-published sessions are explicit no-ops.
 
 Notifications create/aggregate the notification and activate delivery rows in
 one transaction. Sending happens later outside the transaction.
@@ -152,7 +180,8 @@ Supported terminal actions are:
 
 Retired queues have no retry path. Successful operational attempts may have
 short retention; failed/terminal evidence and unresolved side effects are kept
-longer. Current models retain one stable row per identity.
+longer. Current models retain one stable row per identity. Completed Macro
+research publications are immutable history and are not pruned as queue state.
 
 Destructive migrations use bounded timeouts, transform data before constraints,
 drop children before parents, avoid `CASCADE`/`IF EXISTS`, and preserve material

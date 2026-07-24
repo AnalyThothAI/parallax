@@ -21,12 +21,8 @@ const archetypes = [
 ] as const;
 
 const macroPages = [
-  ["overview", "/macro", "跨资产风险地图"],
-  ["cross-asset", "/macro/cross-asset", "跨资产确认"],
-  ["rates-inflation", "/macro/rates-inflation", "利率与通胀"],
-  ["growth-labor", "/macro/growth-labor", "增长与就业"],
-  ["liquidity-funding", "/macro/liquidity-funding", "流动性与资金"],
-  ["credit", "/macro/credit", "信用周期雷达"],
+  ["live", "/macro?window=90d", "宏观实时数据"],
+  ["research", "/macro/research", "宏观研究工作台"],
 ] as const;
 
 test.beforeEach(async ({ page }) => {
@@ -58,7 +54,9 @@ test("freezes representative scan, case, and monitoring archetypes", async ({ pa
   await expectNoUnhandledApiRequests(page);
 });
 
-test("freezes the decision cockpit and all five Macro drilldowns", async ({ page }) => {
+test("freezes the live Macro dashboard and completed-session research workbench", async ({
+  page,
+}) => {
   for (const [name, path, title] of macroPages) {
     await page.goto(path);
     await expect(page.getByRole("heading", { level: 1, name: title })).toBeVisible();

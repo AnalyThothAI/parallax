@@ -138,6 +138,49 @@
 | `first_seen_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 
+## `checkpoint_blobs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `thread_id` | `TEXT` | False | `None` |
+| `checkpoint_ns` | `TEXT` | False | `''::text` |
+| `channel` | `TEXT` | False | `None` |
+| `version` | `TEXT` | False | `None` |
+| `type` | `TEXT` | False | `None` |
+| `blob` | `BYTEA` | True | `None` |
+
+## `checkpoint_migrations`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `v` | `INTEGER` | False | `None` |
+
+## `checkpoint_writes`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `thread_id` | `TEXT` | False | `None` |
+| `checkpoint_ns` | `TEXT` | False | `''::text` |
+| `checkpoint_id` | `TEXT` | False | `None` |
+| `task_id` | `TEXT` | False | `None` |
+| `idx` | `INTEGER` | False | `None` |
+| `channel` | `TEXT` | False | `None` |
+| `type` | `TEXT` | True | `None` |
+| `blob` | `BYTEA` | False | `None` |
+| `task_path` | `TEXT` | False | `''::text` |
+
+## `checkpoints`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `thread_id` | `TEXT` | False | `None` |
+| `checkpoint_ns` | `TEXT` | False | `''::text` |
+| `checkpoint_id` | `TEXT` | False | `None` |
+| `parent_checkpoint_id` | `TEXT` | True | `None` |
+| `type` | `TEXT` | True | `None` |
+| `checkpoint` | `JSONB` | False | `None` |
+| `metadata` | `JSONB` | False | `'{}'::jsonb` |
+
 ## `collector_pending_items`
 
 | Column | Type | Nullable | Default |
@@ -260,87 +303,6 @@
 | `updated_at_ms` | `BIGINT` | False | `None` |
 | `search_tsv` | `TSVECTOR` | True | `None` |
 
-## `macro_judgment_jobs`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `session_date` | `DATE` | False | `None` |
-| `market_cutoff_ms` | `BIGINT` | False | `None` |
-| `status` | `TEXT` | False | `'pending'::text` |
-| `evidence_pack_json` | `JSONB` | False | `None` |
-| `evidence_pack_hash` | `TEXT` | False | `None` |
-| `compiler_version` | `TEXT` | False | `None` |
-| `selection_policy_version` | `TEXT` | False | `None` |
-| `sealed_at_ms` | `BIGINT` | False | `None` |
-| `attempt_count` | `INTEGER` | False | `0` |
-| `max_attempts` | `INTEGER` | False | `None` |
-| `due_at_ms` | `BIGINT` | False | `None` |
-| `leased_until_ms` | `BIGINT` | True | `None` |
-| `lease_owner` | `TEXT` | True | `None` |
-| `reviewer_disposition` | `TEXT` | True | `None` |
-| `last_error` | `TEXT` | True | `None` |
-| `created_at_ms` | `BIGINT` | False | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `macro_judgment_outcomes`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `session_date` | `DATE` | False | `None` |
-| `horizon_sessions` | `INTEGER` | False | `None` |
-| `target_session_date` | `DATE` | False | `None` |
-| `start_close` | `DOUBLE PRECISION` | False | `None` |
-| `target_close` | `DOUBLE PRECISION` | False | `None` |
-| `realized_return_pct` | `DOUBLE PRECISION` | False | `None` |
-| `source_evidence_refs_json` | `JSONB` | False | `None` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-
-## `macro_judgment_publications`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `session_date` | `DATE` | False | `None` |
-| `market_cutoff_ms` | `BIGINT` | False | `None` |
-| `evidence_pack_hash` | `TEXT` | False | `None` |
-| `judgment_json` | `JSONB` | False | `None` |
-| `memo_text` | `TEXT` | False | `None` |
-| `review_json` | `JSONB` | False | `None` |
-| `agent_audit_json` | `JSONB` | False | `None` |
-| `model_name` | `TEXT` | False | `None` |
-| `prompt_version` | `TEXT` | False | `None` |
-| `schema_version` | `TEXT` | False | `None` |
-| `workflow_version` | `TEXT` | False | `None` |
-| `renderer_version` | `TEXT` | False | `None` |
-| `published_at_ms` | `BIGINT` | False | `None` |
-
-## `macro_observation_series_publication_state`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `projection_version` | `TEXT` | False | `None` |
-| `source_signature` | `TEXT` | True | `None` |
-| `row_count` | `BIGINT` | False | `0` |
-| `latest_attempt_status` | `TEXT` | False | `'pending'::text` |
-| `latest_attempt_started_at_ms` | `BIGINT` | True | `None` |
-| `latest_attempt_finished_at_ms` | `BIGINT` | True | `None` |
-| `latest_attempt_error` | `TEXT` | True | `None` |
-| `updated_at_ms` | `BIGINT` | False | `None` |
-
-## `macro_observation_series_rows`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `projection_version` | `TEXT` | False | `None` |
-| `concept_key` | `TEXT` | False | `None` |
-| `observed_at` | `DATE` | False | `None` |
-| `value_numeric` | `DOUBLE PRECISION` | True | `None` |
-| `source_name` | `TEXT` | False | `None` |
-| `series_key` | `TEXT` | False | `None` |
-| `unit` | `TEXT` | True | `None` |
-| `frequency` | `TEXT` | True | `None` |
-| `data_quality` | `TEXT` | True | `None` |
-| `event_metadata_json` | `JSONB` | False | `None` |
-
 ## `macro_observations`
 
 | Column | Type | Nullable | Default |
@@ -360,29 +322,38 @@
 | `source_priority` | `INTEGER` | False | `None` |
 | `fact_payload_hash` | `TEXT` | False | `None` |
 
-## `macro_projection_dirty_targets`
+## `macro_research_publications`
 
 | Column | Type | Nullable | Default |
 |--------|------|----------|---------|
-| `projection_name` | `TEXT` | False | `None` |
-| `projection_version` | `TEXT` | False | `None` |
-| `target_kind` | `TEXT` | False | `None` |
-| `target_id` | `TEXT` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
-| `dirty_reason` | `TEXT` | False | `None` |
-| `source_watermark_ms` | `BIGINT` | False | `0` |
-| `priority` | `INTEGER` | False | `100` |
+| `session_date` | `DATE` | False | `None` |
+| `market_cutoff_ms` | `BIGINT` | False | `None` |
+| `artifact_json` | `JSONB` | False | `None` |
+| `report_markdown` | `TEXT` | False | `None` |
+| `audit_json` | `JSONB` | False | `None` |
+| `model_name` | `TEXT` | False | `None` |
+| `prompt_version` | `TEXT` | False | `None` |
+| `workflow_version` | `TEXT` | False | `None` |
+| `artifact_hash` | `TEXT` | False | `None` |
+| `published_at_ms` | `BIGINT` | False | `None` |
+
+## `macro_research_runs`
+
+| Column | Type | Nullable | Default |
+|--------|------|----------|---------|
+| `session_date` | `DATE` | False | `None` |
+| `market_cutoff_ms` | `BIGINT` | False | `None` |
+| `status` | `TEXT` | False | `'pending'::text` |
+| `sealed_at_ms` | `BIGINT` | False | `None` |
+| `attempt_count` | `INTEGER` | False | `0` |
+| `max_attempts` | `INTEGER` | False | `None` |
 | `due_at_ms` | `BIGINT` | False | `None` |
 | `leased_until_ms` | `BIGINT` | True | `None` |
 | `lease_owner` | `TEXT` | True | `None` |
-| `attempt_count` | `INTEGER` | False | `0` |
-| `last_error` | `TEXT` | True | `None` |
+| `last_error_code` | `TEXT` | True | `None` |
+| `last_error_message` | `TEXT` | True | `None` |
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
-| `concept_key` | `TEXT` | True | `None` |
-| `min_observed_at` | `DATE` | True | `None` |
-| `max_observed_at` | `DATE` | True | `None` |
-| `source_watermark_date` | `DATE` | True | `None` |
 
 ## `macro_sync_runs`
 
@@ -452,23 +423,6 @@
 | `created_at_ms` | `BIGINT` | False | `None` |
 | `updated_at_ms` | `BIGINT` | False | `None` |
 | `completed_at_ms` | `BIGINT` | True | `None` |
-
-## `macro_view_snapshots`
-
-| Column | Type | Nullable | Default |
-|--------|------|----------|---------|
-| `snapshot_key` | `TEXT` | False | `None` |
-| `projection_version` | `TEXT` | False | `None` |
-| `fact_watermark` | `DATE` | True | `None` |
-| `market_cutoff` | `DATE` | True | `None` |
-| `computed_at_ms` | `BIGINT` | False | `None` |
-| `overview_json` | `JSONB` | False | `None` |
-| `cross_asset_json` | `JSONB` | False | `None` |
-| `rates_inflation_json` | `JSONB` | False | `None` |
-| `growth_labor_json` | `JSONB` | False | `None` |
-| `liquidity_funding_json` | `JSONB` | False | `None` |
-| `credit_json` | `JSONB` | False | `None` |
-| `payload_hash` | `TEXT` | False | `None` |
 
 ## `market_tick_current`
 

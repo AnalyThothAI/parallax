@@ -54,7 +54,12 @@ def build_parser() -> argparse.ArgumentParser:
     macro_sync.add_argument("--bundle", required=True, help="macrodata bundle name")
     macro_sync.add_argument("--start", required=True, help="history start date (YYYY-MM-DD)")
     macro_sync.add_argument("--end", required=True, help="history end date (YYYY-MM-DD)")
-    macro_subcommands.add_parser("status", help="print macro import and projection status")
+    macro_retry_research = macro_subcommands.add_parser(
+        "retry-research",
+        help="grant one additional attempt to a failed Macro research run",
+    )
+    macro_retry_research.add_argument("--session-date", required=True, help="completed session date (YYYY-MM-DD)")
+    macro_subcommands.add_parser("status", help="print macro facts, sync, and research status")
 
     recent = subcommands.add_parser("recent", help="print recent stored events")
     recent.add_argument("--limit", type=_positive_int, default=20)

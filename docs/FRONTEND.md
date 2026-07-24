@@ -105,54 +105,43 @@ Do not add new code under old `api/`, `store/`, or `components/` roots. Public f
   directly from `/api/news/items/{news_item_id}`. The list route does not keep
   an inline selected inspector or infer direction, eligibility, or thesis from
   headlines, summaries, provider ratings, or keyword heuristics.
-- **Macro routes.** Macro has exactly six flat navigation destinations:
-  `/macro`, `/macro/cross-asset`, `/macro/rates-inflation`,
-  `/macro/growth-labor`, `/macro/liquidity-funding`, and `/macro/credit`.
-  Each route owns an explicit page component and reads its matching typed API:
-  `/api/macro/overview`, `/api/macro/cross-asset`,
-  `/api/macro/rates-inflation`, `/api/macro/growth-labor`,
-  `/api/macro/liquidity-funding`, or `/api/macro/credit`. Charts request
-  persisted points from `/api/macro/series`.
+- **Macro routes.** `/macro` is the six-category live-fact dashboard;
+  `/macro/overview`, `/macro/rates-inflation`, `/macro/growth-labor`,
+  `/macro/liquidity-funding`, `/macro/credit`, and `/macro/cross-asset` are
+  complete data detail pages backed by `/api/macro/evidence/{view_id}`.
+  `window=30d|90d|1y|5y` is URL-owned and survives refresh and sharing.
+  `/macro/research` is the separate completed-session research workbench backed
+  by `/api/macro/research`; its optional `session_date=YYYY-MM-DD` likewise
+  survives hard reload and sharing.
 
-  `/macro` is the fixed cross-asset risk map for the latest completed US
-  session and a 1–4 week horizon. It renders two independent persisted reads:
-  the deterministic Overview document and the latest
-  `/api/macro/daily-judgment`. The Overview remains one shock state, exactly
-  eight ordered lanes (US equities,
-  long-duration Treasuries, credit, USD, gold, oil, crypto, and market
-  volatility), up to three five-completed-session changes, the nearest
-  trustworthy official catalyst, and one core invalidation. Direction, trend,
-  categorical confidence, lane rationale, contradictions, invalidations, and
-  local degradation are backend-owned deterministic results. The page must not
-  sort, score, infer, or fan out across the five domain documents. Its Daily AI
-  section renders only an immutable published judgment: cutoff/currentness,
-  data health, macro state, bounded pressures, SPY 5D/20D direction, theses,
-  counterevidence, experimental marker, review disposition, and model identity.
-  It never calls an Agent from the browser or API request path.
+  Live pages render only descriptive facts, row-local missing states,
+  source-native history, source/observation time, received time, current
+  content age, HTTP read health, last successful read, and disclosed formulas.
+  The six-category/108-concept catalog is presentation metadata. It does not
+  hide uncatalogued facts, constrain DeepAgents, or recreate direction,
+  confidence, risk, sufficiency, readiness, or gate labels. Detail pages show a
+  link to research, never Agent prose.
 
-  Normal snapshot metadata, evidence rows, rules, formulas, freshness, and
-  named unavailable capabilities live in the keyboard-accessible `审计与证据`
-  disclosure and are collapsed by default. Critical missing or stale evidence
-  remains adjacent to the affected lane or conclusion. A normalized catalyst
-  instant is displayed in browser-local time first and official date, time,
-  and timezone second; unparsed official time is never converted into a
-  fabricated instant.
+  The research page is a Chinese workbench, not a frontend-authored decision
+  model. It renders the publication title, executive summary, Agent-ordered
+  sections, evidence gaps, citations, reviewer notes, audit metadata, session,
+  and market cutoff exactly from the API. The browser does not prescribe
+  sections, classify evidence sufficiency, infer direction/confidence, score
+  assets, or recompute conclusions.
 
-  The five drilldowns keep explicit page components. They render current
-  judgment first, then separate-unit 20/60-session small charts with source,
-  unit, and as-of labels, followed by domain-specific evidence. The UI does not
-  compute correlations, change windows, curve shape, shock state, Credit
-  state, or conclusions. Macro never renders holdings, buy/sell instructions,
-  position size, target price, allocation, probabilities, or request-time
-  model output. The only model-derived Macro display is the separate persisted
-  Daily SPY judgment described above.
+  Current, historical, generating, failed, and missing states remain visually
+  distinct. Generating state polls only the persisted read; it never starts or
+  resumes an Agent. A historical document is labelled with both requested and
+  current completed-session dates and is never relabelled as current. Run
+  attempts and sanitized errors are supporting status, not research content.
 
-  Macro uses one flat feature-owned navigation and small shared evidence
-  primitives; there is no registry-driven page catalog or universal page
-  renderer. At desktop widths, dense evidence may use tables and small
-  multiples. At tablet/mobile widths it becomes labelled stacked rows without
-  hiding units, dates, samples, provenance, or gap status. No page may require
-  horizontal document scrolling or hover to reveal material evidence.
+  Citations show their stable citation ID, source label/type, observation date,
+  material `source_ref`, and source URL when available. Evidence gaps stay
+  first-class rather than being converted into a frontend warning threshold.
+  Reviewer notes and bounded runtime audit live in a keyboard-accessible
+  disclosure. At desktop, tablet, and mobile widths the document becomes
+  labelled stacked content without horizontal page scrolling or hover-only
+  material evidence.
 - **Page state.** Loading, empty, stale, and error surfaces should use `PageState.*` so skeletons, error alerts, and retry actions stay consistent.
 - **CSS ownership.** `main.tsx` imports only Tailwind, tokens, and base styles. Feature and shared UI selectors are imported by the component or route that owns them. Shared primitives such as `IconButton`, `RadarControls`, `PageState`, `TokenProfileCard`, `HandleFilter`, `DecisionTag`, `CompactPanel`, and the research case-file components own their CSS under `shared/ui/`; feature CSS may lay out the containing toolbar or deck but must not redefine primitive internals. Cross-feature widgets such as notifications own their visual selectors in their feature folder; shell code may place a slot, not restyle the widget internals. Do not use `.module.css` files as global selector buckets; CSS Modules must bind local classes from TypeScript.
 - **CSS architecture harness.** `web/tests/architecture/cssArchitectureHarness.test.ts` is the future-proof gate for CSS ownership. It rejects retired global buckets (`cockpit.css`, `macro.css`, `macroResponsive.css`, `shared.css`, `signalLab.css`), side-effect CSS imported from non-local owners, feature CSS that redefines shared UI classes, feature selectors outside their namespace, naked modifier classes such as `.active` or `.gap`, and side-effect class names reused across feature roots. When a new feature needs side-effect CSS, add an explicit namespace policy there rather than borrowing another feature's selectors.
@@ -208,7 +197,7 @@ Production bundles ship inside the same Docker image as the Python service and a
 Per `DEVELOPMENT.md`, UI flows that tests cannot exercise must be checked manually before declaring completion. The minimum checklist for frontend architecture changes is:
 
 1. Hard-reload `/`, `/search`, `/stocks`, `/news`,
-   `/news/items/:newsItemId`, all six Macro routes, `/watchlist`, and
+   `/news/items/:newsItemId`, `/macro`, `/watchlist`, and
    `/token/:targetType/:targetId?window=1h&scope=all` with representative query
    params.
 2. Submit the topbar search and confirm the URL becomes `/search?q=<submitted-query>`.
@@ -220,9 +209,7 @@ Per `DEVELOPMENT.md`, UI flows that tests cannot exercise must be checked manual
    GMGN `external-res`.
 7. At `390px`, confirm the topbar `SidebarTrigger` opens the shadcn drawer, drawer route links are reachable, `.topbar` and `.center-column` do not overlap, topbar controls stay contained, the full-height Radar shows explicit content age and refresh health, no Tape/task bar exists, and the final Radar row is reachable without overlap.
 8. At tablet width around `834px`, confirm the desktop sidebar is hidden, the topbar trigger opens the shadcn drawer, drawer route navigation and topbar search still work, and the Radar compact title/status group, wrapped controls, full-height list, and no-overflow contract remain intact.
-9. At `1920px`, `1366px`, `834px`, and `390px`, verify the Overview keeps
-   the Daily AI judgment readable without horizontal overflow, exactly eight
-   ordered lanes plus bounded changes/catalyst/invalidation,
-   every drilldown keeps its charts and judgment band, normal audit metadata
-   stays collapsed, the audit drawer is keyboard reachable, local gaps remain
-   adjacent, and no Macro page has whole-page overflow.
+9. At `1920px`, `1366px`, `834px`, and `390px`, verify `/macro` keeps the
+   title, summary, Agent-ordered sections, gaps, citations, session metadata,
+   and run state readable without horizontal overflow; the audit disclosure is
+   keyboard reachable, and the selected historical session survives reload.

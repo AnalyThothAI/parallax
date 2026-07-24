@@ -1,6 +1,6 @@
 from __future__ import annotations
 
-from datetime import date
+from datetime import UTC, date, datetime, timedelta
 from typing import Annotated, Any, Literal, cast
 
 from fastapi import APIRouter, Query, Request
@@ -10,158 +10,105 @@ from parallax.app.surfaces.api import schemas as api_schemas
 from parallax.app.surfaces.api.dependencies import _authenticated_runtime, _now_ms
 from parallax.app.surfaces.api.exceptions import ApiBadRequest
 from parallax.app.surfaces.api.responses import _validated_json
-from parallax.domains.macro_intel.services.macro_cross_asset_rules import resolve_market_cutoff
-from parallax.domains.macro_intel.services.macro_series_view import (
-    UnsupportedMacroConceptError,
-    UnsupportedMacroSeriesWindowError,
-    build_macro_series_view,
-    macro_series_query_bounds,
-    validate_macro_series_concepts,
-    validate_macro_series_window,
+from parallax.domains.macro_intel.services.completed_session_macro import (
+    resolve_completed_session,
+)
+from parallax.domains.macro_intel.services.macro_live_catalog import (
+    MACRO_LIVE_CATALOG,
+    MACRO_LIVE_VIEW_IDS,
+    query_concepts_for_live_view,
+)
+from parallax.domains.macro_intel.services.macro_live_evidence import (
+    MACRO_LIVE_WINDOWS,
+    MacroLiveWindow,
+    build_macro_live_evidence,
 )
 
 router = APIRouter()
 
-_JOB_READ_STATES = frozenset({"pending", "running", "retryable", "blocked", "failed"})
+_GENERATING_RUN_STATES = frozenset({"pending", "running", "retryable"})
+_LIVE_VIEW_IDS = frozenset(("dashboard", *MACRO_LIVE_VIEW_IDS))
+_MAX_LIVE_ROWS_PER_SERIES = 2_000
+_UNCLASSIFIED_LIMIT = 50
 
 
 @router.get(
-    "/macro/overview",
-    response_model=api_schemas.ApiEnvelope[api_schemas.MacroOverviewData],
+    "/macro/evidence/{view_id}",
+    response_model=api_schemas.ApiEnvelope[api_schemas.MacroLiveEvidenceReadData],
 )
-def macro_overview(request: Request) -> JSONResponse:
-    runtime = _authenticated_macro_runtime(request)
-    with runtime.repositories() as repos:
-        page = repos.macro_intel.snapshot_page("overview")
-    return _macro_page_response(api_schemas.ApiEnvelope[api_schemas.MacroOverviewData], page)
-
-
-@router.get(
-    "/macro/cross-asset",
-    response_model=api_schemas.ApiEnvelope[api_schemas.MacroCrossAssetData],
-)
-def macro_cross_asset(request: Request) -> JSONResponse:
-    runtime = _authenticated_macro_runtime(request)
-    with runtime.repositories() as repos:
-        page = repos.macro_intel.snapshot_page("cross_asset")
-    return _macro_page_response(api_schemas.ApiEnvelope[api_schemas.MacroCrossAssetData], page)
-
-
-@router.get(
-    "/macro/rates-inflation",
-    response_model=api_schemas.ApiEnvelope[api_schemas.MacroRatesInflationData],
-)
-def macro_rates_inflation(request: Request) -> JSONResponse:
-    runtime = _authenticated_macro_runtime(request)
-    with runtime.repositories() as repos:
-        page = repos.macro_intel.snapshot_page("rates_inflation")
-    return _macro_page_response(api_schemas.ApiEnvelope[api_schemas.MacroRatesInflationData], page)
-
-
-@router.get(
-    "/macro/growth-labor",
-    response_model=api_schemas.ApiEnvelope[api_schemas.MacroGrowthLaborData],
-)
-def macro_growth_labor(request: Request) -> JSONResponse:
-    runtime = _authenticated_macro_runtime(request)
-    with runtime.repositories() as repos:
-        page = repos.macro_intel.snapshot_page("growth_labor")
-    return _macro_page_response(api_schemas.ApiEnvelope[api_schemas.MacroGrowthLaborData], page)
-
-
-@router.get(
-    "/macro/liquidity-funding",
-    response_model=api_schemas.ApiEnvelope[api_schemas.MacroLiquidityFundingData],
-)
-def macro_liquidity_funding(request: Request) -> JSONResponse:
-    runtime = _authenticated_macro_runtime(request)
-    with runtime.repositories() as repos:
-        page = repos.macro_intel.snapshot_page("liquidity_funding")
-    return _macro_page_response(api_schemas.ApiEnvelope[api_schemas.MacroLiquidityFundingData], page)
-
-
-@router.get(
-    "/macro/credit",
-    response_model=api_schemas.ApiEnvelope[api_schemas.MacroCreditData],
-)
-def macro_credit(request: Request) -> JSONResponse:
-    runtime = _authenticated_macro_runtime(request)
-    with runtime.repositories() as repos:
-        page = repos.macro_intel.snapshot_page("credit")
-    return _macro_page_response(api_schemas.ApiEnvelope[api_schemas.MacroCreditData], page)
-
-
-@router.get("/macro/series", response_model=api_schemas.ApiEnvelope[api_schemas.MacroSeriesData])
-def macro_series(
+def macro_live_evidence(
     request: Request,
-    concept_keys: Annotated[str, Query()],
-    window: Annotated[str, Query()] = "60d",
+    view_id: str,
+    window: Annotated[str, Query()] = "90d",
 ) -> JSONResponse:
     runtime = _authenticated_macro_runtime(request)
-    _validate_series_query_params(request)
-    resolved_window = _series_window(window)
-    resolved_concept_keys = _series_concept_keys(concept_keys)
-    bounds = macro_series_query_bounds(resolved_window)
+    _validate_live_evidence_query(request, view_id=view_id, window=window)
+    resolved_view = _live_view_id(view_id)
+    resolved_window = _live_window(window)
+    read_at_ms = _now_ms()
+    start_date = datetime.fromtimestamp(read_at_ms / 1_000, tz=UTC).date() - timedelta(
+        days=MACRO_LIVE_WINDOWS[resolved_window]
+    )
+    concept_keys = query_concepts_for_live_view(resolved_view)
+    current_session = resolve_completed_session(
+        now_ms=read_at_ms,
+        settle_delay_seconds=0,
+    )
     with runtime.repositories() as repos:
-        observations = repos.macro_intel.observations_for_concepts(
-            concept_keys=resolved_concept_keys,
-            lookback_days=bounds["lookback_days"],
-            limit_per_series=bounds["limit_per_series"],
+        observations = repos.macro_intel.live_observations(
+            concept_keys=concept_keys,
+            start_date=start_date,
+            max_rows_per_series=_MAX_LIVE_ROWS_PER_SERIES,
         )
+        if resolved_view == "dashboard":
+            observations.extend(
+                repos.macro_intel.latest_uncatalogued_observations(
+                    catalog_concept_keys=tuple(MACRO_LIVE_CATALOG),
+                    limit=_UNCLASSIFIED_LIMIT,
+                )
+            )
+        research = _compact_research_payload(
+            repos.macro_research.research_state(current_session),
+            session_date=current_session,
+        )
+    payload = build_macro_live_evidence(
+        view_id=resolved_view,
+        window=resolved_window,
+        read_at_ms=read_at_ms,
+        observations=observations,
+        research=research,
+    )
     return _validated_json(
-        api_schemas.ApiEnvelope[api_schemas.MacroSeriesData],
-        {
-            "ok": True,
-            "data": build_macro_series_view(
-                concept_keys=resolved_concept_keys,
-                observations=observations,
-                window=resolved_window,
-            ),
-        },
+        api_schemas.ApiEnvelope[api_schemas.MacroLiveEvidenceReadData],
+        {"ok": True, "data": payload},
     )
 
 
 @router.get(
-    "/macro/daily-judgment",
-    response_model=api_schemas.ApiEnvelope[api_schemas.DailyMacroJudgmentReadData],
+    "/macro/research",
+    response_model=api_schemas.ApiEnvelope[api_schemas.MacroResearchReadData],
 )
-def daily_macro_judgment(
+def macro_research(
     request: Request,
     session_date: Annotated[date | None, Query()] = None,
 ) -> JSONResponse:
     runtime = _authenticated_macro_runtime(request)
-    _validate_daily_judgment_query_params(request)
-    with runtime.repositories() as repos:
-        payload = _daily_judgment_payload(
-            repos.daily_macro_judgments,
-            requested_session=session_date,
-            now_ms=_now_ms(),
-        )
-    status_code = 503 if payload["state"] == "missing" else 200
-    envelope_payload: dict[str, Any] = {
-        "ok": payload["state"] != "missing",
-        "data": payload,
-    }
-    if payload["state"] == "missing":
-        envelope_payload["error"] = "daily_macro_judgment_missing"
-    return _validated_json(
-        api_schemas.ApiEnvelope[api_schemas.DailyMacroJudgmentReadData],
-        envelope_payload,
-        status_code=status_code,
+    _validate_research_query_params(request)
+    current_session = resolve_completed_session(
+        now_ms=_now_ms(),
+        settle_delay_seconds=0,
     )
-
-
-def _macro_page_response[T: api_schemas.ApiSchema](
-    envelope: type[api_schemas.ApiEnvelope[T]],
-    page: dict[str, Any] | None,
-) -> JSONResponse:
-    if page is None:
-        return _validated_json(
-            envelope,
-            {"ok": False, "error": "macro_projection_missing"},
-            status_code=503,
+    target_session = session_date or current_session
+    with runtime.repositories() as repos:
+        payload = _research_payload(
+            repos.macro_research.research_state(target_session),
+            requested_session=target_session,
+            current_session=current_session,
         )
-    return _validated_json(envelope, {"ok": True, "data": page})
+    return _validated_json(
+        api_schemas.ApiEnvelope[api_schemas.MacroResearchReadData],
+        {"ok": True, "data": payload},
+    )
 
 
 def _authenticated_macro_runtime(request: Request) -> Any:
@@ -171,116 +118,168 @@ def _authenticated_macro_runtime(request: Request) -> Any:
     return runtime
 
 
-def _validate_series_query_params(request: Request) -> None:
-    supported = {"concept_keys", "window"}
-    for name in request.query_params:
-        if name not in supported:
-            raise ApiBadRequest("unsupported_query_param", field=name)
-
-
-def _validate_daily_judgment_query_params(request: Request) -> None:
+def _validate_research_query_params(request: Request) -> None:
     for name in request.query_params:
         if name != "session_date":
             raise ApiBadRequest("unsupported_query_param", field=name)
 
 
-def _daily_judgment_payload(
-    repository: Any,
+def _validate_live_evidence_query(
+    request: Request,
     *,
-    requested_session: date | None,
-    now_ms: int,
+    view_id: str,
+    window: str,
+) -> None:
+    for name in request.query_params:
+        if name != "window":
+            raise ApiBadRequest("unsupported_query_param", field=name)
+    if view_id not in _LIVE_VIEW_IDS:
+        raise ApiBadRequest("unsupported_macro_view", field="view_id")
+    if window not in MACRO_LIVE_WINDOWS:
+        raise ApiBadRequest("unsupported_macro_window", field="window")
+
+
+def _live_view_id(
+    value: str,
+) -> Literal[
+    "dashboard",
+    "overview",
+    "rates-inflation",
+    "growth-labor",
+    "liquidity-funding",
+    "credit",
+    "cross-asset",
+]:
+    if value not in _LIVE_VIEW_IDS:
+        raise ApiBadRequest("unsupported_macro_view", field="view_id")
+    return cast(
+        Literal[
+            "dashboard",
+            "overview",
+            "rates-inflation",
+            "growth-labor",
+            "liquidity-funding",
+            "credit",
+            "cross-asset",
+        ],
+        value,
+    )
+
+
+def _live_window(value: str) -> MacroLiveWindow:
+    if value not in MACRO_LIVE_WINDOWS:
+        raise ApiBadRequest("unsupported_macro_window", field="window")
+    return cast(MacroLiveWindow, value)
+
+
+def _compact_research_payload(
+    row: dict[str, Any] | None,
+    *,
+    session_date: date,
 ) -> dict[str, Any]:
-    current_session = resolve_market_cutoff(computed_at_ms=now_ms)
-    target_session = requested_session or current_session
-    publication = repository.publication_record(target_session)
-    target_job = repository.job_record(target_session)
-    if publication is not None:
-        state = "current" if target_session == current_session else "historical"
+    artifact = row.get("artifact_json") if row is not None else None
+    if isinstance(artifact, dict):
         return {
-            "target_session_date": target_session,
-            "state": state,
-            "is_current": state == "current",
-            "publication": _publication_payload(repository, publication),
-            "target_job": _job_payload(target_job),
+            "state": "current",
+            "session_date": session_date,
+            "market_cutoff_ms": artifact.get("market_cutoff_ms"),
+            "title": artifact.get("title"),
+            "executive_summary": artifact.get("executive_summary"),
+            "evidence_gap_summaries": [
+                str(gap.get("summary"))
+                for gap in artifact.get("gaps", ())
+                if isinstance(gap, dict) and gap.get("summary")
+            ],
+            "href": "/macro/research",
         }
-    if requested_session is None:
-        latest = repository.latest_publication_record()
-        if latest is not None:
-            return {
-                "target_session_date": target_session,
-                "state": "stale",
-                "is_current": False,
-                "publication": _publication_payload(repository, latest),
-                "target_job": _job_payload(target_job),
-            }
-    job_status = str(target_job["status"]) if target_job is not None else "missing"
-    state = job_status if job_status in _JOB_READ_STATES else "missing"
+    run_status = str(row.get("run_status") or "") if row is not None else ""
+    if run_status in _GENERATING_RUN_STATES:
+        state = "generating"
+    elif run_status == "failed":
+        state = "failed"
+    else:
+        state = "missing"
     return {
-        "target_session_date": target_session,
-        "state": cast(
-            Literal["pending", "running", "retryable", "blocked", "failed", "missing"],
-            state,
-        ),
-        "is_current": False,
-        "publication": None,
-        "target_job": _job_payload(target_job),
-    }
-
-
-def _publication_payload(repository: Any, row: dict[str, Any]) -> dict[str, Any]:
-    session_date = row["session_date"]
-    return {
+        "state": state,
         "session_date": session_date,
-        "market_cutoff_ms": row["market_cutoff_ms"],
-        "evidence_pack_hash": row["evidence_pack_hash"],
-        "judgment": row["judgment_json"],
-        "memo_text": row["memo_text"],
-        "review": row["review_json"],
-        "agent_audit": row["agent_audit_json"],
-        "model_name": row["model_name"],
-        "prompt_version": row["prompt_version"],
-        "schema_version": row["schema_version"],
-        "workflow_version": row["workflow_version"],
-        "renderer_version": row["renderer_version"],
-        "published_at_ms": row["published_at_ms"],
-        "evidence_pack": row["evidence_pack_json"],
-        "compiler_version": row["compiler_version"],
-        "selection_policy_version": row["selection_policy_version"],
-        "sealed_at_ms": row["sealed_at_ms"],
-        "outcomes": repository.outcomes_for_session(session_date),
+        "market_cutoff_ms": row.get("market_cutoff_ms") if row is not None else None,
+        "title": None,
+        "executive_summary": None,
+        "evidence_gap_summaries": [],
+        "href": "/macro/research",
     }
 
 
-def _job_payload(row: dict[str, Any] | None) -> dict[str, Any] | None:
+def _research_payload(
+    row: dict[str, Any] | None,
+    *,
+    requested_session: date,
+    current_session: date,
+) -> dict[str, Any]:
     if row is None:
+        return {
+            "state": "missing",
+            "requested_session_date": requested_session,
+            "current_session_date": current_session,
+            "publication": None,
+            "run": None,
+        }
+    publication = _publication_payload(row)
+    if publication is not None:
+        state = "current" if requested_session == current_session else "historical"
+    elif str(row.get("run_status") or "") in _GENERATING_RUN_STATES:
+        state = "generating"
+    elif str(row.get("run_status") or "") == "failed":
+        state = "failed"
+    else:
+        state = "missing"
+    return {
+        "state": state,
+        "requested_session_date": requested_session,
+        "current_session_date": current_session,
+        "publication": publication,
+        "run": _run_payload(row),
+    }
+
+
+def _publication_payload(row: dict[str, Any]) -> dict[str, Any] | None:
+    artifact = row.get("artifact_json")
+    if not isinstance(artifact, dict):
         return None
     return {
-        "session_date": row["session_date"],
-        "market_cutoff_ms": row["market_cutoff_ms"],
-        "status": row["status"],
-        "attempt_count": row["attempt_count"],
-        "max_attempts": row["max_attempts"],
-        "due_at_ms": row["due_at_ms"],
-        "reviewer_disposition": row["reviewer_disposition"],
-        "last_error": row["last_error"],
-        "updated_at_ms": row["updated_at_ms"],
+        "schema_version": artifact["schema_version"],
+        "session_date": artifact["session_date"],
+        "market_cutoff_ms": artifact["market_cutoff_ms"],
+        "title": artifact["title"],
+        "executive_summary": artifact["executive_summary"],
+        "sections": artifact["sections"],
+        "evidence_gaps": artifact["gaps"],
+        "citations": [
+            {
+                "citation_id": citation["citation_id"],
+                "source_type": citation["source_type"],
+                "source_ref": citation["source_ref"],
+                "source_label": citation["source_label"],
+                "available_at_ms": citation["available_at_ms"],
+                "observed_at": citation.get("observed_at"),
+                "published_at_ms": citation.get("published_at_ms"),
+                "source_url": citation.get("url"),
+                "lineage": citation.get("lineage") or {},
+            }
+            for citation in artifact["citations"]
+        ],
+        "reviewer_notes": artifact["reviewer_notes"],
+        "audit": row.get("audit_json") or {},
+        "published_at_ms": row.get("published_at_ms"),
     }
 
 
-def _series_concept_keys(concept_keys: str) -> tuple[str, ...]:
-    raw_concepts = str(concept_keys or "").strip()
-    if not raw_concepts:
-        raise ApiBadRequest("missing_concept_keys", field="concept_keys")
-    normalized = tuple(dict.fromkeys(part.strip() for part in raw_concepts.split(",") if part.strip()))
-    try:
-        return validate_macro_series_concepts(normalized)
-    except UnsupportedMacroConceptError as exc:
-        raise ApiBadRequest(exc.code, field="concept_keys") from exc
-
-
-def _series_window(window: str) -> str:
-    normalized = str(window or "60d").strip()
-    try:
-        return validate_macro_series_window(normalized)
-    except UnsupportedMacroSeriesWindowError as exc:
-        raise ApiBadRequest(exc.code, field="window") from exc
+def _run_payload(row: dict[str, Any]) -> dict[str, Any]:
+    return {
+        "session_date": row["session_date"],
+        "status": row["run_status"],
+        "attempt_count": row["attempt_count"],
+        "max_attempts": row["max_attempts"],
+        "last_error": row.get("last_error_message") or row.get("last_error_code"),
+        "updated_at_ms": row["updated_at_ms"],
+    }

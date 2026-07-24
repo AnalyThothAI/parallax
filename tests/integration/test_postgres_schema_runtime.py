@@ -27,6 +27,13 @@ RETIRED_BACKEND_TABLES = {
     "narrative_admission_dirty_targets",
     "macro_daily_briefs",
     "macro_import_runs",
+    "macro_projection_dirty_targets",
+    "macro_observation_series_rows",
+    "macro_observation_series_publication_state",
+    "macro_view_snapshots",
+    "macro_judgment_jobs",
+    "macro_judgment_publications",
+    "macro_judgment_outcomes",
     "cex_oi_radar_publication_state",
     "cex_oi_radar_rows",
     "cex_detail_snapshots",
@@ -45,7 +52,7 @@ RETIRED_BACKEND_TABLES = {
 }
 
 
-def test_current_postgres_schema_has_one_kappa_truth_and_compact_read_models(tmp_path) -> None:
+def test_current_postgres_schema_has_one_kappa_truth_and_durable_macro_research(tmp_path) -> None:
     conn = connect_postgres_test(tmp_path / "postgres_test_db", read_only=False)
     try:
         migrate(conn)
@@ -55,14 +62,14 @@ def test_current_postgres_schema_has_one_kappa_truth_and_compact_read_models(tmp
                 "SELECT table_name FROM information_schema.tables WHERE table_schema = 'public'"
             ).fetchall()
         }
-        macro_series_columns = {
+        macro_research_run_columns = {
             row["column_name"]
             for row in conn.execute(
                 """
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
-                  AND table_name = 'macro_observation_series_rows'
+                  AND table_name = 'macro_research_runs'
                 """
             ).fetchall()
         }
@@ -77,14 +84,14 @@ def test_current_postgres_schema_has_one_kappa_truth_and_compact_read_models(tmp
                 """
             ).fetchall()
         }
-        macro_snapshot_columns = {
+        macro_research_publication_columns = {
             row["column_name"]
             for row in conn.execute(
                 """
                 SELECT column_name
                 FROM information_schema.columns
                 WHERE table_schema = 'public'
-                  AND table_name = 'macro_view_snapshots'
+                  AND table_name = 'macro_research_publications'
                 """
             ).fetchall()
         }
@@ -121,38 +128,48 @@ def test_current_postgres_schema_has_one_kappa_truth_and_compact_read_models(tmp
         "token_radar_current_rows",
         "token_radar_publication_state",
         "account_token_alerts",
+        "macro_observations",
+        "macro_sync_windows",
+        "macro_sync_runs",
+        "macro_research_runs",
+        "macro_research_publications",
+        "checkpoint_migrations",
+        "checkpoints",
+        "checkpoint_blobs",
+        "checkpoint_writes",
     } <= tables
     assert RETIRED_BACKEND_TABLES.isdisjoint(tables)
-    assert macro_series_columns == {
-        "projection_version",
-        "concept_key",
-        "observed_at",
-        "value_numeric",
-        "source_name",
-        "series_key",
-        "unit",
-        "frequency",
-        "data_quality",
-        "event_metadata_json",
+    assert macro_research_run_columns == {
+        "session_date",
+        "market_cutoff_ms",
+        "status",
+        "sealed_at_ms",
+        "attempt_count",
+        "max_attempts",
+        "due_at_ms",
+        "leased_until_ms",
+        "lease_owner",
+        "last_error_code",
+        "last_error_message",
+        "created_at_ms",
+        "updated_at_ms",
     }
     assert {"config_payload_hash", "terminal_config_payload_hash"} <= news_source_columns
-    assert macro_snapshot_columns == {
-        "snapshot_key",
-        "projection_version",
-        "fact_watermark",
-        "market_cutoff",
-        "computed_at_ms",
-        "overview_json",
-        "cross_asset_json",
-        "rates_inflation_json",
-        "growth_labor_json",
-        "liquidity_funding_json",
-        "credit_json",
-        "payload_hash",
+    assert macro_research_publication_columns == {
+        "session_date",
+        "market_cutoff_ms",
+        "artifact_json",
+        "report_markdown",
+        "audit_json",
+        "model_name",
+        "prompt_version",
+        "workflow_version",
+        "artifact_hash",
+        "published_at_ms",
     }
     assert {"raw_payload_json", "payload_hash"}.isdisjoint(market_current_columns)
     assert news_fetch_run_fk_index == {"indisvalid": True, "indisready": True}
-    assert version == latest_migration_version() == "20260723_0193"
+    assert version == latest_migration_version() == "20260724_0195"
 
 
 def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
@@ -215,29 +232,6 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
               '{}'::jsonb, 'source-row-hash', 'failed', 'retry_budget_exhausted', 1
             );
 
-            INSERT INTO macro_observation_series_rows(
-              projection_version, concept_key, observed_at, series_rank, value_numeric,
-              source_name, series_key, source_priority, unit, frequency, data_quality,
-              source_ts, raw_payload_json, ingested_at_ms, projected_at_ms, payload_hash
-            ) VALUES (
-              'macro_regime_v4', 'event:fed_fomc_statement', '2026-07-21', 1, NULL,
-              'official_fed_text', 'fomc_statement_latest', 80, NULL, 'event', 'ok',
-              '2026-07-21',
-              '{"value":"FOMC statement","series_key":"official_fed_text:fomc_statement_latest","provenance":[{"source_url":"https://fed.example/statement","speaker":"Powell"}]}'::jsonb,
-              1, 1, 'old-series-hash'
-            );
-            INSERT INTO macro_view_snapshots(
-              projection_version, asof_date, status, regime, computed_at_ms, payload_hash
-            ) VALUES (
-              'macro_regime_v4', '2026-07-21', 'ready', 'risk_on', 1, 'old-snapshot-hash'
-            );
-            INSERT INTO macro_daily_briefs(
-              brief_key, projection_version, brief_date, asof_date, status, headline,
-              payload_json, computed_at_ms, updated_at_ms, payload_hash
-            ) VALUES (
-              'assets_today', 'macro_regime_v4', '2026-07-21', '2026-07-21', 'ready',
-              'Assets today', '{"headline":"Assets today"}'::jsonb, 1, 1, 'old-brief-hash'
-            );
             """
         )
         conn.commit()
@@ -271,30 +265,6 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
             FROM news_sources WHERE source_id = 'source-1'
             """
         ).fetchone()
-        retired_macro_series = conn.execute(
-            """
-            SELECT event_metadata_json
-            FROM macro_observation_series_rows
-            WHERE concept_key = 'event:fed_fomc_statement'
-            """
-        ).fetchone()
-        macro_snapshot = conn.execute(
-            """
-            SELECT projection_version, payload_hash
-            FROM macro_view_snapshots
-            WHERE projection_version = 'macro_regime_v4'
-            """
-        ).fetchone()
-        macro_rebuild = conn.execute(
-            """
-            SELECT payload_hash, dirty_reason, leased_until_ms, attempt_count
-            FROM macro_projection_dirty_targets
-            WHERE projection_name = 'macro_evidence'
-              AND projection_version = 'macro_decision_v2'
-              AND target_kind = 'current'
-              AND target_id = 'current'
-            """
-        ).fetchone()
         old_fetch = conn.execute("SELECT fetch_run_id FROM news_fetch_runs WHERE fetch_run_id = 'fetch-old'").fetchone()
         retained_provider_item = conn.execute(
             """
@@ -317,14 +287,6 @@ def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:
     assert tuple(terminal_row.values()) == ("archive", "queue_retired_by_0185")
     assert news_source["config_payload_hash"].startswith("sha256:")
     assert news_source["terminal_config_payload_hash"] is None
-    assert retired_macro_series is None
-    assert macro_snapshot is None
-    assert macro_rebuild == {
-        "payload_hash": "schema-hard-cut-0192:macro-decision-v2",
-        "dirty_reason": "schema_hard_cut_0192",
-        "leased_until_ms": None,
-        "attempt_count": 0,
-    }
     assert old_fetch is None
     assert retained_provider_item == {"fetch_run_id": None}
 
@@ -435,18 +397,6 @@ def test_runtime_hard_cut_reconciles_nonempty_0185_backlog(tmp_path) -> None:
               'dirty-quarantined', 420, 'quarantine', 'operator_known_bad', 421
             );
 
-            DELETE FROM macro_projection_dirty_targets
-            WHERE projection_name = 'macro_view'
-              AND projection_version = 'macro_regime_v4'
-              AND target_kind = 'current'
-              AND target_id = 'current';
-            INSERT INTO macro_view_snapshots(
-              projection_version, asof_date, status, regime, computed_at_ms, payload_hash,
-              assets_brief_json, module_views_json
-            ) VALUES (
-              'macro_regime_v4', '2026-07-21', 'ready', 'risk_on', 100, 'snapshot-old',
-              '{"headline":"legacy"}'::jsonb, '{"assets":{"status":"ready"}}'::jsonb
-            );
             """
         )
         conn.commit()
@@ -516,19 +466,6 @@ def test_runtime_hard_cut_reconciles_nonempty_0185_backlog(tmp_path) -> None:
             WHERE table_schema = 'public' AND table_name = 'market_tick_current_dirty_targets'
             """
         ).fetchone()
-        macro_snapshot = conn.execute(
-            "SELECT projection_version FROM macro_view_snapshots WHERE projection_version = 'macro_regime_v4'"
-        ).fetchone()
-        macro_rebuild = conn.execute(
-            """
-            SELECT payload_hash, dirty_reason, leased_until_ms, attempt_count
-            FROM macro_projection_dirty_targets
-            WHERE projection_name = 'macro_evidence'
-              AND projection_version = 'macro_decision_v2'
-              AND target_kind = 'current'
-              AND target_id = 'current'
-            """
-        ).fetchone()
     finally:
         conn.close()
 
@@ -569,13 +506,6 @@ def test_runtime_hard_cut_reconciles_nonempty_0185_backlog(tmp_path) -> None:
         "operator_reason": "operator_known_bad",
     }
     assert retired_queue is None
-    assert macro_snapshot is None
-    assert macro_rebuild == {
-        "payload_hash": "schema-hard-cut-0192:macro-decision-v2",
-        "dirty_reason": "schema_hard_cut_0192",
-        "leased_until_ms": None,
-        "attempt_count": 0,
-    }
 
 
 def test_postgres_migrations_are_idempotent_at_current_head(tmp_path) -> None:

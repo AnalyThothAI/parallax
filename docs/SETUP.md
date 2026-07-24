@@ -34,13 +34,14 @@ for exact token profiles and OKX provider settings for discovery, market data,
 or DEX WebSocket lanes when those workers are enabled. Keep secrets out of
 terminal output, docs, tests, and commits.
 The `llm` block contains only `api_key` and `base_url`. They are used solely by
-the experimental `daily_macro_judgment` worker. Its explicit `analyst_model`
-and `reviewer_model`, timeout, settle delay, retry/lease policy, evidence
-bounds, and output token limit live under `workers.daily_macro_judgment`; no
-third config source or generic model policy is supported. The experimental
-worker is disabled by default and must be
-enabled explicitly in `workers.yaml`. If enabled without both credential fields, the worker reports
-`unavailable: llm_not_configured` and makes no model call.
+the `macro_research` worker. Its `model`, `model_request_timeout_seconds`,
+`max_tokens`, settle delay, statement timeout, lease/retry policy, attempt
+limit, cadence, and enabled state live under `workers.macro_research`; no third
+config source, generic model policy, deterministic semantic gate configuration,
+or whole-research wall-clock timeout is supported. The request timeout bounds
+one provider transport call; it does not cancel the checkpointed DeepAgents
+research workflow. If the worker is enabled without both credential fields, it
+reports `unavailable: llm_not_configured` and makes no model call.
 
 Use `uv run parallax config` to inspect both config paths and the effective
 worker settings. Inspect the running process through authenticated
@@ -101,21 +102,33 @@ uv run parallax macro sync --bundle macro-core --start YYYY-MM-DD --end YYYY-MM-
 uv run parallax macro status
 ```
 
-A good macro status has manifest coverage for the required concepts, a recent
-`latest_sync_run`, `facts_max_observed_at` near the expected upstream date,
-and `projection_behind_facts=false` after projection catches up. Page summaries
-separately report conclusion and freshness state; an
-`insufficient_evidence` conclusion is a claim-level result, not service
-unreadiness. If facts exist but no macro snapshot exists yet,
-`projection_behind_facts=true`; that means projection has not caught up, not
-that source facts are missing. The `macrodata_cli` block must show the expected
-package version and `required_bundle_series_available=true`; otherwise the
-runtime is using an old packaged `macrodata-cli` bundle and sync cannot import
-all Parallax-required series. The installed macrodata runtime must also expose
-history commands for the configured event bundles before the default worker
-cadence can refresh decision-console catalysts. FRED public CSV timeouts or a
-missing optional FRED API key are source-health gaps; they should appear as partial
-coverage/data gaps and are not frontend defects.
+A good macro status has a recent `latest_sync_run`,
+`facts_max_observed_at` near the expected upstream date, no expired running
+sync window, and a bounded due/retry backlog. The `macrodata_cli` block must
+show the expected package version and
+`required_bundle_series_available=true`; otherwise the runtime is using an old
+packaged `macrodata-cli` bundle and sync cannot import all required source
+series. The installed macrodata runtime must also expose history commands for
+the configured event bundles before the default worker cadence can refresh
+official-event evidence. FRED public CSV timeouts or a missing optional FRED
+API key are source-health gaps; they are not frontend defects.
+
+After `uv run parallax db migrate`, the database contains
+`macro_research_runs`, immutable `macro_research_publications`, and the
+LangGraph PostgreSQL checkpoint tables. Runtime startup does not create or
+upgrade those tables. Enable `workers.macro_research` only after the migration
+is current. A healthy completed-session run transitions
+`pending -> running -> published`; transient model/tool failures transition to
+`retryable`, and exhausted attempts to `failed`. The authenticated
+`GET /api/macro/evidence/{view_id}` live read queries bounded persisted
+`macro_observations`; `/macro` and its six detail routes never trigger a
+provider, model, or write. `GET /api/macro/research` and `/macro/research`
+remain persisted-only and never trigger the model.
+
+The enabled worker creates per-scope native DeepAgents calculation directories
+under `~/.parallax/macro-agent-workspaces/`. Docker Compose already mounts the
+operator app home, so `execute` scratch files survive app-container restarts;
+checkpoint-backed files and large tool results remain in PostgreSQL.
 
 The full CLI surface is documented by `uv run parallax --help`.
 Treat that output as the source of truth — do not enumerate commands

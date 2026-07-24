@@ -96,19 +96,9 @@ _WORKER_MANIFESTS: tuple[WorkerManifest, ...] = (
         current_read_model_identities=(("news_page_rows", ("row_id",)),),
     ),
     WorkerManifest(
-        name="macro_view_projection",
-        start_priority=95,
-        queue_tables=("macro_projection_dirty_targets",),
-        current_read_model_identities=(
-            ("macro_observation_series_rows", ("projection_version", "concept_key", "observed_at")),
-            ("macro_observation_series_publication_state", ("projection_version",)),
-            ("macro_view_snapshots", ("snapshot_key",)),
-        ),
-    ),
-    WorkerManifest(
-        name="daily_macro_judgment",
+        name="macro_research",
         start_priority=100,
-        queue_tables=("macro_judgment_jobs",),
+        queue_tables=("macro_research_runs",),
     ),
     WorkerManifest(
         name="notification_rule",

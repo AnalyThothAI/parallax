@@ -9,16 +9,8 @@ from typing import Any
 from parallax.app.runtime.repository_session import repositories
 from parallax.domains.macro_intel._constants import (
     MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT,
-    MACRO_EVIDENCE_HISTORY_LOOKBACK_DAYS,
-    MACRO_EVIDENCE_PROJECTION_VERSION,
     MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_PROVIDER_SERIES_TO_CONCEPT,
-)
-from parallax.domains.macro_intel.observation_identity import normalize_macro_date
-from parallax.domains.macro_intel.services.macro_concept_manifest import (
-    MACRO_CONCEPT_MANIFEST,
-    MACRO_EVIDENCE_CONCEPTS,
-    MACRO_PAGE_IDS,
 )
 from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 from parallax.domains.macro_intel.services.macro_sync_types import MacroSyncRunSummary
@@ -45,13 +37,6 @@ class MacroStatusOperationError(RuntimeError):
         super().__init__("macro_status_operation_failed")
         self.cause = cause
         self.diagnostics = dict(diagnostics)
-
-
-_MATERIAL_CLAIM_CONCEPTS = tuple(
-    concept_key
-    for concept_key in MACRO_EVIDENCE_CONCEPTS
-    if MACRO_CONCEPT_MANIFEST[concept_key].claim_effect != "catalyst_only"
-)
 
 
 def import_macro_bundle(
@@ -114,38 +99,42 @@ def macro_status(settings: Settings, *, now_ms: int | None = None) -> dict[str, 
         )
         effective_now_ms = _now_ms() if now_ms is None else int(now_ms)
         with repositories(settings) as repos:
-            history = repos.macro_intel.concept_history_counts(
-                concept_keys=MACRO_EVIDENCE_CONCEPTS,
-                lookback_days=MACRO_EVIDENCE_HISTORY_LOOKBACK_DAYS,
+            through_date = datetime.fromtimestamp(effective_now_ms / 1000, tz=UTC).date()
+            material_facts = repos.macro_intel.material_fact_state(
+                through_date=through_date,
             )
-            latest_snapshot = repos.macro_intel.latest_snapshot()
-            publication_state = repos.macro_intel.macro_series_publication_state(MACRO_EVIDENCE_PROJECTION_VERSION)
-            facts_max_observed_at = _to_date(
-                repos.macro_intel.material_fact_max_observed_at(
-                    concept_keys=_MATERIAL_CLAIM_CONCEPTS,
-                    through_date=datetime.fromtimestamp(effective_now_ms / 1000, tz=UTC).date(),
-                )
-            )
-            snapshot_fact_watermark = _to_date(latest_snapshot.get("fact_watermark") if latest_snapshot else None)
-            projection_behind_facts = facts_max_observed_at is not None and (
-                snapshot_fact_watermark is None or snapshot_fact_watermark < facts_max_observed_at
-            )
+            research_state = repos.macro_research.research_state(None)
             return {
                 "migration_ready": True,
                 **_fred_payload(diagnostics),
                 "macrodata_cli": diagnostics["macrodata_cli"],
-                "observations_count": repos.macro_intel.observations_count(),
-                "concept_count": repos.macro_intel.concept_count(),
-                "manifest": _manifest_inventory_payload(history),
+                "material_facts": _json_ready(material_facts),
                 "sync_queue": _json_ready(repos.macro_intel.macro_sync_queue_summary(now_ms=effective_now_ms)),
-                "publication_state": _publication_state_status(publication_state),
-                "facts_max_observed_at": _json_ready(facts_max_observed_at),
-                "projection_lag_days": _projection_lag_days(facts_max_observed_at, snapshot_fact_watermark),
-                "projection_behind_facts": projection_behind_facts,
-                "latest_snapshot": _snapshot_status_summary(latest_snapshot),
+                "latest_research": _research_status_summary(research_state),
             }
     except Exception as exc:
         raise MacroStatusOperationError(exc, diagnostics=diagnostics) from exc
+
+
+def retry_failed_macro_research(
+    settings: Settings,
+    *,
+    session_date: date,
+    now_ms: int | None = None,
+) -> dict[str, Any]:
+    """Grant one immediately due attempt only when the persisted run is failed."""
+    effective_now_ms = _now_ms() if now_ms is None else int(now_ms)
+    with repositories(settings) as repos, repos.transaction():
+        result = repos.macro_research.retry_failed_run(
+            session_date=session_date,
+            now_ms=effective_now_ms,
+        )
+    return {
+        "action": "retry_research",
+        "requested_at_ms": effective_now_ms,
+        "outcome": "applied" if result["applied"] else "no_op",
+        **result,
+    }
 
 
 def _required_macrodata_bundle_series(bundle_names: Sequence[str]) -> dict[str, tuple[str, ...]]:
@@ -185,61 +174,23 @@ def _event_series_with_prefix(prefix: str) -> tuple[str, ...]:
     return tuple(series_key for series_key in MACRO_EVENT_PROVIDER_SERIES_TO_CONCEPT if series_key.startswith(prefix))
 
 
-def _projection_lag_days(facts_max_observed_at: date | None, snapshot_asof: date | None) -> int | None:
-    if facts_max_observed_at is None or snapshot_asof is None:
-        return None
-    return max(0, (facts_max_observed_at - snapshot_asof).days)
-
-
-def _snapshot_status_summary(snapshot: Mapping[str, Any] | None) -> dict[str, Any] | None:
-    if snapshot is None:
-        return None
-    pages: dict[str, Any] = {}
-    for page_id in MACRO_PAGE_IDS:
-        page = _required_mapping(snapshot, f"{page_id}_json")
-        conclusion = _required_mapping(page, "conclusion")
-        freshness = _required_mapping(page, "freshness")
-        pages[page_id] = {
-            "status": conclusion.get("status"),
-            "judgment": conclusion.get("judgment"),
-            "freshness_status": freshness.get("status"),
-            "evidence_count": len(_sequence(page.get("evidence"))),
-            "unavailable_evidence_count": len(_sequence(page.get("unavailable_evidence"))),
-        }
-    return {
-        "projection_version": snapshot.get("projection_version"),
-        "fact_watermark": _json_ready(snapshot.get("fact_watermark")),
-        "market_cutoff": _json_ready(snapshot.get("market_cutoff")),
-        "computed_at_ms": snapshot.get("computed_at_ms"),
-        "pages": pages,
-    }
-
-
-def _publication_state_status(state: Mapping[str, Any] | None) -> dict[str, Any] | None:
+def _research_status_summary(state: Mapping[str, Any] | None) -> dict[str, Any] | None:
     if state is None:
         return None
     return {
-        "projection_version": state.get("projection_version"),
-        "row_count": state.get("row_count"),
-        "latest_attempt_status": state.get("latest_attempt_status"),
-        "latest_attempt_finished_at_ms": state.get("latest_attempt_finished_at_ms"),
-        "latest_attempt_error": state.get("latest_attempt_error"),
-    }
-
-
-def _manifest_inventory_payload(history_rows: Sequence[Mapping[str, Any]]) -> dict[str, Any]:
-    rows_by_concept = {str(row.get("concept_key")): row for row in history_rows}
-    observed: list[str] = []
-    missing: list[str] = []
-    for concept_key in MACRO_EVIDENCE_CONCEPTS:
-        row = rows_by_concept.get(concept_key, {})
-        (observed if int(row.get("points") or 0) > 0 else missing).append(concept_key)
-    return {
-        "declared_concept_count": len(MACRO_EVIDENCE_CONCEPTS),
-        "observed_concept_count": len(observed),
-        "missing_concept_count": len(missing),
-        "missing_concept_sample": _edge_sample(missing),
-        "lookback_days": MACRO_EVIDENCE_HISTORY_LOOKBACK_DAYS,
+        "session_date": _json_ready(state.get("session_date")),
+        "market_cutoff_ms": state.get("market_cutoff_ms"),
+        "sealed_at_ms": state.get("sealed_at_ms"),
+        "run_status": state.get("run_status"),
+        "attempt_count": state.get("attempt_count"),
+        "max_attempts": state.get("max_attempts"),
+        "due_at_ms": state.get("due_at_ms"),
+        "published_at_ms": state.get("published_at_ms"),
+        "model_name": state.get("model_name"),
+        "prompt_version": state.get("prompt_version"),
+        "workflow_version": state.get("workflow_version"),
+        "last_error_code": state.get("last_error_code"),
+        "last_error_message": state.get("last_error_message"),
     }
 
 
@@ -248,25 +199,6 @@ def _fred_payload(diagnostics: Mapping[str, Any]) -> dict[str, Any]:
         "fred_api_key_env": diagnostics.get("fred_api_key_env"),
         "fred_api_key_configured": bool(diagnostics.get("fred_api_key_configured")),
     }
-
-
-def _edge_sample(values: Sequence[Any], *, edge_count: int = 3) -> list[Any]:
-    if len(values) <= edge_count * 2:
-        return list(values)
-    return [*values[:edge_count], "...", *values[-edge_count:]]
-
-
-def _required_mapping(value: Mapping[str, Any], field_name: str) -> Mapping[str, Any]:
-    item = value.get(field_name)
-    if not isinstance(item, Mapping):
-        raise ValueError(f"macro_evidence_snapshot_section_invalid:{field_name}")
-    return item
-
-
-def _sequence(value: object) -> Sequence[Any]:
-    if isinstance(value, Sequence) and not isinstance(value, str | bytes | bytearray):
-        return value
-    return ()
 
 
 def _json_ready(value: object) -> object:
@@ -279,15 +211,6 @@ def _json_ready(value: object) -> object:
     return value
 
 
-def _to_date(value: object) -> date | None:
-    if value is None:
-        return None
-    try:
-        return normalize_macro_date(value)
-    except ValueError:
-        return None
-
-
 def _now_ms() -> int:
     return int(time.time() * 1000)
 
@@ -298,5 +221,6 @@ __all__ = [
     "MacroSyncOperationError",
     "import_macro_bundle",
     "macro_status",
+    "retry_failed_macro_research",
     "sync_macro_window",
 ]

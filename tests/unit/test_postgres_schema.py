@@ -31,7 +31,7 @@ def test_alembic_graph_has_one_current_head_and_unique_revisions() -> None:
 
     assert None not in revisions
     assert len(revisions) == len(set(revisions))
-    assert script.get_heads() == ["20260723_0193"]
+    assert script.get_heads() == ["20260724_0195"]
 
 
 def test_backend_kiss_hard_cut_is_fail_closed_and_irreversible() -> None:
@@ -177,40 +177,6 @@ def test_news_terminal_state_is_bound_to_the_current_source_config() -> None:
     assert "news_sources_config_payload_hash_check" in text
     assert "news_sources_terminal_config_payload_hash_check" in text
     assert "CHECK (projection_name IN ('page', 'story_brief'))" in text
-
-
-def test_macro_hard_cut_preserves_event_metadata_and_rebuilds_module_views_once() -> None:
-    text = HARD_CUT.read_text(encoding="utf-8")
-    runtime_text = RUNTIME_HARD_CUT.read_text(encoding="utf-8")
-
-    assert "ALTER TABLE macro_observation_series_rows ADD COLUMN event_metadata_json JSONB" in text
-    assert "ALTER TABLE macro_observation_series_rows ALTER COLUMN event_metadata_json SET NOT NULL" in text
-    assert "ALTER TABLE macro_view_snapshots ADD COLUMN assets_brief_json JSONB" in text
-    assert "ALTER TABLE macro_view_snapshots ALTER COLUMN assets_brief_json SET NOT NULL" in text
-    assert "ALTER TABLE macro_view_snapshots ADD COLUMN module_views_json JSONB" in text
-    assert "ALTER TABLE macro_view_snapshots ALTER COLUMN module_views_json SET NOT NULL" in text
-    assert "macro_view_snapshots_assets_brief_object_check" in text
-    assert "macro_view_snapshots_module_views_object_check" in text
-    assert "migration_route_ready_module_rebuild" in text
-    assert "ALTER TABLE macro_view_snapshots DROP COLUMN assets_brief_json" in runtime_text
-    assert "migration:20260722_0186:module_views_only" in runtime_text
-    assert "migration_module_views_only_rebuild" in runtime_text
-    assert "DELETE FROM macro_view_snapshots" in runtime_text
-    assert runtime_text.index("_reset_macro_module_views()") < runtime_text.index(
-        "ALTER TABLE macro_view_snapshots DROP COLUMN assets_brief_json"
-    )
-    for redundant_column in (
-        "series_rank",
-        "source_priority",
-        "source_ts",
-        "raw_payload_json",
-        "ingested_at_ms",
-        "projected_at_ms",
-        "payload_hash",
-    ):
-        assert f"DROP COLUMN {redundant_column}" in text
-    assert text.index("_backfill_macro_event_metadata()") < text.index("DROP COLUMN raw_payload_json")
-    assert text.index("_enqueue_macro_module_view_rebuild()") < text.index("DROP TABLE macro_daily_briefs")
 
 
 def test_attempt_ledgers_have_explicit_bounded_retention() -> None:

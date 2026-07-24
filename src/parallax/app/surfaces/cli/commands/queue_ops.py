@@ -278,60 +278,6 @@ def _retry_token_radar_dirty_target(
     return {"requeued": requeued_count, "due_at_ms": int(now_ms)}
 
 
-def _retry_macro_projection_dirty_target(
-    repos: Any,
-    event: dict[str, Any],
-    *,
-    now_ms: int,
-    reason: str,
-) -> dict[str, Any]:
-    repo = repos.macro_intel
-    source_row = _source_row(event)
-    projection_name = str(source_row.get("projection_name") or "").strip()
-    projection_version = str(source_row.get("projection_version") or "").strip()
-    target_kind = str(source_row.get("target_kind") or "").strip()
-    if not projection_name or not projection_version or not target_kind:
-        raise ValueError("macro_projection_dirty_target_source_row_required")
-    retry_reason = f"terminal_retry:{reason}"
-    if target_kind == "current":
-        requeued = repo.enqueue_macro_projection_dirty_target(
-            projection_name=projection_name,
-            projection_version=projection_version,
-            now_ms=int(now_ms),
-            due_at_ms=int(now_ms),
-            reason=retry_reason,
-        )
-    elif target_kind == "concept":
-        concept_key = str(source_row.get("concept_key") or source_row.get("target_id") or "").strip()
-        observed_at = (
-            source_row.get("max_observed_at")
-            or source_row.get("source_watermark_date")
-            or source_row.get("min_observed_at")
-        )
-        if not concept_key or observed_at is None:
-            raise ValueError("macro_projection_dirty_target_concept_source_row_required")
-        requeued = repo.enqueue_macro_projection_dirty_targets_for_changes(
-            changed_observations=[{"concept_key": concept_key, "observed_at": observed_at}],
-            projection_name=projection_name,
-            projection_version=projection_version,
-            now_ms=int(now_ms),
-            due_at_ms=int(now_ms),
-            reason=retry_reason,
-        )
-    else:
-        raise ValueError(f"unsupported_macro_projection_dirty_target_kind:{target_kind}")
-    requeued_count = int(requeued or 0)
-    if requeued_count <= 0:
-        raise ValueError("macro_projection_dirty_target_retry_not_requeued")
-    return {
-        "requeued": requeued_count,
-        "projection_name": projection_name,
-        "projection_version": projection_version,
-        "target_kind": target_kind,
-        "due_at_ms": int(now_ms),
-    }
-
-
 def _source_row(event: dict[str, Any]) -> dict[str, Any]:
     source_row = event.get("source_row_json")
     if not isinstance(source_row, dict):
@@ -369,7 +315,6 @@ QUEUE_RETRY_TRANSITIONS = {
     ("token_image_mirror", "token_image_source_dirty_targets"): _retry_token_image_source_target,
     ("token_profile_current", "token_profile_current_dirty_targets"): _retry_token_profile_current_dirty_target,
     ("token_radar_projection", "token_radar_dirty_targets"): _retry_token_radar_dirty_target,
-    ("macro_view_projection", "macro_projection_dirty_targets"): _retry_macro_projection_dirty_target,
 }
 
 

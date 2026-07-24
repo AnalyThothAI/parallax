@@ -112,25 +112,7 @@ def test_import_macrodata_bundle_upserts_observation_and_records_run() -> None:
     assert summary["missing_series"] == ["fred:WALCL"]
     assert summary["series_errors"] == [{"series_key": "fred:WALCL", "provider": "fred", "code": "missing_api_key"}]
     assert summary["reason_codes"] == ["missing_series", "missing_api_key"]
-    assert summary["dirty_targets_enqueued"] == 1
-    assert repos.macro_intel.enqueued_dirty_targets == [
-        {
-            "changed_observations": [
-                {
-                    "observation_id": macro_observation_id(repos.macro_intel.observations[0]),
-                    "status": "inserted",
-                    "concept_key": "liquidity:sofr",
-                    "observed_at": date(2026, 5, 19),
-                    "fact_payload_hash": macro_observation_fact_payload_hash(repos.macro_intel.observations[0]),
-                }
-            ],
-            "projection_name": "macro_evidence",
-            "projection_version": "macro_decision_v2",
-            "now_ms": NOW_MS,
-            "due_at_ms": NOW_MS,
-            "reason": "macro_observations_changed",
-        }
-    ]
+    assert "dirty_targets_enqueued" not in summary
 
 
 def test_import_macrodata_bundle_validates_all_observations_before_writing() -> None:
@@ -199,7 +181,7 @@ def test_write_macrodata_bundle_import_does_not_open_its_own_transaction() -> No
     assert summary["asof"] == "2026-05-21"
     assert repos.macro_intel.sync_runs == []
     assert summary["imported_observation_count"] == 1
-    assert summary["dirty_targets_enqueued"] == 1
+    assert "dirty_targets_enqueued" not in summary
 
 
 def test_write_macrodata_bundle_import_requires_external_transaction() -> None:
@@ -345,12 +327,7 @@ def test_import_macrodata_bundle_accepts_event_bundles_without_expanding_numeric
     assert repos.macro_intel.observations[2]["source_name"] == "treasury_auction"
     assert repos.macro_intel.sync_runs[0]["bundle_name"] == "macro-calendar-core"
     assert summary["imported_observation_count"] == 3
-    assert summary["dirty_targets_enqueued"] == 1
-    assert [item["concept_key"] for item in repos.macro_intel.enqueued_dirty_targets[0]["changed_observations"]] == [
-        "event:fomc_decision_next",
-        "event:treasury_auction_10y_bid_to_cover",
-        "event:treasury_auction_10y_next",
-    ]
+    assert "dirty_targets_enqueued" not in summary
 
 
 def test_import_macrodata_bundle_accepts_fed_text_events_with_stable_document_series_keys() -> None:
@@ -437,7 +414,7 @@ def test_import_macrodata_bundle_accepts_fed_text_events_with_stable_document_se
     assert repos.macro_intel.observations[0]["raw_payload"]["series_key"] == "official_fed_text:speech_latest"
     assert len({macro_observation_id(row) for row in repos.macro_intel.observations}) == 2
     assert summary["imported_observation_count"] == 2
-    assert summary["dirty_targets_enqueued"] == 1
+    assert "dirty_targets_enqueued" not in summary
 
 
 def test_import_macrodata_bundle_accepts_crypto_derivatives_core_without_page_shell() -> None:
@@ -598,7 +575,7 @@ def test_import_macrodata_bundle_accepts_crypto_derivatives_core_without_page_sh
     assert repos.macro_intel.sync_runs[0]["bundle_name"] == "crypto-derivatives-core"
     assert repos.macro_intel.sync_runs[0]["observations_count"] == 14
     assert summary["imported_observation_count"] == 14
-    assert summary["dirty_targets_enqueued"] == 1
+    assert "dirty_targets_enqueued" not in summary
 
 
 def test_import_macrodata_bundle_rolls_back_observations_when_import_run_fails() -> None:
@@ -697,14 +674,12 @@ class FakeTransaction:
         self.repos = repos
         self.observations: list[dict[str, object]] = []
         self.sync_runs: list[dict[str, object]] = []
-        self.enqueued_dirty_targets: list[dict[str, object]] = []
 
     def __enter__(self):
         self.repos.transaction_depth += 1
         self.observations = list(self.repos.macro_intel.observations)
         self.observation_index = dict(self.repos.macro_intel._observation_index)
         self.sync_runs = list(self.repos.macro_intel.sync_runs)
-        self.enqueued_dirty_targets = list(self.repos.macro_intel.enqueued_dirty_targets)
         return self
 
     def __exit__(self, exc_type, exc, tb) -> bool:
@@ -712,7 +687,6 @@ class FakeTransaction:
             self.repos.macro_intel.observations = self.observations
             self.repos.macro_intel._observation_index = self.observation_index
             self.repos.macro_intel.sync_runs = self.sync_runs
-            self.repos.macro_intel.enqueued_dirty_targets = self.enqueued_dirty_targets
             self.repos.transaction_events.append("rollback")
         else:
             self.repos.transaction_events.append("commit")
@@ -772,7 +746,6 @@ class FakeMacroIntelRepository:
         self.observations: list[dict[str, object]] = []
         self._observation_index: dict[str, int] = {}
         self.sync_runs: list[dict[str, object]] = []
-        self.enqueued_dirty_targets: list[dict[str, object]] = []
         self.fail_record_run = fail_record_run
 
     def upsert_observation(self, observation: dict[str, object]) -> dict[str, object]:
@@ -803,7 +776,3 @@ class FakeMacroIntelRepository:
         if self.fail_record_run:
             raise RuntimeError("record_run_failed")
         self.sync_runs.append(sync_run)
-
-    def enqueue_macro_projection_dirty_targets_for_changes(self, **kwargs: object) -> int:
-        self.enqueued_dirty_targets.append(dict(kwargs))
-        return 1

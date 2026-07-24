@@ -752,40 +752,24 @@ class TokenRadarProjectionWorkerSettings(PerWorkerSettings):
         return tuple(_split_values(value))
 
 
-class MacroViewProjectionWorkerSettings(PerWorkerSettings):
-    interval_seconds: float = Field(default=300.0, ge=0)
-    batch_size: int = Field(default=250, ge=1)
-    statement_timeout_seconds: float = Field(default=30.0, ge=0)
-    lease_ms: int = Field(default=300_000, ge=1)
-    retry_ms: int = Field(default=300_000, ge=1)
-    max_attempts: int = Field(default=3, ge=1)
-    lookback_days: int = Field(default=1095, ge=1095)
-    limit_per_series: int = Field(default=800, ge=800)
-
-
-class DailyMacroJudgmentWorkerSettings(PerWorkerSettings):
+class MacroResearchWorkerSettings(PerWorkerSettings):
     enabled: bool = False
     interval_seconds: float = Field(default=300.0, ge=0)
     settle_delay_seconds: int = Field(default=1_800, ge=0)
     statement_timeout_seconds: float = Field(default=120.0, ge=0)
-    lease_ms: int = Field(default=600_000, ge=1)
+    lease_ms: int = Field(default=900_000, ge=1)
     retry_ms: int = Field(default=900_000, ge=1)
     max_attempts: int = Field(default=3, ge=1)
-    lookback_days: int = Field(default=1095, ge=1095)
-    limit_per_series: int = Field(default=800, ge=800)
-    news_limit: int = Field(default=24, ge=0, le=100)
-    outcome_batch_size: int = Field(default=32, ge=1, le=500)
-    analyst_model: str = "gpt-5.4-mini"
-    reviewer_model: str = "gpt-5.4-mini"
-    model_timeout_seconds: float = Field(default=480.0, ge=1)
-    max_tokens: int = Field(default=4_000, ge=1)
+    model: str = "gpt-5.4-mini"
+    model_request_timeout_seconds: float = Field(default=480.0, ge=1)
+    max_tokens: int = Field(default=12_000, ge=1)
 
-    @field_validator("analyst_model", "reviewer_model", mode="before")
+    @field_validator("model", mode="before")
     @classmethod
-    def parse_role_model(cls, value: Any) -> str:
+    def parse_model(cls, value: Any) -> str:
         normalized = str(value or "").strip()
         if not normalized:
-            raise ValueError("daily_macro_judgment role model is required")
+            raise ValueError("macro_research.model is required")
         return normalized
 
 
@@ -874,8 +858,7 @@ class WorkersSettings(BaseModel):
         default_factory=TokenRadarProjectionWorkerSettings
     )
     macro_sync: MacroSyncWorkerSettings = Field(default_factory=MacroSyncWorkerSettings)
-    macro_view_projection: MacroViewProjectionWorkerSettings = Field(default_factory=MacroViewProjectionWorkerSettings)
-    daily_macro_judgment: DailyMacroJudgmentWorkerSettings = Field(default_factory=DailyMacroJudgmentWorkerSettings)
+    macro_research: MacroResearchWorkerSettings = Field(default_factory=MacroResearchWorkerSettings)
     notification_rule: NotificationRuleWorkerSettings = Field(default_factory=NotificationRuleWorkerSettings)
     notification_delivery: NotificationDeliveryWorkerSettings = Field(
         default_factory=NotificationDeliveryWorkerSettings

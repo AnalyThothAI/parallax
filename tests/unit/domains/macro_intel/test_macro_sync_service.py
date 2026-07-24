@@ -187,7 +187,7 @@ def test_sync_service_claims_window_before_provider_io() -> None:
     assert events.index("runner") < commit_indexes[-1]
 
 
-def test_sync_service_import_success_writes_facts_and_completes_window() -> None:
+def test_sync_service_import_success_writes_only_facts_and_completes_window() -> None:
     from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     events: list[str] = []
@@ -224,24 +224,8 @@ def test_sync_service_import_success_writes_facts_and_completes_window() -> None
             "completed_at_ms": NOW_MS,
         }
     ]
-    assert repo.enqueued_dirty_targets == [
-        {
-            "changed_observations": [
-                {
-                    "observation_id": "observation-1",
-                    "status": "inserted",
-                    "concept_key": "liquidity:sofr",
-                    "observed_at": date(2026, 5, 27),
-                    "fact_payload_hash": "hash-1",
-                }
-            ],
-            "projection_name": "macro_evidence",
-            "projection_version": "macro_decision_v2",
-            "now_ms": NOW_MS,
-            "due_at_ms": NOW_MS,
-            "reason": "macro_observations_changed",
-        }
-    ]
+    assert result.inserted_observation_count == 1
+    assert result.changed_observation_count == 0
 
 
 def test_sync_service_rejects_runner_result_without_diagnostics_before_fact_write() -> None:
@@ -265,11 +249,10 @@ def test_sync_service_rejects_runner_result_without_diagnostics_before_fact_writ
     assert result.status == "failed"
     assert result.imported_observation_count == 0
     assert repo.observations == []
-    assert repo.enqueued_dirty_targets == []
     assert repo.failed_windows[0]["error_code"] == "AttributeError"
 
 
-def test_sync_service_unavailable_import_does_not_enqueue_projection_dirty_target() -> None:
+def test_sync_service_unavailable_import_records_source_state_without_facts() -> None:
     from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window())
@@ -286,7 +269,6 @@ def test_sync_service_unavailable_import_does_not_enqueue_projection_dirty_targe
     assert result.status == "partial"
     assert result.imported_observation_count == 0
     assert repo.sync_runs[0]["status"] == "partial"
-    assert repo.enqueued_dirty_targets == []
     assert repo.sync_state_updates == [
         {
             "source_name": "macrodata-cli",
@@ -297,7 +279,7 @@ def test_sync_service_unavailable_import_does_not_enqueue_projection_dirty_targe
     ]
 
 
-def test_sync_service_noop_overlap_records_seen_and_does_not_enqueue_dirty_target() -> None:
+def test_sync_service_noop_overlap_records_seen_without_rewriting_facts() -> None:
     from parallax.domains.macro_intel.services.macro_sync_service import MacroSyncService
 
     repo = FakeMacroIntelRepository(claimed_window=_window(), upsert_statuses=["noop"])
@@ -317,7 +299,6 @@ def test_sync_service_noop_overlap_records_seen_and_does_not_enqueue_dirty_targe
     assert result.noop_observation_count == 1
     assert result.imported_observation_count == 0
     assert repo.sync_runs[0]["seen_observation_count"] == 1
-    assert repo.enqueued_dirty_targets == []
     assert repo.sync_state_updates == [
         {
             "source_name": "macrodata-cli",
@@ -817,7 +798,6 @@ class FakeTransaction:
                 "completed_windows",
                 "retry_windows",
                 "failed_windows",
-                "enqueued_dirty_targets",
                 "enqueued_windows",
             )
             if hasattr(self.repos.macro_intel, name)
@@ -867,7 +847,6 @@ class FakeMacroIntelRepository:
         self.enqueued_windows: list[dict[str, object]] = []
         self.claim_calls: list[dict[str, object]] = []
         self.claimed_by_id: list[dict[str, object]] = []
-        self.enqueued_dirty_targets: list[dict[str, object]] = []
 
     def enqueue_macro_sync_window(self, **kwargs: object) -> str:
         if self.events is not None:
@@ -898,10 +877,6 @@ class FakeMacroIntelRepository:
             "observed_at": observation["observed_at"],
             "fact_payload_hash": f"hash-{len(self.observations)}",
         }
-
-    def enqueue_macro_projection_dirty_targets_for_changes(self, **kwargs: object) -> int:
-        self.enqueued_dirty_targets.append(dict(kwargs))
-        return 1
 
     def record_macro_sync_run(self, run: dict[str, object]) -> None:
         self.sync_runs.append(run)

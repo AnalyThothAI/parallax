@@ -72,15 +72,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/macro/credit": {
+    "/api/macro/evidence/{view_id}": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Macro Credit */
-        get: operations["macro_credit_api_macro_credit_get"];
+        /** Macro Live Evidence */
+        get: operations["macro_live_evidence_api_macro_evidence__view_id__get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -89,117 +89,15 @@ export interface paths {
         patch?: never;
         trace?: never;
     };
-    "/api/macro/cross-asset": {
+    "/api/macro/research": {
         parameters: {
             query?: never;
             header?: never;
             path?: never;
             cookie?: never;
         };
-        /** Macro Cross Asset */
-        get: operations["macro_cross_asset_api_macro_cross_asset_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/macro/daily-judgment": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Daily Macro Judgment */
-        get: operations["daily_macro_judgment_api_macro_daily_judgment_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/macro/growth-labor": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Macro Growth Labor */
-        get: operations["macro_growth_labor_api_macro_growth_labor_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/macro/liquidity-funding": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Macro Liquidity Funding */
-        get: operations["macro_liquidity_funding_api_macro_liquidity_funding_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/macro/overview": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Macro Overview */
-        get: operations["macro_overview_api_macro_overview_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/macro/rates-inflation": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Macro Rates Inflation */
-        get: operations["macro_rates_inflation_api_macro_rates_inflation_get"];
-        put?: never;
-        post?: never;
-        delete?: never;
-        options?: never;
-        head?: never;
-        patch?: never;
-        trace?: never;
-    };
-    "/api/macro/series": {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        /** Macro Series */
-        get: operations["macro_series_api_macro_series_get"];
+        /** Macro Research */
+        get: operations["macro_research_api_macro_research_get"];
         put?: never;
         post?: never;
         delete?: never;
@@ -651,16 +549,6 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
-        /** ApiEnvelope[DailyMacroJudgmentReadData] */
-        ApiEnvelope_DailyMacroJudgmentReadData_: {
-            data?: components["schemas"]["DailyMacroJudgmentReadData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        };
         /** ApiEnvelope[LiveMarketData] */
         ApiEnvelope_LiveMarketData_: {
             data?: components["schemas"]["LiveMarketData"] | null;
@@ -671,9 +559,9 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
-        /** ApiEnvelope[MacroCreditData] */
-        ApiEnvelope_MacroCreditData_: {
-            data?: components["schemas"]["MacroCreditData"] | null;
+        /** ApiEnvelope[MacroLiveEvidenceReadData] */
+        ApiEnvelope_MacroLiveEvidenceReadData_: {
+            data?: components["schemas"]["MacroLiveEvidenceReadData"] | null;
             /** Error */
             error?: string | null;
             /** Field */
@@ -681,59 +569,9 @@ export interface components {
             /** Ok */
             ok: boolean;
         };
-        /** ApiEnvelope[MacroCrossAssetData] */
-        ApiEnvelope_MacroCrossAssetData_: {
-            data?: components["schemas"]["MacroCrossAssetData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiEnvelope[MacroGrowthLaborData] */
-        ApiEnvelope_MacroGrowthLaborData_: {
-            data?: components["schemas"]["MacroGrowthLaborData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiEnvelope[MacroLiquidityFundingData] */
-        ApiEnvelope_MacroLiquidityFundingData_: {
-            data?: components["schemas"]["MacroLiquidityFundingData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiEnvelope[MacroOverviewData] */
-        ApiEnvelope_MacroOverviewData_: {
-            data?: components["schemas"]["MacroOverviewData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiEnvelope[MacroRatesInflationData] */
-        ApiEnvelope_MacroRatesInflationData_: {
-            data?: components["schemas"]["MacroRatesInflationData"] | null;
-            /** Error */
-            error?: string | null;
-            /** Field */
-            field?: string | null;
-            /** Ok */
-            ok: boolean;
-        };
-        /** ApiEnvelope[MacroSeriesData] */
-        ApiEnvelope_MacroSeriesData_: {
-            data?: components["schemas"]["MacroSeriesData"] | null;
+        /** ApiEnvelope[MacroResearchReadData] */
+        ApiEnvelope_MacroResearchReadData_: {
+            data?: components["schemas"]["MacroResearchReadData"] | null;
             /** Error */
             error?: string | null;
             /** Field */
@@ -960,229 +798,10 @@ export interface components {
             /** Ws Token */
             ws_token: string;
         };
-        /** DailyMacroJudgment */
-        DailyMacroJudgment: {
-            audit_versions: components["schemas"]["JudgmentAuditVersions"];
-            /** Counterevidence */
-            counterevidence: components["schemas"]["JudgmentObservation"][];
-            /**
-             * Data Health
-             * @enum {string}
-             */
-            data_health: "ready" | "degraded";
-            /**
-             * Experimental Marker
-             * @default experimental_shadow_research
-             * @constant
-             */
-            experimental_marker: "experimental_shadow_research";
-            /** Macro State */
-            macro_state: string;
-            /** Market Cutoff Ms */
-            market_cutoff_ms: number;
-            /** Pressures */
-            pressures: components["schemas"]["MacroPressure"][];
-            /**
-             * Session Date
-             * Format: date
-             */
-            session_date: string;
-            spy_20d: components["schemas"]["SpyHorizonCall"];
-            spy_5d: components["schemas"]["SpyHorizonCall"];
-        };
-        /** DailyMacroJudgmentJobData */
-        DailyMacroJudgmentJobData: {
-            /** Attempt Count */
-            attempt_count: number;
-            /** Due At Ms */
-            due_at_ms: number;
-            /** Last Error */
-            last_error: string | null;
-            /** Market Cutoff Ms */
-            market_cutoff_ms: number;
-            /** Max Attempts */
-            max_attempts: number;
-            /** Reviewer Disposition */
-            reviewer_disposition: ("pass" | "revise" | "block") | null;
-            /**
-             * Session Date
-             * Format: date
-             */
-            session_date: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "pending" | "running" | "retryable" | "blocked" | "failed" | "published";
-            /** Updated At Ms */
-            updated_at_ms: number;
-        };
-        /** DailyMacroJudgmentPublicationData */
-        DailyMacroJudgmentPublicationData: {
-            /** Agent Audit */
-            agent_audit: {
-                [key: string]: unknown;
-            };
-            /** Compiler Version */
-            compiler_version: string;
-            evidence_pack: components["schemas"]["MacroEvidencePack"];
-            /** Evidence Pack Hash */
-            evidence_pack_hash: string;
-            judgment: components["schemas"]["DailyMacroJudgment"];
-            /** Market Cutoff Ms */
-            market_cutoff_ms: number;
-            /** Memo Text */
-            memo_text: string;
-            /** Model Name */
-            model_name: string;
-            /** Outcomes */
-            outcomes: components["schemas"]["DailyMacroOutcome"][];
-            /** Prompt Version */
-            prompt_version: string;
-            /** Published At Ms */
-            published_at_ms: number;
-            /**
-             * Renderer Version
-             * @constant
-             */
-            renderer_version: "daily_macro_judgment_zh_v1";
-            review: components["schemas"]["ReviewerResult"];
-            /**
-             * Schema Version
-             * @constant
-             */
-            schema_version: "daily_macro_judgment_v1";
-            /** Sealed At Ms */
-            sealed_at_ms: number;
-            /**
-             * Selection Policy Version
-             * @constant
-             */
-            selection_policy_version: "macro_point_in_time_v1";
-            /**
-             * Session Date
-             * Format: date
-             */
-            session_date: string;
-            /** Workflow Version */
-            workflow_version: string;
-        };
-        /** DailyMacroJudgmentReadData */
-        DailyMacroJudgmentReadData: {
-            /** Is Current */
-            is_current: boolean;
-            publication: components["schemas"]["DailyMacroJudgmentPublicationData"] | null;
-            /**
-             * State
-             * @enum {string}
-             */
-            state: "current" | "historical" | "stale" | "pending" | "running" | "retryable" | "blocked" | "failed" | "missing";
-            target_job: components["schemas"]["DailyMacroJudgmentJobData"] | null;
-            /**
-             * Target Session Date
-             * Format: date
-             */
-            target_session_date: string;
-        };
-        /** DailyMacroOutcome */
-        DailyMacroOutcome: {
-            /** Computed At Ms */
-            computed_at_ms: number;
-            /**
-             * Horizon Sessions
-             * @enum {integer}
-             */
-            horizon_sessions: 5 | 20;
-            /** Realized Return Pct */
-            realized_return_pct: number;
-            /**
-             * Session Date
-             * Format: date
-             */
-            session_date: string;
-            /** Source Evidence Refs */
-            source_evidence_refs: string[];
-            /** Start Close */
-            start_close: number;
-            /** Target Close */
-            target_close: number;
-            /**
-             * Target Session Date
-             * Format: date
-             */
-            target_session_date: string;
-        };
-        /**
-         * EvidenceAvailability
-         * @enum {string}
-         */
-        EvidenceAvailability: "exact_timestamp" | "prior_date" | "session_close";
-        /** EvidenceExclusion */
-        EvidenceExclusion: {
-            /** Concept Key */
-            concept_key?: string | null;
-            /** Reason */
-            reason: string;
-            /** Series Key */
-            series_key?: string | null;
-            /** Source Name */
-            source_name: string;
-        };
-        /** EvidencePackHealth */
-        EvidencePackHealth: {
-            /**
-             * Global Reasons
-             * @default []
-             */
-            global_reasons: string[];
-            /**
-             * Local Reasons
-             * @default []
-             */
-            local_reasons: string[];
-            /**
-             * No Call Horizons
-             * @default []
-             */
-            no_call_horizons: (5 | 20)[];
-            status: components["schemas"]["EvidencePackHealthStatus"];
-        };
-        /**
-         * EvidencePackHealthStatus
-         * @enum {string}
-         */
-        EvidencePackHealthStatus: "ready" | "degraded" | "blocked";
         /** HTTPValidationError */
         HTTPValidationError: {
             /** Detail */
             detail?: components["schemas"]["ValidationError"][];
-        };
-        /** JudgmentAuditVersions */
-        JudgmentAuditVersions: {
-            /** Evidence Pack Hash */
-            evidence_pack_hash: string;
-            /** Prompt Version */
-            prompt_version: string;
-            /**
-             * Schema Version
-             * @default daily_macro_judgment_v1
-             * @constant
-             */
-            schema_version: "daily_macro_judgment_v1";
-            /** Workflow Version */
-            workflow_version: string;
-        };
-        /**
-         * JudgmentDirection
-         * @enum {string}
-         */
-        JudgmentDirection: "up" | "down" | "range" | "no_call";
-        /** JudgmentObservation */
-        JudgmentObservation: {
-            /** Evidence Refs */
-            evidence_refs: string[];
-            /** Statement */
-            statement: string;
         };
         /** LiveMarketData */
         LiveMarketData: {
@@ -1225,839 +844,55 @@ export interface components {
             /** Volume 24H Usd */
             volume_24h_usd: number | null;
         };
-        /** MacroAssetReturnData */
-        MacroAssetReturnData: {
-            /** Concept Key */
-            concept_key: string;
-            evidence: components["schemas"]["MacroEvidenceData"];
-            /** Observed At */
-            observed_at: string | null;
-            /** Reason */
-            reason: string | null;
-            return_20: components["schemas"]["MacroReturnWindowData"];
-            return_60: components["schemas"]["MacroReturnWindowData"];
-            /** Series Key */
-            series_key: string | null;
-            /** Source Name */
-            source_name: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "available" | "unavailable";
-        };
-        /** MacroConceptInputData */
-        MacroConceptInputData: {
-            /** Concept Key */
-            concept_key: string;
-            /** Observed At */
-            observed_at?: string | null;
-            /** Value */
-            value: number | null;
-        };
-        /** MacroConclusionData */
-        MacroConclusionData: {
-            /** Judgment */
-            judgment: string;
-            /** Rule Hits */
-            rule_hits: components["schemas"]["MacroRuleHitData"][];
-            /** Rule Version */
-            rule_version: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "supported" | "degraded" | "insufficient_evidence";
-        };
-        /** MacroCorrelationData */
-        MacroCorrelationData: {
-            /** Correlation */
-            correlation: number | null;
-            /** Left */
-            left: string;
-            /** Reason */
-            reason: string | null;
-            /** Right */
-            right: string;
-            sample: components["schemas"]["MacroSampleData"];
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "available" | "unavailable";
-            /**
-             * Window
-             * @enum {string}
-             */
-            window: "20_sessions" | "60_sessions";
-        };
-        /** MacroCreditData */
-        MacroCreditData: {
-            /** Aggregate Spreads */
-            aggregate_spreads: components["schemas"]["MacroEvidenceData"][];
-            conclusion: components["schemas"]["MacroConclusionData"];
-            /** Confirmations */
-            confirmations: components["schemas"]["MacroDecisionItemData"][];
-            /** Contradictions */
-            contradictions: components["schemas"]["MacroDecisionItemData"][];
-            credit_state: components["schemas"]["MacroCreditStateData"];
-            /** Credit Supply */
-            credit_supply: components["schemas"]["MacroEvidenceData"][];
-            /** Drivers */
-            drivers: components["schemas"]["MacroDecisionItemData"][];
-            /** Effective Yields */
-            effective_yields: components["schemas"]["MacroEvidenceData"][];
-            /** Evidence */
-            evidence: components["schemas"]["MacroEvidenceData"][];
-            /** Evidence Refs */
-            evidence_refs: string[];
-            /** Financial Conditions Liquidity */
-            financial_conditions_liquidity: components["schemas"]["MacroEvidenceData"][];
-            freshness: components["schemas"]["MacroPageFreshnessData"];
-            /**
-             * Horizon
-             * @constant
-             */
-            horizon: "1_4_weeks";
-            /**
-             * Page Id
-             * @constant
-             */
-            page_id: "credit";
-            /** Rating Tail */
-            rating_tail: components["schemas"]["MacroEvidenceData"][];
-            /** Realized Damage */
-            realized_damage: components["schemas"]["MacroEvidenceData"][];
-            snapshot: components["schemas"]["MacroSnapshotData"];
-            treasury_spread_quadrant: components["schemas"]["MacroTreasurySpreadQuadrantData"];
-            /** Unavailable Evidence */
-            unavailable_evidence: components["schemas"]["MacroUnavailableEvidenceData"][];
-            upgrade_invalidation: components["schemas"]["MacroUpgradeInvalidationData"];
-        };
-        /** MacroCreditStateData */
-        MacroCreditStateData: {
-            /**
-             * Direction
-             * @enum {string}
-             */
-            direction: "widening" | "narrowing" | "stable" | "insufficient_evidence";
-            /** Evidence Refs */
-            evidence_refs: string[];
-            /** Rule Version */
-            rule_version: string;
-            /**
-             * Stage
-             * @enum {string}
-             */
-            stage: "contained" | "tail_stress" | "broadening" | "systemic_tightening" | "repairing" | "insufficient_evidence";
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "supported" | "insufficient_evidence";
-        };
-        /** MacroCrossAssetData */
-        MacroCrossAssetData: {
-            /** Asset Returns */
-            asset_returns: components["schemas"]["MacroAssetReturnData"][];
-            conclusion: components["schemas"]["MacroConclusionData"];
-            /** Confirmations */
-            confirmations: components["schemas"]["MacroDecisionItemData"][];
-            /** Contradictions */
-            contradictions: components["schemas"]["MacroDecisionItemData"][];
-            /** Correlations 20 */
-            correlations_20: components["schemas"]["MacroCorrelationData"][];
-            /** Correlations 60 */
-            correlations_60: components["schemas"]["MacroCorrelationData"][];
-            /** Divergences */
-            divergences: components["schemas"]["MacroDecisionItemData"][];
-            /** Drivers */
-            drivers: components["schemas"]["MacroDecisionItemData"][];
-            /** Evidence */
-            evidence: components["schemas"]["MacroEvidenceData"][];
-            /** Evidence Refs */
-            evidence_refs: string[];
-            freshness: components["schemas"]["MacroPageFreshnessData"];
-            /**
-             * Horizon
-             * @constant
-             */
-            horizon: "1_4_weeks";
-            /**
-             * Page Id
-             * @constant
-             */
-            page_id: "cross_asset";
-            snapshot: components["schemas"]["MacroSnapshotData"];
-            /** Unavailable Evidence */
-            unavailable_evidence: components["schemas"]["MacroUnavailableEvidenceData"][];
-            upgrade_invalidation: components["schemas"]["MacroUpgradeInvalidationData"];
-            /** Volatility */
-            volatility: components["schemas"]["MacroEvidenceData"][];
-        };
-        /** MacroCurveShapeData */
-        MacroCurveShapeData: {
-            /**
-             * Change Window
-             * @constant
-             */
-            change_window: "20_sessions";
-            /** Evidence Refs */
-            evidence_refs: string[];
-            /** Level Classification */
-            level_classification: string;
-            /** Move Classification */
-            move_classification: string;
-            /** Rule Version */
-            rule_version: string;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "supported" | "insufficient_evidence";
-            /** Ten Year Change */
-            ten_year_change: number | null;
-            /** Two Year Change */
-            two_year_change: number | null;
-        };
-        /** MacroDecisionItemData */
-        MacroDecisionItemData: {
-            /** Code */
-            code: string;
-            /** Evidence Refs */
-            evidence_refs: string[];
-        };
-        /** MacroDerivationData */
-        MacroDerivationData: {
+        /** MacroLiveCalculationData */
+        MacroLiveCalculationData: {
             /** Formula */
             formula: string;
-            /** Inputs */
-            inputs: (components["schemas"]["MacroObservedInputData"] | components["schemas"]["MacroConceptInputData"] | components["schemas"]["MacroLiquidityInputData"])[];
-            /** References */
-            references: string[];
-        };
-        /** MacroEvidenceData */
-        MacroEvidenceData: {
-            /** Change */
-            change: number | null;
-            /** Change Window */
-            change_window: string | null;
-            /** Claim Effect */
-            claim_effect: string;
-            /** Concept Key */
-            concept_key: string;
-            /**
-             * Criticality
-             * @enum {string}
-             */
-            criticality: "critical" | "optional";
-            /** Data Quality */
-            data_quality: string;
-            derivation: components["schemas"]["MacroDerivationData"] | null;
-            /**
-             * Frequency
-             * @enum {string}
-             */
-            frequency: "daily" | "weekly" | "monthly" | "quarterly" | "irregular" | "event";
-            freshness: components["schemas"]["MacroEvidenceFreshnessData"];
-            /** Observed At */
-            observed_at: string | null;
-            /** Reason */
-            reason: string | null;
-            /**
-             * Role
-             * @enum {string}
-             */
-            role: "primary" | "confirmation" | "context" | "catalyst";
-            sample: components["schemas"]["MacroSampleData"];
-            /** Series Key */
-            series_key: string | null;
-            /** Source Name */
-            source_name: string | null;
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "available" | "stale" | "unavailable" | "invalid";
+            /** Formula Id */
+            formula_id: string;
+            /** Operands */
+            operands: string[];
+            /** Result */
+            result: number | null;
+            /** Sample Size */
+            sample_size: number;
             /** Unit */
             unit: string;
-            /** Value */
-            value: number | null;
-        };
-        /** MacroEvidenceFreshnessData */
-        MacroEvidenceFreshnessData: {
-            /** Age Days */
-            age_days: number | null;
-            /** Stale After Days */
-            stale_after_days: number | null;
             /**
-             * Status
+             * Window
              * @enum {string}
              */
-            status: "fresh" | "stale" | "missing" | "derived";
+            window: "30d" | "90d" | "1y" | "5y";
         };
-        /** MacroEvidenceItem */
-        MacroEvidenceItem: {
-            availability: components["schemas"]["EvidenceAvailability"];
-            /** Available At Ms */
-            available_at_ms: number;
-            /** Concept Key */
-            concept_key: string;
-            /** Content */
-            content: {
-                [key: string]: unknown;
-            };
-            /** Content Hash */
-            content_hash: string;
-            /** Data Quality */
-            data_quality: string;
-            /** Evidence Ref */
-            evidence_ref: string;
-            /** Ingested At Ms */
-            ingested_at_ms: number;
-            /**
-             * Observed At
-             * Format: date
-             */
-            observed_at: string;
-            /**
-             * Page Id
-             * @enum {string}
-             */
-            page_id: "overview" | "cross_asset" | "rates_inflation" | "growth_labor" | "liquidity_funding" | "credit";
-            /** Selection Rule */
-            selection_rule: string;
-            /** Series Key */
-            series_key: string;
-            /** Source Name */
-            source_name: string;
-            /** Source Timestamp */
-            source_timestamp: string;
-        };
-        /** MacroEvidencePack */
-        MacroEvidencePack: {
-            /** Evidence */
-            evidence: components["schemas"]["MacroEvidenceItem"][];
-            /**
-             * Exclusions
-             * @default []
-             */
-            exclusions: components["schemas"]["EvidenceExclusion"][];
-            health: components["schemas"]["EvidencePackHealth"];
-            /** Market Cutoff Ms */
-            market_cutoff_ms: number;
-            /** Pages */
-            pages: {
-                [key: string]: {
-                    [key: string]: unknown;
-                };
-            };
-            /**
-             * Projection Version
-             * @constant
-             */
-            projection_version: "macro_decision_v2";
+        /** MacroLiveEvidenceReadData */
+        MacroLiveEvidenceReadData: {
+            /** Read At Ms */
+            read_at_ms: number;
+            research: components["schemas"]["MacroLiveResearchLinkData"] | null;
             /**
              * Schema Version
-             * @default macro_evidence_pack_v1
              * @constant
              */
-            schema_version: "macro_evidence_pack_v1";
-            /** Sealed At Ms */
-            sealed_at_ms: number;
+            schema_version: "macro_live_evidence_v1";
+            /** Unclassified */
+            unclassified: components["schemas"]["MacroLiveMetricData"][];
             /**
-             * Selection Policy Version
-             * @default macro_point_in_time_v1
-             * @constant
-             */
-            selection_policy_version: "macro_point_in_time_v1";
-            /**
-             * Session Date
-             * Format: date
-             */
-            session_date: string;
-            /**
-             * Texts
-             * @default []
-             */
-            texts: components["schemas"]["MacroTextEvidence"][];
-        };
-        /** MacroFundingCorridorData */
-        MacroFundingCorridorData: {
-            /** Evidence */
-            evidence: components["schemas"]["MacroEvidenceData"][];
-            /** Evidence Refs */
-            evidence_refs: string[];
-            /** Spreads */
-            spreads: components["schemas"]["MacroEvidenceData"][];
-            /** State */
-            state: string;
-            /**
-             * Status
+             * View Id
              * @enum {string}
              */
-            status: "supported" | "insufficient_evidence";
-        };
-        /** MacroFundingLayerData */
-        MacroFundingLayerData: {
-            /** Evidence */
-            evidence: components["schemas"]["MacroEvidenceData"][];
-            /** Spreads */
-            spreads: components["schemas"]["MacroEvidenceData"][];
-        };
-        /** MacroGrowthLaborData */
-        MacroGrowthLaborData: {
-            conclusion: components["schemas"]["MacroConclusionData"];
-            /** Confirmations */
-            confirmations: components["schemas"]["MacroDecisionItemData"][];
-            /** Contradictions */
-            contradictions: components["schemas"]["MacroDecisionItemData"][];
-            /** Drivers */
-            drivers: components["schemas"]["MacroDecisionItemData"][];
-            /** Evidence */
-            evidence: components["schemas"]["MacroEvidenceData"][];
-            /** Evidence Refs */
-            evidence_refs: string[];
-            freshness: components["schemas"]["MacroPageFreshnessData"];
-            /** Growth Lagging */
-            growth_lagging: components["schemas"]["MacroEvidenceData"][];
-            /** Growth Leading */
-            growth_leading: components["schemas"]["MacroEvidenceData"][];
-            /** Growth Metrics */
-            growth_metrics: components["schemas"]["MacroMetricData"][];
-            /**
-             * Horizon
-             * @constant
-             */
-            horizon: "1_4_weeks";
-            /** Labor Lagging */
-            labor_lagging: components["schemas"]["MacroEvidenceData"][];
-            /** Labor Leading */
-            labor_leading: components["schemas"]["MacroEvidenceData"][];
-            /**
-             * Page Id
-             * @constant
-             */
-            page_id: "growth_labor";
-            snapshot: components["schemas"]["MacroSnapshotData"];
-            /** Unavailable Evidence */
-            unavailable_evidence: components["schemas"]["MacroUnavailableEvidenceData"][];
-            upgrade_invalidation: components["schemas"]["MacroUpgradeInvalidationData"];
-        };
-        /** MacroInflationReleaseData */
-        MacroInflationReleaseData: {
-            evidence: components["schemas"]["MacroEvidenceData"];
-            release_change: components["schemas"]["MacroMetricData"];
-            year_over_year: components["schemas"]["MacroMetricData"];
-        };
-        /** MacroKeyChangeData */
-        MacroKeyChangeData: {
-            /** Code */
-            code: string;
-            /** Evidence Refs */
-            evidence_refs: string[];
-            /**
-             * Lane Id
-             * @enum {string}
-             */
-            lane_id: "us_equities" | "long_duration_treasuries" | "credit" | "usd" | "gold" | "oil" | "crypto" | "market_volatility";
-            /** Rank */
-            rank: number;
-            /** Summary */
-            summary: string;
-        };
-        /** MacroLiquidityFundingData */
-        MacroLiquidityFundingData: {
-            /** Central Bank Balance Sheet */
-            central_bank_balance_sheet: components["schemas"]["MacroEvidenceData"][];
-            conclusion: components["schemas"]["MacroConclusionData"];
-            /** Confirmations */
-            confirmations: components["schemas"]["MacroDecisionItemData"][];
-            /** Contradictions */
-            contradictions: components["schemas"]["MacroDecisionItemData"][];
-            /** Drivers */
-            drivers: components["schemas"]["MacroDecisionItemData"][];
-            /** Evidence */
-            evidence: components["schemas"]["MacroEvidenceData"][];
-            /** Evidence Refs */
-            evidence_refs: string[];
-            freshness: components["schemas"]["MacroPageFreshnessData"];
-            /**
-             * Horizon
-             * @constant
-             */
-            horizon: "1_4_weeks";
-            net_liquidity: components["schemas"]["MacroEvidenceData"];
-            /**
-             * Page Id
-             * @constant
-             */
-            page_id: "liquidity_funding";
-            /** Reserves */
-            reserves: components["schemas"]["MacroEvidenceData"][];
-            /** Reverse Repo */
-            reverse_repo: components["schemas"]["MacroEvidenceData"][];
-            secured_funding: components["schemas"]["MacroFundingLayerData"];
-            snapshot: components["schemas"]["MacroSnapshotData"];
-            /** Treasury Cash */
-            treasury_cash: components["schemas"]["MacroEvidenceData"][];
-            /** Unavailable Evidence */
-            unavailable_evidence: components["schemas"]["MacroUnavailableEvidenceData"][];
-            unsecured_funding: components["schemas"]["MacroFundingLayerData"];
-            upgrade_invalidation: components["schemas"]["MacroUpgradeInvalidationData"];
-        };
-        /** MacroLiquidityInputData */
-        MacroLiquidityInputData: {
-            /** Concept Key */
-            concept_key: string;
-            /** Source Unit */
-            source_unit: string;
-            /** Value Millions Usd */
-            value_millions_usd: number | null;
-        };
-        /** MacroMetricData */
-        MacroMetricData: {
-            /** Concept Key */
-            concept_key?: string | null;
-            derivation: components["schemas"]["MacroDerivationData"] | null;
-            /** Reason */
-            reason: string | null;
-            sample: components["schemas"]["MacroSampleData"];
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "available" | "unavailable";
-            /** Unit */
-            unit: string | null;
-            /** Value */
-            value: number | null;
-            /** Window */
-            window: string | null;
-        };
-        /** MacroObservedInputData */
-        MacroObservedInputData: {
-            /**
-             * Observed At
-             * Format: date
-             */
-            observed_at: string;
-            /** Value */
-            value: number;
-        };
-        /** MacroOfficialCatalystData */
-        MacroOfficialCatalystData: {
-            /** Concept Key */
-            concept_key: string;
-            /** Event At Ms */
-            event_at_ms: number | null;
-            /**
-             * Event Date
-             * Format: date
-             */
-            event_date: string;
-            /** Event Time */
-            event_time: string;
-            /** Evidence Ref */
-            evidence_ref: string;
-            /**
-             * Release Status
-             * @enum {string}
-             */
-            release_status: "today" | "upcoming";
-            /** Series Key */
-            series_key: string;
-            /** Source Name */
-            source_name: string;
-            /** Source Url */
-            source_url: string;
-            /** Timezone */
-            timezone: string;
-        };
-        /** MacroOverviewData */
-        MacroOverviewData: {
-            conclusion: components["schemas"]["MacroConclusionData"];
-            /** Confirmations */
-            confirmations: components["schemas"]["MacroDecisionItemData"][];
-            /** Contradictions */
-            contradictions: components["schemas"]["MacroDecisionItemData"][];
-            core_invalidation: components["schemas"]["MacroDecisionItemData"] | null;
-            /** Drivers */
-            drivers: components["schemas"]["MacroDecisionItemData"][];
-            /** Evidence */
-            evidence: components["schemas"]["MacroEvidenceData"][];
-            /** Evidence Refs */
-            evidence_refs: string[];
-            freshness: components["schemas"]["MacroPageFreshnessData"];
-            /**
-             * Horizon
-             * @constant
-             */
-            horizon: "1_4_weeks";
-            /** Key Changes */
-            key_changes: components["schemas"]["MacroKeyChangeData"][];
-            nearest_catalyst: components["schemas"]["MacroOfficialCatalystData"] | null;
-            /** Official Catalysts */
-            official_catalysts: components["schemas"]["MacroOfficialCatalystData"][];
-            /**
-             * Page Id
-             * @constant
-             */
-            page_id: "overview";
-            /** Risk Lanes */
-            risk_lanes: components["schemas"]["MacroRiskLaneData"][];
-            shock_summary: components["schemas"]["MacroShockSummaryData"];
-            snapshot: components["schemas"]["MacroSnapshotData"];
-            /** Unavailable Evidence */
-            unavailable_evidence: components["schemas"]["MacroUnavailableEvidenceData"][];
-            upgrade_invalidation: components["schemas"]["MacroUpgradeInvalidationData"];
-        };
-        /** MacroPageFreshnessData */
-        MacroPageFreshnessData: {
-            /** Critical Missing */
-            critical_missing: string[];
-            /** Critical Stale */
-            critical_stale: string[];
-            /** Optional Unavailable */
-            optional_unavailable: string[];
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "fresh" | "degraded" | "insufficient_evidence";
-        };
-        /** MacroPressure */
-        MacroPressure: {
-            axis: components["schemas"]["MacroPressureAxis"];
-            /** Evidence Refs */
-            evidence_refs: string[];
-            /** Mechanism */
-            mechanism: string;
-            /**
-             * State
-             * @enum {string}
-             */
-            state: "rising" | "elevated" | "easing" | "neutral" | "unclear";
-        };
-        /**
-         * MacroPressureAxis
-         * @enum {string}
-         */
-        MacroPressureAxis: "growth" | "inflation" | "policy_real_rates" | "term_premium_supply" | "liquidity_funding" | "credit";
-        /** MacroRatesInflationData */
-        MacroRatesInflationData: {
-            /** Breakevens */
-            breakevens: components["schemas"]["MacroEvidenceData"][];
-            conclusion: components["schemas"]["MacroConclusionData"];
-            /** Confirmations */
-            confirmations: components["schemas"]["MacroDecisionItemData"][];
-            /** Contradictions */
-            contradictions: components["schemas"]["MacroDecisionItemData"][];
-            curve_shape: components["schemas"]["MacroCurveShapeData"];
-            /** Curve Slopes */
-            curve_slopes: components["schemas"]["MacroEvidenceData"][];
-            /** Drivers */
-            drivers: components["schemas"]["MacroDecisionItemData"][];
-            /** Evidence */
-            evidence: components["schemas"]["MacroEvidenceData"][];
-            /** Evidence Refs */
-            evidence_refs: string[];
-            freshness: components["schemas"]["MacroPageFreshnessData"];
-            /**
-             * Horizon
-             * @constant
-             */
-            horizon: "1_4_weeks";
-            /** Inflation Releases */
-            inflation_releases: components["schemas"]["MacroInflationReleaseData"][];
-            /** Nominal Curve */
-            nominal_curve: components["schemas"]["MacroEvidenceData"][];
-            /**
-             * Page Id
-             * @constant
-             */
-            page_id: "rates_inflation";
-            policy_funding_corridor: components["schemas"]["MacroFundingCorridorData"];
-            /** Real Yields */
-            real_yields: components["schemas"]["MacroEvidenceData"][];
-            snapshot: components["schemas"]["MacroSnapshotData"];
-            term_premium: components["schemas"]["MacroUnavailableEvidenceData"];
-            /** Unavailable Evidence */
-            unavailable_evidence: components["schemas"]["MacroUnavailableEvidenceData"][];
-            upgrade_invalidation: components["schemas"]["MacroUpgradeInvalidationData"];
-        };
-        /** MacroReturnWindowData */
-        MacroReturnWindowData: {
-            derivation: components["schemas"]["MacroDerivationData"] | null;
-            /** Reason */
-            reason: string | null;
-            sample: components["schemas"]["MacroSampleData"];
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "available" | "unavailable";
-            /**
-             * Unit
-             * @constant
-             */
-            unit: "percent";
-            /** Value */
-            value: number | null;
+            view_id: "dashboard" | "overview" | "rates-inflation" | "growth-labor" | "liquidity-funding" | "credit" | "cross-asset";
+            /** Views */
+            views: components["schemas"]["MacroLiveViewData"][];
             /**
              * Window
              * @enum {string}
              */
-            window: "20_sessions" | "60_sessions";
+            window: "30d" | "90d" | "1y" | "5y";
         };
-        /** MacroRiskLaneData */
-        MacroRiskLaneData: {
-            /**
-             * Comparison Session
-             * Format: date
-             */
-            comparison_session: string;
-            /**
-             * Confidence
-             * @enum {string}
-             */
-            confidence: "high" | "medium" | "low" | "insufficient_evidence";
-            contradiction: components["schemas"]["MacroDecisionItemData"] | null;
-            /**
-             * Current Session
-             * Format: date
-             */
-            current_session: string;
-            /** Degradation Reason */
-            degradation_reason: string | null;
-            /**
-             * Direction
-             * @enum {string}
-             */
-            direction: "tailwind" | "neutral" | "headwind" | "insufficient_evidence";
-            /** Drivers */
-            drivers: components["schemas"]["MacroDecisionItemData"][];
-            /** Evidence Refs */
-            evidence_refs: string[];
-            invalidation: components["schemas"]["MacroDecisionItemData"] | null;
-            /**
-             * Lane Id
-             * @enum {string}
-             */
-            lane_id: "us_equities" | "long_duration_treasuries" | "credit" | "usd" | "gold" | "oil" | "crypto" | "market_volatility";
-            /** Sparkline Concept Key */
-            sparkline_concept_key: string;
-            /** Summary */
-            summary: string;
-            /**
-             * Trend
-             * @enum {string}
-             */
-            trend: "strengthening" | "stable" | "weakening" | "insufficient_evidence";
-        };
-        /** MacroRuleHitData */
-        MacroRuleHitData: {
-            /** Evidence Refs */
-            evidence_refs: string[];
-            /**
-             * Outcome
-             * @enum {string}
-             */
-            outcome: "trigger" | "confirmation" | "contradiction" | "invalidation";
-            /** Rule Id */
-            rule_id: string;
-        };
-        /** MacroSampleData */
-        MacroSampleData: {
-            /** Count */
-            count: number;
-            /** End */
-            end: string | null;
-            /** Start */
-            start: string | null;
-        };
-        /** MacroSeriesData */
-        MacroSeriesData: {
-            /** Data Gaps */
-            data_gaps: components["schemas"]["MacroSeriesGapData"][];
-            /** Series */
-            series: {
-                [key: string]: components["schemas"]["MacroSeriesItemData"];
-            };
-            /**
-             * Window
-             * @enum {string}
-             */
-            window: "20d" | "60d" | "120d" | "1y" | "3y";
-        };
-        /** MacroSeriesEventMetadataData */
-        MacroSeriesEventMetadataData: {
-            /** Announcement Date */
-            announcement_date?: string | null;
-            /** Cusip */
-            cusip?: string | null;
-            /** Document Type */
-            document_type?: string | null;
-            /** Event Code */
-            event_code?: string | null;
-            /** Event Time */
-            event_time?: string | null;
-            /** Event Time Et */
-            event_time_et?: string | null;
-            /** Reference Period */
-            reference_period?: string | null;
-            /** Reopening */
-            reopening?: boolean | null;
-            /** Settlement Date */
-            settlement_date?: string | null;
-            /** Source Url */
-            source_url?: string | null;
-            /** Speaker */
-            speaker?: string | null;
-            /** Text Value */
-            text_value?: string | null;
-        };
-        /** MacroSeriesGapData */
-        MacroSeriesGapData: {
-            /** Code */
-            code: string;
-            /** Concept Key */
-            concept_key: string;
-            /** Label */
-            label: string;
-            /**
-             * Severity
-             * @enum {string}
-             */
-            severity: "warning" | "error";
-        };
-        /** MacroSeriesItemData */
-        MacroSeriesItemData: {
-            /** Concept Key */
-            concept_key: string;
-            /** Data Gaps */
-            data_gaps: components["schemas"]["MacroSeriesGapData"][];
+        /** MacroLiveHistoryPointData */
+        MacroLiveHistoryPointData: {
             /** Data Quality */
-            data_quality: string;
-            /** Latest Observed At */
-            latest_observed_at: string | null;
-            /** Points */
-            points: components["schemas"]["MacroSeriesPointData"][];
-            /** Sources */
-            sources: string[];
-            /**
-             * Status
-             * @enum {string}
-             */
-            status: "ok" | "missing" | "insufficient_history";
-            /** Unit */
-            unit: string | null;
-        };
-        /** MacroSeriesPointData */
-        MacroSeriesPointData: {
-            /** Data Quality */
-            data_quality: string;
-            event_metadata: components["schemas"]["MacroSeriesEventMetadataData"];
+            data_quality: string | null;
             /** Frequency */
             frequency: string | null;
             /**
@@ -2065,137 +900,233 @@ export interface components {
              * Format: date
              */
             observed_at: string;
+            /** Received At Ms */
+            received_at_ms: number | null;
             /** Series Key */
             series_key: string | null;
             /** Source Name */
             source_name: string | null;
-            /** Unit */
-            unit: string | null;
-            /** Value */
-            value: number | null;
+            /** Source Priority */
+            source_priority: number | null;
+            /** Source Timestamp */
+            source_timestamp: string | null;
+            /** Source Url */
+            source_url: string | null;
+            /** Value Numeric */
+            value_numeric: number | null;
         };
-        /** MacroShockSummaryData */
-        MacroShockSummaryData: {
-            /** Candidate */
-            candidate: ("growth" | "inflation" | "policy_real_rates" | "term_premium_supply" | "liquidity_funding" | "credit") | null;
+        /** MacroLiveMetricData */
+        MacroLiveMetricData: {
             /**
-             * Confidence
+             * Availability
              * @enum {string}
              */
-            confidence: "high" | "medium" | "low" | "insufficient_evidence";
-            /** Confirmations */
-            confirmations: components["schemas"]["MacroDecisionItemData"][];
-            /** Contradictions */
-            contradictions: components["schemas"]["MacroDecisionItemData"][];
-            /** Drivers */
-            drivers: components["schemas"]["MacroDecisionItemData"][];
-            /** Evidence Refs */
-            evidence_refs: string[];
+            availability: "available" | "missing";
+            calculation: components["schemas"]["MacroLiveCalculationData"] | null;
+            /** Concept Key */
+            concept_key: string;
+            /** Data Quality */
+            data_quality: string | null;
+            /** Display Label */
+            display_label: string;
+            /** Display Order */
+            display_order: number;
+            /** Frequency */
+            frequency: string | null;
+            /** History */
+            history: components["schemas"]["MacroLiveHistoryPointData"][];
+            /**
+             * Kind
+             * @enum {string}
+             */
+            kind: "material" | "derived";
+            /** Observed At */
+            observed_at: string | null;
+            /** Page Id */
+            page_id: ("overview" | "rates-inflation" | "growth-labor" | "liquidity-funding" | "credit" | "cross-asset") | null;
+            /** Received At Ms */
+            received_at_ms: number | null;
+            /** Section Id */
+            section_id: string;
+            /** Section Label */
+            section_label: string;
+            /** Series Key */
+            series_key: string | null;
+            /** Source Name */
+            source_name: string | null;
+            /** Source Priority */
+            source_priority: number | null;
+            /** Source Timestamp */
+            source_timestamp: string | null;
+            /** Source Url */
+            source_url: string | null;
+            /** Summary */
+            summary: boolean;
+            /** Unit */
+            unit: string | null;
+            /** Value Numeric */
+            value_numeric: number | null;
+        };
+        /** MacroLiveResearchLinkData */
+        MacroLiveResearchLinkData: {
+            /** Evidence Gap Summaries */
+            evidence_gap_summaries: string[];
+            /** Executive Summary */
+            executive_summary: string | null;
+            /**
+             * Href
+             * @constant
+             */
+            href: "/macro/research";
+            /** Market Cutoff Ms */
+            market_cutoff_ms: number | null;
+            /**
+             * Session Date
+             * Format: date
+             */
+            session_date: string;
             /**
              * State
              * @enum {string}
              */
-            state: "dominant" | "no_dominant_shock" | "insufficient_evidence";
-            /** Summary */
-            summary: string;
-            /**
-             * Trend
-             * @enum {string}
-             */
-            trend: "strengthening" | "stable" | "weakening" | "insufficient_evidence";
+            state: "current" | "generating" | "failed" | "missing";
+            /** Title */
+            title: string | null;
         };
-        /** MacroSnapshotData */
-        MacroSnapshotData: {
-            /** Computed At Ms */
-            computed_at_ms: number;
-            /** Fact Watermark */
-            fact_watermark: string | null;
-            /** Market Cutoff */
-            market_cutoff: string | null;
-            /**
-             * Projection Version
-             * @constant
-             */
-            projection_version: "macro_decision_v2";
-        };
-        /** MacroTextEvidence */
-        MacroTextEvidence: {
-            /** Body Text */
-            body_text: string;
-            /** Canonical Url */
-            canonical_url: string;
-            /** Content Hash */
-            content_hash: string;
-            /** Evidence Ref */
-            evidence_ref: string;
-            /** Fetched At Ms */
-            fetched_at_ms: number;
-            /** Published At Ms */
-            published_at_ms: number;
-            /** Selection Rule */
-            selection_rule: string;
-            /** Source Content Hash */
-            source_content_hash: string;
-            /** Source Id */
-            source_id: string;
-            /** Source Name */
-            source_name: string;
-            /**
-             * Source Quality
-             * @enum {string}
-             */
-            source_quality: "healthy" | "degraded";
-            /** Summary */
-            summary: string;
+        /** MacroLiveViewData */
+        MacroLiveViewData: {
+            /** Available Count */
+            available_count: number;
+            /** Description */
+            description: string;
+            /** Latest Observed At */
+            latest_observed_at: string | null;
+            /** Max Received At Ms */
+            max_received_at_ms: number | null;
+            /** Metrics */
+            metrics: components["schemas"]["MacroLiveMetricData"][];
             /** Title */
             title: string;
+            /** Total Metric Count */
+            total_metric_count: number;
             /**
-             * Trust Tier
+             * View Id
              * @enum {string}
              */
-            trust_tier: "official" | "high";
+            view_id: "overview" | "rates-inflation" | "growth-labor" | "liquidity-funding" | "credit" | "cross-asset";
         };
-        /** MacroTreasurySpreadQuadrantData */
-        MacroTreasurySpreadQuadrantData: {
+        /** MacroResearchCitationData */
+        MacroResearchCitationData: {
+            /** Available At Ms */
+            available_at_ms?: number | null;
+            /** Citation Id */
+            citation_id: string;
+            /** Lineage */
+            lineage?: {
+                [key: string]: unknown;
+            };
+            /** Observed At */
+            observed_at?: string | null;
+            /** Published At Ms */
+            published_at_ms?: number | null;
+            /** Source Label */
+            source_label: string;
+            /** Source Ref */
+            source_ref: string;
+            /** Source Type */
+            source_type: string;
+            /** Source Url */
+            source_url?: string | null;
+        };
+        /** MacroResearchEvidenceGapData */
+        MacroResearchEvidenceGapData: {
+            /** Citation Ids */
+            citation_ids?: string[];
+            /** Details */
+            details?: string | null;
+            /** Gap Id */
+            gap_id: string;
+            /** Summary */
+            summary: string;
+        };
+        /** MacroResearchPublicationData */
+        MacroResearchPublicationData: {
+            /** Audit */
+            audit: {
+                [key: string]: unknown;
+            };
+            /** Citations */
+            citations: components["schemas"]["MacroResearchCitationData"][];
+            /** Evidence Gaps */
+            evidence_gaps: components["schemas"]["MacroResearchEvidenceGapData"][];
+            /** Executive Summary */
+            executive_summary: string;
+            /** Market Cutoff Ms */
+            market_cutoff_ms: number;
+            /** Published At Ms */
+            published_at_ms?: number | null;
+            /** Reviewer Notes */
+            reviewer_notes: string[];
+            /** Schema Version */
+            schema_version: string;
+            /** Sections */
+            sections: components["schemas"]["MacroResearchSectionData"][];
             /**
-             * Change Window
-             * @constant
+             * Session Date
+             * Format: date
              */
-            change_window: "20_sessions";
-            /** Evidence Refs */
-            evidence_refs: string[];
-            /** Quadrant */
-            quadrant: string;
-            /** Rule Version */
-            rule_version: string;
-            /** Spread Change */
-            spread_change: number | null;
+            session_date: string;
+            /** Title */
+            title: string;
+        };
+        /** MacroResearchReadData */
+        MacroResearchReadData: {
             /**
-             * Status
+             * Current Session Date
+             * Format: date
+             */
+            current_session_date: string;
+            publication: components["schemas"]["MacroResearchPublicationData"] | null;
+            /**
+             * Requested Session Date
+             * Format: date
+             */
+            requested_session_date: string;
+            run: components["schemas"]["MacroResearchRunData"] | null;
+            /**
+             * State
              * @enum {string}
              */
-            status: "supported" | "insufficient_evidence";
-            /** Yield Change */
-            yield_change: number | null;
+            state: "current" | "historical" | "generating" | "failed" | "missing";
         };
-        /** MacroUnavailableEvidenceData */
-        MacroUnavailableEvidenceData: {
-            /** Capability */
-            capability: string;
-            /** Reason */
-            reason: string;
+        /** MacroResearchRunData */
+        MacroResearchRunData: {
+            /** Attempt Count */
+            attempt_count: number;
+            /** Last Error */
+            last_error: string | null;
+            /** Max Attempts */
+            max_attempts: number;
             /**
-             * Status
-             * @constant
+             * Session Date
+             * Format: date
              */
-            status: "not_assessed";
+            session_date: string;
+            /** Status */
+            status: string;
+            /** Updated At Ms */
+            updated_at_ms: number;
         };
-        /** MacroUpgradeInvalidationData */
-        MacroUpgradeInvalidationData: {
-            /** Invalidation */
-            invalidation: components["schemas"]["MacroDecisionItemData"][];
-            /** Upgrade */
-            upgrade: components["schemas"]["MacroDecisionItemData"][];
+        /** MacroResearchSectionData */
+        MacroResearchSectionData: {
+            /** Body Markdown */
+            body_markdown: string;
+            /** Citation Ids */
+            citation_ids: string[];
+            /** Section Id */
+            section_id: string;
+            /** Title */
+            title: string;
         };
         /** NewsData */
         NewsData: {
@@ -2702,34 +1633,6 @@ export interface components {
             /** Scope */
             scope: string;
         };
-        /** ReviewerIssue */
-        ReviewerIssue: {
-            /**
-             * Code
-             * @enum {string}
-             */
-            code: "fact_mismatch" | "reference_missing" | "causal_jump" | "contradiction_omitted" | "scope_violation" | "data_health_violation";
-            /**
-             * Evidence Refs
-             * @default []
-             */
-            evidence_refs: string[];
-            /** Message */
-            message: string;
-        };
-        /** ReviewerResult */
-        ReviewerResult: {
-            /**
-             * Disposition
-             * @enum {string}
-             */
-            disposition: "pass" | "revise" | "block";
-            /**
-             * Issues
-             * @default []
-             */
-            issues: components["schemas"]["ReviewerIssue"][];
-        };
         /** SearchData */
         SearchData: {
             /** Items */
@@ -2850,19 +1753,6 @@ export interface components {
             events: components["schemas"]["SourceEventDetail"][];
             /** Not Found */
             not_found: string[];
-        };
-        /** SpyHorizonCall */
-        SpyHorizonCall: {
-            direction: components["schemas"]["JudgmentDirection"];
-            /** Evidence Refs */
-            evidence_refs: string[];
-            /**
-             * Horizon Sessions
-             * @enum {integer}
-             */
-            horizon_sessions: 5 | 20;
-            /** Thesis */
-            thesis: string;
         };
         /** StatusData */
         StatusData: {
@@ -3719,11 +2609,15 @@ export interface operations {
             };
         };
     };
-    macro_credit_api_macro_credit_get: {
+    macro_live_evidence_api_macro_evidence__view_id__get: {
         parameters: {
-            query?: never;
+            query?: {
+                window?: string;
+            };
             header?: never;
-            path?: never;
+            path: {
+                view_id: string;
+            };
             cookie?: never;
         };
         requestBody?: never;
@@ -3734,32 +2628,21 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiEnvelope_MacroCreditData_"];
+                    "application/json": components["schemas"]["ApiEnvelope_MacroLiveEvidenceReadData_"];
                 };
             };
-        };
-    };
-    macro_cross_asset_api_macro_cross_asset_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
+            /** @description Validation Error */
+            422: {
                 headers: {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiEnvelope_MacroCrossAssetData_"];
+                    "application/json": components["schemas"]["HTTPValidationError"];
                 };
             };
         };
     };
-    daily_macro_judgment_api_macro_daily_judgment_get: {
+    macro_research_api_macro_research_get: {
         parameters: {
             query?: {
                 session_date?: string | null;
@@ -3776,119 +2659,7 @@ export interface operations {
                     [name: string]: unknown;
                 };
                 content: {
-                    "application/json": components["schemas"]["ApiEnvelope_DailyMacroJudgmentReadData_"];
-                };
-            };
-            /** @description Validation Error */
-            422: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["HTTPValidationError"];
-                };
-            };
-        };
-    };
-    macro_growth_labor_api_macro_growth_labor_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_MacroGrowthLaborData_"];
-                };
-            };
-        };
-    };
-    macro_liquidity_funding_api_macro_liquidity_funding_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_MacroLiquidityFundingData_"];
-                };
-            };
-        };
-    };
-    macro_overview_api_macro_overview_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_MacroOverviewData_"];
-                };
-            };
-        };
-    };
-    macro_rates_inflation_api_macro_rates_inflation_get: {
-        parameters: {
-            query?: never;
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_MacroRatesInflationData_"];
-                };
-            };
-        };
-    };
-    macro_series_api_macro_series_get: {
-        parameters: {
-            query: {
-                concept_keys: string;
-                window?: string;
-            };
-            header?: never;
-            path?: never;
-            cookie?: never;
-        };
-        requestBody?: never;
-        responses: {
-            /** @description Successful Response */
-            200: {
-                headers: {
-                    [name: string]: unknown;
-                };
-                content: {
-                    "application/json": components["schemas"]["ApiEnvelope_MacroSeriesData_"];
+                    "application/json": components["schemas"]["ApiEnvelope_MacroResearchReadData_"];
                 };
             };
             /** @description Validation Error */

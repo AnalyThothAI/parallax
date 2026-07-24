@@ -41,7 +41,7 @@ describe("AppSidebar", () => {
   });
 
   it("keeps the single Macro destination current on a drilldown", () => {
-    renderSidebar({ route: "/macro/credit" });
+    renderSidebar({ route: "/macro?session_date=2026-07-22" });
 
     expect(screen.getByRole("link", { name: "Macro" })).toHaveAttribute("aria-current", "page");
     expect(screen.getAllByRole("link", { current: "page" })).toHaveLength(1);

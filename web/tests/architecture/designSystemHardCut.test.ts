@@ -107,10 +107,7 @@ describe("Parallax design-system hard cut", () => {
         "features/news/ui/NewsItemEvidencePage.tsx",
         "shared/ui/case-file/TokenCasePanel.tsx",
       ],
-      decision: [
-        "features/macro/ui/MacroPageFrame.tsx",
-        "features/macro/ui/pages/MacroOverviewPage.tsx",
-      ],
+      decision: ["features/macro/ui/MacroResearchPage.tsx"],
       monitoring: ["features/watchlist/ui/WatchlistPage.tsx"],
       scan: [
         "features/live/ui/LivePage.tsx",

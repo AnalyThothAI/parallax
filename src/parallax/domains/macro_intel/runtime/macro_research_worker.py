@@ -1,0 +1,57 @@
+from __future__ import annotations
+
+from typing import Any
+
+from parallax.domains.macro_intel.services.completed_session_macro import (
+    CompletedSessionMacro,
+    MacroSessionView,
+)
+from parallax.platform.config.settings import MacroResearchWorkerSettings
+from parallax.platform.runtime.worker_base import WorkerBase
+from parallax.platform.runtime.worker_result import WorkerResult
+
+
+class MacroResearchWorker(WorkerBase):
+    def __init__(
+        self,
+        *,
+        settings: MacroResearchWorkerSettings,
+        db: Any,
+        telemetry: Any,
+        completed_session_macro: CompletedSessionMacro,
+        name: str = "macro_research",
+    ) -> None:
+        if db is None:
+            raise RuntimeError("macro_research_db_required")
+        super().__init__(
+            name=name,
+            settings=settings,
+            db=db,
+            telemetry=telemetry,
+        )
+        self._completed_session_macro = completed_session_macro
+
+    async def run_once(self) -> WorkerResult:
+        result = await self._completed_session_macro.run()
+        return _worker_result(result)
+
+
+def _worker_result(result: MacroSessionView) -> WorkerResult:
+    notes = {
+        "session_date": result.session_date.isoformat(),
+        "publication": result.status,
+        "model_calls": result.model_calls,
+        "run_rows_written": result.run_rows_written,
+        "publication_rows_written": result.publication_rows_written,
+        "artifact_hash": result.artifact_hash,
+        "error_code": result.last_error_code,
+        "error": result.last_error_message,
+    }
+    if result.publication_rows_written:
+        return WorkerResult(processed=1, notes=notes)
+    if result.status == "failed" or (result.status == "retryable" and result.model_calls > 0):
+        return WorkerResult(failed=1, notes=notes)
+    return WorkerResult(skipped=1, notes=notes)
+
+
+__all__ = ["MacroResearchWorker"]

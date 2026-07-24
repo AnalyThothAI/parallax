@@ -19,28 +19,45 @@ The supported operator-owned config files are
 provider, credential, storage, API, and public-surface settings.
 `workers.yaml` owns worker runtime knobs such as enabled state,
 intervals, batches, concurrency, leases, attempts, explicit boundary
-timeouts, and worker gates.
+timeouts, and retry bounds.
 
 Do not introduce a third config path, shadow config in environment
 variables, or duplicate worker runtime knobs under `config.yaml`.
 Schemas and public config contracts live in `CONTRACTS.md`.
 
-## Daily Macro Agent capability boundary
+## Macro Research Agent capability boundary
 
-The experimental `daily_macro_judgment` worker is the sole production model
-consumer. It may read only one persisted, frozen `MacroEvidencePack` through
-one deterministic, hashed, bounded view derived from that pack, and may submit
-a strict typed draft. The size-bounded view keeps the latest selected fact per
-concept and bounded eligible text; prior comparison facts and repeated
-UI-oriented page series remain in the frozen audit pack and feed the
-deterministic page conclusions. DeepAgents filesystem,
-execution, search, and general-purpose subagent tools are excluded; browsing,
-provider calls, arbitrary SQL/shell, file access, long-term memory, and hidden
-reasoning persistence are not capabilities. The only subagent is one isolated
-Reviewer invoked through native `task`. Stored audit data is limited to
-versions, hashes, bounded tool/delegation counts and dispositions, explicit
-Analyst and Reviewer model names, and sanitized failures; credentials and
-reasoning traces are forbidden.
+The `macro_research` worker is the sole production product-model consumer.
+DeepAgents keeps its native todo planning, checkpoint-backed virtual
+filesystem, real `execute`, context management, structured final output, and
+dynamic `task` delegation.
+The parent may delegate to the declared evidence analyst, cross-asset
+challenger, and skeptical editor as its research requires; Parallax does not
+force a fixed tool or review sequence.
+
+Every evidence tool is bound to one frozen completed-session scope. It may read
+only eligible persisted `macro_observations`, persisted News available by the
+cutoff/seal boundary, and prior immutable Macro publications. Parallax does
+not add tool exclusions, permissions, approval middleware, or a semantic
+safety layer. A native composite backend provides `execute` and a shared
+`/workspace/` for calculation while keeping ordinary files and large results
+in checkpoint state. Direct provider, live web, or arbitrary SQL are not
+alternative market-fact sources. Planning, evidence sufficiency, gaps,
+professional judgment, section structure, counterevidence, review, and Chinese
+expression remain Agent-owned.
+
+The separate live evidence pages are read-only views over persisted
+`macro_observations`. Their six-category catalog affects presentation only and
+cannot restrict Agent tools or define evidence sufficiency. They expose no
+credentials and make no provider/model call.
+
+The graph uses the frozen scope ID as its durable PostgreSQL checkpoint
+`thread_id`. Checkpoints may contain model messages, todo state, and virtual
+filesystem scratch state required to resume a run. Per-scope execute workspace
+files live under the operator app home. The public API exposes only the
+published artifact and a bounded sanitized audit; it never exposes checkpoint
+payloads, credentials, hidden reasoning, raw provider secrets, or unsanitized
+model failures.
 
 ## Sensitive change confirmation
 

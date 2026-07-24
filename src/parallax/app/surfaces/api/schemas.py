@@ -5,13 +5,6 @@ from typing import Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field
 
-from parallax.domains.macro_intel.services.daily_macro_judgment import (
-    DailyMacroJudgment,
-    DailyMacroOutcome,
-    MacroEvidencePack,
-    ReviewerResult,
-)
-
 JsonObject = dict[str, Any]
 
 
@@ -77,458 +70,165 @@ class WorkerStatusData(ExactApiSchema):
     iteration_duration_p99_ms: float | None
 
 
-class MacroSnapshotData(ExactApiSchema):
-    projection_version: Literal["macro_decision_v2"]
-    fact_watermark: date | None
-    market_cutoff: date | None
-    computed_at_ms: int
+class MacroResearchSectionData(ExactApiSchema):
+    section_id: str
+    title: str
+    body_markdown: str
+    citation_ids: list[str]
 
 
-class MacroSampleData(ExactApiSchema):
-    start: date | None
-    end: date | None
-    count: int
+class MacroResearchEvidenceGapData(ExactApiSchema):
+    gap_id: str
+    summary: str
+    details: str | None = None
+    citation_ids: list[str] = Field(default_factory=list)
 
 
-class MacroObservedInputData(ExactApiSchema):
-    observed_at: date
-    value: int | float
-
-
-class MacroConceptInputData(ExactApiSchema):
-    concept_key: str
+class MacroResearchCitationData(ExactApiSchema):
+    citation_id: str
+    source_type: str
+    source_ref: str
+    source_label: str
     observed_at: date | None = None
-    value: int | float | None
-
-
-class MacroLiquidityInputData(ExactApiSchema):
-    concept_key: str
-    source_unit: str
-    value_millions_usd: int | float | None
-
-
-class MacroDerivationData(ExactApiSchema):
-    formula: str
-    inputs: list[MacroObservedInputData | MacroConceptInputData | MacroLiquidityInputData]
-    references: list[str]
-
-
-class MacroEvidenceFreshnessData(ExactApiSchema):
-    status: Literal["fresh", "stale", "missing", "derived"]
-    age_days: int | None
-    stale_after_days: int | None
-
-
-class MacroEvidenceData(ExactApiSchema):
-    concept_key: str
-    role: Literal["primary", "confirmation", "context", "catalyst"]
-    status: Literal["available", "stale", "unavailable", "invalid"]
-    reason: str | None
-    value: int | float | None
-    unit: str
-    change: int | float | None
-    change_window: str | None
-    observed_at: date | None
-    frequency: Literal["daily", "weekly", "monthly", "quarterly", "irregular", "event"]
-    source_name: str | None
-    series_key: str | None
-    data_quality: str
-    freshness: MacroEvidenceFreshnessData
-    sample: MacroSampleData
-    criticality: Literal["critical", "optional"]
-    claim_effect: str
-    derivation: MacroDerivationData | None
-
-
-class MacroRuleHitData(ExactApiSchema):
-    rule_id: str
-    outcome: Literal["trigger", "confirmation", "contradiction", "invalidation"]
-    evidence_refs: list[str]
-
-
-class MacroDecisionItemData(ExactApiSchema):
-    code: str
-    evidence_refs: list[str]
-
-
-class MacroUpgradeInvalidationData(ExactApiSchema):
-    upgrade: list[MacroDecisionItemData]
-    invalidation: list[MacroDecisionItemData]
-
-
-class MacroPageFreshnessData(ExactApiSchema):
-    status: Literal["fresh", "degraded", "insufficient_evidence"]
-    critical_missing: list[str]
-    critical_stale: list[str]
-    optional_unavailable: list[str]
-
-
-class MacroUnavailableEvidenceData(ExactApiSchema):
-    capability: str
-    status: Literal["not_assessed"]
-    reason: str
-
-
-class MacroConclusionData(ExactApiSchema):
-    status: Literal["supported", "degraded", "insufficient_evidence"]
-    judgment: str
-    rule_version: str
-    rule_hits: list[MacroRuleHitData]
-
-
-class MacroPageBaseData(ExactApiSchema):
-    snapshot: MacroSnapshotData
-    conclusion: MacroConclusionData
-    horizon: Literal["1_4_weeks"]
-    drivers: list[MacroDecisionItemData]
-    confirmations: list[MacroDecisionItemData]
-    contradictions: list[MacroDecisionItemData]
-    upgrade_invalidation: MacroUpgradeInvalidationData
-    evidence_refs: list[str]
-    freshness: MacroPageFreshnessData
-    evidence: list[MacroEvidenceData]
-    unavailable_evidence: list[MacroUnavailableEvidenceData]
-
-
-MacroShockCandidate = Literal[
-    "growth",
-    "inflation",
-    "policy_real_rates",
-    "term_premium_supply",
-    "liquidity_funding",
-    "credit",
-]
-MacroLaneConfidence = Literal["high", "medium", "low", "insufficient_evidence"]
-MacroLaneTrend = Literal["strengthening", "stable", "weakening", "insufficient_evidence"]
-
-
-class MacroShockSummaryData(ExactApiSchema):
-    state: Literal["dominant", "no_dominant_shock", "insufficient_evidence"]
-    candidate: MacroShockCandidate | None
-    summary: str
-    confidence: MacroLaneConfidence
-    trend: MacroLaneTrend
-    drivers: list[MacroDecisionItemData]
-    confirmations: list[MacroDecisionItemData]
-    contradictions: list[MacroDecisionItemData]
-    evidence_refs: list[str]
-
-
-class MacroRiskLaneData(ExactApiSchema):
-    lane_id: Literal[
-        "us_equities",
-        "long_duration_treasuries",
-        "credit",
-        "usd",
-        "gold",
-        "oil",
-        "crypto",
-        "market_volatility",
-    ]
-    direction: Literal["tailwind", "neutral", "headwind", "insufficient_evidence"]
-    trend: MacroLaneTrend
-    confidence: MacroLaneConfidence
-    summary: str
-    drivers: list[MacroDecisionItemData]
-    contradiction: MacroDecisionItemData | None
-    invalidation: MacroDecisionItemData | None
-    evidence_refs: list[str]
-    degradation_reason: str | None
-    current_session: date
-    comparison_session: date
-    sparkline_concept_key: str
-
-
-class MacroKeyChangeData(ExactApiSchema):
-    rank: int = Field(ge=1, le=3)
-    lane_id: Literal[
-        "us_equities",
-        "long_duration_treasuries",
-        "credit",
-        "usd",
-        "gold",
-        "oil",
-        "crypto",
-        "market_volatility",
-    ]
-    code: str
-    summary: str
-    evidence_refs: list[str]
-
-
-class MacroOfficialCatalystData(ExactApiSchema):
-    concept_key: str
-    event_date: date
-    event_time: str
-    timezone: str
-    source_name: str
-    series_key: str
-    source_url: str
-    event_at_ms: int | None
-    release_status: Literal["today", "upcoming"]
-    evidence_ref: str
-
-
-class MacroOverviewData(MacroPageBaseData):
-    page_id: Literal["overview"]
-    shock_summary: MacroShockSummaryData
-    risk_lanes: list[MacroRiskLaneData] = Field(min_length=8, max_length=8)
-    key_changes: list[MacroKeyChangeData] = Field(max_length=3)
-    nearest_catalyst: MacroOfficialCatalystData | None
-    core_invalidation: MacroDecisionItemData | None
-    official_catalysts: list[MacroOfficialCatalystData]
-
-
-class MacroReturnWindowData(ExactApiSchema):
-    status: Literal["available", "unavailable"]
-    reason: str | None
-    window: Literal["20_sessions", "60_sessions"]
-    value: int | float | None
-    unit: Literal["percent"]
-    sample: MacroSampleData
-    derivation: MacroDerivationData | None
-
-
-class MacroAssetReturnData(ExactApiSchema):
-    concept_key: str
-    status: Literal["available", "unavailable"]
-    reason: str | None
-    observed_at: date | None
-    source_name: str | None
-    series_key: str | None
-    return_20: MacroReturnWindowData
-    return_60: MacroReturnWindowData
-    evidence: MacroEvidenceData
-
-
-class MacroCorrelationData(ExactApiSchema):
-    left: str
-    right: str
-    window: Literal["20_sessions", "60_sessions"]
-    sample: MacroSampleData
-    status: Literal["available", "unavailable"]
-    reason: str | None
-    correlation: float | None
-
-
-class MacroCrossAssetData(MacroPageBaseData):
-    page_id: Literal["cross_asset"]
-    asset_returns: list[MacroAssetReturnData]
-    volatility: list[MacroEvidenceData]
-    correlations_20: list[MacroCorrelationData]
-    correlations_60: list[MacroCorrelationData]
-    divergences: list[MacroDecisionItemData]
-
-
-class MacroMetricData(ExactApiSchema):
-    concept_key: str | None = None
-    status: Literal["available", "unavailable"]
-    reason: str | None
-    value: int | float | None
-    unit: str | None
-    window: str | None
-    sample: MacroSampleData
-    derivation: MacroDerivationData | None
-
-
-class MacroInflationReleaseData(ExactApiSchema):
-    evidence: MacroEvidenceData
-    release_change: MacroMetricData
-    year_over_year: MacroMetricData
-
-
-class MacroFundingCorridorData(ExactApiSchema):
-    status: Literal["supported", "insufficient_evidence"]
-    state: str
-    evidence_refs: list[str]
-    spreads: list[MacroEvidenceData]
-    evidence: list[MacroEvidenceData]
-
-
-class MacroCurveShapeData(ExactApiSchema):
-    status: Literal["supported", "insufficient_evidence"]
-    level_classification: str
-    move_classification: str
-    two_year_change: int | float | None
-    ten_year_change: int | float | None
-    change_window: Literal["20_sessions"]
-    evidence_refs: list[str]
-    rule_version: str
-
-
-class MacroRatesInflationData(MacroPageBaseData):
-    page_id: Literal["rates_inflation"]
-    nominal_curve: list[MacroEvidenceData]
-    curve_slopes: list[MacroEvidenceData]
-    real_yields: list[MacroEvidenceData]
-    breakevens: list[MacroEvidenceData]
-    term_premium: MacroUnavailableEvidenceData
-    policy_funding_corridor: MacroFundingCorridorData
-    inflation_releases: list[MacroInflationReleaseData]
-    curve_shape: MacroCurveShapeData
-
-
-class MacroGrowthLaborData(MacroPageBaseData):
-    page_id: Literal["growth_labor"]
-    growth_leading: list[MacroEvidenceData]
-    growth_lagging: list[MacroEvidenceData]
-    labor_leading: list[MacroEvidenceData]
-    labor_lagging: list[MacroEvidenceData]
-    growth_metrics: list[MacroMetricData]
-
-
-class MacroFundingLayerData(ExactApiSchema):
-    evidence: list[MacroEvidenceData]
-    spreads: list[MacroEvidenceData]
-
-
-class MacroLiquidityFundingData(MacroPageBaseData):
-    page_id: Literal["liquidity_funding"]
-    central_bank_balance_sheet: list[MacroEvidenceData]
-    treasury_cash: list[MacroEvidenceData]
-    reverse_repo: list[MacroEvidenceData]
-    reserves: list[MacroEvidenceData]
-    net_liquidity: MacroEvidenceData
-    secured_funding: MacroFundingLayerData
-    unsecured_funding: MacroFundingLayerData
-
-
-class MacroTreasurySpreadQuadrantData(ExactApiSchema):
-    status: Literal["supported", "insufficient_evidence"]
-    quadrant: str
-    yield_change: int | float | None
-    spread_change: int | float | None
-    change_window: Literal["20_sessions"]
-    evidence_refs: list[str]
-    rule_version: str
-
-
-class MacroCreditStateData(ExactApiSchema):
-    status: Literal["supported", "insufficient_evidence"]
-    stage: Literal[
-        "contained",
-        "tail_stress",
-        "broadening",
-        "systemic_tightening",
-        "repairing",
-        "insufficient_evidence",
-    ]
-    direction: Literal["widening", "narrowing", "stable", "insufficient_evidence"]
-    evidence_refs: list[str]
-    rule_version: str
-
-
-class MacroCreditData(MacroPageBaseData):
-    page_id: Literal["credit"]
-    aggregate_spreads: list[MacroEvidenceData]
-    rating_tail: list[MacroEvidenceData]
-    effective_yields: list[MacroEvidenceData]
-    credit_supply: list[MacroEvidenceData]
-    realized_damage: list[MacroEvidenceData]
-    financial_conditions_liquidity: list[MacroEvidenceData]
-    treasury_spread_quadrant: MacroTreasurySpreadQuadrantData
-    credit_state: MacroCreditStateData
-
-
-class MacroSeriesPointData(ExactApiSchema):
-    observed_at: date
-    value: int | float | None
-    source_name: str | None
-    series_key: str | None
-    unit: str | None
-    frequency: str | None
-    data_quality: str
-    event_metadata: MacroSeriesEventMetadataData
-
-
-class MacroSeriesEventMetadataData(ExactApiSchema):
-    text_value: str | None = None
+    published_at_ms: int | None = None
+    available_at_ms: int | None = None
     source_url: str | None = None
-    event_code: str | None = None
-    document_type: str | None = None
-    speaker: str | None = None
-    event_time: str | None = None
-    event_time_et: str | None = None
-    reference_period: str | None = None
-    cusip: str | None = None
-    announcement_date: date | None = None
-    settlement_date: date | None = None
-    reopening: bool | None = None
+    lineage: JsonObject = Field(default_factory=dict)
 
 
-class MacroSeriesGapData(ExactApiSchema):
-    code: str
-    label: str
-    severity: Literal["warning", "error"]
-    concept_key: str
-
-
-class MacroSeriesItemData(ExactApiSchema):
-    concept_key: str
-    status: Literal["ok", "missing", "insufficient_history"]
-    unit: str | None
-    sources: list[str]
-    latest_observed_at: date | None
-    data_quality: str
-    points: list[MacroSeriesPointData]
-    data_gaps: list[MacroSeriesGapData]
-
-
-class MacroSeriesData(ExactApiSchema):
-    window: Literal["20d", "60d", "120d", "1y", "3y"]
-    series: dict[str, MacroSeriesItemData]
-    data_gaps: list[MacroSeriesGapData]
-
-
-class DailyMacroJudgmentJobData(ExactApiSchema):
+class MacroResearchPublicationData(ExactApiSchema):
+    schema_version: str
     session_date: date
     market_cutoff_ms: int
-    status: Literal["pending", "running", "retryable", "blocked", "failed", "published"]
+    title: str
+    executive_summary: str
+    sections: list[MacroResearchSectionData]
+    evidence_gaps: list[MacroResearchEvidenceGapData]
+    citations: list[MacroResearchCitationData]
+    reviewer_notes: list[str]
+    audit: JsonObject
+    published_at_ms: int | None = None
+
+
+class MacroResearchRunData(ExactApiSchema):
+    session_date: date
+    status: str
     attempt_count: int
     max_attempts: int
-    due_at_ms: int
-    reviewer_disposition: Literal["pass", "revise", "block"] | None
     last_error: str | None
     updated_at_ms: int
 
 
-class DailyMacroJudgmentPublicationData(ExactApiSchema):
-    session_date: date
-    market_cutoff_ms: int
-    evidence_pack_hash: str
-    judgment: DailyMacroJudgment
-    memo_text: str
-    review: ReviewerResult
-    agent_audit: JsonObject
-    model_name: str
-    prompt_version: str
-    schema_version: Literal["daily_macro_judgment_v1"]
-    workflow_version: str
-    renderer_version: Literal["daily_macro_judgment_zh_v1"]
-    published_at_ms: int
-    evidence_pack: MacroEvidencePack
-    compiler_version: str
-    selection_policy_version: Literal["macro_point_in_time_v1"]
-    sealed_at_ms: int
-    outcomes: list[DailyMacroOutcome]
+class MacroResearchReadData(ExactApiSchema):
+    state: Literal["current", "historical", "generating", "failed", "missing"]
+    requested_session_date: date
+    current_session_date: date
+    publication: MacroResearchPublicationData | None
+    run: MacroResearchRunData | None
 
 
-class DailyMacroJudgmentReadData(ExactApiSchema):
-    target_session_date: date
-    state: Literal[
-        "current",
-        "historical",
-        "stale",
-        "pending",
-        "running",
-        "retryable",
-        "blocked",
-        "failed",
-        "missing",
+class MacroLiveCalculationData(ExactApiSchema):
+    formula_id: str
+    formula: str
+    operands: list[str]
+    window: Literal["30d", "90d", "1y", "5y"]
+    sample_size: int
+    result: float | None
+    unit: str
+
+
+class MacroLiveHistoryPointData(ExactApiSchema):
+    observed_at: date
+    value_numeric: float | None
+    source_timestamp: str | None
+    received_at_ms: int | None
+    source_name: str | None
+    series_key: str | None
+    source_priority: int | None
+    frequency: str | None
+    data_quality: str | None
+    source_url: str | None
+
+
+class MacroLiveMetricData(ExactApiSchema):
+    concept_key: str
+    page_id: (
+        Literal[
+            "overview",
+            "rates-inflation",
+            "growth-labor",
+            "liquidity-funding",
+            "credit",
+            "cross-asset",
+        ]
+        | None
+    )
+    section_id: str
+    section_label: str
+    display_label: str
+    display_order: int
+    summary: bool
+    kind: Literal["material", "derived"]
+    availability: Literal["available", "missing"]
+    value_numeric: float | None
+    unit: str | None
+    frequency: str | None
+    observed_at: date | None
+    source_timestamp: str | None
+    received_at_ms: int | None
+    source_name: str | None
+    series_key: str | None
+    source_priority: int | None
+    data_quality: str | None
+    source_url: str | None
+    history: list[MacroLiveHistoryPointData]
+    calculation: MacroLiveCalculationData | None
+
+
+class MacroLiveViewData(ExactApiSchema):
+    view_id: Literal[
+        "overview",
+        "rates-inflation",
+        "growth-labor",
+        "liquidity-funding",
+        "credit",
+        "cross-asset",
     ]
-    is_current: bool
-    publication: DailyMacroJudgmentPublicationData | None
-    target_job: DailyMacroJudgmentJobData | None
+    title: str
+    description: str
+    metrics: list[MacroLiveMetricData]
+    total_metric_count: int
+    available_count: int
+    latest_observed_at: date | None
+    max_received_at_ms: int | None
+
+
+class MacroLiveResearchLinkData(ExactApiSchema):
+    state: Literal["current", "generating", "failed", "missing"]
+    session_date: date
+    market_cutoff_ms: int | None
+    title: str | None
+    executive_summary: str | None
+    evidence_gap_summaries: list[str]
+    href: Literal["/macro/research"]
+
+
+class MacroLiveEvidenceReadData(ExactApiSchema):
+    schema_version: Literal["macro_live_evidence_v1"]
+    view_id: Literal[
+        "dashboard",
+        "overview",
+        "rates-inflation",
+        "growth-labor",
+        "liquidity-funding",
+        "credit",
+        "cross-asset",
+    ]
+    window: Literal["30d", "90d", "1y", "5y"]
+    read_at_ms: int
+    views: list[MacroLiveViewData]
+    unclassified: list[MacroLiveMetricData]
+    research: MacroLiveResearchLinkData | None
 
 
 class RecentData(ExactApiSchema):

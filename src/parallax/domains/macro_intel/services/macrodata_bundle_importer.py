@@ -8,7 +8,6 @@ from decimal import Decimal
 from typing import Any, cast
 
 from parallax.domains.macro_intel._constants import (
-    MACRO_EVIDENCE_PROJECTION_VERSION,
     MACRO_IMPORTABLE_PROVIDER_SERIES_TO_CONCEPT,
     MACRO_PROVIDER_SERIES_SOURCE_PRIORITY,
 )
@@ -74,19 +73,6 @@ def write_macrodata_bundle_import(
     max_seen_observed_at = _max_observed_at(observation_outcomes)
     min_changed_observed_at = _min_observed_at(changed_observations)
     max_changed_observed_at = _max_observed_at(changed_observations)
-    dirty_targets_enqueued = 0
-    if imported_observation_count > 0:
-        dirty_targets_enqueued = int(
-            repos.macro_intel.enqueue_macro_projection_dirty_targets_for_changes(
-                changed_observations=changed_observations,
-                projection_name="macro_evidence",
-                projection_version=MACRO_EVIDENCE_PROJECTION_VERSION,
-                now_ms=int(parsed.completed_at_ms),
-                due_at_ms=int(parsed.completed_at_ms),
-                reason="macro_observations_changed",
-            )
-        )
-
     return {
         "bundle_name": parsed.bundle_name,
         "asof": parsed.asof,
@@ -104,7 +90,6 @@ def write_macrodata_bundle_import(
         "observation_outcomes": observation_outcomes,
         "changed_observations": changed_observations,
         "changed_concept_keys": changed_concept_keys,
-        "dirty_targets_enqueued": dirty_targets_enqueued,
         "status": parsed.status,
         "data_quality": parsed.status,
         "coverage": dict(parsed.coverage),

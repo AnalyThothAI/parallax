@@ -10,6 +10,12 @@ from pydantic import ValidationError
 from parallax.app.surfaces.api import routes_events, routes_radar, routes_status
 from parallax.app.surfaces.api.http import create_api_router
 from parallax.app.surfaces.api.schemas import (
+    MacroLiveCalculationData,
+    MacroLiveEvidenceReadData,
+    MacroLiveHistoryPointData,
+    MacroLiveMetricData,
+    MacroLiveResearchLinkData,
+    MacroLiveViewData,
     NewsFactDetailData,
     NotificationItemData,
     NotificationSummary,
@@ -48,117 +54,90 @@ def test_openapi_publishes_exact_macro_stocks_notifications_and_worker_contracts
     )
     _assert_exact_required(schemas["NotificationsData"], {"items", "summary"})
     _assert_exact_required(schemas["NotificationItemData"], set(NotificationItemData.model_fields))
-    macro_common_fields = {
-        "snapshot",
-        "conclusion",
-        "horizon",
-        "drivers",
-        "confirmations",
-        "contradictions",
-        "upgrade_invalidation",
-        "evidence_refs",
-        "freshness",
-        "evidence",
-        "unavailable_evidence",
-        "page_id",
+    macro_schema_names = {
+        "MacroLiveCalculationData",
+        "MacroLiveEvidenceReadData",
+        "MacroLiveHistoryPointData",
+        "MacroLiveMetricData",
+        "MacroLiveResearchLinkData",
+        "MacroLiveViewData",
+        "MacroResearchCitationData",
+        "MacroResearchEvidenceGapData",
+        "MacroResearchPublicationData",
+        "MacroResearchReadData",
+        "MacroResearchRunData",
+        "MacroResearchSectionData",
     }
-    macro_page_fields = {
-        "MacroOverviewData": {
-            "shock_summary",
-            "risk_lanes",
-            "key_changes",
-            "nearest_catalyst",
-            "core_invalidation",
-            "official_catalysts",
-        },
-        "MacroCrossAssetData": {
-            "asset_returns",
-            "volatility",
-            "correlations_20",
-            "correlations_60",
-            "divergences",
-        },
-        "MacroRatesInflationData": {
-            "nominal_curve",
-            "curve_slopes",
-            "real_yields",
-            "breakevens",
-            "term_premium",
-            "policy_funding_corridor",
-            "inflation_releases",
-            "curve_shape",
-        },
-        "MacroGrowthLaborData": {
-            "growth_leading",
-            "growth_lagging",
-            "labor_leading",
-            "labor_lagging",
-            "growth_metrics",
-        },
-        "MacroLiquidityFundingData": {
-            "central_bank_balance_sheet",
-            "treasury_cash",
-            "reverse_repo",
-            "reserves",
-            "net_liquidity",
-            "secured_funding",
-            "unsecured_funding",
-        },
-        "MacroCreditData": {
-            "aggregate_spreads",
-            "rating_tail",
-            "effective_yields",
-            "credit_supply",
-            "realized_damage",
-            "financial_conditions_liquidity",
-            "treasury_spread_quadrant",
-            "credit_state",
-        },
-    }
-    for schema_name, page_fields in macro_page_fields.items():
-        _assert_exact_required(schemas[schema_name], macro_common_fields | page_fields)
+    assert {name for name in schemas if name.startswith("Macro")} == macro_schema_names
+    for model in (
+        MacroLiveCalculationData,
+        MacroLiveEvidenceReadData,
+        MacroLiveHistoryPointData,
+        MacroLiveMetricData,
+        MacroLiveResearchLinkData,
+        MacroLiveViewData,
+    ):
+        _assert_exact_required(schemas[model.__name__], set(model.model_fields))
     _assert_exact_required(
-        schemas["MacroShockSummaryData"],
-        {
-            "state",
-            "candidate",
-            "summary",
-            "confidence",
-            "trend",
-            "drivers",
-            "confirmations",
-            "contradictions",
-            "evidence_refs",
-        },
+        schemas["MacroResearchReadData"],
+        {"state", "requested_session_date", "current_session_date", "publication", "run"},
     )
     _assert_exact_required(
-        schemas["MacroRiskLaneData"],
-        {
-            "lane_id",
-            "direction",
-            "trend",
-            "confidence",
-            "summary",
-            "drivers",
-            "contradiction",
-            "invalidation",
-            "evidence_refs",
-            "degradation_reason",
-            "current_session",
-            "comparison_session",
-            "sparkline_concept_key",
-        },
+        schemas["MacroResearchRunData"],
+        {"session_date", "status", "attempt_count", "max_attempts", "last_error", "updated_at_ms"},
     )
     _assert_exact_required(
-        schemas["MacroKeyChangeData"],
-        {"rank", "lane_id", "code", "summary", "evidence_refs"},
+        schemas["MacroResearchSectionData"],
+        {"section_id", "title", "body_markdown", "citation_ids"},
     )
-    assert not {
-        "MacroData",
-        "MacroCurrentnessData",
-        "MacroModuleChartData",
-        "MacroDominantShockData",
-    } & set(schemas)
+    _assert_exact_schema(
+        schemas["MacroResearchEvidenceGapData"],
+        properties={"gap_id", "summary", "details", "citation_ids"},
+        required={"gap_id", "summary"},
+    )
+    _assert_exact_schema(
+        schemas["MacroResearchCitationData"],
+        properties={
+            "citation_id",
+            "source_type",
+            "source_ref",
+            "source_label",
+            "observed_at",
+            "published_at_ms",
+            "available_at_ms",
+            "source_url",
+            "lineage",
+        },
+        required={"citation_id", "source_type", "source_ref", "source_label"},
+    )
+    _assert_exact_schema(
+        schemas["MacroResearchPublicationData"],
+        properties={
+            "schema_version",
+            "session_date",
+            "market_cutoff_ms",
+            "title",
+            "executive_summary",
+            "sections",
+            "evidence_gaps",
+            "citations",
+            "reviewer_notes",
+            "audit",
+            "published_at_ms",
+        },
+        required={
+            "schema_version",
+            "session_date",
+            "market_cutoff_ms",
+            "title",
+            "executive_summary",
+            "sections",
+            "evidence_gaps",
+            "citations",
+            "reviewer_notes",
+            "audit",
+        },
+    )
     _assert_exact_required(
         schemas["WorkerStatusData"],
         {
@@ -453,6 +432,15 @@ def test_changed_read_routes_validate_success_payloads_before_json_response(monk
 
 
 def _assert_exact_required(schema: dict[str, object], fields: set[str]) -> None:
-    assert set(schema["properties"]) == fields
-    assert set(schema["required"]) == fields
+    _assert_exact_schema(schema, properties=fields, required=fields)
+
+
+def _assert_exact_schema(
+    schema: dict[str, object],
+    *,
+    properties: set[str],
+    required: set[str],
+) -> None:
+    assert set(schema["properties"]) == properties
+    assert set(schema.get("required", ())) == required
     assert schema["additionalProperties"] is False

@@ -1,17 +1,5 @@
 import { fireEvent, screen, waitFor, within } from "@testing-library/react";
-import {
-  dailyMacroJudgmentFixture,
-  macroCreditFixture,
-  macroCrossAssetFixture,
-  macroGrowthLaborFixture,
-  macroLiquidityFundingFixture,
-  macroOverviewFixture,
-  macroOverviewInsufficientFixture,
-  macroOverviewLocalDegradationFixture,
-  macroOverviewNoShockFixture,
-  macroRatesInflationFixture,
-  macroSeriesFixture,
-} from "@tests/fixtures/macroFixture";
+import { macroLiveEvidenceFixture, macroResearchFixture } from "@tests/fixtures/macroFixture";
 import { ok } from "@tests/msw/fixtures";
 import { mockLiveRadarRoute } from "@tests/msw/scenarios";
 import { renderAppRoute } from "@tests/render/renderRoute";
@@ -19,226 +7,243 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 
 import { apiMock, setupAppRouteTest } from "./routeTestSetup";
 
-const PAGES = [
-  ["/macro", "/api/macro/overview", "跨资产风险地图"],
-  ["/macro/cross-asset", "/api/macro/cross-asset", "跨资产确认"],
-  ["/macro/rates-inflation", "/api/macro/rates-inflation", "利率与通胀"],
-  ["/macro/growth-labor", "/api/macro/growth-labor", "增长与就业"],
-  ["/macro/liquidity-funding", "/api/macro/liquidity-funding", "流动性与资金"],
-  ["/macro/credit", "/api/macro/credit", "信用周期雷达"],
-] as const;
-
-describe("macro decision workbench routes", () => {
+describe("macro live evidence and research workbench", () => {
   afterEach(() => {
     document.body.replaceChildren();
   });
 
   beforeEach(() => {
-    configureMacroApi(macroOverviewFixture());
+    configureMacroApi(macroResearchFixture());
   });
 
-  it.each(PAGES)("renders %s from its strict page endpoint", async (route, endpoint, title) => {
-    renderAppRoute(route);
+  it("renders the live six-category dashboard and compact research card", async () => {
+    renderAppRoute("/macro");
 
-    expect(await screen.findByRole("heading", { level: 1, name: title })).toBeInTheDocument();
-    const navigation = screen.getByRole("navigation", { name: "宏观分析维度" });
-    expect(within(navigation).getAllByRole("link")).toHaveLength(6);
-    expect(
-      within(navigation)
-        .getAllByRole("link")
-        .some((link) => link.getAttribute("aria-current") === "page"),
-    ).toBe(true);
-    expect(screen.getByText("审计与证据")).toBeInTheDocument();
-    if (route === "/macro") {
-      expect(screen.getByRole("heading", { name: "八类风险暴露" })).toBeInTheDocument();
-    } else {
-      expect(screen.getByText("主要驱动")).toBeInTheDocument();
-      expect(screen.getByText("失效条件")).toBeInTheDocument();
-    }
+    expect(await screen.findByRole("heading", { level: 1, name: "宏观实时数据" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "总览与官方催化" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "利率与通胀" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "增长与就业" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "流动性与资金" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "信用" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "跨资产" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "宏观研究：增长与实际利率的拉锯" })).toBeVisible();
+    expect(screen.getByText(/最近成功读取/)).toBeVisible();
+    expect(screen.getByText("读取正常")).toBeVisible();
+    expect(screen.getByText(/未分类最新事实/)).toBeVisible();
     await waitFor(() =>
-      expect(apiMock.readApi).toHaveBeenCalledWith(endpoint, { token: "secret" }),
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/evidence/dashboard", {
+        params: { window: "90d" },
+        token: "secret",
+      }),
     );
   });
 
-  it("renders the fixed risk map and persisted daily AI judgment", async () => {
-    renderAppRoute("/macro");
+  it("renders a complete live detail page with chart, missing row, and searchable table", async () => {
+    renderAppRoute("/macro/rates-inflation?window=90d");
 
-    expect(await screen.findByRole("heading", { name: "每日 AI 宏观研判" })).toBeInTheDocument();
-    expect(await screen.findByRole("heading", { name: "八类风险暴露" })).toBeInTheDocument();
-    for (const lane of [
-      "美国股票",
-      "长期美债",
-      "信用",
-      "美元",
-      "黄金",
-      "原油",
-      "加密资产",
-      "市场波动率",
-    ]) {
-      expect(screen.getByRole("article", { name: `${lane}风险暴露` })).toBeInTheDocument();
-    }
-    expect(screen.getByRole("heading", { name: "五个交易日内的关键变化" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "最近官方催化" })).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "核心失效条件" })).toBeInTheDocument();
-    expect(
-      apiMock.readApi.mock.calls.filter(([path]) => path === "/api/macro/overview"),
-    ).toHaveLength(1);
-    expect(
-      apiMock.readApi.mock.calls.filter(([path]) => path === "/api/macro/daily-judgment"),
-    ).toHaveLength(1);
-    expect(
-      apiMock.readApi.mock.calls.filter(
-        ([path]) =>
-          path.startsWith("/api/macro/") &&
-          path !== "/api/macro/overview" &&
-          path !== "/api/macro/daily-judgment",
-      ),
-    ).toHaveLength(0);
-    expect(screen.getByText(/跨资产信号分化/)).toBeVisible();
-    expect(screen.getAllByText("不判断")).toHaveLength(2);
-    expect(screen.getByText("政策与实际利率")).toBeVisible();
-    expect(screen.getByText("已复核")).toBeVisible();
-    expect(document.body.textContent).not.toMatch(
-      /买入|卖出|仓位|position size|allocation|target price/i,
-    );
-  });
+    expect(await screen.findByRole("heading", { level: 1, name: "利率与通胀" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "历史序列" })).toBeVisible();
+    expect(screen.getByRole("img", { name: /美国 10 年期国债收益率历史折线图/ })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "完整明细" })).toBeVisible();
+    expect(screen.getAllByText("该行尚无持久化观测").length).toBeGreaterThan(0);
+    expect(screen.getByText(/最近研究交易日/)).toBeVisible();
 
-  it.each([
-    [macroOverviewNoShockFixture(), "无单一主导冲击"],
-    [macroOverviewInsufficientFixture(), "证据不足"],
-  ] as const)("keeps %s as a distinct shock state", async (fixture, label) => {
-    configureMacroApi(fixture);
-    renderAppRoute("/macro");
-
-    expect(await screen.findByText(label, { selector: ".macro-shock-summary span" })).toBeVisible();
-  });
-
-  it("keeps a critical gap local to the affected lane", async () => {
-    configureMacroApi(macroOverviewLocalDegradationFixture());
-    renderAppRoute("/macro");
-
-    const oil = await screen.findByRole("article", { name: "原油风险暴露" });
-    expect(within(oil).getByText(/局部证据缺口/)).toBeVisible();
-    expect(
-      within(screen.getByRole("article", { name: "美国股票风险暴露" })).queryByText(/局部证据缺口/),
-    ).toBeNull();
-  });
-
-  it("keeps an unpublished daily judgment explicit without hiding the risk map", async () => {
-    const pending = dailyMacroJudgmentFixture();
-    configureMacroApi(macroOverviewFixture(), {
-      ...pending,
-      publication: null,
-      state: "pending",
-      target_job: pending.target_job
-        ? {
-            ...pending.target_job,
-            status: "pending",
-          }
-        : null,
+    fireEvent.change(screen.getByPlaceholderText("搜索名称、concept、source、series"), {
+      target: { value: "美国 10" },
     });
-    renderAppRoute("/macro");
-
-    expect(await screen.findByRole("heading", { name: "每日 AI 宏观研判" })).toBeInTheDocument();
-    expect(screen.getByText("今日研判等待生成")).toBeVisible();
-    expect(screen.getByText(/页面不会临时调用模型/)).toBeVisible();
-    expect(screen.getByRole("heading", { name: "八类风险暴露" })).toBeVisible();
+    expect(screen.getByText("rates:dgs10")).toBeVisible();
+    expect(screen.queryByText("rates:dgs10:missing")).toBeNull();
   });
 
-  it("keeps audit metadata collapsed until explicitly opened", async () => {
-    renderAppRoute("/macro");
+  it("keeps the live history window in URL-backed query state", async () => {
+    renderAppRoute("/macro/credit?window=30d");
 
-    await screen.findByRole("heading", { name: "八类风险暴露" });
-    const details = document.querySelector("details.macro-audit-drawer");
-    expect(details).not.toHaveAttribute("open");
-    fireEvent.click(screen.getByText("审计与证据"));
-    expect(details).toHaveAttribute("open");
-    expect(screen.getByText("macro_decision_v2")).toBeVisible();
-    expect(screen.getByRole("heading", { name: "完整证据与溯源" })).toBeVisible();
-  });
-
-  it("renders the nearest catalyst in local and official time", async () => {
-    renderAppRoute("/macro");
-
-    expect(await screen.findByRole("heading", { name: "最近官方催化" })).toBeInTheDocument();
-    expect(screen.getByText(/官方时间 2026-07-23 08:30/)).toBeVisible();
-    expect(screen.getByRole("link", { name: "U.S. Department of Labor" })).toHaveAttribute(
-      "href",
-      "https://www.dol.gov/ui/data.pdf",
+    expect(await screen.findByRole("heading", { level: 1, name: "信用" })).toBeVisible();
+    expect(screen.getByLabelText("历史窗口")).toHaveValue("30d");
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/evidence/credit", {
+        params: { window: "30d" },
+        token: "secret",
+      }),
     );
   });
 
-  it("separates curve level from curve move and exposes the policy corridor", async () => {
-    renderAppRoute("/macro/rates-inflation");
+  it("renders one persisted Chinese research document", async () => {
+    renderAppRoute("/macro/research");
 
+    expect(await screen.findByRole("heading", { level: 1, name: "宏观研究工作台" })).toBeVisible();
     expect(
-      await screen.findByRole("heading", { name: "收益率曲线：水平与变化分开" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("当前曲线水平")).toBeInTheDocument();
-    expect(screen.getByText("20 个交易日曲线变化")).toBeInTheDocument();
-    expect(screen.getByRole("heading", { name: "政策与资金走廊" })).toBeInTheDocument();
-    expect(
-      screen.getByRole("heading", { name: "名义利率、实际利率与通胀补偿" }),
-    ).toBeInTheDocument();
+      screen.getByRole("heading", { level: 2, name: "宏观研究：增长与实际利率的拉锯" }),
+    ).toBeVisible();
+    expect(screen.getByRole("heading", { name: "核心机制" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "关键反证" })).toBeVisible();
+    expect(screen.getByRole("heading", { name: "证据缺口与开放问题" })).toBeVisible();
+    expect(screen.getByText("期限溢价历史窗口不足")).toBeVisible();
+    const citations = screen.getByRole("heading", { name: "引用与事实溯源" }).closest("section");
+    expect(citations).not.toBeNull();
+    expect(within(citations!).getByText("U.S. Treasury 10Y")).toBeVisible();
+    expect(within(citations!).getByRole("link", { name: "来源" })).toHaveAttribute(
+      "href",
+      "https://fred.stlouisfed.org/series/DGS10",
+    );
+    expect(document.body.textContent).not.toMatch(
+      /macro_decision_v2|八类风险|daily.?judgment|买入|卖出|仓位/i,
+    );
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/research", { token: "secret" }),
+    );
   });
 
-  it("shows all six credit layers and keeps stage separate from direction", async () => {
-    renderAppRoute("/macro/credit");
+  it("keeps audit metadata collapsed until requested", async () => {
+    renderAppRoute("/macro/research");
 
+    await screen.findByRole("heading", { name: "核心机制" });
+    const details = document.querySelector("details.macro-research-audit");
+    expect(details).not.toHaveAttribute("open");
+    fireEvent.click(screen.getByText("审阅与运行审计"));
+    expect(details).toHaveAttribute("open");
+    expect(screen.getByText("反证已覆盖，但期限溢价仍应标为缺口。")).toBeVisible();
+    expect(screen.getByText(/planning_used/)).toBeVisible();
+  });
+
+  it("preserves GFM research structure and safe link behavior", async () => {
+    const fixture = macroResearchFixture();
+    const publication = fixture.publication;
+    if (!publication) throw new Error("current fixture must include a publication");
+    publication.sections[0]!.body_markdown = [
+      "| 指标 | 观察 |",
+      "| --- | --- |",
+      "| 实际利率 | 高位 |",
+      "",
+      "1. 先核对增长",
+      "2. 再检查信用",
+      "",
+      "> **关键反证**仍在，需结合 *期限溢价*。",
+      "",
+      "内联变量 `real_yield`，参见 [M001](#citation-M001) 与 [外部资料](https://example.com/macro)。",
+      "",
+      "```text",
+      "growth != credit",
+      "```",
+    ].join("\n");
+    configureMacroApi(fixture);
+
+    renderAppRoute("/macro/research");
+
+    expect(await screen.findByRole("table")).toBeVisible();
+    expect(screen.getByRole("columnheader", { name: "指标" })).toBeVisible();
+    expect(screen.getByRole("cell", { name: "实际利率" })).toBeVisible();
+    const orderedListItem = screen.getByText("先核对增长");
+    expect(orderedListItem.closest("ol")).not.toBeNull();
+    const blockquote = document.querySelector<HTMLElement>(".macro-research-markdown blockquote");
+    expect(blockquote).not.toBeNull();
+    expect(within(blockquote!).getByText("关键反证").tagName).toBe("STRONG");
+    expect(screen.getByText("期限溢价").tagName).toBe("EM");
+    expect(screen.getByText("real_yield").tagName).toBe("CODE");
+    expect(screen.getByText("growth != credit").closest("pre")).not.toBeNull();
+
+    const citationLink = screen.getByRole("link", { name: "M001" });
+    expect(citationLink).toHaveAttribute("href", "#citation-M001");
+    expect(citationLink).not.toHaveAttribute("target");
+    expect(citationLink).not.toHaveAttribute("rel");
+
+    const externalLink = screen.getByRole("link", { name: "外部资料" });
+    expect(externalLink).toHaveAttribute("href", "https://example.com/macro");
+    expect(externalLink).toHaveAttribute("target", "_blank");
+    expect(externalLink).toHaveAttribute("rel", "noreferrer noopener");
+  });
+
+  it("drops raw HTML and keeps dangerous URLs inert", async () => {
+    const fixture = macroResearchFixture();
+    const publication = fixture.publication;
+    if (!publication) throw new Error("current fixture must include a publication");
+    publication.sections[0]!.body_markdown = [
+      "安全正文。",
+      "",
+      '<script>window.__macroInjected = "yes"</script>',
+      "",
+      '<img src="x" alt="恶意图片" onerror="window.__macroInjected = \'yes\'">',
+      "",
+      "[危险链接](javascript:window.__macroInjected='yes')",
+    ].join("\n");
+    configureMacroApi(fixture);
+
+    renderAppRoute("/macro/research");
+
+    expect(await screen.findByText("安全正文。")).toBeVisible();
+    expect(document.querySelector(".macro-research-markdown script")).toBeNull();
+    expect(screen.queryByRole("img", { name: "恶意图片" })).toBeNull();
+    const dangerousLink = screen.getByText("危险链接").closest("a");
+    expect(dangerousLink).not.toBeNull();
+    expect(dangerousLink).not.toHaveAttribute("href");
+    expect(document.body.textContent).not.toContain("window.__macroInjected");
     expect(
-      await screen.findByRole("heading", { name: "信用状态：阶段与方向分开" }),
-    ).toBeInTheDocument();
-    expect(screen.getByText("阶段")).toBeInTheDocument();
-    expect(screen.getByText("方向")).toBeInTheDocument();
-    for (const layer of [
-      "1. 总量信用利差",
-      "2. 评级尾部",
-      "3. 企业有效融资成本",
-      "4. 信贷供给",
-      "5. 已实现贷款损伤",
-      "6. 金融条件与信用流动性",
-    ]) {
-      expect(screen.getByRole("heading", { name: layer })).toBeInTheDocument();
-    }
+      (window as typeof window & { __macroInjected?: string }).__macroInjected,
+    ).toBeUndefined();
+  });
+
+  it("reads an explicit completed session from URL state", async () => {
+    configureMacroApi(macroResearchFixture("historical"));
+    renderAppRoute("/macro/research?session_date=2026-07-22");
+
+    expect(await screen.findByText("历史研究")).toBeVisible();
+    expect(screen.getByText(/请求交易日 2026-07-22/)).toBeVisible();
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/research", {
+        params: { session_date: "2026-07-22" },
+        token: "secret",
+      }),
+    );
   });
 
   it.each([
-    "/macro/overview",
-    "/macro/not-real",
-    "/macro/assets",
-    "/macro/assets/correlation",
-    "/macro/rates",
-    "/macro/rates/fed-funds",
-    "/macro/liquidity",
-    "/macro/economy",
-    "/macro/volatility",
-  ])("returns an ordinary not-found surface for retired route %s", async (route) => {
-    renderAppRoute(route);
+    ["generating", "研究正在生成", "页面只轮询持久化状态"],
+    ["failed", "本次研究生成失败", "provider_timeout"],
+    ["missing", "该交易日尚无宏观研究", "选择其他已完成交易日"],
+  ] as const)("renders persisted %s state", async (state, title, hint) => {
+    configureMacroApi(macroResearchFixture(state));
+    renderAppRoute("/macro/research");
 
-    expect(await screen.findByRole("alert")).toHaveTextContent("404 Not Found");
-    expect(screen.queryByRole("navigation", { name: "宏观分析维度" })).not.toBeInTheDocument();
-    expect(apiMock.readApi.mock.calls.some(([path]) => path.startsWith("/api/macro"))).toBe(false);
+    expect(await screen.findByText(title)).toBeVisible();
+    expect(screen.getByText(new RegExp(hint))).toBeVisible();
+    expect(screen.queryByRole("heading", { name: "核心机制" })).toBeNull();
+  });
+
+  it("switches between explicit history and latest without child navigation", async () => {
+    renderAppRoute("/macro/research?session_date=2026-07-22");
+
+    const input = await screen.findByLabelText("已完成交易日");
+    fireEvent.change(input, { target: { value: "2026-07-21" } });
+    fireEvent.click(screen.getByRole("button", { name: "读取" }));
+    await waitFor(() =>
+      expect(apiMock.readApi).toHaveBeenCalledWith("/api/macro/research", {
+        params: { session_date: "2026-07-21" },
+        token: "secret",
+      }),
+    );
+    expect(screen.queryByRole("navigation", { name: "宏观数据分类" })).toBeNull();
   });
 });
 
-function configureMacroApi(
-  overview: ReturnType<typeof macroOverviewFixture>,
-  dailyJudgment = dailyMacroJudgmentFixture(),
-) {
+function configureMacroApi(data: ReturnType<typeof macroResearchFixture>) {
   setupAppRouteTest((mock) => {
     mockLiveRadarRoute(mock);
     const baseGetApi = mock.getApiImpl;
     mock.getApiImpl = async (path, options) => {
-      if (path === "/api/macro/overview") return ok(overview);
-      if (path === "/api/macro/daily-judgment") return ok(dailyJudgment);
-      if (path === "/api/macro/cross-asset") return ok(macroCrossAssetFixture());
-      if (path === "/api/macro/rates-inflation") return ok(macroRatesInflationFixture());
-      if (path === "/api/macro/growth-labor") return ok(macroGrowthLaborFixture());
-      if (path === "/api/macro/liquidity-funding") return ok(macroLiquidityFundingFixture());
-      if (path === "/api/macro/credit") return ok(macroCreditFixture());
-      if (path === "/api/macro/series") {
-        const conceptKeys = String(options?.params?.concept_keys ?? "rates:dgs10").split(",");
-        return ok(macroSeriesFixture(conceptKeys));
+      if (path === "/api/macro/research") return ok(data);
+      if (path.startsWith("/api/macro/evidence/")) {
+        const viewId = path.split("/").at(-1);
+        if (
+          viewId === "dashboard" ||
+          viewId === "overview" ||
+          viewId === "rates-inflation" ||
+          viewId === "growth-labor" ||
+          viewId === "liquidity-funding" ||
+          viewId === "credit" ||
+          viewId === "cross-asset"
+        ) {
+          return ok(macroLiveEvidenceFixture(viewId));
+        }
       }
       return baseGetApi(path, options);
     };

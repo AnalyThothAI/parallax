@@ -165,14 +165,11 @@ def test_worker_manifest_has_unique_names_and_one_writer_per_read_model() -> Non
     assert len(declared_tables) == len(set(declared_tables))
 
 
-def test_macro_snapshot_manifest_declares_the_database_primary_key() -> None:
-    identities = {
-        table: identity
-        for manifest in all_worker_manifests()
-        for table, identity in manifest.current_read_model_identities
-    }
+def test_macro_research_manifest_declares_one_durable_run_queue_and_no_current_projection() -> None:
+    manifest = next(item for item in all_worker_manifests() if item.name == "macro_research")
 
-    assert identities["macro_view_snapshots"] == ("snapshot_key",)
+    assert manifest.queue_tables == ("macro_research_runs",)
+    assert manifest.current_read_model_identities == ()
 
 
 def test_current_read_model_identities_are_stable_product_keys() -> None:

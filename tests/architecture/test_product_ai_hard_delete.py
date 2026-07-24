@@ -1,7 +1,6 @@
 from __future__ import annotations
 
 import ast
-import importlib
 import inspect
 from pathlib import Path
 
@@ -13,7 +12,6 @@ from parallax.app.surfaces.api.schemas import (
     WatchlistOverviewMetrics,
 )
 from parallax.domains.token_intel.read_models.token_target_posts_service import TokenTargetPostsService
-from parallax.platform.agent_execution import AgentRuntimePolicy, AgentStageSpec
 
 ROOT = Path(__file__).resolve().parents[2]
 SRC = ROOT / "src" / "parallax"
@@ -21,43 +19,37 @@ PRODUCTION_ROOTS = (
     SRC / "app",
     SRC / "domains",
 )
-DORMANT_LLM_MODULES = (
-    "parallax.integrations.model_execution.execution_gateway",
-    "parallax.integrations.model_execution.output_schema",
-    "parallax.integrations.model_execution.structured_json_strategy",
-    "parallax.integrations.model_execution.usage",
-    "parallax.platform.agent_capabilities",
-    "parallax.platform.agent_execution",
-    "parallax.platform.agent_hashing",
+DORMANT_LLM_PATHS = (
+    "src/parallax/integrations/model_execution/execution_gateway.py",
+    "src/parallax/integrations/model_execution/output_schema.py",
+    "src/parallax/integrations/model_execution/structured_json_strategy.py",
+    "src/parallax/integrations/model_execution/usage.py",
+    "src/parallax/platform/agent_capabilities.py",
+    "src/parallax/platform/agent_execution.py",
+    "src/parallax/platform/agent_hashing.py",
 )
-DORMANT_LLM_IMPORT_PREFIXES = (
+MODEL_RUNTIME_IMPORT_PREFIXES = (
     "deepagents",
     "langchain",
     "langchain_litellm",
+    "langgraph.checkpoint.postgres",
     "parallax.integrations.model_execution",
-    "parallax.platform.agent_capabilities",
-    "parallax.platform.agent_execution",
-    "parallax.platform.agent_hashing",
 )
 PRODUCT_AI_SYMBOLS = frozenset(
     {
-        "AgentExecutionGateway",
-        "AgentKnowledgeCatalog",
-        "AgentRuntimePolicy",
-        "AgentStageSpec",
         "ChatLiteLLM",
-        "MacroJudgmentDeepAgent",
-        "agent_knowledge_catalog",
-        "render_agent_instructions",
+        "AsyncPostgresSaver",
+        "MacroResearchDeepAgent",
     }
 )
 AUTHORIZED_PRODUCT_AI_RUNTIME = {
     "src/parallax/app/runtime/worker_factories/macro_intel.py": {
         "imports": {
             "langchain_litellm",
-            "parallax.integrations.model_execution.macro_judgment_deepagent",
+            "langgraph.checkpoint.postgres.aio",
+            "parallax.integrations.model_execution.macro_research_deepagent",
         },
-        "symbols": {"ChatLiteLLM", "MacroJudgmentDeepAgent"},
+        "symbols": {"AsyncPostgresSaver", "ChatLiteLLM", "MacroResearchDeepAgent"},
     }
 }
 RETIRED_PYTHON_SEMANTICS = frozenset(
@@ -175,39 +167,18 @@ def test_fact_only_token_and_watchlist_public_models_are_exact() -> None:
     assert kind_schema["enum"] == ["resolved_token", "candidate_mention", "hashtag"]
 
 
-def test_dormant_llm_library_is_independently_importable_and_provider_neutral() -> None:
-    imported = {module_name: importlib.import_module(module_name) for module_name in DORMANT_LLM_MODULES}
-    stage = AgentStageSpec(
-        lane="structured_json.architecture_test",
-        stage="schema_validation",
-        instructions="Return one JSON object.",
-        input_payload={"value": "source-fact"},
-        output_type=dict[str, str],
-        prompt_version="test-p1",
-        schema_version="test-s1",
-        workflow_name="architecture_test",
-        agent_name="structured_json",
-    )
-    policy = AgentRuntimePolicy(model="provider-neutral-test-model")
-    retained_atoms = set().union(
-        *(
-            _semantic_atoms(_tree(SRC / (module_name.removeprefix("parallax.").replace(".", "/") + ".py")))
-            for module_name in DORMANT_LLM_MODULES
-        )
-    )
-
-    assert set(imported) == set(DORMANT_LLM_MODULES)
-    assert stage.lane == "structured_json.architecture_test"
-    assert policy.model == "provider-neutral-test-model"
-    assert {"news.story_brief", "news_story_brief", "market_research_harness"}.isdisjoint(retained_atoms)
+def test_dormant_llm_library_is_hard_deleted() -> None:
+    assert [path for path in DORMANT_LLM_PATHS if (ROOT / path).exists()] == []
 
 
-def test_only_daily_macro_worker_factory_may_import_product_model_runtime() -> None:
+def test_only_macro_research_worker_factory_may_import_product_model_runtime() -> None:
     violations: dict[str, dict[str, list[str]]] = {}
     for root in PRODUCTION_ROOTS:
         for path in _python_files(root):
             tree = _tree(path)
-            forbidden_imports = sorted(name for name in _imports(tree) if name.startswith(DORMANT_LLM_IMPORT_PREFIXES))
+            forbidden_imports = sorted(
+                name for name in _imports(tree) if name.startswith(MODEL_RUNTIME_IMPORT_PREFIXES)
+            )
             forbidden_symbols = sorted(
                 {node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and node.id in PRODUCT_AI_SYMBOLS}
                 | {
@@ -229,7 +200,9 @@ def test_only_daily_macro_worker_factory_may_import_product_model_runtime() -> N
     assert violations == {}
     for relative, expected in AUTHORIZED_PRODUCT_AI_RUNTIME.items():
         tree = _tree(ROOT / relative)
-        assert {name for name in _imports(tree) if name.startswith(DORMANT_LLM_IMPORT_PREFIXES)} == expected["imports"]
+        assert {name for name in _imports(tree) if name.startswith(MODEL_RUNTIME_IMPORT_PREFIXES)} == expected[
+            "imports"
+        ]
         assert {
             node.id for node in ast.walk(tree) if isinstance(node, ast.Name) and node.id in PRODUCT_AI_SYMBOLS
         } == expected["symbols"]

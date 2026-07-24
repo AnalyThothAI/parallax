@@ -50,8 +50,6 @@ class MacroSyncWorker(WorkerBase):
             if result is None:
                 break
             results.append(result)
-            if result.status not in {"ok", "partial"}:
-                break
         if not results:
             return WorkerResult(
                 processed=0,

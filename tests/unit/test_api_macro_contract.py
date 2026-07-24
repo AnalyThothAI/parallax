@@ -16,47 +16,130 @@ from parallax.app.surfaces.api.exceptions import (
     api_unauthorized_response,
 )
 from parallax.app.surfaces.api.http import create_api_router
-from parallax.domains.macro_intel.services.macro_evidence_snapshot import build_macro_evidence_snapshot
-
-_PAGE_ROUTES = {
-    "/api/macro/overview": "overview",
-    "/api/macro/cross-asset": "cross_asset",
-    "/api/macro/rates-inflation": "rates_inflation",
-    "/api/macro/growth-labor": "growth_labor",
-    "/api/macro/liquidity-funding": "liquidity_funding",
-    "/api/macro/credit": "credit",
-}
 
 
-def test_six_macro_pages_read_only_the_persisted_page_projection() -> None:
-    snapshot = build_macro_evidence_snapshot([], computed_at_ms=1_779_000_000_000)
-    repo = FakeMacroIntelRepository(pages={page_id: snapshot[page_id] for page_id in _PAGE_ROUTES.values()})
-    app = _app(repo)
+def test_macro_research_reads_latest_persisted_publication_only() -> None:
+    repository = FakeMacroResearchRepository(state="current")
+    app = _app(repository)
 
     with TestClient(app) as client:
-        responses = {path: client.get(path, headers={"Authorization": "Bearer secret"}) for path in _PAGE_ROUTES}
+        response = client.get(
+            "/api/macro/research",
+            headers={"Authorization": "Bearer secret"},
+        )
 
-    assert all(response.status_code == 200 for response in responses.values())
-    assert [call for call in repo.calls] == list(_PAGE_ROUTES.values())
-    assert repo.observations_for_concepts_call is None
-    for path, page_id in _PAGE_ROUTES.items():
-        payload = responses[path].json()
-        assert payload["ok"] is True
-        assert payload["data"]["page_id"] == page_id
-        assert payload["data"]["snapshot"]["projection_version"] == "macro_decision_v2"
+    assert response.status_code == 200
+    payload = response.json()
+    assert payload["ok"] is True
+    assert payload["data"]["state"] == "current"
+    assert payload["data"]["publication"]["title"] == "宏观研究：增长与实际利率的拉锯"
+    assert payload["data"]["publication"]["sections"][0]["title"] == "核心机制"
+    assert payload["data"]["publication"]["citations"][0]["citation_id"] == "M001"
+    assert payload["data"]["publication"]["citations"][0]["available_at_ms"] == 1_774_199_000_000
+    assert isinstance(repository.calls[0], date)
+
+
+def test_macro_research_reads_explicit_historical_session() -> None:
+    repository = FakeMacroResearchRepository(state="historical")
+    app = _app(repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/macro/research?session_date=2026-07-22",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"]["state"] == "historical"
+    assert repository.calls[0] == date(2026, 7, 22)
+
+
+@pytest.mark.parametrize("state", ("generating", "failed"))
+def test_macro_research_exposes_persisted_run_state(state: str) -> None:
+    repository = FakeMacroResearchRepository(state=state)
+    app = _app(repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/macro/research",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["data"] == {
+        "state": state,
+        "requested_session_date": response.json()["data"]["current_session_date"],
+        "current_session_date": response.json()["data"]["current_session_date"],
+        "publication": None,
+        "run": {
+            "session_date": response.json()["data"]["current_session_date"],
+            "status": "running" if state == "generating" else "failed",
+            "attempt_count": 1,
+            "max_attempts": 3,
+            "last_error": None if state == "generating" else "provider_timeout",
+            "updated_at_ms": 1_774_201_900_000,
+        },
+    }
+
+
+def test_macro_research_missing_is_explicit_and_never_builds_inline() -> None:
+    repository = FakeMacroResearchRepository(state="missing")
+    app = _app(repository)
+
+    with TestClient(app) as client:
+        response = client.get(
+            "/api/macro/research",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    assert response.json()["ok"] is True
+    assert response.json()["data"]["state"] == "missing"
+    assert repository.calls
+
+
+def test_macro_research_rejects_unknown_and_query_token_parameters() -> None:
+    app = _app(FakeMacroResearchRepository(state="current"))
+
+    with TestClient(app) as client:
+        unauthenticated = client.get("/api/macro/research?token=secret")
+        query_token = client.get(
+            "/api/macro/research?token=secret",
+            headers={"Authorization": "Bearer secret"},
+        )
+        unsupported = client.get(
+            "/api/macro/research?window=20d",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert unauthenticated.status_code == 401
+    assert query_token.json() == {
+        "ok": False,
+        "error": "unsupported_query_param",
+        "field": "token",
+    }
+    assert unsupported.json() == {
+        "ok": False,
+        "error": "unsupported_query_param",
+        "field": "window",
+    }
 
 
 @pytest.mark.parametrize(
     "path",
     (
-        "/api/macro",
-        "/api/macro/assets/correlation",
-        "/api/macro/modules/overview",
-        "/api/macro/modules/rates/yield-curve",
+        "/api/macro/overview",
+        "/api/macro/cross-asset",
+        "/api/macro/rates-inflation",
+        "/api/macro/growth-labor",
+        "/api/macro/liquidity-funding",
+        "/api/macro/credit",
+        "/api/macro/series?concept_keys=rates:dgs10",
+        "/api/macro/daily-judgment",
     ),
 )
 def test_retired_macro_endpoints_are_ordinary_not_found(path: str) -> None:
-    app = _app(FakeMacroIntelRepository())
+    app = _app(FakeMacroResearchRepository(state="current"))
 
     with TestClient(app) as client:
         response = client.get(path, headers={"Authorization": "Bearer secret"})
@@ -65,246 +148,291 @@ def test_retired_macro_endpoints_are_ordinary_not_found(path: str) -> None:
     assert response.json() == {"detail": "Not Found"}
 
 
-def test_macro_page_missing_projection_fails_closed_without_inline_build() -> None:
-    repo = FakeMacroIntelRepository()
-    app = _app(repo)
+def test_macro_research_contract_rejects_unknown_fields() -> None:
+    publication = _publication(date(2026, 7, 23))
+    api_schemas.MacroResearchPublicationData.model_validate(publication)
 
-    with TestClient(app) as client:
-        response = client.get(
-            "/api/macro/overview",
-            headers={"Authorization": "Bearer secret"},
-        )
-
-    assert response.status_code == 503
-    assert response.json() == {"ok": False, "error": "macro_projection_missing"}
-    assert repo.calls == ["overview"]
-    assert repo.observations_for_concepts_call is None
-
-
-def test_macro_pages_have_exact_typed_contracts() -> None:
-    snapshot = build_macro_evidence_snapshot([], computed_at_ms=1_779_000_000_000)
-    models = {
-        "overview": api_schemas.MacroOverviewData,
-        "cross_asset": api_schemas.MacroCrossAssetData,
-        "rates_inflation": api_schemas.MacroRatesInflationData,
-        "growth_labor": api_schemas.MacroGrowthLaborData,
-        "liquidity_funding": api_schemas.MacroLiquidityFundingData,
-        "credit": api_schemas.MacroCreditData,
-    }
-
-    for page_id, model in models.items():
-        model.model_validate(snapshot[page_id])
-        with pytest.raises(ValidationError, match="extra_forbidden"):
-            model.model_validate({**snapshot[page_id], "legacy_score": 100})
-
-    evidence = dict(snapshot["credit"]["evidence"][0])
     with pytest.raises(ValidationError, match="extra_forbidden"):
-        api_schemas.MacroEvidenceData.model_validate({**evidence, "percentile": 0.9})
+        api_schemas.MacroResearchPublicationData.model_validate({**publication, "risk_lanes": []})
 
 
-def test_macro_series_api_returns_strict_bounded_series() -> None:
-    repo = FakeMacroIntelRepository(
-        observations=[
+def test_macro_live_dashboard_reads_persisted_facts_only() -> None:
+    macro_intel = FakeMacroIntelRepository(
+        rows=[
             {
+                "observation_id": "rates:dgs10:2026-07-23",
                 "concept_key": "rates:dgs10",
-                "observed_at": "2026-05-20",
-                "value_numeric": 4.7,
                 "source_name": "fred",
                 "series_key": "fred:DGS10",
+                "source_priority": 100,
+                "observed_at": date(2026, 7, 23),
+                "value_numeric": 4.22,
                 "unit": "percent",
                 "frequency": "daily",
                 "data_quality": "ok",
-                "event_metadata_json": {},
+                "source_ts": "2026-07-23T16:00:00-04:00",
+                "raw_payload_json": {},
+                "ingested_at_ms": 1_774_199_500_000,
             },
             {
-                "concept_key": "rates:dgs10",
-                "observed_at": "2026-05-21",
-                "value_numeric": 4.8,
-                "source_name": "fred",
-                "series_key": "fred:DGS10",
-                "unit": "percent",
+                "observation_id": "macro:new_fact:2026-07-23",
+                "concept_key": "macro:new_fact",
+                "source_name": "fixture",
+                "series_key": "fixture:new",
+                "source_priority": 1,
+                "observed_at": date(2026, 7, 23),
+                "value_numeric": 7.0,
+                "unit": "index",
                 "frequency": "daily",
                 "data_quality": "ok",
-                "event_metadata_json": {},
+                "source_ts": "2026-07-23",
+                "raw_payload_json": {},
+                "ingested_at_ms": 1_774_199_600_000,
             },
-        ],
+        ]
     )
-    app = _app(repo)
+    app = _app(FakeMacroResearchRepository(state="current"), macro_intel=macro_intel)
 
     with TestClient(app) as client:
         response = client.get(
-            "/api/macro/series?concept_keys=rates:dgs10&window=60d",
+            "/api/macro/evidence/dashboard?window=90d",
             headers={"Authorization": "Bearer secret"},
         )
 
     assert response.status_code == 200
-    assert repo.observations_for_concepts_call == {
-        "concept_keys": ("rates:dgs10",),
-        "lookback_days": 90,
-        "limit_per_series": 90,
-    }
-    point = response.json()["data"]["series"]["rates:dgs10"]["points"][0]
-    assert point == {
-        "observed_at": "2026-05-20",
-        "value": 4.7,
-        "source_name": "fred",
-        "series_key": "fred:DGS10",
+    data = response.json()["data"]
+    assert data["schema_version"] == "macro_live_evidence_v1"
+    assert data["view_id"] == "dashboard"
+    assert [view["view_id"] for view in data["views"]] == [
+        "overview",
+        "rates-inflation",
+        "growth-labor",
+        "liquidity-funding",
+        "credit",
+        "cross-asset",
+    ]
+    assert data["unclassified"][0]["concept_key"] == "macro:new_fact"
+    assert data["research"]["title"] == "宏观研究：增长与实际利率的拉锯"
+    assert macro_intel.live_calls
+    assert macro_intel.uncatalogued_calls == [50]
+
+
+@pytest.mark.parametrize(
+    "path",
+    (
+        "/api/macro/evidence/unknown",
+        "/api/macro/evidence/credit?window=20d",
+        "/api/macro/evidence/credit?token=secret",
+        "/api/macro/evidence/credit?extra=1",
+    ),
+)
+def test_macro_live_evidence_rejects_unknown_views_and_parameters(path: str) -> None:
+    app = _app(
+        FakeMacroResearchRepository(state="current"),
+        macro_intel=FakeMacroIntelRepository(rows=[]),
+    )
+
+    with TestClient(app) as client:
+        response = client.get(path, headers={"Authorization": "Bearer secret"})
+
+    assert response.status_code in {400, 422}
+    assert response.json()["ok"] is False
+
+
+def test_macro_live_contract_rejects_retired_semantic_fields() -> None:
+    metric = {
+        "concept_key": "rates:dgs10",
+        "page_id": "rates-inflation",
+        "section_id": "nominal-curve",
+        "section_label": "名义收益率曲线",
+        "display_label": "美国 10 年期国债收益率",
+        "display_order": 1,
+        "summary": True,
+        "kind": "material",
+        "availability": "available",
+        "value_numeric": 4.22,
         "unit": "percent",
         "frequency": "daily",
+        "observed_at": "2026-07-23",
+        "source_timestamp": "2026-07-23",
+        "received_at_ms": 1_774_199_500_000,
+        "source_name": "fred",
+        "series_key": "fred:DGS10",
+        "source_priority": 100,
         "data_quality": "ok",
-        "event_metadata": {},
+        "source_url": None,
+        "history": [],
+        "calculation": None,
     }
+    api_schemas.MacroLiveMetricData.model_validate(metric)
+
+    with pytest.raises(ValidationError, match="extra_forbidden"):
+        api_schemas.MacroLiveMetricData.model_validate({**metric, "direction": "headwind"})
 
 
-def test_macro_series_rejects_query_token_and_provider_series_keys() -> None:
-    app = _app(FakeMacroIntelRepository())
+class FakeMacroResearchRepository:
+    def __init__(self, *, state: str) -> None:
+        self.state = state
+        self.calls: list[date] = []
 
-    with TestClient(app) as client:
-        query_token = client.get("/api/macro/series?concept_keys=rates:dgs10&token=secret")
-        bearer_token_query = client.get(
-            "/api/macro/series?concept_keys=rates:dgs10&token=secret",
-            headers={"Authorization": "Bearer secret"},
-        )
-        provider_key = client.get(
-            "/api/macro/series?concept_keys=fred:DGS10",
-            headers={"Authorization": "Bearer secret"},
-        )
-
-    assert query_token.status_code == 401
-    assert bearer_token_query.json() == {
-        "ok": False,
-        "error": "unsupported_query_param",
-        "field": "token",
-    }
-    assert provider_key.json() == {
-        "ok": False,
-        "error": "unsupported_macro_concept",
-        "field": "concept_keys",
-    }
-
-
-def test_daily_macro_judgment_reads_typed_persisted_job_state_without_model_calls() -> None:
-    daily = FakeDailyMacroJudgmentRepository(
-        jobs={
-            date(2026, 7, 22): {
-                "session_date": date(2026, 7, 22),
-                "market_cutoff_ms": 1_774_200_000_000,
-                "status": "blocked",
-                "attempt_count": 1,
-                "max_attempts": 3,
-                "due_at_ms": 1_774_201_800_000,
-                "reviewer_disposition": "block",
-                "last_error": "daily_macro_judgment_reviewer_block",
-                "updated_at_ms": 1_774_201_900_000,
+    def research_state(self, session_date: date | None) -> dict[str, Any] | None:
+        assert session_date is not None
+        self.calls.append(session_date)
+        target = session_date
+        if self.state in {"current", "historical"}:
+            publication = _publication(target)
+            return {
+                **_run_row(target, status="published"),
+                "artifact_json": _artifact(publication),
+                "report_markdown": "# internal derived export",
+                "audit_json": publication["audit"],
+                "published_at_ms": 1_774_202_000_000,
             }
-        }
-    )
-    app = _app(FakeMacroIntelRepository(), daily_macro_judgments=daily)
-
-    with TestClient(app) as client:
-        response = client.get(
-            "/api/macro/daily-judgment?session_date=2026-07-22",
-            headers={"Authorization": "Bearer secret"},
-        )
-        unsupported = client.get(
-            "/api/macro/daily-judgment?session_date=2026-07-22&window=20d",
-            headers={"Authorization": "Bearer secret"},
-        )
-
-    assert response.status_code == 200
-    assert response.json() == {
-        "ok": True,
-        "data": {
-            "target_session_date": "2026-07-22",
-            "state": "blocked",
-            "is_current": False,
-            "publication": None,
-            "target_job": {
-                "session_date": "2026-07-22",
-                "market_cutoff_ms": 1_774_200_000_000,
-                "status": "blocked",
-                "attempt_count": 1,
-                "max_attempts": 3,
-                "due_at_ms": 1_774_201_800_000,
-                "reviewer_disposition": "block",
-                "last_error": "daily_macro_judgment_reviewer_block",
-                "updated_at_ms": 1_774_201_900_000,
-            },
-        },
-    }
-    assert daily.calls == [
-        ("publication", date(2026, 7, 22)),
-        ("job", date(2026, 7, 22)),
-    ]
-    assert unsupported.json() == {
-        "ok": False,
-        "error": "unsupported_query_param",
-        "field": "window",
-    }
+        if self.state in {"generating", "failed"}:
+            return _run_row(
+                target,
+                status="running" if self.state == "generating" else "failed",
+                last_error=None if self.state == "generating" else "provider_timeout",
+            )
+        return None
 
 
 class FakeMacroIntelRepository:
-    def __init__(
-        self,
-        *,
-        pages: dict[str, dict[str, Any]] | None = None,
-        observations: list[dict[str, Any]] | None = None,
-    ) -> None:
-        self.pages = pages or {}
-        self.observations = observations or []
-        self.calls: list[str] = []
-        self.observations_for_concepts_call: dict[str, object] | None = None
+    def __init__(self, *, rows: list[dict[str, Any]]) -> None:
+        self.rows = rows
+        self.live_calls: list[dict[str, Any]] = []
+        self.uncatalogued_calls: list[int] = []
 
-    def snapshot_page(self, page_id: str) -> dict[str, Any] | None:
-        self.calls.append(page_id)
-        return self.pages.get(page_id)
-
-    def observations_for_concepts(
+    def live_observations(
         self,
         *,
         concept_keys: tuple[str, ...],
-        lookback_days: int,
-        limit_per_series: int,
+        start_date: date,
+        max_rows_per_series: int,
     ) -> list[dict[str, Any]]:
-        self.observations_for_concepts_call = {
-            "concept_keys": concept_keys,
-            "lookback_days": lookback_days,
-            "limit_per_series": limit_per_series,
-        }
-        return self.observations
+        self.live_calls.append(
+            {
+                "concept_keys": concept_keys,
+                "start_date": start_date,
+                "max_rows_per_series": max_rows_per_series,
+            }
+        )
+        selected = set(concept_keys)
+        return [row for row in self.rows if row["concept_key"] in selected]
 
-
-class FakeDailyMacroJudgmentRepository:
-    def __init__(
+    def latest_uncatalogued_observations(
         self,
         *,
-        jobs: dict[date, dict[str, Any]] | None = None,
-    ) -> None:
-        self.jobs = jobs or {}
-        self.calls: list[tuple[str, date]] = []
+        catalog_concept_keys: tuple[str, ...],
+        limit: int,
+    ) -> list[dict[str, Any]]:
+        self.uncatalogued_calls.append(limit)
+        selected = set(catalog_concept_keys)
+        return [row for row in self.rows if row["concept_key"] not in selected][:limit]
 
-    def publication_record(self, session_date: date) -> None:
-        self.calls.append(("publication", session_date))
 
-    def latest_publication_record(self) -> None:
-        return None
+def _publication(session_date: date) -> dict[str, Any]:
+    return {
+        "schema_version": "macro_research_artifact_v2",
+        "session_date": session_date,
+        "market_cutoff_ms": 1_774_200_000_000,
+        "title": "宏观研究：增长与实际利率的拉锯",
+        "executive_summary": "增长放缓与实际利率高位并存，风险资产缺少单边确认。",
+        "sections": [
+            {
+                "section_id": "mechanism",
+                "title": "核心机制",
+                "body_markdown": "实际利率维持高位，信用尚未确认系统性收紧。",
+                "citation_ids": ["M001"],
+            }
+        ],
+        "evidence_gaps": [
+            {
+                "gap_id": "term-premium-history",
+                "summary": "期限溢价历史窗口不足",
+                "details": "无法可靠区分供给冲击与增长预期。",
+                "citation_ids": [],
+            }
+        ],
+        "citations": [
+            {
+                "citation_id": "M001",
+                "source_type": "macro_observation",
+                "source_ref": "macro:rates:dgs10:2026-07-23",
+                "source_label": "U.S. Treasury 10Y",
+                "observed_at": "2026-07-23",
+                "published_at_ms": None,
+                "available_at_ms": 1_774_199_000_000,
+                "source_url": "https://fred.stlouisfed.org/series/DGS10",
+                "lineage": {"concept_key": "rates:dgs10"},
+            }
+        ],
+        "reviewer_notes": ["反证已覆盖，但期限溢价仍应标为缺口。"],
+        "audit": {
+            "model": "provider-model",
+            "planning_used": True,
+            "subagents_used": ["skeptic"],
+        },
+        "published_at_ms": 1_774_202_000_000,
+    }
 
-    def job_record(self, session_date: date) -> dict[str, Any] | None:
-        self.calls.append(("job", session_date))
-        return self.jobs.get(session_date)
 
-    def outcomes_for_session(self, session_date: date) -> list[dict[str, Any]]:
-        raise AssertionError(f"unexpected outcome read for {session_date}")
+def _artifact(publication: dict[str, Any]) -> dict[str, Any]:
+    citations = [
+        {
+            **{key: value for key, value in citation.items() if key != "source_url"},
+            "url": citation["source_url"],
+        }
+        for citation in publication["citations"]
+    ]
+    return {
+        key: value
+        for key, value in publication.items()
+        if key not in {"audit", "evidence_gaps", "published_at_ms", "citations"}
+    } | {
+        "gaps": publication["evidence_gaps"],
+        "citations": citations,
+    }
+
+
+def _run_row(
+    session_date: date,
+    *,
+    status: str,
+    last_error: str | None = None,
+) -> dict[str, Any]:
+    return {
+        "session_date": session_date,
+        "market_cutoff_ms": 1_774_200_000_000,
+        "run_status": status,
+        "sealed_at_ms": 1_774_199_000_000,
+        "attempt_count": 1,
+        "max_attempts": 3,
+        "due_at_ms": 1_774_199_100_000,
+        "leased_until_ms": None,
+        "last_error_code": last_error,
+        "last_error_message": None,
+        "created_at_ms": 1_774_199_000_000,
+        "updated_at_ms": 1_774_201_900_000,
+        "artifact_json": None,
+        "report_markdown": None,
+        "audit_json": None,
+        "model_name": None,
+        "prompt_version": None,
+        "workflow_version": None,
+        "artifact_hash": None,
+        "published_at_ms": None,
+    }
 
 
 class FakeRepositoryContext:
     def __init__(
         self,
+        macro_research: FakeMacroResearchRepository,
         macro_intel: FakeMacroIntelRepository,
-        daily_macro_judgments: FakeDailyMacroJudgmentRepository,
     ) -> None:
+        self.macro_research = macro_research
         self.macro_intel = macro_intel
-        self.daily_macro_judgments = daily_macro_judgments
 
     def __enter__(self) -> FakeRepositoryContext:
         return self
@@ -316,28 +444,28 @@ class FakeRepositoryContext:
 class FakeRuntime:
     def __init__(
         self,
+        macro_research: FakeMacroResearchRepository,
         macro_intel: FakeMacroIntelRepository,
-        daily_macro_judgments: FakeDailyMacroJudgmentRepository,
     ) -> None:
         self.settings = type("FakeSettings", (), {"ws_token": "secret"})()
+        self.macro_research = macro_research
         self.macro_intel = macro_intel
-        self.daily_macro_judgments = daily_macro_judgments
 
     def repositories(self) -> FakeRepositoryContext:
-        return FakeRepositoryContext(self.macro_intel, self.daily_macro_judgments)
+        return FakeRepositoryContext(self.macro_research, self.macro_intel)
 
 
 def _app(
-    macro_intel: FakeMacroIntelRepository,
+    macro_research: FakeMacroResearchRepository,
     *,
-    daily_macro_judgments: FakeDailyMacroJudgmentRepository | None = None,
+    macro_intel: FakeMacroIntelRepository | None = None,
 ) -> FastAPI:
     app = FastAPI()
     app.add_exception_handler(ApiUnauthorized, api_unauthorized_response)
     app.add_exception_handler(ApiBadRequest, api_bad_request_response)
     app.include_router(create_api_router(lambda _: {"ok": True}))
     app.state.service = FakeRuntime(
-        macro_intel,
-        daily_macro_judgments or FakeDailyMacroJudgmentRepository(),
+        macro_research,
+        macro_intel or FakeMacroIntelRepository(rows=[]),
     )
     return app

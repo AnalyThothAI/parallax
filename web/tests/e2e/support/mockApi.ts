@@ -1,14 +1,5 @@
 import type { Page, Route } from "@playwright/test";
-import {
-  dailyMacroJudgmentFixture,
-  macroCreditFixture,
-  macroCrossAssetFixture,
-  macroGrowthLaborFixture,
-  macroLiquidityFundingFixture,
-  macroOverviewFixture,
-  macroRatesInflationFixture,
-  macroSeriesFixture,
-} from "@tests/fixtures/macroFixture";
+import { macroLiveEvidenceFixture, macroResearchFixture } from "@tests/fixtures/macroFixture";
 import { marketContextFixture, marketObservationFixture } from "@tests/fixtures/marketFixtures";
 import { newsItemFixture, newsRowFixture } from "@tests/fixtures/newsFixture";
 import { tokenCaseFixture, tokenCasePostsFixture } from "@tests/fixtures/tokenCaseFixture";
@@ -71,20 +62,21 @@ export async function installMockApi(page: Page, options: MockApiOptions = {}) {
     if (path.match(/^\/api\/watchlist\/handles?\/[^/]+\/timeline$/)) {
       return fulfill(route, watchlistHandleTimelineData(handleFromPath(path)));
     }
-    if (path === "/api/macro/overview") return fulfill(route, macroOverviewFixture());
-    if (path === "/api/macro/daily-judgment") {
-      return fulfill(route, dailyMacroJudgmentFixture());
+    if (path.startsWith("/api/macro/evidence/")) {
+      const viewId = path.split("/").at(-1);
+      if (
+        viewId === "dashboard" ||
+        viewId === "overview" ||
+        viewId === "rates-inflation" ||
+        viewId === "growth-labor" ||
+        viewId === "liquidity-funding" ||
+        viewId === "credit" ||
+        viewId === "cross-asset"
+      ) {
+        return fulfill(route, macroLiveEvidenceFixture(viewId));
+      }
     }
-    if (path === "/api/macro/cross-asset") return fulfill(route, macroCrossAssetFixture());
-    if (path === "/api/macro/rates-inflation") {
-      return fulfill(route, macroRatesInflationFixture());
-    }
-    if (path === "/api/macro/growth-labor") return fulfill(route, macroGrowthLaborFixture());
-    if (path === "/api/macro/liquidity-funding") {
-      return fulfill(route, macroLiquidityFundingFixture());
-    }
-    if (path === "/api/macro/credit") return fulfill(route, macroCreditFixture());
-    if (path === "/api/macro/series") return fulfill(route, macroSeriesData(url));
+    if (path === "/api/macro/research") return fulfill(route, macroResearchFixture());
     recordUnhandledApiRequest(page, url);
     return route.fulfill({
       status: 404,
@@ -955,12 +947,4 @@ function watchlistHandleTimelineData(handle: string) {
     has_more: false,
     next_cursor: null,
   };
-}
-
-function macroSeriesData(url: URL) {
-  const conceptKeys = (url.searchParams.get("concept_keys") ?? "asset:spx")
-    .split(",")
-    .map((conceptKey) => conceptKey.trim())
-    .filter(Boolean);
-  return macroSeriesFixture(conceptKeys.length > 0 ? conceptKeys : ["asset:spx"]);
 }

@@ -1,1 +1,1 @@
-"""Macro fact ingestion, compact series, and evidence-snapshot services."""
+"""Macro fact ingestion and completed-session research services."""

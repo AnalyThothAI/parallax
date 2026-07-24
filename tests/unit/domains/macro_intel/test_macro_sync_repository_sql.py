@@ -8,8 +8,6 @@ import pytest
 from parallax.domains.macro_intel.observation_identity import macro_observation_fact_payload_hash
 from parallax.domains.macro_intel.repositories.macro_intel_repository import (
     MacroIntelRepository,
-    _macro_projection_dirty_change_payload_hash,
-    _macro_projection_dirty_payload_hash,
 )
 
 CONTROL_METHODS = (
@@ -24,7 +22,6 @@ CONTROL_METHODS = (
     "macro_sync_state_max_observed_at",
     "update_macro_sync_state",
     "rebuild_macro_sync_state",
-    "enqueue_macro_projection_dirty_targets_for_changes",
 )
 
 
@@ -167,115 +164,6 @@ def test_enqueue_macro_sync_window_coalesces_by_identity_and_returns_id() -> Non
     assert params[1:6] == ("macrodata-cli", "macro-core", "2026-05-01", "2026-05-27", "bootstrap")
 
 
-def test_macro_projection_dirty_target_methods_use_claim_done_error_contract() -> None:
-    claim_source = inspect.getsource(MacroIntelRepository.claim_macro_projection_dirty_targets)
-    done_source = inspect.getsource(MacroIntelRepository.mark_macro_projection_dirty_targets_done)
-    error_source = inspect.getsource(MacroIntelRepository.mark_macro_projection_dirty_targets_error)
-
-    assert "FROM macro_projection_dirty_targets" in claim_source
-    assert "FOR UPDATE SKIP LOCKED" in claim_source
-    assert "leased_until_ms" in claim_source
-    assert "lease_owner" in claim_source
-    assert "attempt_count = macro_projection_dirty_targets.attempt_count + 1" in claim_source
-    assert "DELETE FROM macro_projection_dirty_targets" in done_source
-    assert "payload_hash" in done_source
-    assert "attempt_count" in done_source
-    assert "UPDATE macro_projection_dirty_targets" in error_source
-    assert "last_error" in error_source
-    assert "worker_queue_terminal_events" in error_source or "terminalize_source_row" in error_source
-    assert "max_attempts" in error_source
-
-
-def test_macro_projection_dirty_target_writes_have_caller_owned_transactions() -> None:
-    claim = _dirty_target_claim()
-    conn = DirtyTargetConnection(rows=[claim], rowcount=1)
-    repo = MacroIntelRepository(conn)
-
-    claimed = repo.claim_macro_projection_dirty_targets(
-        projection_name="macro_evidence",
-        projection_version="macro_decision_v2",
-        limit=10,
-        lease_ms=30_000,
-        lease_owner="worker-1",
-        now_ms=1_779_000_000_000,
-    )
-    repo.mark_macro_projection_dirty_targets_done(claimed, now_ms=1_779_000_000_001)
-    repo.mark_macro_projection_dirty_targets_error(
-        claimed,
-        error="projection failed",
-        retry_ms=5_000,
-        max_attempts=3,
-        worker_name="macro_view_projection",
-        now_ms=1_779_000_000_002,
-    )
-
-    assert claimed == [claim]
-    assert conn.events == ["execute", "execute", "execute"]
-    assert conn.commit_count == 0
-
-
-def test_macro_projection_dirty_target_error_terminalizes_exhausted_claim() -> None:
-    conn = DirtyTargetTerminalizingConnection()
-    repo = MacroIntelRepository(conn)
-    claim = _dirty_target_claim()
-
-    changed = repo.mark_macro_projection_dirty_targets_error(
-        [claim],
-        error="projection failed",
-        retry_ms=5_000,
-        max_attempts=1,
-        worker_name="macro_view_projection",
-        now_ms=1_779_000_000_002,
-    )
-
-    assert changed == 1
-    assert "DELETE FROM macro_projection_dirty_targets queue" in conn.sql_log[0]
-    assert any("INSERT INTO worker_queue_terminal_events" in sql for sql in conn.sql_log)
-    assert conn.terminal_params["worker_name"] == "macro_view_projection"
-    assert conn.terminal_params["source_table"] == "macro_projection_dirty_targets"
-    assert conn.terminal_params["target_key"] == "macro_evidence:macro_decision_v2:current:current"
-    assert conn.terminal_params["final_status"] == "terminal"
-    assert conn.terminal_params["final_reason"] == ("macro_view_projection_retry_budget_exhausted: projection failed")
-    assert conn.terminal_params["final_reason_bucket"] == "retry_budget_exhausted"
-    assert conn.terminal_params["attempt_count"] == 1
-    assert conn.terminal_params["payload_hash"] == "sha256:dirty"
-
-
-def test_enqueue_macro_projection_dirty_target_coalesces_current_target() -> None:
-    conn = FakeConnection(rows=[{"inserted": 1}], rowcount=1)
-    repo = MacroIntelRepository(conn)
-
-    inserted = repo.enqueue_macro_projection_dirty_target(
-        projection_name="macro_evidence",
-        projection_version="macro_decision_v2",
-        now_ms=1_779_000_000_000,
-        due_at_ms=1_779_000_000_000,
-        reason="macro_observations_imported",
-    )
-
-    assert inserted == 1
-    query, params = conn.executions[0]
-    assert "INSERT INTO macro_projection_dirty_targets" in query
-    assert "ON CONFLICT (projection_name, projection_version, target_kind, target_id) DO UPDATE" in query
-    assert params["projection_name"] == "macro_evidence"
-    assert params["projection_version"] == "macro_decision_v2"
-    assert params["target_kind"] == "current"
-    assert params["target_id"] == "current"
-    assert str(params["payload_hash"]).startswith("sha256:")
-
-
-def test_macro_projection_dirty_payload_hash_rejects_legacy_payload_shapes() -> None:
-    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
-        _macro_projection_dirty_payload_hash(
-            projection_name="macro_evidence",
-            projection_version="macro_decision_v2",
-            target_kind="current",
-            target_id="current",
-            reason={123: "legacy"},  # type: ignore[arg-type]
-            source_watermark_ms=1_779_000_000_000,
-        )
-
-
 def test_upsert_observation_updates_only_when_fact_payload_hash_changes() -> None:
     source = inspect.getsource(MacroIntelRepository.upsert_observation)
     normalized_source = " ".join(source.split())
@@ -344,52 +232,6 @@ def test_record_sync_run_writes_hard_cut_observation_counts_and_watermarks() -> 
         assert column_name in sync_source
 
 
-def test_enqueue_macro_projection_dirty_targets_for_changes_groups_by_concept_watermark() -> None:
-    conn = FakeConnection(rows=[{"inserted": 1}], rowcount=1)
-    repo = MacroIntelRepository(conn)
-
-    inserted = repo.enqueue_macro_projection_dirty_targets_for_changes(
-        changed_observations=[
-            {"concept_key": "liquidity:sofr", "observed_at": "2026-05-27"},
-            {"concept_key": "liquidity:sofr", "observed_at": "2026-05-28"},
-        ],
-        projection_name="macro_evidence",
-        projection_version="macro_decision_v2",
-        now_ms=1_779_000_000_000,
-        due_at_ms=1_779_000_000_000,
-        reason="macro_observations_changed",
-    )
-
-    assert inserted == 1
-    query, params = conn.executions[0]
-    assert "INSERT INTO macro_projection_dirty_targets" in query
-    assert "concept_key" in query
-    assert "min_observed_at" in query
-    assert "max_observed_at" in query
-    assert "source_watermark_date" in query
-    assert "target_kind" in query
-    assert params["target_kinds"] == ["concept"]
-    assert params["target_ids"] == ["liquidity:sofr"]
-    assert params["concept_keys"] == ["liquidity:sofr"]
-    assert params["min_observed_ats"] == [date(2026, 5, 27)]
-    assert params["max_observed_ats"] == [date(2026, 5, 28)]
-    assert params["source_watermark_dates"] == [date(2026, 5, 28)]
-    assert str(params["payload_hashes"][0]).startswith("sha256:")
-
-
-def test_macro_projection_dirty_change_payload_hash_rejects_legacy_payload_shapes() -> None:
-    with pytest.raises(ValueError, match="current payload hash payload has non-string keys"):
-        _macro_projection_dirty_change_payload_hash(
-            projection_name="macro_evidence",
-            projection_version="macro_decision_v2",
-            concept_key="liquidity:sofr",
-            min_observed_at=date(2026, 5, 27),
-            max_observed_at=date(2026, 5, 28),
-            source_watermark_date=date(2026, 5, 28),
-            reason={123: "legacy"},  # type: ignore[arg-type]
-        )
-
-
 def test_retry_macro_sync_window_terminalizes_when_attempt_budget_is_exhausted() -> None:
     source = inspect.getsource(MacroIntelRepository.retry_macro_sync_window)
     normalized_source = " ".join(source.split())
@@ -408,6 +250,50 @@ def test_queue_summary_excludes_exhausted_retryable_windows_from_open_count() ->
     assert "expired_running_count" in source
     assert "expired_running_exhausted_count" in source
     assert "exhausted_count" in source
+
+
+def test_live_observation_read_is_bounded_by_concept_date_and_series() -> None:
+    conn = FakeConnection(rows=[])
+    repo = MacroIntelRepository(conn)
+
+    assert (
+        repo.live_observations(
+            concept_keys=("rates:dgs10", "credit:hy_oas"),
+            start_date=date(2026, 1, 1),
+            max_rows_per_series=400,
+        )
+        == []
+    )
+
+    query, params = conn.executions[0]
+    normalized = " ".join(query.split())
+    assert "FROM macro_observations" in query
+    assert "concept_key = ANY(%s::text[])" in query
+    assert "observed_at >= %s" in query
+    assert "PARTITION BY concept_key, source_name, series_key" in normalized
+    assert "series_rank <= %s" in query
+    assert params == (["credit:hy_oas", "rates:dgs10"], date(2026, 1, 1), 400)
+
+
+def test_uncatalogued_read_returns_latest_source_series_rows_only() -> None:
+    conn = FakeConnection(rows=[])
+    repo = MacroIntelRepository(conn)
+
+    assert (
+        repo.latest_uncatalogued_observations(
+            catalog_concept_keys=("rates:dgs10",),
+            limit=50,
+        )
+        == []
+    )
+
+    query, params = conn.executions[0]
+    normalized = " ".join(query.split())
+    assert "concept_key <> ALL(%s::text[])" in query
+    assert "PARTITION BY concept_key, source_name, series_key" in normalized
+    assert "WHERE series_rank = 1" in query
+    assert "LIMIT %s" in query
+    assert params == (["rates:dgs10"], 50)
 
 
 @pytest.mark.parametrize("operation", ("claim_window", "claim_window_by_id"))
@@ -445,107 +331,6 @@ class FakeCursor:
 
     def fetchall(self) -> list[dict[str, object]]:
         return self.rows
-
-
-class DirtyTargetConnection:
-    def __init__(self, *, rows: list[dict[str, object]] | None = None, rowcount: int = 1) -> None:
-        self.rows = rows or []
-        self.rowcount = rowcount
-        self.executions: list[tuple[str, object]] = []
-        self.events: list[str] = []
-        self.commit_count = 0
-
-    def execute(self, query: str, params: object = ()) -> DirtyTargetCursor:
-        self.events.append("execute")
-        self.executions.append((query, params))
-        return DirtyTargetCursor(self.rows, rowcount=self.rowcount)
-
-    def commit(self) -> None:
-        self.commit_count += 1
-
-    def transaction(self) -> DirtyTargetTransaction:
-        return DirtyTargetTransaction(self)
-
-
-class DirtyTargetConnectionWithoutTransaction(DirtyTargetConnection):
-    def __getattribute__(self, name: str) -> object:
-        if name == "transaction":
-            raise AttributeError(name)
-        return super().__getattribute__(name)
-
-
-class DirtyTargetTransaction:
-    def __init__(self, conn: DirtyTargetConnection) -> None:
-        self.conn = conn
-
-    def __enter__(self) -> DirtyTargetTransaction:
-        self.conn.events.append("begin")
-        return self
-
-    def __exit__(self, exc_type: object, exc: object, tb: object) -> bool:
-        self.conn.events.append("rollback" if exc_type is not None else "commit")
-        return False
-
-
-class DirtyTargetCursor:
-    def __init__(self, rows: list[dict[str, object]], *, rowcount: int) -> None:
-        self.rows = rows
-        self.rowcount = rowcount
-
-    def fetchall(self) -> list[dict[str, object]]:
-        return self.rows
-
-
-class DirtyTargetTerminalizingConnection:
-    def __init__(self) -> None:
-        self.sql_log: list[str] = []
-        self.terminal_params: dict[str, object] = {}
-
-    def execute(self, query: str, params: object = ()) -> DirtyTargetTerminalizingCursor:
-        text = str(query)
-        self.sql_log.append(text)
-        if "DELETE FROM macro_projection_dirty_targets queue" in text:
-            return DirtyTargetTerminalizingCursor(rowcount=1, rows=[_dirty_target_claim()])
-        if "SELECT terminal_generation" in text:
-            return DirtyTargetTerminalizingCursor(rowcount=0, row=None)
-        if "SELECT COALESCE(MAX(terminal_generation), 0) + 1 AS terminal_generation" in text:
-            return DirtyTargetTerminalizingCursor(rowcount=1, row={"terminal_generation": 1})
-        if "INSERT INTO worker_queue_terminal_events" in text:
-            if isinstance(params, dict):
-                self.terminal_params = dict(params)
-            return DirtyTargetTerminalizingCursor(rowcount=1, row=self.terminal_params)
-        raise AssertionError(f"unexpected SQL: {text}")
-
-
-class DirtyTargetTerminalizingCursor:
-    def __init__(
-        self,
-        *,
-        rowcount: int,
-        rows: list[dict[str, object]] | None = None,
-        row: dict[str, object] | None = None,
-    ) -> None:
-        self.rowcount = rowcount
-        self.rows = rows or []
-        self.row = row
-
-    def fetchall(self) -> list[dict[str, object]]:
-        return self.rows
-
-    def fetchone(self) -> dict[str, object] | None:
-        return self.row
-
-
-def _dirty_target_claim() -> dict[str, object]:
-    return {
-        "projection_name": "macro_evidence",
-        "projection_version": "macro_decision_v2",
-        "target_kind": "current",
-        "target_id": "current",
-        "payload_hash": "sha256:dirty",
-        "lease_owner": "worker-1",
-        "attempt_count": 1,
-    }
 
 
 _ROWCOUNT_MISSING = object()

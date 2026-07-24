@@ -2,6 +2,7 @@ import { createBrowserRouter, createMemoryRouter, type RouteObject } from "react
 
 import { RouteErrorElement, RouteNotFoundElement } from "./routeErrorElement";
 import { SearchShellRoute, ShellChromeRoute, ShellRoute } from "./shell.route";
+import { useShellRouteContext } from "./shellRouteContext";
 
 export type AppRouter = ReturnType<typeof createBrowserRouter>;
 export type AppRouterFactory = () => AppRouter;
@@ -37,28 +38,49 @@ export function createAppRouteObjects(): RouteObject[] {
             },
             {
               path: "macro",
-              lazy: () => import("./macro-overview.route"),
+              lazy: async () => {
+                const { MacroLiveEvidencePage } = await import("@features/macro");
+                return {
+                  Component: function MacroLiveDashboardRoute() {
+                    const { token } = useShellRouteContext();
+                    return <MacroLiveEvidencePage token={token} viewId="dashboard" />;
+                  },
+                };
+              },
             },
             {
-              path: "macro/cross-asset",
-              lazy: () => import("./macro-cross-asset.route"),
+              path: "macro/research",
+              lazy: async () => {
+                const { MacroResearchPage } = await import("@features/macro");
+                return {
+                  Component: function MacroResearchRoute() {
+                    const { token } = useShellRouteContext();
+                    return <MacroResearchPage token={token} />;
+                  },
+                };
+              },
             },
-            {
-              path: "macro/rates-inflation",
-              lazy: () => import("./macro-rates-inflation.route"),
-            },
-            {
-              path: "macro/growth-labor",
-              lazy: () => import("./macro-growth-labor.route"),
-            },
-            {
-              path: "macro/liquidity-funding",
-              lazy: () => import("./macro-liquidity-funding.route"),
-            },
-            {
-              path: "macro/credit",
-              lazy: () => import("./macro-credit.route"),
-            },
+            ...(
+              [
+                ["overview", "overview"],
+                ["rates-inflation", "rates-inflation"],
+                ["growth-labor", "growth-labor"],
+                ["liquidity-funding", "liquidity-funding"],
+                ["credit", "credit"],
+                ["cross-asset", "cross-asset"],
+              ] as const
+            ).map(([path, viewId]) => ({
+              path: `macro/${path}`,
+              lazy: async () => {
+                const { MacroLiveEvidencePage } = await import("@features/macro");
+                return {
+                  Component: function MacroLiveDetailRoute() {
+                    const { token } = useShellRouteContext();
+                    return <MacroLiveEvidencePage token={token} viewId={viewId} />;
+                  },
+                };
+              },
+            })),
             {
               index: true,
               lazy: () => import("./live.route"),

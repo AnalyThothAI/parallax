@@ -14,6 +14,7 @@ from parallax.app.operations.macro import (
     MacroSyncOperationError,
     import_macro_bundle,
     macro_status,
+    retry_failed_macro_research,
     sync_macro_window,
 )
 from parallax.domains.macro_intel.observation_identity import normalize_macro_date
@@ -26,6 +27,8 @@ def handle_macro(args: Namespace) -> tuple[int, dict[str, Any]]:
         return _handle_import_bundle(args)
     if args.macro_command == "sync":
         return _handle_sync(args)
+    if args.macro_command == "retry-research":
+        return _handle_retry_research(args)
     if args.macro_command == "status":
         return _handle_status()
     return 2, {"ok": False, "error": f"unknown macro command: {args.macro_command}"}
@@ -104,6 +107,22 @@ def _handle_status() -> tuple[int, dict[str, Any]]:
         }
         return 1, payload
     return 0, {"ok": True, "data": data}
+
+
+def _handle_retry_research(args: Namespace) -> tuple[int, dict[str, Any]]:
+    try:
+        session_date = _parse_cli_date(str(args.session_date), field="session_date")
+        settings = load_settings(require_ws_token=False)
+        data = retry_failed_macro_research(
+            settings,
+            session_date=session_date,
+            now_ms=_now_ms(),
+        )
+    except _MacroSyncCliValidationError as exc:
+        return 2, {"ok": False, "error": "macro_retry_research_invalid_date", "field": exc.field}
+    except Exception as exc:
+        return 1, _error_payload("macro_retry_research_failed", exc)
+    return 0, {"ok": True, "data": _json_ready(data)}
 
 
 def _fred_payload_from_diagnostics(diagnostics: Mapping[str, Any]) -> dict[str, Any]:

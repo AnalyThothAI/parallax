@@ -1,10 +1,13 @@
 # Macro Intel Architecture
 
-Macro Intel is a completed-snapshot Kappa/CQRS domain. PostgreSQL
-`macro_observations` are the only business truth. The normal ingest lane is
-`MacroSyncWorker`; `macro import-bundle` is an offline replay/seed entrypoint
-into the same fact and attempt contracts. Public reads select persisted current
-documents or compact series and never call a provider.
+Macro Intel has one material-fact lane and one derived research lane.
+PostgreSQL `macro_observations` are the only Macro evidence truth.
+`MacroSyncWorker` is the normal ingest owner; `macro import-bundle` is an
+offline replay/seed entrypoint into the same fact and attempt contracts.
+`MacroResearchWorker` publishes one immutable DeepAgents-authored research
+artifact per completed U.S. regular session.
+Live evidence pages read bounded `macro_observations` directly; they own no
+projection table, snapshot, judgment, queue, or worker.
 
 ## Ownership
 
@@ -13,278 +16,249 @@ documents or compact series and never call a provider.
 | `macro_observations` | Material fact | `MacroSyncWorker`; offline import may replay the same fact contract |
 | `macro_sync_windows` | Scheduling/control state | `MacroSyncWorker` |
 | `macro_sync_runs` | Sync/offline-import attempt ledger | `MacroSyncWorker` and the offline import command |
-| `macro_projection_dirty_targets` | Projection queue | fact import enqueues; `MacroViewProjectionWorker` claims/completes |
-| `macro_observation_series_rows` | Rebuildable bounded-history read model | `MacroViewProjectionWorker` |
-| `macro_observation_series_publication_state` | Series attempt/currentness state | `MacroViewProjectionWorker` |
-| `macro_view_snapshots` | Stable current six-document snapshot | `MacroViewProjectionWorker` |
-| `macro_judgment_jobs` | Session control state plus frozen point-in-time EvidencePack | `DailyMacroJudgmentWorker` |
-| `macro_judgment_publications` | Immutable experimental SPY judgment history | `DailyMacroJudgmentWorker` |
-| `macro_judgment_outcomes` | Immutable 5/20-session realized returns | `DailyMacroJudgmentWorker` |
+| `macro_research_runs` | Completed-session lease/retry/seal state | `MacroResearchWorker` |
+| `macro_research_publications` | Immutable completed-session derived research | `MacroResearchWorker` |
+| `checkpoint_migrations` | LangGraph checkpoint schema version | Alembic migration |
+| `checkpoints`, `checkpoint_blobs`, `checkpoint_writes` | Durable DeepAgents execution state | LangGraph `AsyncPostgresSaver` used by `MacroResearchWorker` |
 
-`macro_sync_runs` is the only import/sync attempt ledger. Attempt identity and
-timestamps are audit metadata, not product identity.
-
-The judgment tables are an explicit derived-product exception, not material
-Macro truth and not a second current snapshot. Their product identity is the
-completed US session; latest is selected by query.
+Sync runs and research runs are control/audit state, not business truth.
+Checkpoint rows are resumable graph state, not evidence, publications, or a
+public read model. A publication is derived research whose stable product
+identity is `session_date`.
 
 ## Data flow
 
 ```text
 macro_sync_windows
-  -> MacroSyncWorker bounded claim
-  -> configured macrodata history bundle
+  -> MacroSyncWorker bounded claims
+  -> configured macrodata history bundles
   -> macro_observations + macro_sync_runs
-  -> changed-concept dirty targets
-  -> MacroViewProjectionWorker bounded catch-up
-  -> compact observation series
-  -> clock recheck when the UTC date or completed-market-session cutoff advances
-  -> one atomic macro_decision_v2 snapshot with six typed documents
-  -> six page reads + one independent series read
-```
+  -> GET /api/macro/evidence/{view_id}
+  -> /macro + six live data detail routes
 
-The projection worker runs on its configured interval, claims a bounded batch,
-and re-reads PostgreSQL. When no target is due, it re-evaluates persisted
-compact rows once per `(UTC date, latest completed US session)` bucket so
-freshness and the market cutoff cannot freeze when providers publish no new
-facts. A restart performs the same bounded PostgreSQL re-read; the in-memory
-bucket only suppresses duplicate work within one process and is not a
-correctness boundary. Provider frames and child-process output are inputs,
-never serving facts. Provider execution occurs outside database transactions.
-
-The independent judgment lane is:
-
-```text
-macro_observations + eligible official/high-quality persisted News text
-  -> deterministic availability/cutoff selection
-  -> complete frozen MacroEvidencePack with the same six document semantics
-  -> one DeepAgents Analyst -> native task -> isolated Reviewer
-  -> deterministic gates + fixed Chinese renderer
-  -> immutable DailyMacroJudgment for SPY 5/20 completed sessions
-  -> append-only close-to-close outcomes
+latest completed U.S. session
+  -> macro_research_runs durable claim and frozen scope
+  -> one CompletedSessionMacro.run/read module
+  -> one DeepAgents parent with native planning and scoped specialists
+  -> immutable macro_research_publications
+  -> GET /api/macro/research
+  -> /macro/research
 ```
 
 The provider boundary returns one exact `MacrodataBundleRunResult` containing
 an envelope and redacted diagnostics. Runtime invokes the installed package
-entrypoint through the current Python interpreter. Fact upserts, attempt
-recording, sync-window completion, watermarks, and dirty-target enqueue share
-one repository-session transaction.
+entrypoint through the current Python interpreter. Provider execution occurs
+outside database transactions. Valid fact upserts, attempt recording, and
+sync-window completion share one repository-session transaction.
 
-## Fact identity
+The sync worker claims a bounded batch. A failed or timed-out window records
+its own retry/failure state and does not stop the worker from attempting other
+due windows in that batch. Restart recovery re-reads PostgreSQL; there is no
+wake-plane or in-memory correctness dependency.
+
+## Material fact identity
 
 `macro_observations` preserves source/series/concept/date identity, numeric or
 event value, unit/frequency/quality, provider provenance, source and ingestion
 times, and the raw evidence payload. Its material identity is
 concept/source/series/date. The fact payload hash excludes fetch and sync
-identifiers, so identical replay writes nothing. A material change updates the
-fact and enqueues the affected concept.
+identifiers, so identical replay writes nothing.
 
 The offline importer validates and normalizes the complete envelope before it
-opens the write transaction. It then writes facts, dirty targets, and one
-`macro_sync_runs` row atomically.
+opens the write transaction. It then writes facts and one `macro_sync_runs` row
+atomically. Fact import does not enqueue or build a derived judgment.
 
-## Compact series
+## Completed-session research deep module
 
-`macro_observation_series_rows` contains only:
+The common caller sees one small completed-session interface:
 
-- `projection_version`
-- `concept_key`
-- `observed_at`
-- `value_numeric`
-- `source_name`
-- `series_key`
-- `unit`
-- `frequency`
-- `data_quality`
-- `event_metadata_json`
-
-Its stable key is `(projection_version, concept_key, observed_at)`. Source
-selection occurs during projection. Lifecycle clocks, source priority, raw
-provider payload, and duplicate payload hashes are absent. Row-value
-`IS DISTINCT FROM` guards make unchanged refreshes zero-write.
-
-`event_metadata_json` is a flat whitelist required by official calendars,
-Treasury auctions, and Federal Reserve communications: event code/text, source
-URL, document type/speaker, event time/reference period, CUSIP,
-announcement/settlement dates, and reopening flag. Full evidence remains in
-`macro_observations`.
-
-Series queries require explicit concepts, a supported window, and bounded
-per-concept scans. The public windows are `20d`, `60d`, `120d`, `1y`, and
-`3y`. A refresh that selects no rows for a concept with an already-published
-partition fails closed and preserves that partition.
-
-## Evidence snapshot deep module
-
-`macro_concept_manifest.py` is the one ownership table for evidence concepts.
-Every entry fixes its page, section, role, output and source unit, frequency,
-freshness limit, legal change window, change method/periods, criticality, and
-claim effect.
-
-`build_macro_evidence_snapshot(...)` accepts persisted observations and one
-computation time. It returns shared snapshot metadata plus exactly:
-
-1. `overview`
-2. `cross_asset`
-3. `rates_inflation`
-4. `growth_labor`
-5. `liquidity_funding`
-6. `credit`
-
-Each page carries:
-
-- snapshot version, fact watermark, latest completed US-session market cutoff,
-  and computation time;
-- a 1–4 week horizon;
-- strict conclusion status, judgment, rule version, and actual rule hits;
-- drivers, confirmations, contradictions, and upgrade/invalidation conditions;
-- evidence references, page freshness, full evidence rows, and named
-  unavailable capabilities.
-
-Evidence rows retain value, unit, frequency-aware change/window, observation
-date, source, series, quality, freshness/age, real sample range/count,
-criticality, claim effect, and derivation inputs/formula/references where
-needed. Critical missing, stale, or malformed evidence makes the affected
-conclusion `insufficient_evidence`. Optional absence makes it `degraded`.
-Unsupported capabilities are `not_assessed` with a reason and no numeric value.
-
-Overview adds a deterministic decision map. `shock_summary.state` is
-`dominant`, `no_dominant_shock`, or `insufficient_evidence`; the candidate,
-when present, is limited to `growth`, `inflation`, `policy_real_rates`,
-`term_premium_supply`, `liquidity_funding`, or `credit`. Exactly eight ordered
-lanes are published: US equities, long-duration Treasuries, credit, USD, gold,
-oil, crypto, and market volatility. The same versioned rules evaluate the
-current completed US session and the fifth prior completed session. Each lane
-contains direction, trend, categorical confidence, summary, drivers,
-contradiction, invalidation, evidence references, and local degradation.
-Overview also bounds key changes to three and selects at most the nearest
-trustworthy official catalyst plus one nullable core invalidation. Conclusions
-contain no global score, percentage confidence, probability, positioning
-instruction, holdings analysis, trade output, or LLM result.
-
-## Daily Macro SPY Judgment
-
-`MacroEvidencePack` preserves the full immutable publication content:
-session/cutoff and seal time, compiler/selection versions, all six deterministic page
-documents, bounded selected material facts, eligible persisted official/high
-quality text, source/availability/ingestion timestamps, selection rules,
-content hashes, exclusions, health, and a canonical pack hash. Ingestion time
-does not establish public availability. Missing, unparseable, future, or
-post-seal lineage is excluded; no eligible evidence is a global block.
-The pack tool derives one deterministic `macro_agent_pack_view_v1`: the latest
-selected fact per concept and bounded eligible text remain visible, while
-prior comparison facts and repeated UI-oriented page series remain in the
-frozen pack and are represented to the Agent by the six pages' deterministic
-conclusions, freshness, compact domain summaries, and hashes. The view has a
-hard serialized-size bound; the full persisted pack remains the audit source.
-
-The strict minimal `DailyMacroJudgment` contains one macro-state summary, one
-to four pressure mechanisms, exactly two SPY calls, one to four key
-counterevidence observations, nested evidence-reference closure, and audit
-versions. Directions are `up`, `down`, `range`, and `no_call`. It has no score,
-probability, numeric confidence, position, sizing, entry, stop, target, trade
-instruction, or other-asset forecast.
-
-Parallax owns calendar, close cutoff, settle/catch-up, stable session identity,
-retries, leases, pack persistence, schema/reference/content/health gates,
-rendering, and outcomes. One real `create_deep_agent` Analyst receives only
-one idempotent pack-view read tool and one strongly typed draft-submit tool.
-The view exposes deterministic short citation IDs; the submit boundary alone
-expands them back to full frozen-pack references before validation and storage.
-Its only subagent is a declarative Reviewer
-invoked by native `task`; the default general-purpose subagent and
-filesystem/shell/search tools are excluded. Analyst and Reviewer have separate
-explicit model settings but share the one configured provider
-credential/endpoint boundary. One `revise` plus one closing `pass`/`block`
-review is the hard maximum. Model I/O is outside the database transaction;
-publication insertion and job completion are atomic.
-
-Global cutoff, lineage, empty-pack, schema, reference, Reviewer block, or
-renderer failure publishes nothing. Local degradation may publish with
-`data_health=degraded`, but affected horizons are forced to `no_call`.
-Published jobs, publications, and outcomes reject identity/content mutation
-or deletion. Same-session replay performs zero model calls and zero writes.
-
-## Page-specific contracts
-
-- **Overview**: one shock state, the exact eight-lane decision map, up to three
-  five-session changes, nearest official catalyst, core invalidation, and the
-  shared audit payload. Catalysts expose official date/time/timezone/source/URL,
-  normalized `event_at_ms` only when trustworthy, and `today`/`upcoming`
-  status; no consensus, forecast, surprise, fabricated countdown, or event
-  score is inferred.
-- **Cross-asset**: cutoff-aligned 20/60-session returns, volatility evidence,
-  20/60-session correlations using actual common samples, and explicit
-  divergences/gaps. Raw levels are never compared as returns.
-- **Rates & Inflation**: ordered nominal tenors/slopes, real yields,
-  breakevens, true term-premium capability, policy/funding corridor,
-  release-aware inflation changes, and separate curve level/move
-  classification.
-- **Growth & Labor**: leading and lagging growth/labor layers remain separate;
-  release growth carries its real sample and formula.
-- **Liquidity & Funding**: central-bank balance sheet, Treasury cash,
-  reverse-repo, reserves, secured funding, and unsecured funding remain
-  separate. `Fed assets - TGA - (RRP × 1000)` is labelled an accounting proxy
-  in millions of dollars and never a causal risk-asset claim.
-- **Credit**: aggregate spreads, rating tail, effective yields, credit supply,
-  realized damage, and financial-conditions/liquidity layers. It derives
-  `CCC OAS - BB OAS`, classifies the 10-year Treasury change × HY spread-change
-  quadrant, and keeps stage separate from direction. Stages are `contained`,
-  `tail_stress`, `broadening`, `systemic_tightening`, `repairing`, or
-  `insufficient_evidence`.
-
-TRACE transactions, ETF premium/discount, dealer inventory, FedWatch,
-consensus, economic surprise, and true term-premium data remain named
-unavailable capabilities until material source facts exist. They are never
-represented by placeholders or proxies.
-
-## Atomic current snapshot
-
-`macro_view_snapshots` has exactly one supported identity:
-`snapshot_key = 'current'`. The row stores `macro_decision_v2`, shared
-watermarks/cutoff/time, six required JSON objects, and one stable payload hash.
-All page documents repeat the same four metadata fields; repository validation
-rejects a mismatch.
-
-Dirty-target claim, compact-series changes, snapshot upsert, publication state,
-and exact claim acknowledgement share the projection transaction. A clock
-recheck has no synthetic queue row: it reads only persisted compact rows and
-upserts through the same single-writer repository transaction. The snapshot
-hash excludes computation clocks recursively. Replaying an unchanged semantic
-payload therefore writes zero serving rows, while a real age, cutoff, or
-freshness change replaces the same current identity.
-
-## Public surfaces
-
-The Macro HTTP reads are:
-
-```text
-/api/macro/overview
-/api/macro/cross-asset
-/api/macro/rates-inflation
-/api/macro/growth-labor
-/api/macro/liquidity-funding
-/api/macro/credit
-/api/macro/series
-/api/macro/daily-judgment
+```python
+class CompletedSessionMacro(Protocol):
+    async def run(self, session_date: date | None = None) -> MacroSessionView: ...
+    async def read(self, session_date: date | None = None) -> MacroSessionView | None: ...
 ```
 
-Each page endpoint selects its stored document directly. The series endpoint
-reads compact persisted rows independently. The judgment endpoint reads
-persisted publication/job/outcome rows by latest or explicit `session_date`;
-it never invokes an Agent/provider, repairs state, or relabels a stale prior
-publication as the target session. No request path scans wide observations,
-builds a page, joins News, or creates an intraday judgment. Unmatched Macro
-paths return the ordinary application `404`.
+Normal worker execution calls `run()` with no product-program arguments.
+`session_date` exists only for explicit backfill or history. `read()` is
+persisted-only. The caller cannot choose a tool list, research taxonomy,
+section layout, direction schema, readiness state, review sequence, or prompt
+program.
+
+Internally, a run:
+
+1. resolves the completed U.S. session and market-close cutoff;
+2. creates or re-reads the durable session row and freezes its seal time;
+3. claims the session under an owner-bound crash-recovery lease and renews it
+   while the Agent invocation is alive;
+4. invokes the Macro-owned DeepAgents adapter outside the write transaction;
+5. mechanically verifies artifact session/cutoff identity and citation closure;
+6. inserts the immutable publication and completes the run atomically.
+
+Run states are `pending`, `running`, `retryable`, `failed`, and `published`.
+The worker renews a live run every one-third of `lease_ms`; that lease prevents
+concurrent graph/checkpoint writers but never limits total research time. A
+failed owner compare-and-set cancels only that stale local invocation without a
+publish/error transition. An expired running lease can be reclaimed while
+attempts remain. A published session performs zero model calls and zero serving writes on replay.
+
+## Frozen evidence scope and tools
+
+Every run has one `FrozenMacroEvidenceScope`:
+
+- `session_date`;
+- exact market-close `market_cutoff_ms`;
+- immutable `sealed_at_ms`;
+- a deterministic scope ID derived from those fields.
+
+The Agent receives pageable tools for:
+
+- inspecting the in-scope evidence catalog;
+- searching material Macro observations by text, concept, date, and offset;
+- reading exact disclosed evidence references;
+- searching eligible persisted News by query, source, and offset;
+- paging prior immutable Macro publications as contextual comparison.
+
+Search is a compact discovery surface and returns `next_offset` when the same
+query can continue. Exact-reference reads preserve the complete typed evidence,
+including observation raw payload and persisted News text. When an exact result
+is large, native DeepAgents FilesystemMiddleware writes it under
+`/large_tool_results/` in the checkpoint filesystem and the Agent continues
+with `read_file`; Parallax does not truncate it or replace that native recovery
+path with a payload-size failure.
+
+Evidence visibility is mechanical point-in-time integrity, never a
+concept/category allowlist. An exact timezone-bearing source timestamp is the
+availability clock and must not exceed the market cutoff; ingestion may finish
+during the frozen run's settle window but not after its seal. A date-only
+source value is an observation/event date, not a publication time, so
+`ingested_at_ms` is the conservative system-known clock and must not exceed the
+market cutoff. This permits a future scheduled event that was already known
+without treating its event date as availability. News must be both published
+by the cutoff and persisted by the seal. These rules prevent hindsight; they
+do not decide whether evidence is sufficient or what conclusion it supports.
+
+## DeepAgents topology
+
+One parent DeepAgent owns:
+
+- native `write_todos` planning and replanning;
+- checkpoint-backed virtual-filesystem notes, drafts, and large results;
+- a shared `/workspace/` plus real `execute` for calculations and scripts;
+- which evidence tools to call and in what order;
+- dynamic `task` delegation;
+- counterevidence and alternative explanations;
+- section names, ordering, evidence gaps, review, and final Chinese narrative.
+
+Declared specialists are an evidence analyst, cross-asset challenger, and
+skeptical editor. They are capabilities available to the parent, not a
+Parallax-authored sequence or pass/block workflow. Parallax exposes no generic
+agent-program DSL and no second model gateway.
+
+Parallax does not register a harness profile, permission table, or approval
+middleware that removes or pauses DeepAgents tools. The production native
+`CompositeBackend` routes ordinary files and `/large_tool_results/` to
+checkpoint-backed `StateBackend`; `/workspace/` and `execute` share one stable
+per-scope calculation directory. Market facts must still enter through the
+frozen scoped evidence tools: direct provider access, live browsing, and
+arbitrary database reads cannot establish publishable facts. That is an
+evidence-lineage boundary, not a capability or investment-judgment gate.
+
+## Durable graph state
+
+Production composition opens LangGraph `AsyncPostgresSaver` through an async
+context factory using the configured PostgreSQL DSN. The frozen scope ID is the
+stable `thread_id`, so retries and process restarts resume the same graph state.
+Native todo, ordinary virtual files, and large-result state therefore survive
+through checkpoint persistence rather than a process-local memory saver.
+Execution workspace files live under
+`~/.parallax/macro-agent-workspaces/<scope>/`, which is mounted into the app
+container and stable across process restarts; they remain scratch, not facts or
+publication state.
+
+Retries pass `None` to the graph for an existing thread, which resumes pending
+native tasks without appending another user turn. Final cited references are
+mechanically re-read from the same frozen scope so a parent can publish after
+resuming even when specialist tool messages remain in their native `tools:*`
+checkpoint namespace.
+
+Alembic owns all checkpoint DDL and records its compatible migration versions
+in `checkpoint_migrations`. Application startup does not call checkpointer
+setup. Checkpoint payloads may contain messages and scratch research state;
+they are never returned by the Macro API.
+
+## Research artifact and publication
+
+The structured envelope fixes only storage and citation integrity:
+
+- schema version, session date, and market cutoff;
+- Agent-authored title and executive summary;
+- one authoritative dynamic ordered list of Agent-authored Markdown sections;
+- Agent-authored evidence gaps and open questions;
+- citations with stable IDs, material source references, provenance, dates,
+  and URLs when available;
+- reviewer notes and bounded sanitized audit metadata.
+
+Production code checks exact session/cutoff identity, unique local IDs,
+citation referential closure, and that cited sources re-read from the frozen
+scope. A flat Markdown export is mechanically derived from the ordered
+sections; it is not a second model-authored body. Production code does not
+impose language ratios, fixed sections, asset lanes, forecast horizons,
+direction labels, confidence, coverage thresholds, readiness, or semantic
+conclusions.
+
+The audit field `verified_source_refs` means every final citation reference was
+mechanically re-read and canonicalized inside the frozen scope. It does not
+claim that root checkpoint messages retain each specialist's internal tool
+transcript; native specialist work remains in its LangGraph checkpoint
+namespace.
+
+`macro_research_publications` has one row per `session_date`. Publication
+insertion and the run transition to `published` share one transaction. A
+database trigger rejects update or delete, so history cannot be silently
+rewritten. Model, prompt, workflow, artifact hash, publication time, and
+sanitized audit remain explicit provenance.
+
+## Public surface
+
+Macro has one parameterized live-fact read and one research read:
+
+```text
+GET /api/macro/evidence/{view_id}?window=30d|90d|1y|5y
+GET /api/macro/research
+GET /api/macro/research?session_date=YYYY-MM-DD
+```
+
+The live endpoint accepts `dashboard` plus six canonical category IDs. It reads
+bounded persisted observations, preserves source/observation and received
+times, emits row-local missing state, and discloses formula/window/sample for
+transparent calculations. The 108 concepts and six categories are presentation
+metadata, not an Agent allowlist; uncatalogued latest facts remain visible.
+The endpoint makes zero provider/model calls and zero writes.
+
+With no parameter the target is the latest completed U.S. session. An explicit
+date selects that persisted session. States are `current`, `historical`,
+`generating`, `failed`, and `missing`. The response may include one publication
+and its bounded run state. It never calls a provider/model, resumes a graph,
+searches facts, or synthesizes an older fallback.
+
+`/macro` renders the live dashboard; six named child routes render data details.
+`/macro/research` renders the persisted Chinese research document, dynamic
+sections, gaps, citations, session/cutoff, reviewer notes, audit, and
+generation/error state. Other Macro paths are ordinary `404`s.
 
 ## Runtime configuration
 
 Live execution uses operator-owned `~/.parallax/config.yaml` and
 `~/.parallax/workers.yaml`; `uv run parallax config` is the resolved-path
-authority. `workers.macro_sync` owns bundle names, provider timeout, window,
-claim lease, retry cadence, and batch size. `workers.macro_view_projection`
-owns statement timeout, dirty-target batch/lease/retry policy, lookback, and
-per-series cap. `workers.daily_macro_judgment` owns settle/cadence,
-lease/retry/attempt limits, evidence bounds, model name/timeout, and output
-token limit; `config.yaml.llm` provides only the API key and base URL.
+authority.
+
+- `workers.macro_sync` owns bundle names, provider timeout, window, claim
+  lease, retry cadence, and batch size.
+- `workers.macro_research` owns enabled state, cadence, settle delay, statement
+  timeout, lease/retry/attempt bounds, `model`,
+  `model_request_timeout_seconds`, and `max_tokens`. The model request timeout
+  bounds one provider transport call; the checkpointed research workflow has
+  no whole-run wall-clock timeout.
+- `config.yaml.llm` provides only the API key and base URL.
+
 Credentials are reported only as redacted configured state.
