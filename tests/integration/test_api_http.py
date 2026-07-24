@@ -481,6 +481,69 @@ def test_api_status_exposes_flat_worker_status(tmp_path):
     assert workers["event_anchor_backfill"]["enabled"] is True
 
 
+def test_api_news_source_status_preserves_latest_fetch_contract(tmp_path):
+    app = create_app(settings=make_settings(tmp_path), start_collector=False)
+
+    with TestClient(app) as client:
+        with client.app.state.service.repositories() as repos:
+            repos.news_sources.upsert_source(
+                source_id="source-status-test",
+                provider_type="rss",
+                feed_url="https://example.test/feed.xml",
+                source_domain="example.test",
+                source_name="Example",
+                now_ms=1_000,
+            )
+            fetch_run_id = repos.news_sources.start_fetch_run(
+                source_id="source-status-test",
+                started_at_ms=2_000,
+            )
+            repos.news_sources.finish_fetch_run(
+                fetch_run_id=fetch_run_id,
+                source_id="source-status-test",
+                status="success",
+                finished_at_ms=3_000,
+                fetched_count=0,
+                inserted_count=0,
+                updated_count=0,
+                duplicate_count=0,
+                http_status=200,
+            )
+
+        response = client.get(
+            "/api/news/sources/status",
+            headers={"Authorization": "Bearer secret"},
+        )
+
+    assert response.status_code == 200
+    body = response.json()
+    assert body["ok"] is True
+    [source] = body["data"]["sources"]
+    assert source["source_id"] == "source-status-test"
+    assert source["provider_type"] == "rss"
+    assert source["source_quality_status"] == "healthy"
+    assert source["item_count"] == 0
+    assert source["last_seen_at_ms"] == 3_000
+    assert source["latest_fetch_run"] == {
+        "status": "success",
+        "started_at_ms": 2_000,
+        "finished_at_ms": 3_000,
+        "http_status": 200,
+        "fetched_count": 0,
+        "inserted_count": 0,
+        "updated_count": 0,
+        "duplicate_count": 0,
+        "error": None,
+    }
+    assert source["dedup_diagnostics"] == {
+        "raw_observation_count": 0,
+        "canonical_item_count": 0,
+        "observation_edge_count": 0,
+        "enabled_serving_row_count": 0,
+        "disabled_serving_row_count": 0,
+    }
+
+
 def test_api_exposes_recent_search_and_token_read_models(tmp_path):
     app = create_app(settings=make_settings(tmp_path), start_collector=False)
 

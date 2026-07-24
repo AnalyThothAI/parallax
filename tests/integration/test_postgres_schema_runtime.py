@@ -114,6 +114,14 @@ def test_current_postgres_schema_has_one_kappa_truth_and_durable_macro_research(
             WHERE index_class.relname = 'idx_news_provider_items_fetch_run_id'
             """
         ).fetchone()
+        news_source_status_index = conn.execute(
+            """
+            SELECT index_state.indisvalid, index_state.indisready
+            FROM pg_index AS index_state
+            JOIN pg_class AS index_class ON index_class.oid = index_state.indexrelid
+            WHERE index_class.relname = 'ix_news_items_source_status_cover'
+            """
+        ).fetchone()
         version = conn.execute("SELECT version_num FROM alembic_version").fetchone()["version_num"]
     finally:
         conn.close()
@@ -169,7 +177,8 @@ def test_current_postgres_schema_has_one_kappa_truth_and_durable_macro_research(
     }
     assert {"raw_payload_json", "payload_hash"}.isdisjoint(market_current_columns)
     assert news_fetch_run_fk_index == {"indisvalid": True, "indisready": True}
-    assert version == latest_migration_version() == "20260724_0195"
+    assert news_source_status_index == {"indisvalid": True, "indisready": True}
+    assert version == latest_migration_version() == "20260724_0196"
 
 
 def test_backend_kiss_hard_cut_migrates_nonempty_0184_state(tmp_path) -> None:

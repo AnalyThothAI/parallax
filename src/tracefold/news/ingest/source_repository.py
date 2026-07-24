@@ -861,22 +861,27 @@ class NewsSourceRepository:
                WHERE rows.projection_version = %(projection_version)s
                GROUP BY edges.source_id
             ),
-            latest_fetch_run AS (
-              SELECT DISTINCT ON (fetch_runs.source_id)
-                     fetch_runs.source_id,
-                     jsonb_build_object(
-                       'status', fetch_runs.status,
-                       'started_at_ms', fetch_runs.started_at_ms,
-                       'finished_at_ms', fetch_runs.finished_at_ms,
-                       'http_status', fetch_runs.http_status,
-                       'fetched_count', fetch_runs.fetched_count,
-                       'inserted_count', fetch_runs.inserted_count,
-                       'updated_count', fetch_runs.updated_count,
-                       'duplicate_count', fetch_runs.duplicate_count,
-                       'error', fetch_runs.error
-                     ) AS latest_fetch_run_json
-                FROM news_fetch_runs AS fetch_runs
-               ORDER BY fetch_runs.source_id, fetch_runs.started_at_ms DESC, fetch_runs.fetch_run_id DESC
+            latest_fetch_run AS MATERIALIZED (
+              SELECT sources.source_id,
+                     latest.latest_fetch_run_json
+                FROM news_sources AS sources
+                LEFT JOIN LATERAL (
+                  SELECT jsonb_build_object(
+                           'status', fetch_runs.status,
+                           'started_at_ms', fetch_runs.started_at_ms,
+                           'finished_at_ms', fetch_runs.finished_at_ms,
+                           'http_status', fetch_runs.http_status,
+                           'fetched_count', fetch_runs.fetched_count,
+                           'inserted_count', fetch_runs.inserted_count,
+                           'updated_count', fetch_runs.updated_count,
+                           'duplicate_count', fetch_runs.duplicate_count,
+                           'error', fetch_runs.error
+                         ) AS latest_fetch_run_json
+                    FROM news_fetch_runs AS fetch_runs
+                   WHERE fetch_runs.source_id = sources.source_id
+                   ORDER BY fetch_runs.started_at_ms DESC, fetch_runs.fetch_run_id DESC
+                   LIMIT 1
+                ) AS latest ON TRUE
             )
             SELECT sources.*,
                    COALESCE(edge_item_aggregate.canonical_item_count, 0)::int AS item_count,
